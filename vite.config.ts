@@ -10,7 +10,7 @@ export default defineConfig({
     // exports: true,
   },
   test: {
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
   },
   lint: {
     options: {
@@ -26,5 +26,8 @@ export default defineConfig({
     sortPackageJson: true,
     useTabs: false,
     trailingComma: "all",
+  },
+  staged: {
+    "*.{ts,tsx,js,jsx}": "vp check --fix",
   },
 })

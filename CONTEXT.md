@@ -3,28 +3,34 @@
 ## Glossary
 
 ### Chunk
+
 A piece of source code produced by the chunker. One chunk = N lines of code with overlap.
 Stored as one line in `chunks.jsonl`. Maximum size guided by 60 lines (configurable `chunkLines`), with `overlapLines` lines overlapping between consecutive chunks.
 Chunk-ID = `sha1(file:startLine).slice(0, 12)`.
 
 ### Config
+
 Runtime configuration stored in `.pix/config.json`. Contains model name, dimensions, chunk parameters, file mtime cache.
 Schema version: "1".
 
 ### Embedder
+
 Component that turns text into vectors. MVP uses ONNX runtime with `Xenova/all-MiniLM-L6-v2` (22 MB, 384 dims, q8 quantized, CPU).
 Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable).
 
 ### Scanner
+
 Discovers files to index. Uses `fast-glob` + `ignore` for `.gitignore`-aware scanning.
 Whitelist of file extensions in `config.json` (e.g. `.ts`, `.py`, `.rs`).
 Always ignores: `.pix`, `node_modules`, `.git`, `dist`, `build`, `.next`.
 
 ### Store
+
 Reads/writes the `.pix/` directory: `config.json`, `chunks.jsonl`, `vectors.bin`.
 `vectors.bin` = flat `Float32Array`, row-major, `n × 384` floats.
 
 ### CLI Commands
+
 - `pix init` — Create `.pix/config.json` with defaults
 - `pix index [--force] [--verbose]` — Scan, chunk, embed, store
 - `pix query "<text>" [--top N] [--json] [--context-lines N]` — Semantic search via cosine similarity
@@ -34,31 +40,39 @@ Reads/writes the `.pix/` directory: `config.json`, `chunks.jsonl`, `vectors.bin`
 All commands support `--json` for agent-ready structured output on stdout.
 
 ### MVP Scope
+
 init, index, query, status, reset. No incremental indexing, no cloud providers, no GUI.
 
 ### Effect
+
 Runtime and CLI framework (`effect`, `@effect/cli`, `@effect/platform-node`). Chosen as a learning project and foundation for typed errors + structured concurrency.
 
 ### fallow
+
 Rust-native codebase intelligence tool for TS/JS. Finds dead code, duplication, complexity hotspots.
 Used as quality gate: `fallow --format json` after type-checking and tests.
 
 ### Agent-ready
+
 Structured JSON output on stdout (not stderr). Enables piping between `pix` and AI agents.
 
 ## Architecture Decisions
 
 ### Flat-file storage (not SQLite)
+
 MVP uses `.pix/` directory with JSONL + binary. No DB dependency. Reversible for Phase 3+ if incremental indexing demands it.
 
 ### Model cache in `.pix/cache/`
+
 Self-contained per project. Offline after first download (~22 MB). Alternative: `~/.cache/huggingface/` (HF default).
 
 ### Raw source code for embedding
+
 No AST preprocessing, no comment stripping for MVP. Code semantics depend on syntax and structure.
 Future: AST-based preprocessing as optional enhancement.
 
 ### Whitelist extensions (not blacklist)
+
 Extensions like `.ts`, `.py` must be explicitly listed in `config.json`.
 `.gitignore` provides additional filtering. Future research: `.pixignore` for project-specific exclusions.
 

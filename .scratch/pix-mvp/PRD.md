@@ -9,6 +9,7 @@ Developers need a lightweight, local-only tool to semantically index their proje
 ## Solution
 
 Build `@lucas-bur/pix`, a CLI tool that:
+
 1. Scans the project for source files (gitignore-aware, extension whitelist)
 2. Chunks source code into overlapping line-based windows
 3. Embeds chunks locally using an ONNX model (no cloud, no API keys)
@@ -21,11 +22,13 @@ The tool is built with the Effect ecosystem for typed errors and structured conc
 ## User Stories
 
 ### Project Setup
+
 1. As a developer, I want to run `pix init` to create a `.pix/config.json` with default settings, so that I can customize indexing behavior.
 2. As a developer, I want `pix init` to remind me to add `.pix` to `.gitignore`, so that the index is not committed to version control.
 3. As a developer, I want the config to store chunk parameters (chunkLines, overlapLines), model name, and dimensions, so that re-indexing uses consistent settings.
 
 ### Indexing
+
 4. As a developer, I want to run `pix index` to scan, chunk, embed, and store my project's source code, so that I can later query it semantically.
 5. As a developer, I want `pix index` to respect `.gitignore` rules, so that build artifacts and dependencies are not indexed.
 6. As a developer, I want `pix index` to only index files matching a configurable extension whitelist, so that binary and irrelevant files are skipped.
@@ -38,6 +41,7 @@ The tool is built with the Effect ecosystem for typed errors and structured conc
 13. As a developer, I want `chunks.jsonl` and `vectors.bin` to be overwritten atomically on each index run, so that a failed run doesn't corrupt the index.
 
 ### Querying
+
 14. As a developer, I want to run `pix query "authentication middleware"` to find semantically relevant code snippets, so that I can quickly locate relevant code.
 15. As a developer, I want `pix query` to use cosine similarity in-memory, so that queries are fast without requiring a vector database.
 16. As a developer, I want `pix query --top N` to limit results to N items, so that I can control the output size on large codebases.
@@ -45,10 +49,12 @@ The tool is built with the Effect ecosystem for typed errors and structured conc
 18. As a developer, I want query results to include file path, start line, end line, relevance score, and code text, so that I can locate and understand the matched code.
 
 ### Status & Reset
+
 19. As a developer, I want to run `pix status` to see index statistics (chunk count, file count, model name, last index time), so that I know the state of my index.
 20. As a developer, I want to run `pix reset` to delete `chunks.jsonl` and `vectors.bin` while keeping `config.json`, so that I can start fresh without reconfiguring.
 
 ### Agent-Ready Output
+
 21. As an AI agent, I want all `pix` commands to support `--json` flag, so that I can parse structured output programmatically.
 22. As an AI agent, I want `pix status --json` to output JSON with chunk count, file count, model, and last index time, so that I can decide whether to re-index.
 23. As an AI agent, I want `pix query --json` to output a JSON array of results, so that I can process search results in my workflow.
@@ -56,6 +62,7 @@ The tool is built with the Effect ecosystem for typed errors and structured conc
 25. As an AI agent, I want error responses in JSON format with `error`, `code`, and `message` fields, so that I can handle failures programmatically.
 
 ### Quality & Developer Experience
+
 26. As a developer, I want `fallow` to run as a quality gate after type-checking and tests, so that dead code, duplication, and complexity are detected.
 27. As a developer, I want all modules to have co-located test files, so that tests are easy to find and maintain.
 28. As a developer, I want the project to use TDD (red-green-refactor) for all modules, so that the code is well-tested and reliable.
@@ -65,6 +72,7 @@ The tool is built with the Effect ecosystem for typed errors and structured conc
 ## Implementation Decisions
 
 ### Modules to Build (Pipeline Order)
+
 - **`src/types.ts`** — Shared types: `Chunk`, `Config`, extension whitelist constants. `Chunk` matches `chunks.jsonl` schema. `Config` matches `config.json` schema.
 - **`src/services/scanner.ts`** — File discovery using `fast-glob` + `ignore`. Whitelist extensions from config. Always ignores `.pix`, `node_modules`, `.git`, `dist`, `build`, `.next`.
 - **`src/services/chunker.ts`** — Line-based sliding window. Configurable `chunkLines` (default 60) and `overlapLines` (default 10). Skip chunks < 20 chars. Chunk-ID = `sha1(file:startLine).slice(0, 12)`.
@@ -78,6 +86,7 @@ The tool is built with the Effect ecosystem for typed errors and structured conc
 - **`src/index.ts`** — CLI entry point with `@effect/cli` Command definitions.
 
 ### Key Technical Decisions
+
 - Flat-file storage (`.pix/` directory) — no database for MVP, reversible for Phase 3+
 - Model cache in `.pix/cache/` (not `~/.cache/huggingface/`) — self-contained per project
 - Raw source code for embedding — no AST preprocessing for MVP
