@@ -1,0 +1,70 @@
+{
+  "name": "@lucas-bur/pix",
+  "version": "0.1.0",
+  "description": "Lightweight local semantic project indexer",
+  "keywords": [
+    "cli",
+    "embeddings",
+    "local",
+    "rag",
+    "semantic-search"
+  ],
+  "homepage": "https://github.com/lucas-bur/pix",
+  "bugs": {
+    "url": "https://github.com/lucas-bur/pix/issues"
+  },
+  "license": "MIT",
+  "author": "Lucas Burmeister <lucas.burmeister@gmx.de>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lucas-bur/pix.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check",
+    "prepublishOnly": "vp run build"
+  },
+  "dependencies": {
+    "@effect/cli": "^0.75.1",
+    "@effect/platform": "^0.96.1",
+    "@effect/platform-node": "^0.106.0",
+    "@huggingface/transformers": "^4.2.0",
+    "effect": "^3.21.2",
+    "fast-glob": "^3.3.3",
+    "ignore": "^7.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@typescript/native-preview": "7.0.0-dev.20260328.1",
+    "bumpp": "^11.0.1",
+    "typescript": "^6.0.2",
+    "vite-plus": "^0.1.14"
+  },
+  "packageManager": "pnpm@10.33.3",
+  "pnpm": {
+    "overrides": {
+      "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+      "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
+    },
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "msgpackr-extract",
+      "onnxruntime-node",
+      "protobufjs",
+      "sharp"
+    ]
+  }
+}
