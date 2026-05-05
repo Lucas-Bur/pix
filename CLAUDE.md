@@ -20,14 +20,14 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 
 ### Command equivalents (NEVER use pnpm directly)
 
-| Instead of... | Use... |
-|--------------|-------|
-| `pnpm install` | `vp install` |
-| `pnpm add <pkg>` | `vp add <pkg>` |
+| Instead of...       | Use...            |
+| ------------------- | ----------------- |
+| `pnpm install`      | `vp install`      |
+| `pnpm add <pkg>`    | `vp add <pkg>`    |
 | `pnpm add -D <pkg>` | `vp add -D <pkg>` |
 | `pnpm run <script>` | `vp run <script>` |
-| `pnpm test` | `vp test` |
-| `pnpm build` | `vp run build` |
+| `pnpm test`         | `vp test`         |
+| `pnpm build`        | `vp run build`    |
 
 ### Review Checklist
 
