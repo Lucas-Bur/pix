@@ -16,7 +16,12 @@
     "isolatedModules": true,
     "outDir": "dist",
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service"
+      }
+    ]
   },
   "include": ["src"]
 }

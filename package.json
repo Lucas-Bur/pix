@@ -48,6 +48,7 @@
     "ignore": "^7.0.5"
   },
   "devDependencies": {
+    "@effect/language-service": "^0.85.1",
     "@types/node": "^25.5.0",
     "@typescript/native-preview": "7.0.0-dev.20260328.1",
     "bumpp": "^11.0.1",
