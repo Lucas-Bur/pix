@@ -11,8 +11,6 @@ import { OnnxEmbedderLive } from "./services/embedder.js"
 import { ScannerLive } from "./services/scanner.js"
 import { VectorStoreLive } from "./services/vector-store.js"
 
-const VERSION = "0.1.0"
-
 // === 1. Adapter Layers mit NodeContext.layer für FileSystem ===
 
 const configStoreLayer = ConfigStoreLive.pipe(Layer.provide(NodeContext.layer))
@@ -53,4 +51,4 @@ const AppLayer = Layer.provideMerge(
   NodeContext.layer,
 )
 
-cli(process.argv, VERSION).pipe(Effect.provide(AppLayer), NodeRuntime.runMain)
+cli(process.argv).pipe(Effect.provide(AppLayer), NodeRuntime.runMain)

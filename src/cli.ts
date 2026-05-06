@@ -1,9 +1,14 @@
+import { createRequire } from "node:module"
+
 import { Command } from "@effect/cli"
 import { Effect } from "effect"
 
 import { indexCommand } from "./commands/index-cmd.ts"
 import { initCommand } from "./commands/init.ts"
 import { statusCommand } from "./commands/status.ts"
+
+const require = createRequire(import.meta.url)
+const VERSION = (require("../package.json") as { version: string }).version
 
 const rootCommand = Command.make("pix", {}, () =>
   Effect.gen(function* () {
@@ -14,5 +19,4 @@ const rootCommand = Command.make("pix", {}, () =>
 
 const pix = rootCommand.pipe(Command.withSubcommands([initCommand, statusCommand, indexCommand]))
 
-export const cli = (argv: string[], version: string) =>
-  Command.run(pix, { name: "pix", version })(argv)
+export const cli = Command.run(pix, { name: "pix", version: VERSION })
