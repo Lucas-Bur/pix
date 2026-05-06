@@ -6,14 +6,11 @@ import { expect, test } from "vite-plus/test"
 import { readConfig } from "../services/store.ts"
 import { runInit } from "./init.ts"
 
-const cleanPixDir = (): Effect.Effect<void> =>
+const cleanPixDir = (): Effect.Effect<void, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     yield* fs.remove(".pix", { recursive: true })
-  }).pipe(
-    Effect.catchAll(() => Effect.void),
-    Effect.provide(NodeFileSystem.layer),
-  )
+  }).pipe(Effect.catchAll(() => Effect.void))
 
 test("pix init creates .pix/config.json with defaults", () =>
   Effect.gen(function* () {
@@ -28,7 +25,7 @@ test("pix init creates .pix/config.json with defaults", () =>
     expect(config.chunkLines).toBe(60)
     expect(config.overlapLines).toBe(10)
     expect(config.files).toEqual({})
-  }))
+  }).pipe(Effect.provide(NodeFileSystem.layer)))
 
 test("pix init outputs .gitignore reminder", () =>
   Effect.gen(function* () {
@@ -36,4 +33,4 @@ test("pix init outputs .gitignore reminder", () =>
 
     const exit = yield* Effect.exit(runInit)
     expect(exit._tag).toBe("Success")
-  }))
+  }).pipe(Effect.provide(NodeFileSystem.layer)))

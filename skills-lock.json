@@ -13,6 +13,12 @@
       "skillPath": "skills/engineering/diagnose/SKILL.md",
       "computedHash": "1c3c85517ac42116fe5f2bfb5150f7b3e38ad23808e40b33fbb01f1afb611983"
     },
+    "effect-ts": {
+      "source": "paulrberg/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/effect-ts/SKILL.md",
+      "computedHash": "414ac6b273f55f21bb769564d2992c6bfe3195c2d9c7b9a9b916c1c7d680c708"
+    },
     "grill-me": {
       "source": "mattpocock/skills",
       "sourceType": "github",

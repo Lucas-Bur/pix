@@ -1,5 +1,4 @@
 import { FileSystem } from "@effect/platform"
-import { NodeFileSystem } from "@effect/platform-node"
 import { Effect, Data } from "effect"
 
 import { type Config } from "../types.ts"
@@ -17,7 +16,9 @@ const CONFIG_DIR = ".pix"
 const CONFIG_PATH = `${CONFIG_DIR}/config.json`
 
 /** Write config to `.pix/config.json`. Creates `.pix/` directory if it doesn't exist. */
-export const writeConfig = (config: Config): Effect.Effect<void, ConfigError> =>
+export const writeConfig = (
+  config: Config,
+): Effect.Effect<void, ConfigError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const configJson = JSON.stringify(config, null, 2)
@@ -27,14 +28,13 @@ export const writeConfig = (config: Config): Effect.Effect<void, ConfigError> =>
     Effect.catchAll((cause) =>
       Effect.fail(new ConfigError({ message: "Failed to write config", cause })),
     ),
-    Effect.provide(NodeFileSystem.layer),
   )
 
 /**
  * Read config from `.pix/config.json`. Fails with ConfigError if file doesn't exist or JSON is
  * invalid.
  */
-export const readConfig = (): Effect.Effect<Config, ConfigError> =>
+export const readConfig = (): Effect.Effect<Config, ConfigError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const content = yield* fs.readFileString(CONFIG_PATH)
@@ -43,15 +43,11 @@ export const readConfig = (): Effect.Effect<Config, ConfigError> =>
     Effect.catchAll((cause) =>
       Effect.fail(new ConfigError({ message: "Failed to read config", cause })),
     ),
-    Effect.provide(NodeFileSystem.layer),
   )
 
 /** Check if config file exists. Returns false on error (e.g., file not found). */
-export const configExists = (): Effect.Effect<boolean> =>
+export const configExists = (): Effect.Effect<boolean, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     return yield* fs.exists(CONFIG_PATH)
-  }).pipe(
-    Effect.catchAll(() => Effect.succeed(false)),
-    Effect.provide(NodeFileSystem.layer),
-  )
+  }).pipe(Effect.catchAll(() => Effect.succeed(false)))

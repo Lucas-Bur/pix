@@ -15,14 +15,11 @@ const defaultConfig: Config = {
   files: {},
 }
 
-const cleanPixDir = (): Effect.Effect<void> =>
+const cleanPixDir = (): Effect.Effect<void, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     yield* fs.remove(".pix", { recursive: true })
-  }).pipe(
-    Effect.catchAll(() => Effect.void),
-    Effect.provide(NodeFileSystem.layer),
-  )
+  }).pipe(Effect.catchAll(() => Effect.void))
 
 test("writeConfig creates .pix/config.json with valid config", () =>
   Effect.gen(function* () {
@@ -30,7 +27,7 @@ test("writeConfig creates .pix/config.json with valid config", () =>
     yield* writeConfig(defaultConfig)
     const result = yield* readConfig()
     expect(result).toEqual(defaultConfig)
-  }))
+  }).pipe(Effect.provide(NodeFileSystem.layer)))
 
 test("readConfig fails when config doesn't exist", () =>
   Effect.gen(function* () {
@@ -38,7 +35,7 @@ test("readConfig fails when config doesn't exist", () =>
 
     const result = yield* Effect.either(readConfig())
     expect(result._tag).toBe("Left")
-  }))
+  }).pipe(Effect.provide(NodeFileSystem.layer)))
 
 test("configExists returns false when no config", () =>
   Effect.gen(function* () {
@@ -46,7 +43,7 @@ test("configExists returns false when no config", () =>
 
     const exists = yield* configExists()
     expect(exists).toBe(false)
-  }))
+  }).pipe(Effect.provide(NodeFileSystem.layer)))
 
 test("configExists returns true when config exists", () =>
   Effect.gen(function* () {
@@ -54,7 +51,7 @@ test("configExists returns true when config exists", () =>
     yield* writeConfig(defaultConfig)
     const exists = yield* configExists()
     expect(exists).toBe(true)
-  }))
+  }).pipe(Effect.provide(NodeFileSystem.layer)))
 
 test("readConfig returns ConfigError when config doesn't exist", () =>
   Effect.gen(function* () {
@@ -65,9 +62,9 @@ test("readConfig returns ConfigError when config doesn't exist", () =>
       expect(result.left._tag).toBe("ConfigError")
       expect(result.left.message).toBe("Failed to read config")
     } else {
-      expect(false).toBe(true) // Force fail if we get Right
+      expect(false).toBe(true)
     }
-  }))
+  }).pipe(Effect.provide(NodeFileSystem.layer)))
 
 test("ConfigError has correct structure", () => {
   const error = new ConfigError({ message: "test", cause: undefined })
