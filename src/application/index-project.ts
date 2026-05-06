@@ -63,11 +63,14 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         // 5. Store chunks and embeddings
         yield* vectorStore.store(allChunks, embeddings)
 
+        const dims = embeddings[0]?.dims ?? 384
+        const byteSize = embeddings.length * dims * 4
+
         yield* Effect.logInfo(`Indexed ${totalChunks} chunks from ${totalFiles} files.`)
 
         return {
           success: true as const,
-          stats: { chunks: totalChunks, files: totalFiles, totalLines, byteSize: 0 },
+          stats: { chunks: totalChunks, files: totalFiles, totalLines, byteSize },
         }
       })
 

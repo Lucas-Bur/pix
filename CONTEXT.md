@@ -22,7 +22,7 @@ Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable).
 ### Scanner
 
 Discovers files to index. Uses `fast-glob` + `ignore` for `.gitignore`-aware scanning.
-Whitelist of file extensions in `config.json` (e.g. `.ts`, `.py`, `.rs`).
+Whitelist of file extensions in `config.json` (e.g. `.ts`, `.py`, `.rs`). Only text/code extensions — binary formats (`.pdf`, `.mp4`, etc.) are excluded by design.
 Always ignores: `.pix`, `node_modules`, `.git`, `dist`, `build`, `.next`.
 
 ### Store
@@ -33,7 +33,7 @@ Reads/writes the `.pix/` directory: `config.json`, `chunks.jsonl`, `vectors.bin`
 ### CLI Commands
 
 - `pix init` — Create `.pix/config.json` with defaults
-- `pix index [--force] [--verbose]` — Scan, chunk, embed, store
+- `pix index` — Scan, chunk, embed, store (full re-index; `--force` flag reserved for Phase 3)
 - `pix query "<text>" [--top N] [--json] [--context-lines N]` — Semantic search via cosine similarity
 - `pix status` — Show index statistics
 - `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
@@ -79,8 +79,11 @@ Extensions like `.ts`, `.py` must be explicitly listed in `config.json`.
 
 ## Future Considerations
 
-- AST preprocessing for improved embedding quality
-- Incremental indexing via mtime cache or file hash (Phase 3) — hash-based avoids spurious reindex when external tools touch mtime without changing content
+- Extension→Processor mapping (Phase 2+) — lookup table that decides how each file extension is processed:
+  - **Known code extensions** (`.ts`, `.py`, `.rs`, etc.) → Chunker → Embedder (MVP behavior)
+  - **Known binary extensions** (`.pdf`, `.mp4`, `.jpg`, `.zip`, `.exe`, etc.) → Skip with warning log. Future Phase 2+ converts to text first (e.g. PDF→text extraction, MP4→Whisper transcription)
+  - **Future: AST preprocessing** — for languages where AST yields better embeddings than raw text
+- Incremental indexing via mtime cache or file hash (Phase 3) — `--force` flag will flip default behavior; MVP always full-reindexes
 - Multi-model support (OpenAI, Mistral, OpenRouter)
 - Top-K retrieval to limit result set size
 - Token/character limits for chunk boundaries

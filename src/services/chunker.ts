@@ -72,12 +72,3 @@ const make = Effect.gen(function* () {
 })
 
 export const ChunkerLive = Layer.effect(Chunker, make)
-
-// === Mock for tests ===
-
-const makeMock = Effect.succeed({
-  chunkFile: (_file: string): Effect.Effect<readonly Chunk[], never> =>
-    Effect.succeed([] as readonly Chunk[]),
-} as const)
-
-export const MockChunkerLive = Layer.effect(Chunker, makeMock)

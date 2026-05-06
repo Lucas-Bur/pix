@@ -74,23 +74,3 @@ const make = Effect.gen(function* () {
 })
 
 export const OnnxEmbedderLive = Layer.effect(Embedder, make)
-
-// === Mock for tests ===
-
-const makeMock = Effect.succeed({
-  embed: (_text: string): Effect.Effect<Embedding, never> =>
-    Effect.succeed({
-      vector: new Float32Array(DIMS).map(() => 1 / Math.sqrt(DIMS)),
-      dims: DIMS,
-    }),
-
-  batch: (texts: readonly string[]): Effect.Effect<readonly Embedding[], never> =>
-    Effect.succeed(
-      texts.map(() => ({
-        vector: new Float32Array(DIMS).map(() => 1 / Math.sqrt(DIMS)),
-        dims: DIMS,
-      })),
-    ),
-} as const)
-
-export const MockEmbedderLive = Layer.effect(Embedder, makeMock)
