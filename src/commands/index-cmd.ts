@@ -15,7 +15,18 @@ export const indexCommand = Command.make(
     Effect.gen(function* () {
       const startTime = Date.now()
 
-      const result = yield* IndexProject.index()
+      const result = yield* IndexProject.index().pipe(Effect.either)
+
+      if (result._tag === "Left") {
+        // Index failed — output JSON error if --json flag set
+        const error = result.left
+        const message = error.message ?? String(error)
+        yield* Effect.sync(() => {
+          console.log(JSON.stringify({ error: message }))
+        })
+        // Fail the effect so CLI exits with non-zero code
+        return yield* Effect.fail(error)
+      }
 
       const duration = `${((Date.now() - startTime) / 1000).toFixed(1)}s`
 
@@ -23,8 +34,8 @@ export const indexCommand = Command.make(
         return yield* Effect.sync(() => {
           console.log(
             JSON.stringify({
-              chunks: result.stats.chunks,
-              files: result.stats.files,
+              chunks: result.right.stats.chunks,
+              files: result.right.stats.files,
               duration,
             }),
           )
@@ -32,7 +43,7 @@ export const indexCommand = Command.make(
       }
 
       yield* Effect.logInfo(
-        `Indexed ${result.stats.chunks} chunks from ${result.stats.files} files in ${duration}.`,
+        `Indexed ${result.right.stats.chunks} chunks from ${result.right.stats.files} files in ${duration}.`,
       )
     }),
 )
