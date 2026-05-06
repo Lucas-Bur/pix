@@ -23,7 +23,7 @@ const userAtom = Atom.make(
   Effect.gen(function* () {
     const api = yield* Api
     return yield* api.fetchUser()
-  })
+  }),
 )
 
 // Keep value when component unmounts (prevents reset)
@@ -59,8 +59,8 @@ const userAtomFamily = Atom.family((userId: string) =>
     Effect.gen(function* () {
       const api = yield* Api
       return yield* api.fetchUser(userId)
-    })
-  )
+    }),
+  ),
 )
 
 // Usage
@@ -76,7 +76,7 @@ const incrementFn = Atom.fn(
   Effect.gen(function* () {
     const count = yield* Ref.get(counterRef)
     yield* Ref.set(counterRef, count + 1)
-  })
+  }),
 )
 
 // Invoke with useAtomSet
@@ -132,7 +132,7 @@ const websocketAtom = Atom.make((get) =>
     const ws = yield* WebSocket.connect("wss://...")
     yield* Effect.addFinalizer(() => ws.close())
     return ws
-  })
+  }),
 )
 ```
 
@@ -141,16 +141,15 @@ const websocketAtom = Atom.make((get) =>
 ```typescript
 const windowSizeAtom = Atom.make((get) =>
   Effect.gen(function* () {
-    const handler = () =>
-      get.setSelf({ width: window.innerWidth, height: window.innerHeight })
+    const handler = () => get.setSelf({ width: window.innerWidth, height: window.innerHeight })
 
     window.addEventListener("resize", handler)
     yield* Effect.addFinalizer(() =>
-      Effect.sync(() => window.removeEventListener("resize", handler))
+      Effect.sync(() => window.removeEventListener("resize", handler)),
     )
 
     return { width: window.innerWidth, height: window.innerHeight }
-  })
+  }),
 )
 ```
 
@@ -164,7 +163,7 @@ const dataAtom = Atom.make(
     const keys = yield* Atom.withReactivity(["data-key"])
     // Re-runs when "data-key" is invalidated
     return yield* fetchData()
-  })
+  }),
 )
 ```
 

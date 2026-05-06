@@ -21,14 +21,14 @@ If production code uses `Date.now()`, it becomes hard (or impossible) to test de
 Prefer Effect's clock service:
 
 ```ts
-import { Clock, Effect } from "effect";
+import { Clock, Effect } from "effect"
 
-const nowMillis = Clock.currentTimeMillis;
+const nowMillis = Clock.currentTimeMillis
 
 const program = Effect.gen(function* () {
-  const now = yield* Clock.currentTimeMillis;
-  return now;
-});
+  const now = yield* Clock.currentTimeMillis
+  return now
+})
 ```
 
 That makes your code controllable via `TestClock`.
@@ -38,15 +38,15 @@ That makes your code controllable via `TestClock`.
 Instead of:
 
 ```ts
-yield * Effect.sleep("50 millis");
+yield * Effect.sleep("50 millis")
 ```
 
 do:
 
 ```ts
-import { TestClock } from "effect";
+import { TestClock } from "effect"
 
-yield * TestClock.adjust("50 millis");
+yield * TestClock.adjust("50 millis")
 ```
 
 If you _must_ use real timers (e.g. testing integration with Node timers), switch the whole test to `it.live`.
@@ -58,17 +58,17 @@ Retry schedules and `Schedule.spaced(...)` don't progress under `TestClock` unle
 A reliable pattern is:
 
 ```ts
-import { Effect, Fiber, TestClock } from "effect";
+import { Effect, Fiber, TestClock } from "effect"
 
 const runWithTime = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
-  adjust: Parameters<typeof TestClock.adjust>[0] = "1000 millis"
+  adjust: Parameters<typeof TestClock.adjust>[0] = "1000 millis",
 ) =>
   Effect.gen(function* () {
-    const fiber = yield* Effect.fork(effect);
-    yield* TestClock.adjust(adjust);
-    return yield* Fiber.join(fiber);
-  });
+    const fiber = yield* Effect.fork(effect)
+    yield* TestClock.adjust(adjust)
+    return yield* Fiber.join(fiber)
+  })
 ```
 
 Advance _enough_ time for the whole schedule/backoff chain to complete.
@@ -109,36 +109,36 @@ When you write a test like:
 If you need to ensure real overlap, add a second `Deferred` that the underlying effect completes as soon as it begins:
 
 ```ts
-import { Deferred, Effect, Fiber } from "effect";
+import { Deferred, Effect, Fiber } from "effect"
 
 Effect.gen(function* () {
-  let executions = 0;
+  let executions = 0
 
-  const started = yield* Deferred.make<void>();
-  const gate = yield* Deferred.make<void>();
+  const started = yield* Deferred.make<void>()
+  const gate = yield* Deferred.make<void>()
 
   const underlying = Effect.gen(function* () {
-    executions++;
+    executions++
     // Signal we actually started executing (at least one fiber is “in” now)
-    yield* Deferred.succeed(started, undefined);
+    yield* Deferred.succeed(started, undefined)
     // Block here to force overlap
-    yield* Deferred.await(gate);
-    return "ok";
-  });
+    yield* Deferred.await(gate)
+    return "ok"
+  })
 
-  const f1 = yield* Effect.fork(underlying);
-  const f2 = yield* Effect.fork(underlying);
+  const f1 = yield* Effect.fork(underlying)
+  const f2 = yield* Effect.fork(underlying)
 
   // Don't open the gate until at least one fiber definitely started
-  yield* Deferred.await(started);
-  yield* Deferred.succeed(gate, undefined);
+  yield* Deferred.await(started)
+  yield* Deferred.succeed(gate, undefined)
 
-  yield* Fiber.join(f1);
-  yield* Fiber.join(f2);
+  yield* Fiber.join(f1)
+  yield* Fiber.join(f2)
 
   // Now it's safe to assert expectations about overlap / dedup / sharing
   // expect(executions).toBe(1)
-});
+})
 ```
 
 This avoids “we opened the gate before any fiber ran” flakiness and makes concurrency assertions reliable.

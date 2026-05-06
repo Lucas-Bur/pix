@@ -47,7 +47,7 @@ Option.getOrElse(maybeValue, () => defaultValue)
 
 // Check and extract
 if (Option.isSome(maybeValue)) {
-  console.log(maybeValue.value)  // Safe access
+  console.log(maybeValue.value) // Safe access
 }
 ```
 
@@ -72,14 +72,14 @@ import { Schema } from "effect"
 // Optional field with Option type
 const UserSchema = Schema.Struct({
   name: Schema.String,
-  nickname: Schema.optionalWith(Schema.String, { as: "Option" })
+  nickname: Schema.optionalWith(Schema.String, { as: "Option" }),
 })
 // nickname will be Option<string>
 
 // Optional field with null (for JSON compat)
 const ApiUserSchema = Schema.Struct({
   name: Schema.String,
-  nickname: Schema.NullOr(Schema.String)
+  nickname: Schema.NullOr(Schema.String),
 })
 // nickname will be string | null
 ```
@@ -92,7 +92,7 @@ const userAtom = Atom.make<User | null>(null)
 
 // Convert at boundaries
 const program = Effect.gen(function* () {
-  const maybeUser = yield* fetchUser()  // Returns Option<User>
-  return Option.getOrNull(maybeUser)    // Convert for React
+  const maybeUser = yield* fetchUser() // Returns Option<User>
+  return Option.getOrNull(maybeUser) // Convert for React
 })
 ```

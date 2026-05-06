@@ -128,27 +128,27 @@ existing codebase patterns (when they exist).
 ### Creating Effects
 
 ```typescript
-Effect.succeed(value)           // Wrap success value
-Effect.fail(error)              // Create failed effect
-Effect.tryPromise(fn)           // Wrap promise-returning function
-Effect.try(fn)                  // Wrap synchronous throwing function
-Effect.sync(fn)                 // Wrap synchronous non-throwing function
+Effect.succeed(value) // Wrap success value
+Effect.fail(error) // Create failed effect
+Effect.tryPromise(fn) // Wrap promise-returning function
+Effect.try(fn) // Wrap synchronous throwing function
+Effect.sync(fn) // Wrap synchronous non-throwing function
 ```
 
 ### Composing Effects
 
 ```typescript
-Effect.flatMap(effect, fn)      // Chain effects
-Effect.map(effect, fn)          // Transform success value
-Effect.tap(effect, fn)          // Side effect without changing value
-Effect.all([...effects])        // Run effects (concurrency configurable)
-Effect.forEach(items, fn)       // Map over items with effects
+Effect.flatMap(effect, fn) // Chain effects
+Effect.map(effect, fn) // Transform success value
+Effect.tap(effect, fn) // Side effect without changing value
+Effect.all([...effects]) // Run effects (concurrency configurable)
+Effect.forEach(items, fn) // Map over items with effects
 
 // Collect ALL errors (not just first)
-Effect.all([e1, e2, e3], { mode: "validate" })  // Returns all failures
+Effect.all([e1, e2, e3], { mode: "validate" }) // Returns all failures
 
 // Partial success handling
-Effect.partition([e1, e2, e3])  // Returns [failures, successes]
+Effect.partition([e1, e2, e3]) // Returns [failures, successes]
 ```
 
 ### Error Handling
@@ -167,9 +167,9 @@ Effect.gen(function* () {
 })
 
 Effect.catchTag(effect, tag, fn) // Handle specific error tag
-Effect.catchAll(effect, fn)      // Handle all errors
-Effect.result(effect)            // Convert to Exit value
-Effect.orElse(effect, alt)       // Fallback effect
+Effect.catchAll(effect, fn) // Handle all errors
+Effect.result(effect) // Convert to Exit value
+Effect.orElse(effect, alt) // Fallback effect
 ```
 
 ### Error Taxonomy
@@ -187,7 +187,7 @@ Categorize errors for appropriate handling:
 ```typescript
 // Pattern: Normalize unknown errors at boundary
 const safeBoundary = Effect.catchAllDefect(effect, (defect) =>
-  Effect.fail(new UnknownError({ cause: defect }))
+  Effect.fail(new UnknownError({ cause: defect })),
 )
 
 // Pattern: Catch user-initiated cancellations separately
@@ -206,10 +206,10 @@ import { Match } from "effect"
 
 // Type-safe exhaustive matching on tagged errors
 const handleError = Match.type<AppError>().pipe(
-  Match.tag("UserCancelledError", () => null),          // Expected rejection
-  Match.tag("ValidationError", (e) => e.message),       // Domain error
+  Match.tag("UserCancelledError", () => null), // Expected rejection
+  Match.tag("ValidationError", (e) => e.message), // Domain error
   Match.tag("NetworkError", () => "Connection failed"), // Retryable
-  Match.exhaustive  // Compile error if case missing
+  Match.exhaustive, // Compile error if case missing
 )
 
 // Replace nested catchTag chains
@@ -220,15 +220,15 @@ Effect.catchAll(effect, (error) =>
     Match.tag("A", handleA),
     Match.tag("B", handleB),
     Match.tag("C", handleC),
-    Match.exhaustive
-  )
+    Match.exhaustive,
+  ),
 )
 
 // Match on values (cleaner than if/else)
 const describe = Match.value(status).pipe(
   Match.when("pending", () => "Loading..."),
   Match.when("success", () => "Done!"),
-  Match.orElse(() => "Unknown")
+  Match.orElse(() => "Unknown"),
 )
 ```
 
@@ -276,13 +276,13 @@ function effectHandler<I, A, E, R>(service: Context.ReadonlyTag<I, Effect.Effect
 
 ```typescript
 Effect.gen(function* () {
-  const a = yield* effectA;
-  const b = yield* effectB;
+  const a = yield* effectA
+  const b = yield* effectB
   if (error) {
-    return yield* Effect.fail(new MyError());
+    return yield* Effect.fail(new MyError())
   }
-  return result;
-});
+  return result
+})
 
 // Effect.fn - automatic tracing and telemetry (preferred for named functions)
 const fetchUser = Effect.fn("fetchUser")(function* (id: string) {
@@ -295,9 +295,9 @@ const fetchUser = Effect.fn("fetchUser")(function* (id: string) {
 ### Resource Management
 
 ```typescript
-Effect.acquireUseRelease(acquire, use, release)  // Bracket pattern
-Effect.scoped(effect)                            // Scope lifetime to effect
-Effect.addFinalizer(cleanup)                     // Register cleanup action
+Effect.acquireUseRelease(acquire, use, release) // Bracket pattern
+Effect.scoped(effect) // Scope lifetime to effect
+Effect.addFinalizer(cleanup) // Register cleanup action
 ```
 
 ### Duration
@@ -306,13 +306,13 @@ Effect accepts human-readable duration strings anywhere a `DurationInput` is exp
 
 ```typescript
 // String syntax (preferred) - singular or plural forms work
-Duration.toMillis("5 minutes")    // 300000
-Duration.toMillis("1 minute")     // 60000
-Duration.toMillis("30 seconds")   // 30000
-Duration.toMillis("100 millis")   // 100
+Duration.toMillis("5 minutes") // 300000
+Duration.toMillis("1 minute") // 60000
+Duration.toMillis("30 seconds") // 30000
+Duration.toMillis("100 millis") // 100
 
 // Verbose syntax (avoid)
-Duration.toMillis(Duration.minutes(5))  // Same result, more verbose
+Duration.toMillis(Duration.minutes(5)) // Same result, more verbose
 
 // Common units: millis, seconds, minutes, hours, days, weeks
 // Also: nanos, micros
@@ -321,18 +321,18 @@ Duration.toMillis(Duration.minutes(5))  // Same result, more verbose
 ### Scheduling
 
 ```typescript
-Effect.retry(effect, Schedule.exponential("100 millis"))  // Retry with backoff
-Effect.repeat(effect, Schedule.fixed("1 second"))         // Repeat on schedule
-Schedule.compose(s1, s2)                                  // Combine schedules
+Effect.retry(effect, Schedule.exponential("100 millis")) // Retry with backoff
+Effect.repeat(effect, Schedule.fixed("1 second")) // Repeat on schedule
+Schedule.compose(s1, s2) // Combine schedules
 ```
 
 ### State Management
 
 ```typescript
-Ref.make(initialValue)       // Mutable reference
-Ref.get(ref)                 // Read value
-Ref.set(ref, value)          // Write value
-Deferred.make<E, A>()        // One-time async value
+Ref.make(initialValue) // Mutable reference
+Ref.get(ref) // Read value
+Ref.set(ref, value) // Write value
+Deferred.make<E, A>() // One-time async value
 ```
 
 ### SubscriptionRef (Reactive References)
@@ -341,13 +341,13 @@ Deferred.make<E, A>()        // One-time async value
 // WARNING: Never use unsafeMake - it may not exist in your Effect version.
 // If you see "unsafeMake is not a function", use the safe API below.
 
-SubscriptionRef.make(initial)      // Create reactive reference (safe)
-SubscriptionRef.get(ref)           // Read current value
-SubscriptionRef.set(ref, value)    // Update value (notifies subscribers)
-SubscriptionRef.changes(ref)       // Stream of value changes
+SubscriptionRef.make(initial) // Create reactive reference (safe)
+SubscriptionRef.get(ref) // Read current value
+SubscriptionRef.set(ref, value) // Update value (notifies subscribers)
+SubscriptionRef.changes(ref) // Stream of value changes
 
 // React integration (effect-atom pattern)
-const ref = yield* SubscriptionRef.make<User | null>(null)
+const ref = yield * SubscriptionRef.make<User | null>(null)
 // Hook reads: useSubscriptionRef(ref) — returns current value or null
 // Handle null explicitly in components
 ```
@@ -355,9 +355,9 @@ const ref = yield* SubscriptionRef.make<User | null>(null)
 ### Concurrency
 
 ```typescript
-Effect.fork(effect)              // Run in background fiber
-Fiber.join(fiber)                // Wait for fiber result
-Effect.race(effect1, effect2)    // First to complete wins
+Effect.fork(effect) // Run in background fiber
+Fiber.join(fiber) // Wait for fiber result
+Effect.race(effect1, effect2) // First to complete wins
 Effect.all([...effects], { concurrency: "unbounded" })
 ```
 
@@ -367,21 +367,22 @@ Effect.all([...effects], { concurrency: "unbounded" })
 import { Config, ConfigProvider, Effect, Layer, Redacted } from "effect"
 
 // Basic config values
-const port = Config.number("PORT")                    // Required number
-const host = Config.string("HOST").pipe(              // Optional with default
-  Config.withDefault("localhost")
+const port = Config.number("PORT") // Required number
+const host = Config.string("HOST").pipe(
+  // Optional with default
+  Config.withDefault("localhost"),
 )
 
 // Sensitive values (masked in logs)
-const apiKey = Config.redacted("API_KEY")             // Returns Redacted<string>
-const secret = Redacted.value(yield* apiKey)          // Unwrap when needed
+const apiKey = Config.redacted("API_KEY") // Returns Redacted<string>
+const secret = Redacted.value(yield * apiKey) // Unwrap when needed
 
 // Nested configuration with prefix
 const dbConfig = Config.all({
   host: Config.string("HOST"),
   port: Config.number("PORT"),
   name: Config.string("NAME"),
-}).pipe(Config.nested("DATABASE"))                    // DATABASE_HOST, DATABASE_PORT, etc.
+}).pipe(Config.nested("DATABASE")) // DATABASE_HOST, DATABASE_PORT, etc.
 
 // Using config in effects
 const program = Effect.gen(function* () {
@@ -392,19 +393,19 @@ const program = Effect.gen(function* () {
 
 // Custom config provider (e.g., from object instead of env)
 const customProvider = ConfigProvider.fromMap(
-  new Map([["PORT", "3000"], ["API_KEY", "secret"]])
+  new Map([
+    ["PORT", "3000"],
+    ["API_KEY", "secret"],
+  ]),
 )
-const withCustomConfig = Effect.provide(
-  program,
-  Layer.setConfigProvider(customProvider)
-)
+const withCustomConfig = Effect.provide(program, Layer.setConfigProvider(customProvider))
 
 // Config validation and transformation
 const validPort = Config.number("PORT").pipe(
   Config.validate({
     message: "Port must be between 1 and 65535",
     validation: (n) => n >= 1 && n <= 65535,
-  })
+  }),
 )
 ```
 
@@ -414,9 +415,9 @@ const validPort = Config.number("PORT").pipe(
 import { Array as Arr, Order } from "effect"
 
 // Sorting with built-in orderings (accepts any Iterable)
-Arr.sort([3, 1, 2], Order.number)              // [1, 2, 3]
-Arr.sort(["b", "a", "c"], Order.string)        // ["a", "b", "c"]
-Arr.sort(new Set([3n, 1n, 2n]), Order.bigint)  // [1n, 2n, 3n]
+Arr.sort([3, 1, 2], Order.number) // [1, 2, 3]
+Arr.sort(["b", "a", "c"], Order.string) // ["a", "b", "c"]
+Arr.sort(new Set([3n, 1n, 2n]), Order.bigint) // [1n, 2n, 3n]
 
 // Sort by derived value
 Arr.sortWith(users, (u) => u.age, Order.number)
@@ -425,7 +426,7 @@ Arr.sortWith(users, (u) => u.age, Order.number)
 Arr.sortBy(
   users,
   Order.mapInput(Order.number, (u: User) => u.age),
-  Order.mapInput(Order.string, (u: User) => u.name)
+  Order.mapInput(Order.string, (u: User) => u.name),
 )
 
 // Built-in orderings: Order.string, Order.number, Order.bigint, Order.boolean, Order.Date
@@ -438,12 +439,12 @@ Arr.sortBy(
 import { constVoid as noop } from "effect/Function"
 
 // constVoid returns undefined, useful as a no-operation callback
-noop()  // undefined
+noop() // undefined
 
 // Common use cases:
-Effect.tap(effect, noop)              // Ignore value, just run effect
-Promise.catch(noop)                   // Swallow errors
-eventEmitter.on("event", noop)        // Register empty handler
+Effect.tap(effect, noop) // Ignore value, just run effect
+Promise.catch(noop) // Swallow errors
+eventEmitter.on("event", noop) // Register empty handler
 ```
 
 ### Deprecations

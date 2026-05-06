@@ -9,39 +9,39 @@ actions, middleware, and React hooks.
 
 ```typescript
 // app/api/users/[id]/route.ts
-import { effectHandler } from "@prb/effect-next/handlers";
-import { Effect } from "effect";
-import { RouteParams } from "@prb/effect-next/params";
+import { effectHandler } from "@prb/effect-next/handlers"
+import { Effect } from "effect"
+import { RouteParams } from "@prb/effect-next/params"
 
 export const GET = effectHandler(
   Effect.gen(function* () {
-    const params = yield* RouteParams;
-    const user = yield* fetchUser(params.id);
-    return Response.json(user);
+    const params = yield* RouteParams
+    const user = yield* fetchUser(params.id)
+    return Response.json(user)
   }),
-  AppLayer
-);
+  AppLayer,
+)
 ```
 
 ### Server Actions
 
 ```typescript
-"use server";
-import { effectAction } from "@prb/effect-next/action";
-import { Effect } from "effect";
+"use server"
+import { effectAction } from "@prb/effect-next/action"
+import { Effect } from "effect"
 
 export const createUser = effectAction(
   Effect.gen(function* () {
-    const db = yield* Database;
-    return yield* db.insert(users).values({ name: "Alice" });
+    const db = yield* Database
+    return yield* db.insert(users).values({ name: "Alice" })
   }),
-  AppLayer
-);
+  AppLayer,
+)
 
 // Returns Exit-like result with _tag: "Success" | "Failure"
-const result = await createUser();
+const result = await createUser()
 if (result._tag === "Success") {
-  console.log(result.value);
+  console.log(result.value)
 }
 ```
 
@@ -49,27 +49,27 @@ if (result._tag === "Success") {
 
 ```typescript
 // middleware.ts
-import { effectMiddleware } from "@prb/effect-next/middleware";
-import { Effect, Layer } from "effect";
-import { Headers } from "@prb/effect-next/headers";
+import { effectMiddleware } from "@prb/effect-next/middleware"
+import { Effect, Layer } from "effect"
+import { Headers } from "@prb/effect-next/headers"
 
 const AuthLayer = Layer.effect(
   AuthService,
   Effect.gen(function* () {
-    const headers = yield* Headers;
-    const token = headers.get("authorization");
-    if (!token) yield* Effect.fail({ _tag: "Unauthorized" });
-    return { validateToken: () => Effect.succeed(true) };
-  })
-);
+    const headers = yield* Headers
+    const token = headers.get("authorization")
+    if (!token) yield* Effect.fail({ _tag: "Unauthorized" })
+    return { validateToken: () => Effect.succeed(true) }
+  }),
+)
 
 export const middleware = effectMiddleware(
   Effect.gen(function* () {
-    yield* AuthService;
-    return NextResponse.next();
+    yield* AuthService
+    return NextResponse.next()
   }),
-  AuthLayer
-);
+  AuthLayer,
+)
 ```
 
 ## React Hooks
@@ -117,75 +117,76 @@ const value = useSubscriptionRef(ref, runtime);
 Leverage React's `cache()` for request deduplication.
 
 ```typescript
-import { reactCache, reactCacheFn, reactCacheWithKey } from "@prb/effect-next/cache";
-import { ManagedRuntime } from "effect";
+import { reactCache, reactCacheFn, reactCacheWithKey } from "@prb/effect-next/cache"
+import { ManagedRuntime } from "effect"
 
-const runtime = ManagedRuntime.make(AppLayer);
+const runtime = ManagedRuntime.make(AppLayer)
 
 // Cache an Effect
 export const getUsers = reactCache(
   Effect.gen(function* () {
-    const db = yield* Database;
-    return yield* db.query("SELECT * FROM users");
+    const db = yield* Database
+    return yield* db.query("SELECT * FROM users")
   }),
-  runtime
-);
+  runtime,
+)
 
 // Cache a function with arguments
-export const getUserById = reactCacheFn((id: string) =>
-  Effect.gen(function* () {
-    const db = yield* Database;
-    return yield* db.query(`SELECT * FROM users WHERE id = ${id}`);
-  }),
-  runtime
-);
+export const getUserById = reactCacheFn(
+  (id: string) =>
+    Effect.gen(function* () {
+      const db = yield* Database
+      return yield* db.query(`SELECT * FROM users WHERE id = ${id}`)
+    }),
+  runtime,
+)
 
 // Cache with custom key
 export const getUser = reactCacheWithKey(
   (opts) => fetchUserEffect(opts),
   (opts) => `user:${opts.id}`,
-  runtime
-);
+  runtime,
+)
 ```
 
 ## Headers & Cookies
 
 ```typescript
-import { Headers, Cookies } from "@prb/effect-next/headers";
+import { Headers, Cookies } from "@prb/effect-next/headers"
 
 Effect.gen(function* () {
-  const headers = yield* Headers;
-  const userAgent = headers.get("user-agent");
+  const headers = yield* Headers
+  const userAgent = headers.get("user-agent")
 
-  const cookies = yield* Cookies;
-  const sessionId = cookies.get("sessionId");
-});
+  const cookies = yield* Cookies
+  const sessionId = cookies.get("sessionId")
+})
 ```
 
 ## Params
 
 ```typescript
-import { RouteParams, SearchParams } from "@prb/effect-next/params";
+import { RouteParams, SearchParams } from "@prb/effect-next/params"
 
 Effect.gen(function* () {
-  const params = yield* RouteParams;
-  const userId = params.id;
+  const params = yield* RouteParams
+  const userId = params.id
 
-  const searchParams = yield* SearchParams;
-  const page = searchParams.page;
-});
+  const searchParams = yield* SearchParams
+  const page = searchParams.page
+})
 ```
 
 ## Navigation
 
 ```typescript
-import { redirect, rewrite, notFound } from "@prb/effect-next/navigation";
+import { redirect, rewrite, notFound } from "@prb/effect-next/navigation"
 
 Effect.gen(function* () {
-  yield* redirect("/login");
-  yield* rewrite("/new-path");
-  yield* notFound();
-});
+  yield* redirect("/login")
+  yield* rewrite("/new-path")
+  yield* notFound()
+})
 ```
 
 ## Testing Kit
@@ -198,27 +199,27 @@ import {
   expectDefect,
   runExpectSuccess,
   runExpectFailure,
-  makeMockRuntime
-} from "@prb/effect-next/testing-kit";
+  makeMockRuntime,
+} from "@prb/effect-next/testing-kit"
 
 // Assert success
 test("should succeed", async () => {
-  const exit = await Effect.runPromiseExit(effect);
-  const value = assertRight(exit);
-  expect(value).toBe(42);
-});
+  const exit = await Effect.runPromiseExit(effect)
+  const value = assertRight(exit)
+  expect(value).toBe(42)
+})
 
 // Assert specific failure tag
 test("should fail with NotFound", async () => {
-  const exit = await Effect.runPromiseExit(effect);
-  expectTaggedFailure(exit, "NotFound");
-});
+  const exit = await Effect.runPromiseExit(effect)
+  expectTaggedFailure(exit, "NotFound")
+})
 
 // Run and expect success
 test("should create user", async () => {
-  const user = await runExpectSuccess(createUser(), runtime);
-  expect(user.name).toBe("Alice");
-});
+  const user = await runExpectSuccess(createUser(), runtime)
+  expect(user.name).toBe("Alice")
+})
 ```
 
 ## Best Practices

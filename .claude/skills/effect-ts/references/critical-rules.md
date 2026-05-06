@@ -15,23 +15,23 @@ failures—it only catches synchronous throws from non-Effect code.
 ```typescript
 Effect.gen(function* () {
   try {
-    const result = yield* someEffect;
+    const result = yield* someEffect
   } catch (error) {
     // This catches synchronous throws only, NOT Effect failures
     // Effect failures bypass this entirely
   }
-});
+})
 ```
 
 **Correct:**
 
 ```typescript
 Effect.gen(function* () {
-  const result = yield* Effect.result(someEffect);
+  const result = yield* Effect.result(someEffect)
   if (result._tag === "Failure") {
     // Handle error case
   }
-});
+})
 ```
 
 Alternative patterns:
@@ -49,9 +49,9 @@ These break TypeScript's type safety and hide real type errors. Always fix the u
 **Patterns to avoid:**
 
 ```typescript
-const value = something as any;
-const value = something as never;
-const value = something as unknown;
+const value = something as any
+const value = something as never
+const value = something as unknown
 ```
 
 **Correct approach:**
@@ -76,16 +76,16 @@ prevents unreachable-code warnings.
 ```typescript
 Effect.gen(function* () {
   if (someCondition) {
-    return yield* Effect.fail("error message");
+    return yield* Effect.fail("error message")
   }
 
   if (shouldInterrupt) {
-    return yield* Effect.interrupt;
+    return yield* Effect.interrupt
   }
 
-  const result = yield* someOtherEffect;
-  return result;
-});
+  const result = yield* someOtherEffect
+  return result
+})
 ```
 
 **Acceptable but less clear:**
@@ -93,10 +93,10 @@ Effect.gen(function* () {
 ```typescript
 Effect.gen(function* () {
   if (someCondition) {
-    yield* Effect.fail("error message");
+    yield* Effect.fail("error message")
     // Runtime halts here, but looks like code might continue
   }
-});
+})
 ```
 
 The `return` keyword makes termination explicit and improves code readability.

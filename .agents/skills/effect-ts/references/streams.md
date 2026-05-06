@@ -30,38 +30,38 @@ Stream.fromChunk(Chunk.make(1, 2, 3))
 
 ```typescript
 // Collect all values (DANGEROUS for infinite streams)
-const allValues = yield* Stream.runCollect(stream)  // Returns Chunk<A>
+const allValues = yield * Stream.runCollect(stream) // Returns Chunk<A>
 
 // Process each element
-yield* Stream.runForEach(stream, (value) => Effect.log(`Got: ${value}`))
+yield * Stream.runForEach(stream, (value) => Effect.log(`Got: ${value}`))
 
 // Fold/reduce
-const sum = yield* Stream.runFold(stream, 0, (acc, n) => acc + n)
+const sum = yield * Stream.runFold(stream, 0, (acc, n) => acc + n)
 
 // First element only
-const first = yield* Stream.runHead(stream)  // Returns Option<A>
+const first = yield * Stream.runHead(stream) // Returns Option<A>
 
 // Drain (run for side effects, discard values)
-yield* Stream.runDrain(stream)
+yield * Stream.runDrain(stream)
 ```
 
 ## Bound Consumption (Critical for Safety)
 
 ```typescript
 // WRONG: Hangs forever on infinite stream
-yield* Stream.runCollect(infiniteStream)
+yield * Stream.runCollect(infiniteStream)
 
 // RIGHT: Take first N elements
-yield* Stream.runCollect(Stream.take(infiniteStream, 100))
+yield * Stream.runCollect(Stream.take(infiniteStream, 100))
 
 // RIGHT: Take until condition
-yield* Stream.runCollect(Stream.takeUntil(stream, (x) => x > 100))
+yield * Stream.runCollect(Stream.takeUntil(stream, (x) => x > 100))
 
 // RIGHT: Take while condition holds
-yield* Stream.runCollect(Stream.takeWhile(stream, (x) => x < 100))
+yield * Stream.runCollect(Stream.takeWhile(stream, (x) => x < 100))
 
 // RIGHT: Apply timeout
-yield* Stream.runCollect(stream).pipe(Effect.timeout("5 seconds"))
+yield * Stream.runCollect(stream).pipe(Effect.timeout("5 seconds"))
 ```
 
 ## Transform Streams
@@ -80,14 +80,14 @@ Stream.flatMap(userIds, (id) => Stream.fromEffect(fetchUser(id)))
 Stream.tap(stream, (x) => Effect.log(`Processing: ${x}`))
 
 // Scan (running fold)
-Stream.scan(stream, 0, (acc, x) => acc + x)  // Emits running totals
+Stream.scan(stream, 0, (acc, x) => acc + x) // Emits running totals
 ```
 
 ## Chunk and Batch
 
 ```typescript
 // Group into chunks of N
-Stream.grouped(stream, 100)  // Stream<Chunk<A>>
+Stream.grouped(stream, 100) // Stream<Chunk<A>>
 
 // Group by time window
 Stream.groupedWithin(stream, 100, "1 second")
@@ -114,8 +114,8 @@ Stream.catchTag(stream, "NetworkError", (e) => Stream.empty)
 ```typescript
 // Bracket pattern for streams
 Stream.acquireRelease(
-  acquire,   // Effect<Resource, E, R>
-  release    // (resource: Resource) => Effect<void>
+  acquire, // Effect<Resource, E, R>
+  release, // (resource: Resource) => Effect<void>
 )
 
 // Scoped stream (resource released when stream completes)
