@@ -1,23 +1,27 @@
-import { Command } from "@effect/cli"
+import { Command, Options } from "@effect/cli"
 import { Effect } from "effect"
 
-import { DEFAULT_CONFIG } from "../domain/config.js"
-import { ConfigStore } from "../domain/ports.js"
+import { InitProject } from "../application/init-project.js"
 
-export const runInit = Effect.gen(function* () {
-  const store = yield* ConfigStore
-  const exists = yield* store.configExists()
+/** CLI command: pix init [--json] */
+export const initCommand = Command.make(
+  "init",
+  {
+    json: Options.boolean("json").pipe(Options.withDefault(false)),
+  },
+  ({ json }) =>
+    Effect.gen(function* () {
+      const result = yield* InitProject.init()
 
-  if (exists) {
-    yield* Effect.logInfo("Config already exists, overwriting with defaults")
-  }
+      if (json) {
+        return yield* Effect.sync(() => {
+          console.log(JSON.stringify(result, null, 2))
+        })
+      }
 
-  yield* store.writeConfig(DEFAULT_CONFIG)
-
-  yield* Effect.logInfo("Created .pix/config.json with default settings.")
-  yield* Effect.logInfo(
-    "Reminder: Add `.pix` to your `.gitignore` file to avoid committing the index.",
-  )
-})
-
-export const initCommand = Command.make("init", {}, () => runInit)
+      yield* Effect.logInfo("Created .pix/config.json with default settings.")
+      yield* Effect.logInfo(
+        "Reminder: Add `.pix` to your `.gitignore` file to avoid committing the index.",
+      )
+    }),
+)
