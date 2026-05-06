@@ -62,7 +62,7 @@ export class VectorStore extends Context.Tag("VectorStore")<
     readonly store: (
       chunks: readonly Chunk[],
       embeddings: readonly Embedding[],
-    ) => Effect.Effect<void, never>
+    ) => Effect.Effect<void, PlatformError>
     readonly search: (
       query: Embedding,
       topK: number,

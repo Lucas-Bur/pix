@@ -59,10 +59,44 @@ const make = Effect.gen(function* () {
   }
 
   const store = (
-    _chunks: readonly Chunk[],
-    _embeddings: readonly { vector: Float32Array; dims: number }[],
-  ): Effect.Effect<void, never> =>
-    Effect.dieMessage("VectorStore.store not implemented yet — implement alongside pix index")
+    chunks: readonly Chunk[],
+    embeddings: readonly { vector: Float32Array; dims: number }[],
+  ): Effect.Effect<void, PlatformError> =>
+    Effect.gen(function* () {
+      // Ensure .pix directory exists
+      const storeDirExists = yield* fs.exists(STORE_DIR)
+      if (!storeDirExists) {
+        yield* fs.makeDirectory(STORE_DIR, { recursive: true })
+      }
+
+      // Write chunks to temp file first, then atomic rename
+      const chunksTemp = `${CHUNKS_FILE}.tmp`
+      const chunksLines = chunks.map((c) =>
+        JSON.stringify({
+          id: c.id,
+          idx: c.idx,
+          file: c.file,
+          startLine: c.startLine,
+          endLine: c.endLine,
+          text: c.text,
+        }),
+      )
+      yield* fs.writeFileString(chunksTemp, chunksLines.join("\n"))
+      yield* fs.rename(chunksTemp, CHUNKS_FILE)
+
+      // Write vectors to temp file, then atomic rename
+      const vectorsTemp = `${VECTORS_FILE}.tmp`
+      const dims = embeddings[0]?.dims ?? 384
+      const totalFloats = embeddings.length * dims
+      const vectorsArray = new Float32Array(totalFloats)
+      for (let i = 0; i < embeddings.length; i++) {
+        vectorsArray.set(embeddings[i].vector, i * dims)
+      }
+      // Write as binary buffer
+      const buffer = Buffer.from(vectorsArray.buffer)
+      yield* fs.writeFile(vectorsTemp, buffer)
+      yield* fs.rename(vectorsTemp, VECTORS_FILE)
+    })
 
   const search = (
     _query: { vector: Float32Array; dims: number },
