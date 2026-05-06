@@ -18,3 +18,12 @@ const make = Effect.succeed({
 
 export const ScannerLive = Layer.effect(Scanner, make)
 export { Scanner }
+
+// === Mock for tests ===
+
+const makeMock = Effect.succeed({
+  scanFiles: (_extensions: readonly string[]): Effect.Effect<string[], never> =>
+    Effect.succeed([] as string[]),
+} as const)
+
+export const MockScannerLive = Layer.effect(Scanner, makeMock)
