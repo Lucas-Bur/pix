@@ -8,7 +8,7 @@
 - NO `as any`, `as never`, `as unknown` — fix underlying types
 - Use `Option<T>` internally, `T | null` at boundaries (React state/props, JSON, external APIs)
 - Every interface, type, and exported function MUST have JSDoc
-- NEVER import `.js` files in TypeScript — use `.ts` or no extension
+- Use `.js` extension in TypeScript imports (required by `moduleResolution: nodenext`) — not `.ts`
 
 ## Code Structure
 
@@ -23,10 +23,27 @@
 - Use `Effect.tryPromise` for async operations that can fail
 - Use `Data.TaggedError` for typed errors (e.g., `ConfigError`)
 - Provide services via `Effect.provide(layer)`, not direct imports
-- Compose layers with `Layer.merge(Layer1, Layer2)`
+- Compose layers with `Layer.merge(Layer1, Layer2)` or `Layer.provideMerge(L1, L2)` (takes exactly 2 args — chain for more)
 - Never use try-catch in Effect.gen — Effect failures are returned as exits
 - Never use `Effect.sync` for file operations — use `Effect.try`/`Effect.tryPromise`
 - Use `return yield*` when yielding errors or interrupts in Effect.gen
+
+### Error Propagation in Services
+
+When a use case delegates to a port method with errors in its type (e.g., `VectorStore.getStats() → PlatformError`), the use case method must also declare those errors:
+
+```typescript
+// WRONG: use case declares never, but port has PlatformError
+const getStatus = (): Effect.Effect<StatusResult, never> => ...
+
+// RIGHT: use case mirrors the port's error type
+const getStatus = (): Effect.Effect<StatusResult, PlatformError> => ...
+```
+
+## @effect/platform Quirks
+
+- `FileSystem.Info.mtime` is `Option<Date>`, not `Date | undefined` — use `Option.map` to extract
+- `FileSystem.Info.size` may be a branded `Size` type, not plain `number` — cast via `unknown` first: `size as unknown as number`
 
 ## Stream Safety
 
