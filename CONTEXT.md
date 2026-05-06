@@ -79,7 +79,7 @@ Extensions like `.ts`, `.py` must be explicitly listed in `config.json`.
 ## Future Considerations
 
 - AST preprocessing for improved embedding quality
-- Incremental indexing via mtime cache (Phase 3)
+- Incremental indexing via mtime cache or file hash (Phase 3) — hash-based avoids spurious reindex when external tools touch mtime without changing content
 - Multi-model support (OpenAI, Mistral, OpenRouter)
 - Top-K retrieval to limit result set size
 - Token/character limits for chunk boundaries

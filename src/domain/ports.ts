@@ -1,7 +1,9 @@
+import type { PlatformError } from "@effect/platform/Error"
 import { Effect, Context } from "effect"
 
-import type { Config, ConfigError } from "./config.ts"
-import type { Embedding } from "./embedding.ts"
+import type { Chunk } from "./chunk.js"
+import type { Config, ConfigError } from "./config.js"
+import type { Embedding } from "./embedding.js"
 
 // === ConfigStore Port ===
 
@@ -49,7 +51,7 @@ export class VectorStore extends Context.Tag("VectorStore")<
   VectorStore,
   {
     readonly store: (
-      chunks: readonly unknown[],
+      chunks: readonly Chunk[],
       embeddings: readonly Embedding[],
     ) => Effect.Effect<void, never>
     readonly search: (
@@ -57,8 +59,15 @@ export class VectorStore extends Context.Tag("VectorStore")<
       topK: number,
     ) => Effect.Effect<readonly SearchResult[], never>
     readonly getStats: () => Effect.Effect<
-      { chunks: number; files: number; model: string; lastIndex: string },
-      never
+      {
+        chunks: number
+        files: number
+        model: string
+        lastIndex: number
+        totalLines: number
+        byteSize: number
+      },
+      PlatformError
     >
   }
 >() {}
