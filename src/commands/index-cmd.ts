@@ -1,12 +1,7 @@
 import { Command, Options } from "@effect/cli"
-import { Effect, Layer } from "effect"
+import { Effect } from "effect"
 
 import { IndexProject } from "../application/index-project.js"
-import { ChunkerLive } from "../services/chunker.js"
-import { ConfigStoreLive } from "../services/config-store.js"
-import { OnnxEmbedderLive } from "../services/embedder.js"
-import { ScannerLive } from "../services/scanner.js"
-import { VectorStoreLive } from "../services/vector-store.js"
 
 /** CLI command: pix index [--force] [--verbose] [--json] */
 export const indexCommand = Command.make(
@@ -40,14 +35,4 @@ export const indexCommand = Command.make(
         `Indexed ${result.stats.chunks} chunks from ${result.stats.files} files in ${duration}.`,
       )
     }),
-)
-
-/** Layer for pix index command runtime */
-export const indexLayer = Layer.mergeAll(
-  IndexProject.Default,
-  ConfigStoreLive,
-  ScannerLive,
-  ChunkerLive,
-  OnnxEmbedderLive,
-  VectorStoreLive,
 )

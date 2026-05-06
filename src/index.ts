@@ -13,43 +13,44 @@ import { VectorStoreLive } from "./services/vector-store.js"
 
 const VERSION = "0.1.0"
 
-// Each command layer wires its own dependencies
-const initLayer = InitProject.Default.pipe(
-  Layer.provideMerge(ConfigStoreLive),
-  Layer.provideMerge(NodeContext.layer),
+// === 1. Adapter Layers mit NodeContext.layer für FileSystem ===
+
+const configStoreLayer = ConfigStoreLive.pipe(Layer.provide(NodeContext.layer))
+const scannerLayer = ScannerLive.pipe(Layer.provide(NodeContext.layer))
+const embedderLayer = OnnxEmbedderLive.pipe(Layer.provide(NodeContext.layer))
+const vectorStoreLayer = VectorStoreLive.pipe(Layer.provide(NodeContext.layer))
+
+// Chunker braucht ConfigStore UND FileSystem
+// Erst NodeContext bereitstellen, dann ConfigStore mergen
+const chunkerLayer = Layer.provideMerge(
+  ChunkerLive.pipe(Layer.provide(NodeContext.layer)),
+  configStoreLayer,
 )
 
-const statusLayer = GetStatus.Default.pipe(
-  Layer.provideMerge(VectorStoreLive),
-  Layer.provideMerge(NodeContext.layer),
-)
+// === 2. Zentrales AppLayer mit Layer.provideMerge (nacheinander, nicht parallel) ===
+// Layer.provideMerge ist wie mergeAll aber mit klarer Reihenfolge
 
-const indexLayer = IndexProject.Default.pipe(
-  Layer.provideMerge(ConfigStoreLive),
-  Layer.provideMerge(ScannerLive),
-  Layer.provideMerge(ChunkerLive),
-  Layer.provideMerge(OnnxEmbedderLive),
-  Layer.provideMerge(VectorStoreLive),
-  Layer.provideMerge(NodeContext.layer),
-)
-
-// Provide NodeContext to each command layer before merging
-const initLayerWithContext = initLayer.pipe(Layer.provideMerge(NodeContext.layer))
-const statusLayerWithContext = statusLayer.pipe(Layer.provideMerge(NodeContext.layer))
-const indexLayerWithContext = indexLayer.pipe(Layer.provideMerge(NodeContext.layer))
-
-// Merge with NodeContext last
-const serviceLayer = Layer.mergeAll(
-  ConfigStoreLive,
-  ScannerLive,
-  ChunkerLive,
-  OnnxEmbedderLive,
-  VectorStoreLive,
-  initLayerWithContext,
-  statusLayerWithContext,
-  indexLayerWithContext,
+const AppLayer = Layer.provideMerge(
+  Layer.provideMerge(
+    Layer.provideMerge(
+      Layer.provideMerge(
+        Layer.provideMerge(
+          Layer.provideMerge(
+            Layer.provideMerge(
+              Layer.provideMerge(InitProject.Default, GetStatus.Default),
+              IndexProject.Default,
+            ),
+            configStoreLayer,
+          ),
+          scannerLayer,
+        ),
+        chunkerLayer,
+      ),
+      embedderLayer,
+    ),
+    vectorStoreLayer,
+  ),
   NodeContext.layer,
 )
 
-// @ts-expect-error Layer composition types are complex but runtime wiring is correct
-cli(process.argv, VERSION).pipe(Effect.provide(serviceLayer), NodeRuntime.runMain)
+cli(process.argv, VERSION).pipe(Effect.provide(AppLayer), NodeRuntime.runMain)
