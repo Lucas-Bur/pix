@@ -7,6 +7,7 @@
 A piece of source code produced by the chunker. One chunk = N lines of code with overlap.
 Stored as one line in `chunks.jsonl`. Maximum size guided by 60 lines (configurable `chunkLines`), with `overlapLines` lines overlapping between consecutive chunks.
 Chunk-ID = `sha1(file:startLine).slice(0, 12)`.
+Minimum chunk size: 20 characters (hardcoded for MVP, TODO: promote to configurable).
 
 ### Config
 

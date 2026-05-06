@@ -25,6 +25,15 @@ export class Scanner extends Context.Tag("Scanner")<
   }
 >() {}
 
+// === Chunker Port ===
+
+export class Chunker extends Context.Tag("Chunker")<
+  Chunker,
+  {
+    readonly chunkFile: (file: string) => Effect.Effect<readonly Chunk[], never>
+  }
+>() {}
+
 // === Embedder Port ===
 
 export class Embedder extends Context.Tag("Embedder")<
