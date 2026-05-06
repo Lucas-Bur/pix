@@ -1,3 +1,5 @@
+**STRICT:** Load and follow ALL rules in `.claude/rules/` and `memory/` before every action. No exceptions.
+
 ## Agent skills
 
 ### Issue tracker
