@@ -3,6 +3,7 @@ import type { PlatformError } from "@effect/platform/Error"
 import { Effect, Layer, Option } from "effect"
 
 import type { Chunk } from "../domain/chunk.js"
+import type { Embedding } from "../domain/embedding.js"
 import { VectorStore } from "../domain/ports.js"
 
 const STORE_DIR = ".pix"
@@ -60,7 +61,7 @@ const make = Effect.gen(function* () {
 
   const store = (
     chunks: readonly Chunk[],
-    embeddings: readonly { vector: Float32Array; dims: number }[],
+    embeddings: readonly Embedding[],
   ): Effect.Effect<void, PlatformError> =>
     Effect.gen(function* () {
       // Ensure .pix directory exists
@@ -99,8 +100,8 @@ const make = Effect.gen(function* () {
     })
 
   const search = (
-    _query: { vector: Float32Array; dims: number },
-    _topK: number,
+    query: Embedding,
+    topK: number,
   ): Effect.Effect<
     readonly {
       score: number
@@ -111,8 +112,75 @@ const make = Effect.gen(function* () {
       contextBefore?: string
       contextAfter?: string
     }[],
-    never
-  > => Effect.dieMessage("VectorStore.search not implemented yet — implement alongside pix query")
+    PlatformError
+  > =>
+    Effect.gen(function* () {
+      const chunksExists = yield* fs.exists(CHUNKS_FILE)
+      const vectorsExists = yield* fs.exists(VECTORS_FILE)
+
+      // No index — return empty results
+      if (!chunksExists || !vectorsExists) {
+        return []
+      }
+
+      // Read chunks.jsonl for metadata
+      const chunksContent = yield* fs.readFileString(CHUNKS_FILE)
+      const chunkLines = chunksContent.split("\n").filter((l) => l.trim().length > 0)
+
+      // Read vectors.bin
+      const vectorsBuffer = yield* fs.readFile(VECTORS_FILE)
+      const vectors = new Float32Array(vectorsBuffer.buffer as ArrayBuffer)
+
+      // Parse chunks and compute similarity
+      const results: {
+        score: number
+        file: string
+        startLine: number
+        endLine: number
+        text: string
+        contextBefore?: string
+        contextAfter?: string
+      }[] = []
+
+      for (let i = 0; i < chunkLines.length; i++) {
+        try {
+          const chunk = JSON.parse(chunkLines[i]) as {
+            file: string
+            startLine: number
+            endLine: number
+            text: string
+            contextBefore?: string
+            contextAfter?: string
+          }
+
+          // Get vector for this chunk (row i)
+          const startIdx = i * query.dims
+          const chunkVector = vectors.slice(startIdx, startIdx + query.dims)
+
+          // Compute cosine similarity (dot product since vectors are L2-normalized)
+          let dotProduct = 0
+          for (let j = 0; j < query.dims; j++) {
+            dotProduct += chunkVector[j] * query.vector[j]
+          }
+
+          results.push({
+            score: dotProduct,
+            file: chunk.file,
+            startLine: chunk.startLine,
+            endLine: chunk.endLine,
+            text: chunk.text,
+            contextBefore: chunk.contextBefore,
+            contextAfter: chunk.contextAfter,
+          })
+        } catch {
+          // Skip malformed lines
+        }
+      }
+
+      // Sort by score descending and take topK
+      results.sort((a, b) => b.score - a.score)
+      return results.slice(0, topK)
+    })
 
   const getStats = (): Effect.Effect<
     {

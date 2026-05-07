@@ -4,6 +4,7 @@ import { Effect, Layer } from "effect"
 import { GetStatus } from "./application/get-status.js"
 import { IndexProject } from "./application/index-project.js"
 import { InitProject } from "./application/init-project.js"
+import { QueryProject } from "./application/query-project.js"
 import { cli } from "./cli.js"
 import { ChunkerLive } from "./services/chunker.js"
 import { ConfigStoreLive } from "./services/config-store.js"
@@ -36,7 +37,7 @@ const AppLayer = Layer.provideMerge(
           Layer.provideMerge(
             Layer.provideMerge(
               Layer.provideMerge(InitProject.Default, GetStatus.Default),
-              IndexProject.Default,
+              Layer.provideMerge(QueryProject.Default, IndexProject.Default),
             ),
             configStoreLayer,
           ),

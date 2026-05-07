@@ -77,6 +77,18 @@ Future: AST-based preprocessing as optional enhancement.
 Extensions like `.ts`, `.py` must be explicitly listed in `config.json`.
 `.gitignore` provides additional filtering. Future research: `.pixignore` for project-specific exclusions.
 
+### Context lines in chunks.jsonl
+
+MVP stores context lines in `chunks.jsonl` at index time for instant retrieval.
+Phase 3 (index freshness via mtime cache) will switch to live-fetch from source files,
+removing both `text` and `context` fields from stored chunks.
+
+### Multi-core search readiness
+
+Search is structured for worker threads — `Effect.forEach` with concurrency parameter
+used for batch processing. Single-threaded for MVP; multi-core via `worker_threads`
+or `@effect/op` in Phase 3+.
+
 ## Future Considerations
 
 - Extension→Processor mapping (Phase 2+) — lookup table that decides how each file extension is processed:
@@ -90,3 +102,4 @@ Extensions like `.ts`, `.py` must be explicitly listed in `config.json`.
 - In-memory search optimization (mmap for large indexes)
 - `.pixignore` as additional blacklist (research needed)
 - Ranking improvements for query results
+- **CLI printing overhaul** — replace `console.log` with clack/chalk or similar Effect-compatible library
