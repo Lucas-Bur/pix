@@ -28,47 +28,54 @@ const normalize = (arr: Float32Array): Float32Array => {
 }
 
 const make = Effect.gen(function* () {
-  const { pipeline } = yield* Effect.tryPromise(() => import("@huggingface/transformers"))
-
-  const extractor = yield* Effect.tryPromise(() =>
-    pipeline("feature-extraction", MODEL_NAME, {
-      device: "cpu",
-      dtype: "q8",
+  // Lazy: import + model load are deferred until first embed/batch call.
+  // Effect.cached ensures the pipeline is only initialized once per invocation,
+  // even if embed/batch are called concurrently.
+  const getExtractor = yield* Effect.cached(
+    Effect.tryPromise(async () => {
+      const { pipeline } = await import("@huggingface/transformers")
+      return pipeline("feature-extraction", MODEL_NAME, {
+        device: "cpu",
+        dtype: "q8",
+      })
     }),
   )
 
   const embed = (text: string): Effect.Effect<Embedding, never> =>
-    Effect.map(
-      Effect.gen(function* () {
-        const tensor = yield* Effect.tryPromise(() =>
-          extractor(text, { pooling: "mean", normalize: false }),
-        )
-        const data = tensor.data as Float32Array
-        return normalize(data)
-      }).pipe(Effect.catchAll(() => Effect.succeed(new Float32Array(DIMS)))),
-      (vector): Embedding => ({ vector, dims: DIMS }),
+    Effect.gen(function* () {
+      const extractor = yield* getExtractor
+      const tensor = yield* Effect.tryPromise(() =>
+        extractor(text, { pooling: "mean", normalize: false }),
+      )
+      const data = tensor.data as Float32Array
+      return { vector: normalize(data), dims: DIMS }
+    }).pipe(
+      Effect.catchAll(() =>
+        Effect.succeed({
+          vector: new Float32Array(DIMS),
+          dims: DIMS,
+        }),
+      ),
     )
 
   const batch = (texts: readonly string[]): Effect.Effect<readonly Embedding[], never> =>
-    Effect.map(
-      Effect.gen(function* () {
-        const results: Float32Array[] = []
-        for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-          const batch = texts.slice(i, i + BATCH_SIZE)
-          const tensor = yield* Effect.tryPromise(() =>
-            extractor(batch, { pooling: "mean", normalize: false }),
-          )
-          const data = tensor.data as Float32Array
-          const n = tensor.dims[0]
-          for (let j = 0; j < n; j++) {
-            const offset = j * DIMS
-            results.push(normalize(data.slice(offset, offset + DIMS)))
-          }
+    Effect.gen(function* () {
+      const extractor = yield* getExtractor
+      const results: Float32Array[] = []
+      for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+        const slice = texts.slice(i, i + BATCH_SIZE)
+        const tensor = yield* Effect.tryPromise(() =>
+          extractor(slice, { pooling: "mean", normalize: false }),
+        )
+        const data = tensor.data as Float32Array
+        const n = tensor.dims[0]
+        for (let j = 0; j < n; j++) {
+          const offset = j * DIMS
+          results.push(normalize(data.slice(offset, offset + DIMS)))
         }
-        return results
-      }).pipe(Effect.catchAll(() => Effect.succeed([] as Float32Array[]))),
-      (vectors): readonly Embedding[] => vectors.map((vector) => ({ vector, dims: DIMS })),
-    )
+      }
+      return results.map((vector) => ({ vector, dims: DIMS }))
+    }).pipe(Effect.catchAll(() => Effect.succeed([])))
 
   return { embed, batch } as const
 })

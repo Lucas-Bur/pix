@@ -12,44 +12,43 @@ import { OnnxEmbedderLive } from "./services/embedder.js"
 import { ScannerLive } from "./services/scanner.js"
 import { VectorStoreLive } from "./services/vector-store.js"
 
-// === 1. Adapter Layers mit NodeContext.layer für FileSystem ===
-
-const configStoreLayer = ConfigStoreLive.pipe(Layer.provide(NodeContext.layer))
-const scannerLayer = ScannerLive.pipe(Layer.provide(NodeContext.layer))
-const embedderLayer = OnnxEmbedderLive.pipe(Layer.provide(NodeContext.layer))
-const vectorStoreLayer = VectorStoreLive.pipe(Layer.provide(NodeContext.layer))
-
-// Chunker braucht ConfigStore UND FileSystem
-// Erst NodeContext bereitstellen, dann ConfigStore mergen
-const chunkerLayer = Layer.provideMerge(
-  ChunkerLive.pipe(Layer.provide(NodeContext.layer)),
-  configStoreLayer,
+// === Layer 1: Infrastructure services ===
+// These services only require NodeContext (FileSystem, Environment, etc.)
+// and have no dependencies on each other.
+const ServicesLayer = Layer.mergeAll(
+  ConfigStoreLive,
+  ScannerLive,
+  OnnxEmbedderLive,
+  VectorStoreLive,
 )
 
-// === 2. Zentrales AppLayer mit Layer.provideMerge (nacheinander, nicht parallel) ===
-// Layer.provideMerge ist wie mergeAll aber mit klarer Reihenfolge
+// === Layer 2: Services that depend on other services ===
+// ChunkerLive requires ConfigStore, so we provide ServicesLayer here.
+const ChunkerLayer = ChunkerLive.pipe(Layer.provide(ServicesLayer))
 
-const AppLayer = Layer.provideMerge(
-  Layer.provideMerge(
-    Layer.provideMerge(
-      Layer.provideMerge(
-        Layer.provideMerge(
-          Layer.provideMerge(
-            Layer.provideMerge(
-              Layer.provideMerge(InitProject.Default, GetStatus.Default),
-              Layer.provideMerge(QueryProject.Default, IndexProject.Default),
-            ),
-            configStoreLayer,
-          ),
-          scannerLayer,
-        ),
-        chunkerLayer,
-      ),
-      embedderLayer,
-    ),
-    vectorStoreLayer,
-  ),
-  NodeContext.layer,
+// === Layer 3: Full infrastructure layer ===
+// Merges all infra services and satisfies their shared NodeContext dependency
+// in one place. NodeContext is provided here so it doesn't leak upward.
+const InfraLayer = Layer.mergeAll(ServicesLayer, ChunkerLayer).pipe(
+  Layer.provide(NodeContext.layer),
 )
+
+// === Layer 4: Application use cases ===
+// Pure business logic — each use case depends only on service interfaces (ports),
+// not on concrete implementations.
+const UseCaseLayer = Layer.mergeAll(
+  InitProject.Default,
+  GetStatus.Default,
+  QueryProject.Default,
+  IndexProject.Default,
+)
+
+// === AppLayer: wiring everything together ===
+// UseCaseLayer receives its dependencies from InfraLayer.
+// NodeContext.layer is merged explicitly so that its outputs (FileSystem,
+// Environment, etc.) remain visible to the CLI effect at runtime.
+// Using Layer.merge instead of Layer.provide ensures the NodeContext outputs
+// are part of the AppLayer's output — a single Effect.provide is enough.
+const AppLayer = Layer.merge(UseCaseLayer.pipe(Layer.provide(InfraLayer)), NodeContext.layer)
 
 cli(process.argv).pipe(Effect.provide(AppLayer), NodeRuntime.runMain)

@@ -19,6 +19,9 @@
     "type": "git",
     "url": "git+https://github.com/lucas-bur/pix.git"
   },
+  "bin": {
+    "pix": "./dist/index.mjs"
+  },
   "files": [
     "dist"
   ],
@@ -36,7 +39,9 @@
     "test": "vp test",
     "check": "vp check",
     "lint:fallow": "fallow --format json",
-    "prepublishOnly": "vp run build"
+    "fallow": "fallow",
+    "prepublishOnly": "vp run build",
+    "pix": ""
   },
   "dependencies": {
     "@effect/cli": "^0.75.1",

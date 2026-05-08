@@ -6,7 +6,7 @@ import { ConfigStore, Scanner, Chunker, Embedder, VectorStore } from "../domain/
 import type { StatusResult } from "./get-status.js"
 
 /** Result of indexing a project. */
-export interface IndexResult {
+interface IndexResult {
   readonly success: true
   readonly stats: Omit<StatusResult, "model" | "lastIndex">
 }

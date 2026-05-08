@@ -1,4 +1,4 @@
-import { Command, Options } from "@effect/cli"
+import { Args, Command, Options } from "@effect/cli"
 import { Effect, Option } from "effect"
 
 import { QueryProject } from "../application/query-project.js"
@@ -27,7 +27,7 @@ const formatResult = (result: SearchResult): string => {
 export const queryCommand = Command.make(
   "query",
   {
-    queryText: Options.text("query").pipe(Options.withAlias("q")),
+    queryText: Args.text({ name: "query" }),
     top: Options.integer("top").pipe(Options.withDefault(DEFAULT_TOP_K), Options.optional),
     json: Options.boolean("json").pipe(Options.withDefault(false)),
     contextLines: Options.integer("context-lines").pipe(

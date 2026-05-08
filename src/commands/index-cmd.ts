@@ -11,8 +11,16 @@ export const indexCommand = Command.make(
     verbose: Options.boolean("verbose").pipe(Options.withDefault(false)),
     json: Options.boolean("json").pipe(Options.withDefault(false)),
   },
-  ({ force: _force, verbose: _verbose, json }) =>
+  ({ force, verbose, json }) =>
     Effect.gen(function* () {
+      if (force) {
+        yield* Effect.logInfo(`--force is currently not implemented and only a placeholder.`)
+      }
+
+      if (verbose) {
+        yield* Effect.logInfo(`--verbose is currently not implemented and only a placeholder.`)
+      }
+
       const startTime = Date.now()
 
       const result = yield* IndexProject.index().pipe(Effect.either)

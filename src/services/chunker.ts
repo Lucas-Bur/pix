@@ -14,12 +14,12 @@ const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const configStore = yield* ConfigStore
 
+  const config = yield* configStore
+    .readConfig()
+    .pipe(Effect.catchAll(() => Effect.succeed(DEFAULT_CONFIG)))
+
   const chunkFile = (file: string): Effect.Effect<readonly Chunk[], never> =>
     Effect.gen(function* () {
-      const config = yield* configStore
-        .readConfig()
-        .pipe(Effect.catchAll(() => Effect.succeed(DEFAULT_CONFIG)))
-
       const content = yield* fs.readFileString(file).pipe(
         Effect.tapError((err) =>
           Effect.logWarning(`[Chunker] Skipping unreadable file: ${file} — ${String(err)}`),
@@ -66,7 +66,7 @@ const make = Effect.gen(function* () {
       }
 
       return chunks
-    }).pipe(Effect.flatMap(Effect.succeed))
+    })
 
   return { chunkFile } as const
 })

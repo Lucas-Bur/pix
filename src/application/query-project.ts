@@ -15,10 +15,7 @@ export class QueryProject extends Effect.Service<QueryProject>()("QueryProject",
       queryText: string,
       topK: number,
     ): Effect.Effect<readonly SearchResult[], PlatformError> =>
-      Effect.gen(function* () {
-        const queryEmbedding = yield* embedder.embed(queryText)
-        return yield* store.search(queryEmbedding, topK)
-      })
+      embedder.embed(queryText).pipe(Effect.flatMap((embedding) => store.search(embedding, topK)))
 
     return { queryProject }
   }),

@@ -20,10 +20,9 @@ export class InitProject extends Effect.Service<InitProject>()("InitProject", {
     const store = yield* ConfigStore
 
     const init = (): Effect.Effect<InitResult, ConfigError> =>
-      Effect.gen(function* () {
-        yield* store.writeConfig(DEFAULT_CONFIG)
-        return { success: true, config: DEFAULT_CONFIG }
-      })
+      store
+        .writeConfig(DEFAULT_CONFIG)
+        .pipe(Effect.as({ success: true as const, config: DEFAULT_CONFIG }))
 
     return { init }
   }),
