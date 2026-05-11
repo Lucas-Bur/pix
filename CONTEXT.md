@@ -47,6 +47,23 @@ Used as quality gate: `fallow --format json` after type-checking and tests.
 
 Structured JSON output on stdout (not stderr). Enables piping between `pix` and AI agents.
 
+### CI (Continuous Integration)
+
+Automated quality pipeline on PR to `main`: format + lint + type-check + test + build.
+Fallow audit runs non-blocking for metrics. See [ADR 0004](docs/adr/0004-ci-cd-pipeline.md).
+
+### Conventional Commits
+
+Commit message convention: `feat:` (minor bump), `fix:` (patch bump), `feat!:` / `BREAKING CHANGE:` (major bump). Used by release-please to determine semver and generate changelogs.
+
+### release-please
+
+Google tool that scans conventional commits on `main`, opens release PRs with version bumps and changelog updates. Merge the PR to trigger publish.
+
+### CodeRabbit
+
+Automated PR code review, free for open source.
+
 ### Hexagonal Architecture (Ports & Adapters)
 
 pix follows hexagonal architecture with three DDD layers. See [ADR 0003](docs/adr/0003-hexagonal-architecture.md).
