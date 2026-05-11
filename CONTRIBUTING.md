@@ -40,7 +40,7 @@ Every PR runs automatically (see `.github/workflows/ci.yml`):
 Run locally before pushing:
 
 ```powershell
-vp check && vp test --coverage && vp run build && vpx fallow audit
+vp run ci
 ```
 
 Branch protection requires PR + CI green before merging.
