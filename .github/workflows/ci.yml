@@ -32,4 +32,4 @@ jobs:
 
       - name: Fallow quality audit
         continue-on-error: true
-        run: vpx fallow audit --format badge
+        run: vpx fallow audit --base main --format badge
