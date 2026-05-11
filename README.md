@@ -1,5 +1,11 @@
 # @lucas-bur/pix
 
+[![CI](https://github.com/lucas-bur/pix/actions/workflows/ci.yml/badge.svg)](https://github.com/lucas-bur/pix/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/lucas-bur/pix/branch/main/graph/badge.svg)](https://codecov.io/gh/lucas-bur/pix)
+[![npm](https://img.shields.io/npm/v/@lucas-bur/pix)](https://www.npmjs.com/package/@lucas-bur/pix)
+[![npm](https://img.shields.io/npm/dm/@lucas-bur/pix)](https://www.npmjs.com/package/@lucas-bur/pix)
+[![Code Quality](https://img.shields.io/badge/code%20quality-fallow-blue)](https://github.com/fallow-rs/fallow)
+
 Lightweight local semantic project indexer (short pix)
 
 Zero external services, 100% local + offline. Installs as a devDependency and provides agent-ready structured JSON output.
