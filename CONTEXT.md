@@ -30,16 +30,6 @@ Always ignores: `.pix`, `node_modules`, `.git`, `dist`, `build`, `.next`.
 Reads/writes the `.pix/` directory: `config.json`, `chunks.jsonl`, `vectors.bin`.
 `vectors.bin` = flat `Float32Array`, row-major, `n × 384` floats.
 
-### CLI Commands
-
-- `pix init` — Create `.pix/config.json` with defaults
-- `pix index` — Scan, chunk, embed, store (full re-index; `--force` flag reserved for Phase 3)
-- `pix query "<text>" [--top N] [--json] [--context-lines N]` — Semantic search via cosine similarity
-- `pix status` — Show index statistics
-- `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
-
-All commands support `--json` for agent-ready structured output on stdout.
-
 ### MVP Scope
 
 init, index, query, status, reset. No incremental indexing, no cloud providers, no GUI.
@@ -56,6 +46,48 @@ Used as quality gate: `fallow --format json` after type-checking and tests.
 ### Agent-ready
 
 Structured JSON output on stdout (not stderr). Enables piping between `pix` and AI agents.
+
+### Hexagonal Architecture (Ports & Adapters)
+
+pix follows hexagonal architecture with three DDD layers. See [ADR 0003](docs/adr/0003-hexagonal-architecture.md).
+
+### Port
+
+A `Context.Tag` interface in `src/domain/ports.ts` declaring what the application needs — no implementation, no I/O. Examples: `ConfigStore`, `Scanner`, `Embedder`, `VectorStore`, `Chunker`.
+
+### Adapter
+
+A concrete implementation of a port, living in `src/services/`. Each adapter is an `Effect.Layer`. Example: `OnnxEmbedderLive` provides `Embedder`; `VectorStoreLive` provides `VectorStore`.
+
+### Domain Layer (`src/domain/`)
+
+Pure TypeScript types — no Effect, no I/O. Entities (`Config`, `Chunk`), value objects (`Embedding`), error types (`ConfigError`), and port declarations.
+
+### Application Layer (`src/application/`)
+
+Use cases as `Effect.Service` classes. Orchestration only — declares port dependencies via `yield*`, never touches files or ONNX directly. Examples: `InitProject`, `IndexProject`, `QueryProject`, `GetStatus`.
+
+### Infrastructure Layer (`src/services/`)
+
+Concrete adapters implementing domain ports. Reads/writes files, runs ONNX models, shells out. Each provides an `Effect.Layer` for its port tag.
+
+### Use Case
+
+A single business operation in the application layer. Depends on ports via Effect tags. Testable with mock adapters.
+
+### Composition Root (`src/index.ts`)
+
+Single entry point that wires all layers: infrastructure → chunker → application → CLI. All dependencies satisfied in one place.
+
+### CLI Commands
+
+- `pix init` — Create `.pix/config.json` with defaults
+- `pix index` — Scan, chunk, embed, store (full re-index; `--force` flag reserved for Phase 3)
+- `pix query "<text>" [--top N] [--json] [--context-lines N]` — Semantic search via cosine similarity
+- `pix status` — Show index statistics
+- `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
+
+All commands support `--json` for agent-ready structured output on stdout.
 
 ## Architecture Decisions
 
@@ -88,6 +120,11 @@ removing both `text` and `context` fields from stored chunks.
 Search is structured for worker threads — `Effect.forEach` with concurrency parameter
 used for batch processing. Single-threaded for MVP; multi-core via `worker_threads`
 or `@effect/op` in Phase 3+.
+
+### Hexagonal Architecture (DDD layers)
+
+Domain (`src/domain/`), Application (`src/application/`), Infrastructure (`src/services/`)
+with ports-as-tags and adapters-as-layers. See [ADR 0003](docs/adr/0003-hexagonal-architecture.md).
 
 ## Future Considerations
 
