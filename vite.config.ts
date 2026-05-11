@@ -31,6 +31,7 @@ export default defineConfig({
     sortPackageJson: true,
     useTabs: false,
     trailingComma: "all",
+    ignorePatterns: ["CHANGELOG.md"],
   },
   staged: {
     "*.{ts,tsx,js,jsx}": "vp check --fix",
