@@ -39,7 +39,7 @@
     "test": "vp test",
     "test:coverage": "vp test --coverage",
     "check": "vp check",
-    "ci": "vp check && vp test --coverage && vp run build && vpx fallow audit",
+    "ci": "vp check && vp test --coverage && vp run build && fallow audit",
     "lint:fallow": "fallow --format json",
     "fallow": "fallow",
     "prepublishOnly": "vp run build",
