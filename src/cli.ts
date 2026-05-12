@@ -25,5 +25,5 @@ const pix = rootCommand.pipe(
 
 export const cli = (args: readonly string[]) =>
   Command.run(pix, { name: "pix", version: VERSION })(args).pipe(
-    Effect.provide(CliConfig.layer({ showBuiltIns: false, showTypes: false })),
+    Effect.provide(CliConfig.layer({ showTypes: false })),
   )
