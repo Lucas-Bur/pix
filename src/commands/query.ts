@@ -3,6 +3,7 @@ import { Effect, Option } from "effect"
 
 import { QueryProject } from "../application/query-project.js"
 import type { SearchResult } from "../domain/ports.js"
+import { formatError } from "../lib/error-format.js"
 
 const DEFAULT_TOP_K = 5
 const DEFAULT_CONTEXT_LINES = 0
@@ -73,5 +74,11 @@ export const queryCommand = Command.make(
           console.log("---")
         })
       }
-    }),
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          console.log(formatError(error))
+        }),
+      ),
+    ),
 )

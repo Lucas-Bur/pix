@@ -248,7 +248,7 @@ const make = Effect.gen(function* () {
       const chunksExists = yield* fs.exists(CHUNKS_FILE)
       if (chunksExists) {
         const stat = yield* fs.stat(CHUNKS_FILE)
-        freedBytes += stat && "size" in stat ? (stat.size as unknown as number) : 0
+        freedBytes += stat && "size" in stat ? Number(stat.size) : 0
         yield* fs.remove(CHUNKS_FILE)
         deletedChunks = true
       }
@@ -256,7 +256,7 @@ const make = Effect.gen(function* () {
       const vectorsExists = yield* fs.exists(VECTORS_FILE)
       if (vectorsExists) {
         const stat = yield* fs.stat(VECTORS_FILE)
-        freedBytes += stat && "size" in stat ? (stat.size as unknown as number) : 0
+        freedBytes += stat && "size" in stat ? Number(stat.size) : 0
         yield* fs.remove(VECTORS_FILE)
         deletedVectors = true
       }
