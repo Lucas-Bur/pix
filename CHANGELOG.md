@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.4.0...pix-v0.5.0) (2026-05-12)
+
+
+### Features
+
+* add integration tests with effect-memfs, replace fast-glob, use Console.log in CLI handlers ([#42](https://github.com/Lucas-Bur/pix/issues/42)) ([a66fede](https://github.com/Lucas-Bur/pix/commit/a66fede5cabfe61712b8912608b6b3209e34e18e))
+
 ## [0.4.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.3.0...pix-v0.4.0) (2026-05-12)
 
 
