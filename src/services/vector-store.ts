@@ -225,8 +225,7 @@ const make = Effect.gen(function* () {
       const vectorsStat = yield* fs
         .stat(VECTORS_FILE)
         .pipe(Effect.catchAll(() => Effect.succeed(null)))
-      const byteSize: number =
-        vectorsStat && "size" in vectorsStat ? (vectorsStat.size as unknown as number) : 0
+      const byteSize: number = vectorsStat && "size" in vectorsStat ? Number(vectorsStat.size) : 0
 
       // Extract mtime from Option<Date> - Info.mtime is Option<Date>
       const lastIndex = Option.map(vectorsStat?.mtime ?? Option.none(), (d) =>
