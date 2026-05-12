@@ -50,7 +50,7 @@ Structured JSON output on stdout (not stderr). Enables piping between `pix` and 
 ### CI (Continuous Integration)
 
 Automated quality pipeline on PR to `main`: format + lint + type-check + test + build.
-Fallow audit runs non-blocking for metrics. See [ADR 0004](docs/adr/0004-ci-cd-pipeline.md).
+Effect diagnostics and fallow audit run non-blocking for surfacing insights. See [ADR 0004](docs/adr/0004-ci-cd-pipeline.md).
 
 ### Conventional Commits
 

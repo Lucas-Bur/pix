@@ -22,9 +22,9 @@ jobs:
 
       - run: vp install
 
-      - run: vp check
+      - run: vp run check
 
-      - run: vp test --coverage
+      - run: vp run test:coverage
 
       - run: vp run build
 
@@ -34,6 +34,20 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Fallow quality audit
+      - name: Effect diagnostics
+        id: effect-diag
         continue-on-error: true
-        run: vpx fallow audit --base main --format badge
+        run: vp run lint:effect:ci
+
+      - name: Effect diagnostics crash warning
+        if: ${{ steps.effect-diag.outcome == 'failure' }}
+        run: echo "::warning::Effect diagnostics step crashed — check that effect-language-service is installed and not segfaulting"
+
+      - name: Fallow quality audit
+        id: fallow-audit
+        continue-on-error: true
+        run: vp run lint:fallow:ci
+
+      - name: Fallow crash warning
+        if: ${{ steps.fallow-audit.outcome == 'failure' }}
+        run: echo "::warning::Fallow audit step crashed — check that fallow is installed and not segfaulting"

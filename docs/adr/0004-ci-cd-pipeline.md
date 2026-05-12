@@ -11,6 +11,7 @@ Version management was manual via `bumpp` (since removed). Badges and quality me
 We needed a pipeline that:
 
 - Gates merges on quality (format, lint, type-check, test, build)
+- Surfaces Effect code quality diagnostics (non-blocking `@effect/language-service`)
 - Provides code quality metrics non-blockingly
 - Automates versioning and changelog generation
 - Publishes to npm on release
@@ -24,10 +25,30 @@ We needed a pipeline that:
 Trigger: PR to `main`. Sequential pipeline:
 
 1. `vp install` — install dependencies
-2. `vp check` — format, lint, type-check (blocking)
-3. `vp test --coverage` — run tests with V8 coverage (blocking)
-4. `vp run build` — production build via `vp pack` (blocking)
-5. `vpx fallow audit --format badge` — code quality metrics (non-blocking, informational)
+2. `vp run check` — format, lint, type-check via `package.json#scripts.check` (blocking)
+3. `vp run test:coverage` — run tests with V8 coverage via `package.json#scripts.test:coverage` (blocking)
+4. `vp run build` — production build via `package.json#scripts.build` (blocking)
+5. `vp run lint:effect:ci` — Effect diagnostics, emits `::notice` annotations on PR diffs (non-blocking, `continue-on-error: true`)
+6. `vp run lint:fallow:ci` — incremental code quality audit against `main`, badge format (non-blocking, `continue-on-error: true`)
+
+Both non-blocking steps include crash instrumentation: a subsequent `if: failure()` step
+emits a `::warning` if the tool itself crashed (as opposed to merely reporting findings),
+preventing silent failures from `continue-on-error: true`.
+
+**Script orchestration pattern**: `ci.yml` contains zero inline command strings — every
+step is `vp run <script>`. The actual commands live in `package.json` as the single source
+of truth. Consumer-facing format variants use `:ci` and `:agent` suffixes:
+
+| Script              | Consumer | Format                    |
+| ------------------- | -------- | ------------------------- |
+| `lint:effect`       | Human    | pretty                    |
+| `lint:effect:ci`    | CI       | github-actions            |
+| `lint:effect:agent` | Agent    | json                      |
+| `lint:fallow`       | Human    | default                   |
+| `lint:fallow:ci`    | CI       | badge (incremental audit) |
+| `lint:fallow:agent` | Agent    | json                      |
+
+A convenience `ci` script is available for humans: `vp run check && vp run test:coverage && vp run build && vp run lint:effect && vp run lint:fallow`.
 
 Vite+ provides `voidzero-dev/setup-vp@v1` which handles Node.js version, pnpm setup,
 and dependency caching in a single action — replacing `setup-node`, `pnpm/action-setup`, and
@@ -65,8 +86,16 @@ README displays: CI status, coverage (via Codecov), fallow metrics (static), npm
 
 - **Vite+ native**: `setup-vp` handles Node + pnpm + caching in one step; avoids multi-action
   boilerplate
-- **Blocking vs. non-blocking**: `vp check` + test + build block merges; fallow audit runs
-  informatively so low-severity findings don't stall progress
+- **Blocking vs. non-blocking**: `vp run check`, `vp run test:coverage`, and `vp run build`
+  block merges; Effect diagnostics and fallow audit run informatively so low-severity findings
+  don't stall progress. Crash instrumentation prevents `continue-on-error: true` from masking
+  tool failures.
+- **Script-as-truth**: ci.yml references `package.json` scripts exclusively via `vp run <script>`.
+  Zero inline command duplication — no drift possible between CI and local development.
+- **Effect diagnostics**: `@effect/language-service` (configured via `tsconfig.json` plugins)
+  surfaces Effect-specific issues like `preferSchemaOverJson`, `unnecessaryFailYieldableError`,
+  and `effectSucceedWithVoid`. Uses `--format github-actions` so each finding appears as an
+  inline annotation on the relevant PR diff line.
 - **release-please**: Zero-config after install, native GitHub Action, conventional commits
   already used by the project. No local tooling or npm token needed for release management
 - **Codecov**: Free for open source, minimal config, native vitest integration
