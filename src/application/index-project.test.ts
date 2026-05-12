@@ -55,6 +55,7 @@ test("IndexProject.index stores all chunks with embeddings", () =>
           totalLines: 20,
           byteSize: 1024,
         }),
+      reset: () => Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),
     }
 
     const mockLayer = Layer.mergeAll(
@@ -117,6 +118,7 @@ test("IndexProject.index propagates errors from VectorStore", () =>
           totalLines: 0,
           byteSize: 0,
         }),
+      reset: () => Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),
     }
 
     const mockLayer = Layer.mergeAll(

@@ -236,7 +236,35 @@ const make = Effect.gen(function* () {
       return { chunks, files, model, lastIndex, totalLines, byteSize }
     })
 
-  return { store, search, getStats } as const
+  const reset = (): Effect.Effect<
+    { deletedChunks: boolean; deletedVectors: boolean; freedBytes: number },
+    PlatformError
+  > =>
+    Effect.gen(function* () {
+      let deletedChunks = false
+      let deletedVectors = false
+      let freedBytes = 0
+
+      const chunksExists = yield* fs.exists(CHUNKS_FILE)
+      if (chunksExists) {
+        const stat = yield* fs.stat(CHUNKS_FILE)
+        freedBytes += stat && "size" in stat ? (stat.size as unknown as number) : 0
+        yield* fs.remove(CHUNKS_FILE)
+        deletedChunks = true
+      }
+
+      const vectorsExists = yield* fs.exists(VECTORS_FILE)
+      if (vectorsExists) {
+        const stat = yield* fs.stat(VECTORS_FILE)
+        freedBytes += stat && "size" in stat ? (stat.size as unknown as number) : 0
+        yield* fs.remove(VECTORS_FILE)
+        deletedVectors = true
+      }
+
+      return { deletedChunks, deletedVectors, freedBytes }
+    })
+
+  return { store, search, getStats, reset } as const
 })
 
 export const VectorStoreLive = Layer.effect(VectorStore, make)

@@ -31,7 +31,7 @@ export default defineConfig({
     sortPackageJson: true,
     useTabs: false,
     trailingComma: "all",
-    ignorePatterns: ["CHANGELOG.md"],
+    ignorePatterns: ["CHANGELOG.md", ".release-please-manifest.json"],
   },
   staged: {
     "*.{ts,tsx,js,jsx}": "vp check --fix",
