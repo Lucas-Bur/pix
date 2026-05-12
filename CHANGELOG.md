@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.3.0...pix-v0.4.0) (2026-05-12)
+
+
+### Features
+
+* wire composition root, add error handling, fix FileSystem.Info.size cast ([53afaab](https://github.com/Lucas-Bur/pix/commit/53afaab3791bef6ec82932c01c4c6e2cc7a75363))
+
+
+### Bug Fixes
+
+* remove duplicate error log in index-cmd, fix missed Number cast in vector-store ([eb19204](https://github.com/Lucas-Bur/pix/commit/eb19204421bf8e53003f580e3c16128c96069ca1))
+* replace catchAll with tapError in commands to preserve exit code ([286c9da](https://github.com/Lucas-Bur/pix/commit/286c9da657952a3540b637b76d350bf50001835c))
+* revert showBuiltIns, keep showTypes only in CliConfig ([2fab868](https://github.com/Lucas-Bur/pix/commit/2fab86856b00074b5e3074bbf4b0e268f24e0f7c))
+* suppress CLI built-in options, remove duplicate log, enforce LF via .gitattributes ([a2cf780](https://github.com/Lucas-Bur/pix/commit/a2cf780f4f8edb7bd5ae59fdf7c3b3be004d1223))
+* suppress placeholder warnings in JSON mode ([70108a7](https://github.com/Lucas-Bur/pix/commit/70108a7aec4c036600413c766a393b5fef1d3e72))
+
 ## [0.3.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.2.1...pix-v0.3.0) (2026-05-12)
 
 
