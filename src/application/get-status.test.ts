@@ -19,6 +19,7 @@ test("GetStatus returns stats from VectorStore", () =>
       store: () => Effect.succeed(undefined),
       search: () => Effect.succeed([]),
       getStats: () => Effect.succeed(mockStats),
+      reset: () => Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),
     }
 
     const mockLayer = Layer.succeed(VectorStore, mockStore)

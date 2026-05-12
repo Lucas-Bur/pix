@@ -5,6 +5,7 @@ import { GetStatus } from "./application/get-status.js"
 import { IndexProject } from "./application/index-project.js"
 import { InitProject } from "./application/init-project.js"
 import { QueryProject } from "./application/query-project.js"
+import { ResetIndex } from "./application/reset-index.js"
 import { cli } from "./cli.js"
 import { ChunkerLive } from "./services/chunker.js"
 import { ConfigStoreLive } from "./services/config-store.js"
@@ -41,6 +42,7 @@ const UseCaseLayer = Layer.mergeAll(
   GetStatus.Default,
   QueryProject.Default,
   IndexProject.Default,
+  ResetIndex.Default,
 )
 
 // === AppLayer: wiring everything together ===

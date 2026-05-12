@@ -6,6 +6,7 @@ import { Effect } from "effect"
 import { indexCommand } from "./commands/index-cmd.ts"
 import { initCommand } from "./commands/init.ts"
 import { queryCommand } from "./commands/query.ts"
+import { resetCommand } from "./commands/reset.ts"
 import { statusCommand } from "./commands/status.ts"
 
 const require = createRequire(import.meta.url)
@@ -19,7 +20,7 @@ const rootCommand = Command.make("pix", {}, () =>
 )
 
 const pix = rootCommand.pipe(
-  Command.withSubcommands([initCommand, statusCommand, indexCommand, queryCommand]),
+  Command.withSubcommands([initCommand, statusCommand, indexCommand, queryCommand, resetCommand]),
 )
 
 export const cli = Command.run(pix, { name: "pix", version: VERSION })

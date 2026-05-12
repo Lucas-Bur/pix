@@ -56,6 +56,13 @@ export interface SearchResult {
   readonly contextAfter?: string
 }
 
+/** Result of a reset operation — what was deleted and how many bytes were freed. */
+export interface ResetResult {
+  readonly deletedChunks: boolean
+  readonly deletedVectors: boolean
+  readonly freedBytes: number
+}
+
 export class VectorStore extends Context.Tag("VectorStore")<
   VectorStore,
   {
@@ -78,5 +85,6 @@ export class VectorStore extends Context.Tag("VectorStore")<
       },
       PlatformError
     >
+    readonly reset: () => Effect.Effect<ResetResult, PlatformError>
   }
 >() {}
