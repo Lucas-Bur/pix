@@ -18,13 +18,13 @@ pix query "authentication middleware"
 
 ## Commands
 
-| Command | Description | JSON flag |
-|---------|-------------|-----------|
-| `pix init` | Create `.pix/config.json` with defaults | `--json` |
-| `pix index` | Scan, chunk, embed, and store project files | `--json` |
-| `pix query "<text>"` | Semantic search via cosine similarity | `--json` |
-| `pix status` | Show index statistics | `--json` |
-| `pix reset` | Delete index files (chunks + vectors) | `--json` |
+| Command              | Description                                 | JSON flag |
+| -------------------- | ------------------------------------------- | --------- |
+| `pix init`           | Create `.pix/config.json` with defaults     | `--json`  |
+| `pix index`          | Scan, chunk, embed, and store project files | `--json`  |
+| `pix query "<text>"` | Semantic search via cosine similarity       | `--json`  |
+| `pix status`         | Show index statistics                       | `--json`  |
+| `pix reset`          | Delete index files (chunks + vectors)       | `--json`  |
 
 All commands support `--json` for structured output on stdout — ideal for piping to AI agents.
 
