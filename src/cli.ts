@@ -1,6 +1,6 @@
 import { createRequire } from "node:module"
 
-import { Command } from "@effect/cli"
+import { CliConfig, Command } from "@effect/cli"
 import { Effect } from "effect"
 
 import { indexCommand } from "./commands/index-cmd.ts"
@@ -23,4 +23,7 @@ const pix = rootCommand.pipe(
   Command.withSubcommands([initCommand, statusCommand, indexCommand, queryCommand, resetCommand]),
 )
 
-export const cli = Command.run(pix, { name: "pix", version: VERSION })
+export const cli = (args: readonly string[]) =>
+  Command.run(pix, { name: "pix", version: VERSION })(args).pipe(
+    Effect.provide(CliConfig.layer({ showBuiltIns: false, showTypes: false })),
+  )
