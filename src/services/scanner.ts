@@ -1,19 +1,18 @@
 import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
-import fg from "fast-glob"
 import ignore from "ignore"
 
 import { Scanner } from "../domain/ports.js"
 
+const ALWAYS_IGNORE = new Set([".pix", "node_modules", ".git", "dist", "build", ".next"])
+
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
 
-  /** Loads all gitignore patterns from .gitignore files in the repo. */
   const loadGitignoreRules = Effect.gen(function* () {
     const ig = ignore()
     const cwd = process.cwd()
 
-    // Load repo-root .gitignore
     const rootContent = yield* fs
       .readFileString(`${cwd}/.gitignore`)
       .pipe(Effect.catchAll(() => Effect.succeed("")))
@@ -21,7 +20,6 @@ const make = Effect.gen(function* () {
       ig.add(rootContent.split("\n"))
     }
 
-    // Load .git/info/exclude (local repo rules, same as .gitignore)
     const excludePath = `${cwd}/.git/info/exclude`
     const excludeExists = yield* fs.exists(excludePath)
     if (excludeExists) {
@@ -36,24 +34,47 @@ const make = Effect.gen(function* () {
     return ig
   }).pipe(Effect.catchAll(() => Effect.succeed(ignore())))
 
+  const walk = (dir: string, extensions: ReadonlySet<string>): Effect.Effect<string[], never> =>
+    Effect.gen(function* () {
+      const entries = yield* fs
+        .readDirectory(dir)
+        .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
+
+      let results: string[] = []
+      for (const entry of entries) {
+        if (ALWAYS_IGNORE.has(entry)) continue
+
+        const fullPath = `${dir}/${entry}`
+        const info = yield* fs.stat(fullPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+
+        if (!info) continue
+
+        if (info.type === "Directory") {
+          const subResults = yield* walk(fullPath, extensions)
+          results.push(...subResults)
+        } else if (info.type === "File") {
+          const dotIndex = entry.lastIndexOf(".")
+          if (dotIndex === -1) continue
+          const ext = entry.slice(dotIndex)
+          if (extensions.has(ext)) {
+            results.push(fullPath)
+          }
+        }
+      }
+      return results
+    })
+
   const scanFiles = (extensions: readonly string[]): Effect.Effect<string[], never> =>
     Effect.gen(function* () {
       const ig = yield* loadGitignoreRules
       const cwd = process.cwd()
 
-      const pattern = extensions.map((ext: string) => `**/*${ext}`)
-      const absolutePaths = yield* Effect.tryPromise(() => fg(pattern, { dot: false })).pipe(
-        Effect.catchAll(() => Effect.succeed([] as string[])),
-      )
+      const extSet = new Set(extensions)
+      const paths = yield* walk(cwd, extSet)
 
-      // Filter through gitignore rules — paths must be relative to cwd
-      const relativePaths = absolutePaths.map((p) => {
-        // Strip cwd prefix to get relative path
-        return p.startsWith(cwd) ? p.slice(cwd.length + 1) : p
-      })
+      const relativePaths = paths.map((p) => (p.startsWith(cwd) ? p.slice(cwd.length + 1) : p))
       const filtered = ig.filter(relativePaths)
 
-      // Re-attach cwd to get absolute paths for return
       return filtered.map((p) => `${cwd}/${p}`)
     })
 

@@ -56,7 +56,6 @@
     "@effect/platform-node": "^0.106.0",
     "@huggingface/transformers": "^4.2.0",
     "effect": "^3.21.2",
-    "fast-glob": "^3.3.3",
     "ignore": "^7.0.5"
   },
   "devDependencies": {
