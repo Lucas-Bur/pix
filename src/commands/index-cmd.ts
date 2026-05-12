@@ -27,9 +27,6 @@ export const indexCommand = Command.make(
       const result = yield* IndexProject.index().pipe(Effect.either)
 
       if (result._tag === "Left") {
-        yield* Effect.sync(() => {
-          console.log(formatError(result.left))
-        })
         return yield* Effect.fail(result.left)
       }
 
