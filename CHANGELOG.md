@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.2.1...pix-v0.3.0) (2026-05-12)
+
+
+### Features
+
+* add pix reset command ([433afe2](https://github.com/Lucas-Bur/pix/commit/433afe20b75bbca9cfb741504e88199b0e1b778d))
+
+
+### Bug Fixes
+
+* address PR review feedback ([829277c](https://github.com/Lucas-Bur/pix/commit/829277c7253379b8247b6052ce4f49071b0a8821))
+
 ## [0.2.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.2.0...pix-v0.2.1) (2026-05-12)
 
 
