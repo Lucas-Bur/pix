@@ -1,5 +1,5 @@
 import { Command, Options } from "@effect/cli"
-import { Effect } from "effect"
+import { Console, Effect } from "effect"
 
 import { GetStatus } from "../application/get-status.js"
 import { formatError } from "../lib/error-format.js"
@@ -16,9 +16,7 @@ export const statusCommand = Command.make(
       const result = yield* GetStatus.getStatus()
 
       if (json) {
-        return yield* Effect.sync(() => {
-          console.log(JSON.stringify(result, null, 2))
-        })
+        return yield* Console.log(JSON.stringify(result, null, 2))
       }
 
       const lastIndexStr = result.lastIndex > 0 ? new Date(result.lastIndex).toISOString() : "never"
@@ -28,11 +26,5 @@ export const statusCommand = Command.make(
       yield* Effect.logInfo(`Total lines: ${result.totalLines.toLocaleString()}`)
       yield* Effect.logInfo(`Index size: ${formatBytes(result.byteSize)}`)
       yield* Effect.logInfo(`Last indexed: ${lastIndexStr}`)
-    }).pipe(
-      Effect.tapError((error) =>
-        Effect.sync(() => {
-          console.log(formatError(error))
-        }),
-      ),
-    ),
+    }).pipe(Effect.tapError((error) => Console.log(formatError(error)))),
 )

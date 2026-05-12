@@ -1,5 +1,5 @@
 import { Args, Command, Options } from "@effect/cli"
-import { Effect, Option } from "effect"
+import { Console, Effect, Option } from "effect"
 
 import { QueryProject } from "../application/query-project.js"
 import type { SearchResult } from "../domain/ports.js"
@@ -49,18 +49,16 @@ export const queryCommand = Command.make(
       const results = yield* QueryProject.queryProject(queryText, clamped.value)
 
       if (json) {
-        return yield* Effect.sync(() => {
-          const output = results.map((r) => ({
-            score: r.score,
-            file: r.file,
-            startLine: r.startLine,
-            endLine: r.endLine,
-            text: r.text,
-            ...(ctxLines > 0 && r.contextBefore && { contextBefore: r.contextBefore }),
-            ...(ctxLines > 0 && r.contextAfter && { contextAfter: r.contextAfter }),
-          }))
-          console.log(JSON.stringify(output, null, 2))
-        })
+        const output = results.map((r) => ({
+          score: r.score,
+          file: r.file,
+          startLine: r.startLine,
+          endLine: r.endLine,
+          text: r.text,
+          ...(ctxLines > 0 && r.contextBefore && { contextBefore: r.contextBefore }),
+          ...(ctxLines > 0 && r.contextAfter && { contextAfter: r.contextAfter }),
+        }))
+        return yield* Console.log(JSON.stringify(output, null, 2))
       }
 
       if (results.length === 0) {
@@ -69,16 +67,8 @@ export const queryCommand = Command.make(
       }
 
       for (const result of results) {
-        yield* Effect.sync(() => {
-          console.log(formatResult(result))
-          console.log("---")
-        })
+        yield* Console.log(formatResult(result))
+        yield* Console.log("---")
       }
-    }).pipe(
-      Effect.tapError((error) =>
-        Effect.sync(() => {
-          console.log(formatError(error))
-        }),
-      ),
-    ),
+    }).pipe(Effect.tapError((error) => Console.log(formatError(error)))),
 )

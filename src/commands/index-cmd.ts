@@ -1,5 +1,5 @@
 import { Command, Options } from "@effect/cli"
-import { Effect } from "effect"
+import { Console, Effect } from "effect"
 
 import { IndexProject } from "../application/index-project.js"
 import { formatError } from "../lib/error-format.js"
@@ -33,25 +33,17 @@ export const indexCommand = Command.make(
       const duration = `${((Date.now() - startTime) / 1000).toFixed(1)}s`
 
       if (json) {
-        return yield* Effect.sync(() => {
-          console.log(
-            JSON.stringify({
-              chunks: result.right.stats.chunks,
-              files: result.right.stats.files,
-              duration,
-            }),
-          )
-        })
+        return yield* Console.log(
+          JSON.stringify({
+            chunks: result.right.stats.chunks,
+            files: result.right.stats.files,
+            duration,
+          }),
+        )
       }
 
       yield* Effect.logInfo(
         `Indexed ${result.right.stats.chunks} chunks from ${result.right.stats.files} files in ${duration}.`,
       )
-    }).pipe(
-      Effect.tapError((error) =>
-        Effect.sync(() => {
-          console.log(formatError(error))
-        }),
-      ),
-    ),
+    }).pipe(Effect.tapError((error) => Console.log(formatError(error)))),
 )
