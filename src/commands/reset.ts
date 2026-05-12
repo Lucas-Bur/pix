@@ -45,7 +45,7 @@ export const resetCommand = Command.make(
       yield* Effect.logInfo(`Freed: ${formatBytes(result.freedBytes)}`)
       yield* Effect.logInfo(`Time: ${elapsedMs}ms`)
     }).pipe(
-      Effect.catchAll((error) =>
+      Effect.tapError((error) =>
         Effect.sync(() => {
           console.log(formatError(error))
         }),

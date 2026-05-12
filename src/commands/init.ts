@@ -25,7 +25,7 @@ export const initCommand = Command.make(
         "Reminder: Add `.pix` to your `.gitignore` file to avoid committing the index.",
       )
     }).pipe(
-      Effect.catchAll((error) =>
+      Effect.tapError((error) =>
         Effect.sync(() => {
           console.log(formatError(error))
         }),
