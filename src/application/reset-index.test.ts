@@ -6,6 +6,7 @@ import { ResetIndex } from "./reset-index.js"
 
 test("ResetIndex.reset calls store.reset() and returns result", () =>
   Effect.gen(function* () {
+    let resetCalled = false
     const mockResult = {
       deletedChunks: true,
       deletedVectors: true,
@@ -24,7 +25,11 @@ test("ResetIndex.reset calls store.reset() and returns result", () =>
           totalLines: 0,
           byteSize: 0,
         }),
-      reset: () => Effect.succeed(mockResult),
+      reset: () =>
+        Effect.sync(() => {
+          resetCalled = true
+          return mockResult
+        }),
     }
 
     const mockLayer = Layer.succeed(VectorStore, mockStore)
@@ -32,6 +37,7 @@ test("ResetIndex.reset calls store.reset() and returns result", () =>
 
     const result = yield* ResetIndex.reset().pipe(Effect.provide(testLayer))
 
+    expect(resetCalled).toBe(true)
     expect(result.deletedChunks).toBe(true)
     expect(result.deletedVectors).toBe(true)
     expect(result.freedBytes).toBe(4096)
