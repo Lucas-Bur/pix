@@ -29,7 +29,7 @@ export const statusCommand = Command.make(
       yield* Effect.logInfo(`Index size: ${formatBytes(result.byteSize)}`)
       yield* Effect.logInfo(`Last indexed: ${lastIndexStr}`)
     }).pipe(
-      Effect.catchAll((error) =>
+      Effect.tapError((error) =>
         Effect.sync(() => {
           console.log(formatError(error))
         }),

@@ -48,7 +48,7 @@ export const indexCommand = Command.make(
         `Indexed ${result.right.stats.chunks} chunks from ${result.right.stats.files} files in ${duration}.`,
       )
     }).pipe(
-      Effect.catchAll((error) =>
+      Effect.tapError((error) =>
         Effect.sync(() => {
           console.log(formatError(error))
         }),

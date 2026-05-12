@@ -30,7 +30,7 @@ All commands support `--json` for structured output on stdout — ideal for pipi
 
 ## Agent-Ready Output
 
-```
+```bash
 $ pix status --json
 {"chunks":59,"files":37,"model":"Xenova/all-MiniLM-L6-v2","lastIndex":1715030400000,"totalLines":1260,"byteSize":16128}
 ```

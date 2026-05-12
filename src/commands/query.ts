@@ -75,7 +75,7 @@ export const queryCommand = Command.make(
         })
       }
     }).pipe(
-      Effect.catchAll((error) =>
+      Effect.tapError((error) =>
         Effect.sync(() => {
           console.log(formatError(error))
         }),
