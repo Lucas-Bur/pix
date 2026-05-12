@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.2.0...pix-v0.2.1) (2026-05-12)
+
+
+### Bug Fixes
+
+* switch release-please back to GITHUB_TOKEN until PAT is set up ([fbaa5bd](https://github.com/Lucas-Bur/pix/commit/fbaa5bde5dadf3300bb859cba3ef734cbe40462d))
+* use RELEASE_PLEASE_TOKEN with GITHUB_TOKEN fallback for release-please ([4237cc2](https://github.com/Lucas-Bur/pix/commit/4237cc2194688327ef26a11e4cf6633c87bb6827))
+
 ## [0.2.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.1.0...pix-v0.2.0) (2026-05-11)
 
 
