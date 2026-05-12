@@ -2,6 +2,7 @@ import { Command, Options } from "@effect/cli"
 import { Effect } from "effect"
 
 import { InitProject } from "../application/init-project.js"
+import { formatError } from "../lib/error-format.js"
 
 /** CLI command: pix init [--json] */
 export const initCommand = Command.make(
@@ -23,5 +24,11 @@ export const initCommand = Command.make(
       yield* Effect.logInfo(
         "Reminder: Add `.pix` to your `.gitignore` file to avoid committing the index.",
       )
-    }),
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          console.log(formatError(error))
+        }),
+      ),
+    ),
 )

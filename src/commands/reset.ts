@@ -2,6 +2,8 @@ import { Command, Options } from "@effect/cli"
 import { Clock, Effect } from "effect"
 
 import { ResetIndex } from "../application/reset-index.js"
+import { formatError } from "../lib/error-format.js"
+import { formatBytes } from "../lib/format.js"
 
 /** CLI command: pix reset [--json] */
 export const resetCommand = Command.make(
@@ -42,13 +44,11 @@ export const resetCommand = Command.make(
       yield* Effect.logInfo(`Deleted: ${parts.join(", ")}`)
       yield* Effect.logInfo(`Freed: ${formatBytes(result.freedBytes)}`)
       yield* Effect.logInfo(`Time: ${elapsedMs}ms`)
-    }),
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          console.log(formatError(error))
+        }),
+      ),
+    ),
 )
-
-/** Format byte count as human-readable string (e.g. "1.5 MB") */
-const formatBytes = (bytes: number): string => {
-  if (bytes === 0) return "0 B"
-  const units = ["B", "KB", "MB", "GB"]
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
-}

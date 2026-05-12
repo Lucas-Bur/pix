@@ -53,4 +53,7 @@ const UseCaseLayer = Layer.mergeAll(
 // are part of the AppLayer's output — a single Effect.provide is enough.
 const AppLayer = Layer.merge(UseCaseLayer.pipe(Layer.provide(InfraLayer)), NodeContext.layer)
 
-cli(process.argv).pipe(Effect.provide(AppLayer), NodeRuntime.runMain)
+cli(process.argv).pipe(
+  Effect.provide(AppLayer),
+  NodeRuntime.runMain({ disableErrorReporting: true }),
+)

@@ -2,6 +2,7 @@ import { Command, Options } from "@effect/cli"
 import { Effect } from "effect"
 
 import { IndexProject } from "../application/index-project.js"
+import { formatError } from "../lib/error-format.js"
 
 /** CLI command: pix index [--force] [--verbose] [--json] */
 export const indexCommand = Command.make(
@@ -14,11 +15,11 @@ export const indexCommand = Command.make(
   ({ force, verbose, json }) =>
     Effect.gen(function* () {
       if (force) {
-        yield* Effect.logInfo(`--force is currently not implemented and only a placeholder.`)
+        yield* Effect.logInfo("--force is currently not implemented and only a placeholder.")
       }
 
       if (verbose) {
-        yield* Effect.logInfo(`--verbose is currently not implemented and only a placeholder.`)
+        yield* Effect.logInfo("--verbose is currently not implemented and only a placeholder.")
       }
 
       const startTime = Date.now()
@@ -26,14 +27,10 @@ export const indexCommand = Command.make(
       const result = yield* IndexProject.index().pipe(Effect.either)
 
       if (result._tag === "Left") {
-        // Index failed — output JSON error if --json flag set
-        const error = result.left
-        const message = error.message ?? String(error)
         yield* Effect.sync(() => {
-          console.log(JSON.stringify({ error: message }))
+          console.log(formatError(result.left))
         })
-        // Fail the effect so CLI exits with non-zero code
-        return yield* Effect.fail(error)
+        return yield* Effect.fail(result.left)
       }
 
       const duration = `${((Date.now() - startTime) / 1000).toFixed(1)}s`
@@ -53,5 +50,11 @@ export const indexCommand = Command.make(
       yield* Effect.logInfo(
         `Indexed ${result.right.stats.chunks} chunks from ${result.right.stats.files} files in ${duration}.`,
       )
-    }),
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          console.log(formatError(error))
+        }),
+      ),
+    ),
 )
