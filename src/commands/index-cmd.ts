@@ -14,11 +14,11 @@ export const indexCommand = Command.make(
   },
   ({ force, verbose, json }) =>
     Effect.gen(function* () {
-      if (force) {
+      if (force && !json) {
         yield* Effect.logInfo("--force is currently not implemented and only a placeholder.")
       }
 
-      if (verbose) {
+      if (verbose && !json) {
         yield* Effect.logInfo("--verbose is currently not implemented and only a placeholder.")
       }
 
