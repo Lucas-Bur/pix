@@ -45,7 +45,7 @@ of truth. Consumer-facing format variants use `:ci` and `:agent` suffixes:
 | `lint:effect:ci`    | CI       | github-actions            |
 | `lint:effect:agent` | Agent    | json                      |
 | `lint:fallow`       | Human    | default                   |
-| `lint:fallow:ci`    | CI       | badge (incremental audit) |
+| `lint:fallow:ci`    | CI       | human (incremental audit) |
 | `lint:fallow:agent` | Agent    | json                      |
 
 A convenience `ci` script is available for humans: `vp run check && vp run test:coverage && vp run build && vp run lint:effect && vp run lint:fallow`.
