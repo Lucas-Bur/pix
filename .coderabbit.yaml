@@ -47,8 +47,7 @@ reviews:
     - path: "**/*.test.ts"
       instructions: >
         Test files. Test behavior not implementation, through public interfaces only.
-        Tests must survive internal refactoring. Use vertical slices: test1→impl1,
-        test2→impl2. Use effect-memfs for filesystem mocking.
+        Tests must survive internal refactoring. Use effect-memfs for filesystem mocking.
     - path: ".github/workflows/**"
       instructions: >
         CI workflows. Quality-gate commands must use `vp run <script>` — script names
