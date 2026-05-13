@@ -45,6 +45,7 @@
     "lint:effect:agent": "effect-language-service diagnostics --project tsconfig.json --format json --strict",
     "lint:fallow": "fallow",
     "lint:fallow:ci": "vpx fallow audit --base origin/main --format badge",
+    "lint:fallow:health": "fallow health --format badge",
     "lint:fallow:agent": "fallow --format json",
     "fallow": "fallow",
     "prepublishOnly": "vp run build",

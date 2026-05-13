@@ -1,6 +1,9 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -26,8 +29,10 @@ jobs:
 
       - run: vp run build
 
+      # Upload coverage on push to main (so the main branch has data for the badge)
+      # and on PRs from this repo (skip forks — they can't access CODECOV_TOKEN)
       - name: Upload coverage to Codecov
-        if: ${{ github.event.pull_request.head.repo.fork == false }}
+        if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.fork == false }}
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
