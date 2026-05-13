@@ -1,0 +1,36 @@
+name: Badges
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  badges:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: voidzero-dev/setup-vp@v1.10.0
+        with:
+          node-version: "24"
+          cache: true
+
+      - run: vp install
+
+      - name: Generate fallow health badge
+        run: |
+          mkdir -p badges-out
+          npx fallow health --format badge > badges-out/health.svg
+
+      - name: Publish fallow health badge
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: badges-out
+          publish_branch: badges
+          keep_files: true

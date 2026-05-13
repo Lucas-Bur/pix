@@ -1,7 +1,8 @@
 # @lucas-bur/pix
 
 [![CI](https://github.com/Lucas-Bur/pix/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucas-Bur/pix/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/Lucas-Bur/pix/branch/main/graph/badge.svg)](https://codecov.io/gh/Lucas-Bur/pix)
+[![codecov](https://codecov.io/gh/Lucas-Bur/pix/graph/badge.svg)](https://codecov.io/gh/Lucas-Bur/pix)
+[![fallow health](https://raw.githubusercontent.com/Lucas-Bur/pix/badges/health.svg)](https://github.com/Lucas-Bur/pix/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@lucas-bur/pix)](https://www.npmjs.com/package/@lucas-bur/pix)
 [![npm downloads](https://img.shields.io/npm/dm/@lucas-bur/pix)](https://www.npmjs.com/package/@lucas-bur/pix)
 
