@@ -21,9 +21,7 @@ Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable).
 
 ### Scanner
 
-Discovers files to index. Uses `fast-glob` + `ignore` for `.gitignore`-aware scanning.
-Whitelist of file extensions in `config.json` (e.g. `.ts`, `.py`, `.rs`). Only text/code extensions — binary formats (`.pdf`, `.mp4`, etc.) are excluded by design.
-Always ignores: `.pix`, `node_modules`, `.git`, `dist`, `build`, `.next`.
+Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, applies `.gitignore` rules via the `ignore` package. Whitelist of file extensions in `config.json` (e.g. `.ts`, `.py`, `.rs`). Only text/code extensions — binary formats (`.pdf`, `.mp4`, etc.) are excluded by design. Always ignores: `.pix`, `node_modules`, `.git`, `dist`, `build`, `.next`.
 
 ### Store
 
@@ -42,6 +40,38 @@ Runtime and CLI framework (`effect`, `@effect/cli`, `@effect/platform-node`). Ch
 
 Rust-native codebase intelligence tool for TS/JS. Finds dead code, duplication, complexity hotspots.
 Used as quality gate: `fallow --format json` after type-checking and tests.
+
+### Adapter Test
+
+Tests a single adapter (`src/services/*.ts`) with its real implementation against MemoryFileSystem. Only mocks dependencies that literally cannot run in CI (e.g. ONNX embedder). Asserts on domain types, not mock side-effects.
+
+### Use Case Test
+
+Tests a single use case (`src/application/*.ts`) through `testLayer()` with real adapters underneath. Asserts the domain result (e.g. `IndexResult`), not CLI output or console side-effects.
+
+### Command Test
+
+Tests the full `Command.run` → all layers → CLI output path. Exercises the composition root. The only test category that inspects `MockConsole` lines or `Exit` status from `Command.run`.
+
+### Default Embedder (test)
+
+Zero-vector mock Embedder provided by `testLayer()`. Returns `Float32Array(384)` of zeros for every embedding. Used in Use Case and Command tests where real embeddings are irrelevant to the assertion.
+
+### Memory FileSystem Layer
+
+Shared utility for Adapter tests. Builds a `MemoryFileSystem.layer` pre-populated with fixture contents plus `NodeContext.layer` (for crypto, stat, etc). Exported from `tests/test-utils/memfs.ts`. Adapter tests use minimal layers (`Layer.provideMerge(AdapterLive, memoryFsLayer(fixtures))`); Use Case and Command tests use the full `testLayer()`.
+
+### Decision Coverage
+
+The quality gate for tests: every branch (`if`, `Effect.catchTag`, `Exit`, fallback path) in `src/services/` and `src/application/` must be exercised at least once. No numerical line-coverage target; 0% branches in any file is a failure. Named for the decision-tree coverage it demands.
+
+### Test Layer (`testLayer()`)
+
+Factory in `tests/test-utils/testLayer.ts` that builds the full application layer against `MemoryFileSystem` with mocked Scanner and Embedder by default. Accepts overrides via `{ contents, scannerLayer, embedderLayer }` for fixture-driven test scenarios.
+
+### Embedder Mocking Policy
+
+The ONNX Embedder is the **only** adapter permitted to be real in its Adapter test (`embedder.test.ts`) — all other test categories (Use Case, Command, other Adapter tests) must mock it via `defaultEmbedderLayer` (zero-vectors). Rationale: model correctness is tested once in isolation; speed and determinism matter everywhere else.
 
 ### Agent-ready
 
