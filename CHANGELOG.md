@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.5.0...pix-v0.5.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* add ignore_usernames for release-please and bot PRs, expand CodeRabbit config with path filters, path instructions, and tool selectivity ([#34](https://github.com/Lucas-Bur/pix/issues/34)) ([6eb31b1](https://github.com/Lucas-Bur/pix/commit/6eb31b18fc022dd46133928216ad3b4c5c611abe))
+* narrow coderabbit CI rule — only quality-gate commands must use vp run ([#34](https://github.com/Lucas-Bur/pix/issues/34)) ([5e6615f](https://github.com/Lucas-Bur/pix/commit/5e6615f29f1e0ef3b4b0189dce9ed49190c0baaa))
+* remove vertical slices rule from coderabbit test instructions (AI cannot verify TDD order) ([#34](https://github.com/Lucas-Bur/pix/issues/34)) ([cce7dc3](https://github.com/Lucas-Bur/pix/commit/cce7dc37b8e2ddc9ed3249b908d7c48c5ef93bfd))
+
 ## [0.5.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.4.0...pix-v0.5.0) (2026-05-12)
 
 
