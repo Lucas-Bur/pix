@@ -1,4 +1,5 @@
 import { CliConfig } from "@effect/cli"
+import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
 import { MemoryFileSystem } from "effect-memfs"
 
@@ -7,7 +8,7 @@ import { IndexProject } from "../../src/application/index-project.js"
 import { InitProject } from "../../src/application/init-project.js"
 import { QueryProject } from "../../src/application/query-project.js"
 import { ResetIndex } from "../../src/application/reset-index.js"
-import { Embedder, Scanner } from "../../src/domain/ports.js"
+import { ConfigStore, Embedder, Scanner, VectorStore } from "../../src/domain/ports.js"
 import { ChunkerLive } from "../../src/services/chunker.js"
 import { ConfigStoreLive } from "../../src/services/config-store.js"
 import { VectorStoreLive } from "../../src/services/vector-store.js"
@@ -17,6 +18,9 @@ export interface TestLayerOptions {
   readonly contents?: MemoryFileSystem.Contents
   readonly scannerLayer?: Layer.Layer<Scanner>
   readonly embedderLayer?: Layer.Layer<Embedder>
+  readonly configStoreLayer?: Layer.Layer<ConfigStore>
+  readonly vectorStoreLayer?: Layer.Layer<VectorStore>
+  readonly cleanStore?: boolean
 }
 
 const defaultScannerLayer = Layer.succeed(Scanner, {
@@ -34,15 +38,22 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
  * in-memory variant and mocks Scanner + Embedder. Mirrors the layer structure in `src/index.ts`.
  */
 export const testLayer = (opts: TestLayerOptions = {}) => {
-  const { contents = {}, scannerLayer, embedderLayer } = opts
+  const {
+    contents = {},
+    scannerLayer,
+    embedderLayer,
+    configStoreLayer,
+    vectorStoreLayer,
+    cleanStore,
+  } = opts
 
   const memFs = MemoryFileSystem.layerWith(contents)
 
   const servicesLayer = Layer.mergeAll(
-    ConfigStoreLive,
+    configStoreLayer ?? ConfigStoreLive,
     scannerLayer ?? defaultScannerLayer,
     embedderLayer ?? defaultEmbedderLayer,
-    VectorStoreLive,
+    vectorStoreLayer ?? VectorStoreLive,
   )
 
   const chunkerLayer = ChunkerLive.pipe(Layer.provide(servicesLayer))
@@ -59,5 +70,33 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
 
   const appLayer = Layer.merge(useCaseLayer.pipe(Layer.provide(infraLayer)), memFs)
 
-  return Layer.mergeAll(appLayer, MockConsoleLayer, CliConfig.layer({ showTypes: false }))
+  const withConsole = Layer.mergeAll(
+    appLayer,
+    MockConsoleLayer,
+    CliConfig.layer({ showTypes: false }),
+  )
+
+  if (cleanStore) {
+    const cleanStoreLayer = Layer.scopedDiscard(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const exists = yield* fs.exists(".pix")
+        if (exists) {
+          yield* fs.remove(".pix", { recursive: true })
+        }
+        yield* Effect.addFinalizer(() =>
+          Effect.orDie(
+            Effect.gen(function* () {
+              const fs2 = yield* FileSystem.FileSystem
+              const exists2 = yield* fs2.exists(".pix")
+              if (exists2) yield* fs2.remove(".pix", { recursive: true })
+            }),
+          ),
+        )
+      }),
+    )
+    return Layer.provideMerge(withConsole, cleanStoreLayer)
+  }
+
+  return withConsole
 }
