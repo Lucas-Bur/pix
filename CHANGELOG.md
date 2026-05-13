@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/Lucas-Bur/pix/compare/pix-v0.5.2...pix-v0.5.3) (2026-05-13)
+
+
+### Bug Fixes
+
+* read model from config.json, rename getStats to getStatus ([#41](https://github.com/Lucas-Bur/pix/issues/41)) ([124787c](https://github.com/Lucas-Bur/pix/commit/124787cee1716fccf4ed86eeb35a332a4d5ddd6f))
+
 ## [0.5.2](https://github.com/Lucas-Bur/pix/compare/pix-v0.5.1...pix-v0.5.2) (2026-05-13)
 
 
