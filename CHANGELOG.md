@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/Lucas-Bur/pix/compare/pix-v0.5.1...pix-v0.5.2) (2026-05-13)
+
+
+### Bug Fixes
+
+* skip CodeRabbit review for autorelease PRs via labels filter ([#34](https://github.com/Lucas-Bur/pix/issues/34)) ([27b4d66](https://github.com/Lucas-Bur/pix/commit/27b4d66cd484ff0c8244c6904932e9e077a32970))
+
 ## [0.5.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.5.0...pix-v0.5.1) (2026-05-13)
 
 
