@@ -1,6 +1,6 @@
 {
   "name": "@lucas-bur/pix",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Lightweight local semantic project indexer",
   "keywords": [
     "cli",
