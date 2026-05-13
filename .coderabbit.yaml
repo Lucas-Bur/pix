@@ -51,10 +51,13 @@ reviews:
         test2→impl2. Use effect-memfs for filesystem mocking.
     - path: ".github/workflows/**"
       instructions: >
-        CI workflows. Every step must use `vp run <script>` — no inline shell commands.
-        Script names must exist in package.json. Use voidzero-dev/setup-vp@v1 for setup.
-        Blocking gates: check, test:coverage, build. Non-blocking: lint:effect:ci,
-        lint:fallow:ci (both with continue-on-error + crash instrumentation).
+        CI workflows. Quality-gate commands must use `vp run <script>` — script names
+        must exist in package.json. Setup steps (vp install, actions/checkout),
+        external GitHub Actions (release-please, codecov, peaceiris/actions-gh-pages),
+        auth/platform commands (npm publish, npx), and simple shell one-liners (mkdir,
+        redirect >) do NOT need wrapping in npm scripts. Blocking gates: check,
+        test:coverage, build. Non-blocking: lint:effect:ci, lint:fallow:ci (both with
+        continue-on-error + crash instrumentation).
     - path: "**/*.md"
       instructions: >
         Markdown documentation. Follow existing formatting conventions. Ensure links
