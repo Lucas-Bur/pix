@@ -8,7 +8,7 @@ import type { StatusResult } from "./get-status.js"
 /** Result of indexing a project. */
 interface IndexResult {
   readonly success: true
-  readonly stats: Omit<StatusResult, "model" | "lastIndex">
+  readonly status: Omit<StatusResult, "model" | "lastIndex">
 }
 
 /**
@@ -52,7 +52,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           yield* Effect.logInfo("No chunks to index.")
           return {
             success: true as const,
-            stats: { chunks: 0, files: 0, totalLines: 0, byteSize: 0 },
+            status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0 },
           }
         }
 
@@ -68,7 +68,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
 
         return {
           success: true as const,
-          stats: { chunks: totalChunks, files: totalFiles, totalLines, byteSize },
+          status: { chunks: totalChunks, files: totalFiles, totalLines, byteSize },
         }
       })
 

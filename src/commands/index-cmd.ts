@@ -35,15 +35,15 @@ export const indexCommand = Command.make(
       if (json) {
         return yield* Console.log(
           JSON.stringify({
-            chunks: result.right.stats.chunks,
-            files: result.right.stats.files,
+            chunks: result.right.status.chunks,
+            files: result.right.status.files,
             duration,
           }),
         )
       }
 
       yield* Effect.logInfo(
-        `Indexed ${result.right.stats.chunks} chunks from ${result.right.stats.files} files in ${duration}.`,
+        `Indexed ${result.right.status.chunks} chunks from ${result.right.status.files} files in ${duration}.`,
       )
     }).pipe(Effect.tapError((error) => Console.log(formatError(error)))),
 )

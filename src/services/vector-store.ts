@@ -11,20 +11,6 @@ const CHUNKS_FILE = `${STORE_DIR}/chunks.jsonl`
 const VECTORS_FILE = `${STORE_DIR}/vectors.bin`
 
 /**
- * Reads the first line of chunks.jsonl to get the model name. Returns empty string if the file
- * doesn't exist or is empty.
- */
-const readModelFromChunks = (lines: string[]): string => {
-  if (lines.length === 0) return ""
-  try {
-    const first = JSON.parse(lines[0])
-    return (first as { model?: string }).model ?? ""
-  } catch {
-    return ""
-  }
-}
-
-/**
  * FileSystem adapter for VectorStore port. Reads from chunks.jsonl and vectors.bin to provide index
  * statistics.
  */
@@ -182,7 +168,7 @@ const make = Effect.gen(function* () {
       return results.slice(0, topK)
     })
 
-  const getStats = (): Effect.Effect<
+  const getStatus = (): Effect.Effect<
     {
       chunks: number
       files: number
@@ -218,7 +204,7 @@ const make = Effect.gen(function* () {
       const chunks = lines.length
       const uniqueFiles = countUniqueFiles(lines)
       const files = uniqueFiles.size
-      const model = readModelFromChunks(lines)
+      const model = ""
       const totalLines = countTotalLines(lines)
 
       // Get vectors.bin size and mtime
@@ -263,7 +249,7 @@ const make = Effect.gen(function* () {
       return { deletedChunks, deletedVectors, freedBytes }
     })
 
-  return { store, search, getStats, reset } as const
+  return { store, search, getStatus, reset } as const
 })
 
 export const VectorStoreLive = Layer.effect(VectorStore, make)

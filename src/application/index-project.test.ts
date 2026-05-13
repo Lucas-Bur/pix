@@ -46,7 +46,7 @@ test("IndexProject.index stores all chunks with embeddings", () =>
           storedEmbeddings = embeddings
         }),
       search: () => Effect.succeed([]),
-      getStats: () =>
+      getStatus: () =>
         Effect.succeed({
           chunks: 2,
           files: 2,
@@ -72,8 +72,8 @@ test("IndexProject.index stores all chunks with embeddings", () =>
     const result = yield* IndexProject.index().pipe(Effect.provide(testLayer))
 
     expect(result.success).toBe(true)
-    expect(result.stats.chunks).toBe(2)
-    expect(result.stats.files).toBe(2)
+    expect(result.status.chunks).toBe(2)
+    expect(result.status.files).toBe(2)
     expect(storedChunks.length).toBe(2)
     expect(storedEmbeddings.length).toBe(2)
   }))
@@ -109,7 +109,7 @@ test("IndexProject.index propagates errors from VectorStore", () =>
           stack: "",
         } as never),
       search: () => Effect.succeed([]),
-      getStats: () =>
+      getStatus: () =>
         Effect.succeed({
           chunks: 0,
           files: 0,

@@ -2,11 +2,11 @@ import { Effect, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { GetStatus } from "../application/get-status.js"
-import { VectorStore } from "../domain/ports.js"
+import { ConfigStore, VectorStore } from "../domain/ports.js"
 
 test("pix status --json outputs correct JSON structure", () =>
   Effect.gen(function* () {
-    const mockStats = {
+    const mockStatus = {
       chunks: 42,
       files: 7,
       model: "Xenova/all-MiniLM-L6-v2",
@@ -18,11 +18,25 @@ test("pix status --json outputs correct JSON structure", () =>
     const mockStore = {
       store: () => Effect.succeed(undefined),
       search: () => Effect.succeed([]),
-      getStats: () => Effect.succeed(mockStats),
+      getStatus: () => Effect.succeed(mockStatus),
       reset: () => Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),
     }
 
-    const mockLayer = Layer.succeed(VectorStore, mockStore)
+    const mockConfig = Layer.succeed(ConfigStore, {
+      readConfig: () =>
+        Effect.succeed({
+          schema: "1",
+          model: "Xenova/all-MiniLM-L6-v2",
+          dims: 384,
+          chunkLines: 60,
+          overlapLines: 10,
+          files: {},
+        }),
+      writeConfig: () => Effect.succeed(undefined),
+      configExists: () => Effect.succeed(true),
+    })
+
+    const mockLayer = Layer.mergeAll(Layer.succeed(VectorStore, mockStore), mockConfig)
     const serviceLayer = Layer.provideMerge(GetStatus.Default, mockLayer)
 
     // Capture stdout

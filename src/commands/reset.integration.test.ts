@@ -21,7 +21,7 @@ const fixtures = {
   ".pix/vectors.bin": "binary-data",
 }
 
-test("pix reset --json deletes index files and reports stats", () =>
+test("pix reset --json deletes index files and reports status", () =>
   Effect.gen(function* () {
     yield* run(["reset", "--json"])
 
