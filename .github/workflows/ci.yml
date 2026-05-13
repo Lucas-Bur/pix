@@ -8,16 +8,14 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: voidzero-dev/setup-vp@v1
+      - uses: voidzero-dev/setup-vp@v1.10.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: true
 
       - run: vp install
@@ -30,7 +28,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: ${{ github.event.pull_request.head.repo.fork == false }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
