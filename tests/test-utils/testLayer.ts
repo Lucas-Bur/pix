@@ -16,10 +16,10 @@ import { layer as MockConsoleLayer } from "./MockConsole.js"
 
 export interface TestLayerOptions {
   readonly contents?: MemoryFileSystem.Contents
-  readonly scannerLayer?: Layer.Layer<Scanner>
-  readonly embedderLayer?: Layer.Layer<Embedder>
-  readonly configStoreLayer?: Layer.Layer<ConfigStore>
-  readonly vectorStoreLayer?: Layer.Layer<VectorStore>
+  readonly scannerLayer?: Layer.Layer<Scanner, never, FileSystem.FileSystem>
+  readonly embedderLayer?: Layer.Layer<Embedder, never, FileSystem.FileSystem>
+  readonly configStoreLayer?: Layer.Layer<ConfigStore, never, FileSystem.FileSystem>
+  readonly vectorStoreLayer?: Layer.Layer<VectorStore, never, FileSystem.FileSystem>
   readonly cleanStore?: boolean
 }
 
