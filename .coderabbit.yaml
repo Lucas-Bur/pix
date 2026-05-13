@@ -1,10 +1,124 @@
 language: en
 
 reviews:
+  profile: "chill"
   high_level_summary: true
   review_status: true
+  path_filters:
+    - "!dist/**"
+    - "!.pix/**"
+    - "!node_modules/**"
+    - "!coverage/**"
+    - "!pnpm-lock.yaml"
+    - "!release-please-config.json"
+    - "!.release-please-manifest.json"
+    - "!skills-lock.json"
+    - "!**/.fallow/**"
+    - "!.coderabbit.yaml"
+    - "!.claude/**"
+    - "!.vscode/**"
+    - "!.gitignore"
+    - "!.gitattributes"
+  path_instructions:
+    - path: "src/domain/**"
+      instructions: >
+        Domain layer — entities and value objects are pure TypeScript with no I/O.
+        Lightweight Effect primitives are permitted for ports and errors: Context.Tag,
+        Data.TaggedError, and Effect.Effect type signatures (not runtime computation).
+        Every exported type must have JSDoc. Use Option<T> internally, T | null at
+        boundaries. No `as any`, no try-catch.
+    - path: "src/application/**"
+      instructions: >
+        Use cases as Effect.Service classes. Use Effect.gen for imperative style.
+        Depend on ports via yield* PortTag — never touch filesystem or ONNX directly.
+        Error types must mirror the port's error signature. Tests exist for every use
+        case (co-located *.test.ts). One test at a time, vertical slices. Test behavior
+        not implementation. Use effect-memfs for filesystem mocking.
+    - path: "src/services/**"
+      instructions: >
+        Infrastructure adapters implementing domain ports. Each is an Effect.Layer
+        providing a port tag. File ops use Effect.try / Effect.tryPromise — never
+        Effect.sync. Compose layers with Layer.merge or Layer.provideMerge. No `as any`,
+        `as never`, `as unknown`. mtime is Option<Date>, not Date | undefined.
+    - path: "src/commands/**"
+      instructions: >
+        CLI command layer using @effect/cli. Depends on application services via
+        yield*. Co-located test file required (<name>.test.ts + <name>.integration.test.ts).
+    - path: "**/*.test.ts"
+      instructions: >
+        Test files. Test behavior not implementation, through public interfaces only.
+        Tests must survive internal refactoring. Use vertical slices: test1→impl1,
+        test2→impl2. Use effect-memfs for filesystem mocking.
+    - path: ".github/workflows/**"
+      instructions: >
+        CI workflows. Every step must use `vp run <script>` — no inline shell commands.
+        Script names must exist in package.json. Use voidzero-dev/setup-vp@v1 for setup.
+        Blocking gates: check, test:coverage, build. Non-blocking: lint:effect:ci,
+        lint:fallow:ci (both with continue-on-error + crash instrumentation).
+    - path: "**/*.md"
+      instructions: >
+        Markdown documentation. Follow existing formatting conventions. Ensure links
+        are valid. ADRs in docs/adr/ follow the format: Status → Context → Decision →
+        Rationale → Consequences.
   auto_review:
     enabled: true
     ignore_title_keywords:
       - "WIP"
       - "DRAFT"
+    ignore_usernames:
+      - "release-please[bot]"
+      - "github-actions[bot]"
+      - "dependabot[bot]"
+  tools:
+    # --- Keep: match project languages ---
+    oxc:              { enabled: true }
+    eslint:           { enabled: true }
+    biome:            { enabled: true }
+    actionlint:       { enabled: true }
+    yamllint:         { enabled: true }
+    markdownlint:     { enabled: true }
+    gitleaks:         { enabled: true }
+    trufflehog:       { enabled: true }
+    semgrep:          { enabled: true }
+    opengrep:         { enabled: true }
+    osvScanner:       { enabled: true }
+    github-checks:    { enabled: true }
+    shellcheck:       { enabled: true }
+    languagetool:     { enabled: true }
+    # --- Disable: languages not used in this repo ---
+    phpstan:          { enabled: false }
+    phpcs:            { enabled: false }
+    phpmd:            { enabled: false }
+    rubocop:          { enabled: false }
+    brakeman:         { enabled: false }
+    golangci-lint:    { enabled: false }
+    clippy:           { enabled: false }
+    detekt:           { enabled: false }
+    clang:            { enabled: false }
+    cppcheck:         { enabled: false }
+    swiftlint:        { enabled: false }
+    pylint:           { enabled: false }
+    flake8:           { enabled: false }
+    ruff:             { enabled: false }
+    buf:              { enabled: false }
+    regal:            { enabled: false }
+    fortitudeLint:    { enabled: false }
+    smartyLint:       { enabled: false }
+    emberTemplateLint:{ enabled: false }
+    luacheck:         { enabled: false }
+    blinter:          { enabled: false }
+    shopifyThemeCheck:{ enabled: false }
+    prismaLint:       { enabled: false }
+    sqlfluff:         { enabled: false }
+    stylelint:        { enabled: false }
+    htmlhint:         { enabled: false }
+    checkmake:        { enabled: false }
+    pmd:              { enabled: false }
+    hadolint:         { enabled: false }
+    tflint:           { enabled: false }
+    checkov:          { enabled: false }
+    trivy:            { enabled: false }
+    circleci:         { enabled: false }
+    psscriptanalyzer: { enabled: false }
+    presidio:         { enabled: false }
+    dotenvLint:       { enabled: false }
