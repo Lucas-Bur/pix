@@ -16,7 +16,7 @@ test("ResetIndex.reset calls store.reset() and returns result", () =>
     const mockStore = {
       store: () => Effect.succeed(undefined),
       search: () => Effect.succeed([]),
-      getStats: () =>
+      getStatus: () =>
         Effect.succeed({
           chunks: 0,
           files: 0,
@@ -54,7 +54,7 @@ test("ResetIndex.reset returns zeroes when nothing to delete", () =>
     const mockStore = {
       store: () => Effect.succeed(undefined),
       search: () => Effect.succeed([]),
-      getStats: () =>
+      getStatus: () =>
         Effect.succeed({
           chunks: 0,
           files: 0,

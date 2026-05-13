@@ -15,7 +15,7 @@ test("pix reset --json outputs correct JSON structure", () =>
     const mockStore = {
       store: () => Effect.succeed(undefined),
       search: () => Effect.succeed([]),
-      getStats: () =>
+      getStatus: () =>
         Effect.succeed({
           chunks: 0,
           files: 0,
@@ -57,7 +57,7 @@ test("pix reset --json on clean project reports nothing deleted", () =>
     const mockStore = {
       store: () => Effect.succeed(undefined),
       search: () => Effect.succeed([]),
-      getStats: () =>
+      getStatus: () =>
         Effect.succeed({
           chunks: 0,
           files: 0,

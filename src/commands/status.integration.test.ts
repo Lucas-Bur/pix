@@ -32,7 +32,7 @@ const fixtures = {
   ".pix/vectors.bin": "fake binary content",
 }
 
-test("pix status --json outputs correct stats from index files", () =>
+test("pix status --json outputs correct status from index files", () =>
   Effect.gen(function* () {
     yield* run(["status", "--json"])
 
@@ -46,7 +46,7 @@ test("pix status --json outputs correct stats from index files", () =>
     expect(output.totalLines).toBe(3)
   }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
 
-test("pix status --json on empty project shows zero stats", () =>
+test("pix status --json on empty project shows zero status", () =>
   Effect.gen(function* () {
     yield* run(["status", "--json"])
 

@@ -74,7 +74,7 @@ export class VectorStore extends Context.Tag("VectorStore")<
       query: Embedding,
       topK: number,
     ) => Effect.Effect<readonly SearchResult[], PlatformError>
-    readonly getStats: () => Effect.Effect<
+    readonly getStatus: () => Effect.Effect<
       {
         chunks: number
         files: number

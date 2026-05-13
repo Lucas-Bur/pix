@@ -1,7 +1,7 @@
 import type { PlatformError } from "@effect/platform/Error"
 import { Effect } from "effect"
 
-import { VectorStore } from "../domain/ports.js"
+import { ConfigStore, VectorStore } from "../domain/ports.js"
 
 /** Return type for pix status */
 export interface StatusResult {
@@ -13,13 +13,22 @@ export interface StatusResult {
   readonly byteSize: number
 }
 
-/** Use case: get index statistics. Depends on VectorStore via Effect tag. */
+/** Use case: get index statistics. Depends on VectorStore and ConfigStore via Effect tags. */
 export class GetStatus extends Effect.Service<GetStatus>()("GetStatus", {
   accessors: true,
   effect: Effect.gen(function* () {
     const store = yield* VectorStore
+    const configStore = yield* ConfigStore
 
-    const getStatus = (): Effect.Effect<StatusResult, PlatformError> => store.getStats()
+    const getStatus = (): Effect.Effect<StatusResult, PlatformError> =>
+      Effect.gen(function* () {
+        const status = yield* store.getStatus()
+        const configModel = yield* configStore.readConfig().pipe(
+          Effect.map((c) => c.model),
+          Effect.catchAll(() => Effect.succeed(status.model)),
+        )
+        return { ...status, model: configModel }
+      })
 
     return { getStatus }
   }),

@@ -5,6 +5,7 @@ import { expect, test } from "vite-plus/test"
 
 import { GetStatus } from "../application/get-status.js"
 import { VectorStore } from "../domain/ports.js"
+import { ConfigStoreLive } from "./config-store.js"
 import { VectorStoreLive } from "./vector-store.js"
 
 const STORE_DIR = ".pix"
@@ -19,12 +20,15 @@ const cleanStoreDir = Effect.gen(function* () {
   }
 }).pipe(Effect.provide(NodeContext.layer), Effect.scoped, Effect.runPromise)
 
-test("FileSystemVectorStore.getStats returns 0 when no index exists", () =>
+test("FileSystemVectorStore.getStatus returns 0 when no index exists", () =>
   Effect.gen(function* () {
     yield* Effect.promise(() => cleanStoreDir)
 
-    // Combine layers: GetStatus depends on VectorStore, both need NodeContext for FileSystem
-    const baseLayer = Layer.provideMerge(GetStatus.Default, VectorStoreLive)
+    // Combine layers: GetStatus depends on VectorStore and ConfigStore, all need NodeContext for FileSystem
+    const baseLayer = Layer.provideMerge(
+      GetStatus.Default,
+      Layer.mergeAll(VectorStoreLive, ConfigStoreLive),
+    )
     const testLayer = Layer.provideMerge(baseLayer, NodeContext.layer)
 
     const result = yield* GetStatus.getStatus().pipe(Effect.provide(testLayer), Effect.scoped)

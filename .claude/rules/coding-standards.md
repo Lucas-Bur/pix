@@ -30,7 +30,7 @@
 
 ### Error Propagation in Services
 
-When a use case delegates to a port method with errors in its type (e.g., `VectorStore.getStats() → PlatformError`), the use case method must also declare those errors:
+When a use case delegates to a port method with errors in its type (e.g., `VectorStore.getStatus() → PlatformError`), the use case method must also declare those errors:
 
 ```typescript
 // WRONG: use case declares never, but port has PlatformError

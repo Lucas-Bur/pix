@@ -25,7 +25,7 @@ const emptyScannerLayer = Layer.succeed(Scanner, {
   scanFiles: () => Effect.succeed<string[]>([]),
 })
 
-test("pix index --json outputs stats after indexing", () =>
+test("pix index --json outputs status after indexing", () =>
   Effect.gen(function* () {
     yield* run(["index", "--json"])
 
