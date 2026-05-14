@@ -5,15 +5,13 @@ import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { DEFAULT_EXTENSIONS } from "../domain/config.js"
 import { Scanner, ScannerLive } from "./scanner.ts"
 
-const cwd = process.cwd().replace(/\\/g, "/")
-
 const fixtures = {
-  [`${cwd}/src/commands/init.ts`]: "export const init = () => {}",
-  [`${cwd}/src/utils/helper.ts`]: "export const helper = () => {}",
-  [`${cwd}/node_modules/some-pkg/index.ts`]: "export const x = 1",
-  [`${cwd}/.pix/config.json`]: "{}",
-  [`${cwd}/.git/config`]: "[core]",
-  [`${cwd}/.gitignore`]: "dist\n.next\n",
+  "src/commands/init.ts": "export const init = () => {}",
+  "src/utils/helper.ts": "export const helper = () => {}",
+  "node_modules/some-pkg/index.ts": "export const x = 1",
+  ".pix/config.json": "{}",
+  ".git/config": "[core]",
+  ".gitignore": "dist\n.next\n",
 }
 
 const testLayer = Layer.provideMerge(ScannerLive, memoryFsLayer(fixtures))
@@ -43,12 +41,12 @@ test("Scanner always ignores .pix, node_modules, .git", () =>
   }).pipe(Effect.provide(testLayer)))
 
 const edgeFixtures = {
-  [`${cwd}/src/commands/init.ts`]: "export const init = () => {}",
-  [`${cwd}/src/styles/main.css`]: "body { margin: 0 }",
-  [`${cwd}/README`]: "# No extension file",
-  [`${cwd}/.gitignore`]: "",
-  [`${cwd}/.git/info/exclude`]: "secrets/\n",
-  [`${cwd}/secrets/api-key.ts`]: "export const KEY = 'secret'",
+  "src/commands/init.ts": "export const init = () => {}",
+  "src/styles/main.css": "body { margin: 0 }",
+  README: "# No extension file",
+  ".gitignore": "",
+  ".git/info/exclude": "secrets/\n",
+  "secrets/api-key.ts": "export const KEY = 'secret'",
 }
 
 const edgeTestLayer = Layer.provideMerge(ScannerLive, memoryFsLayer(edgeFixtures))
