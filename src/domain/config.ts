@@ -5,13 +5,24 @@ export class ConfigError extends Data.TaggedError("ConfigError")<{
   readonly cause?: unknown
 }> {}
 
+/** Pix project configuration stored in .pix/config.json. */
 export interface Config {
+  /** Config schema version. */
   readonly schema: string
+  /** HuggingFace model identifier for embeddings. */
   readonly model: string
+  /** Embedding vector dimensions. */
   readonly dims: number
+  /** Number of source lines per chunk. */
   readonly chunkLines: number
+  /** Number of overlapping lines between consecutive chunks. */
   readonly overlapLines: number
+  /**
+   * Maximum concurrent file-chunking operations during indexing. Clamped to minimum 1 by the index
+   * pipeline. Defaults to 8 when absent.
+   */
   readonly chunkConcurrency?: number
+  /** File extensions to index, mapped to priority weight. */
   readonly files: Record<string, number>
 }
 

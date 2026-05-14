@@ -1,4 +1,4 @@
-import { Effect, Exit, Layer } from "effect"
+import { Cause, Effect, Exit, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { testLayer } from "../../tests/test-utils/testLayer.js"
@@ -99,6 +99,11 @@ test("IndexProject.index propagates errors from VectorStore", () =>
     )
 
     expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      expect(exit.cause._tag).toBe("Fail")
+      const cause = exit.cause as Cause.Cause<StoreError>
+      expect(Cause.isFailType(cause) && cause.error).toBeInstanceOf(StoreError)
+    }
   }))
 
 test("IndexProject.index returns zero status when no files found", () =>
@@ -137,113 +142,42 @@ test("IndexProject.index uses custom extensions from config", () =>
     Effect.scoped,
   ))
 
-test("IndexProject.index falls back to default chunkConcurrency when missing", () =>
+test("IndexProject.index respects chunkConcurrency values", () =>
   Effect.gen(function* () {
-    const result = yield* IndexProject.index()
-    expect(result.success).toBe(true)
-    expect(result.status.chunks).toBeGreaterThan(0)
-    expect(result.status.files).toBe(2)
-  }).pipe(
-    Effect.provide(
-      testLayer({
-        contents: {
-          ".pix/config.json": JSON.stringify({
-            schema: "1",
-            model: "test-model",
-            dims: 384,
-            chunkLines: 60,
-            overlapLines: 10,
-            files: {},
-          }),
-          "src/a.ts": sourceFile,
-          "src/b.ts": sourceFile,
-        },
-        scannerLayer: ScannerLive,
-      }),
-    ),
-    Effect.scoped,
-  ))
+    for (const { label, chunkConcurrency } of [
+      { label: "missing (default 8)", chunkConcurrency: undefined },
+      { label: "explicit 1", chunkConcurrency: 1 },
+      { label: "clamped 0 to 1", chunkConcurrency: 0 },
+      { label: "high 64", chunkConcurrency: 64 },
+    ]) {
+      const configObj: Record<string, unknown> = {
+        schema: "1",
+        model: "test-model",
+        dims: 384,
+        chunkLines: 60,
+        overlapLines: 10,
+        files: {},
+      }
+      if (chunkConcurrency !== undefined) {
+        configObj.chunkConcurrency = chunkConcurrency
+      }
 
-test("IndexProject.index works with explicit chunkConcurrency: 1", () =>
-  Effect.gen(function* () {
-    const result = yield* IndexProject.index()
-    expect(result.success).toBe(true)
-    expect(result.status.chunks).toBeGreaterThan(0)
-    expect(result.status.files).toBe(2)
-  }).pipe(
-    Effect.provide(
-      testLayer({
-        contents: {
-          ".pix/config.json": JSON.stringify({
-            schema: "1",
-            model: "test-model",
-            dims: 384,
-            chunkLines: 60,
-            overlapLines: 10,
-            chunkConcurrency: 1,
-            files: {},
+      const result = yield* IndexProject.index().pipe(
+        Effect.provide(
+          testLayer({
+            contents: {
+              ".pix/config.json": JSON.stringify(configObj),
+              "src/a.ts": sourceFile,
+              "src/b.ts": sourceFile,
+            },
+            scannerLayer: ScannerLive,
           }),
-          "src/a.ts": sourceFile,
-          "src/b.ts": sourceFile,
-        },
-        scannerLayer: ScannerLive,
-      }),
-    ),
-    Effect.scoped,
-  ))
+        ),
+        Effect.scoped,
+      )
 
-test("IndexProject.index clamps chunkConcurrency: 0 to 1", () =>
-  Effect.gen(function* () {
-    const result = yield* IndexProject.index()
-    expect(result.success).toBe(true)
-    expect(result.status.chunks).toBeGreaterThan(0)
-    expect(result.status.files).toBe(2)
-  }).pipe(
-    Effect.provide(
-      testLayer({
-        contents: {
-          ".pix/config.json": JSON.stringify({
-            schema: "1",
-            model: "test-model",
-            dims: 384,
-            chunkLines: 60,
-            overlapLines: 10,
-            chunkConcurrency: 0,
-            files: {},
-          }),
-          "src/a.ts": sourceFile,
-          "src/b.ts": sourceFile,
-        },
-        scannerLayer: ScannerLive,
-      }),
-    ),
-    Effect.scoped,
-  ))
-
-test("IndexProject.index works with high chunkConcurrency: 64", () =>
-  Effect.gen(function* () {
-    const result = yield* IndexProject.index()
-    expect(result.success).toBe(true)
-    expect(result.status.chunks).toBeGreaterThan(0)
-    expect(result.status.files).toBe(2)
-  }).pipe(
-    Effect.provide(
-      testLayer({
-        contents: {
-          ".pix/config.json": JSON.stringify({
-            schema: "1",
-            model: "test-model",
-            dims: 384,
-            chunkLines: 60,
-            overlapLines: 10,
-            chunkConcurrency: 64,
-            files: {},
-          }),
-          "src/a.ts": sourceFile,
-          "src/b.ts": sourceFile,
-        },
-        scannerLayer: ScannerLive,
-      }),
-    ),
-    Effect.scoped,
-  ))
+      expect(result.success, `chunkConcurrency=${label}`).toBe(true)
+      expect(result.status.chunks, `chunkConcurrency=${label}`).toBeGreaterThan(0)
+      expect(result.status.files, `chunkConcurrency=${label}`).toBe(2)
+    }
+  }))
