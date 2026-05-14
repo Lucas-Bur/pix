@@ -24,6 +24,29 @@ const formatResult = (result: SearchResult): string => {
   return `${result.file}:${result.startLine}-${result.endLine} (score: ${result.score.toFixed(3)})${contextBefore}\n${result.text}${contextAfter}`
 }
 
+const toJsonOutput = (results: readonly SearchResult[], ctxLines: number) =>
+  results.map((r) => ({
+    score: r.score,
+    file: r.file,
+    startLine: r.startLine,
+    endLine: r.endLine,
+    text: r.text,
+    ...(ctxLines > 0 && r.contextBefore && { contextBefore: r.contextBefore }),
+    ...(ctxLines > 0 && r.contextAfter && { contextAfter: r.contextAfter }),
+  }))
+
+const renderResults = (results: readonly SearchResult[]) =>
+  Effect.gen(function* () {
+    if (results.length === 0) {
+      yield* Effect.logInfo("No results found")
+      return
+    }
+    for (const result of results) {
+      yield* Console.log(formatResult(result))
+      yield* Console.log("---")
+    }
+  })
+
 /** CLI command: pix query "<text>" [--top N] [--json] [--context-lines N] */
 export const queryCommand = Command.make(
   "query",
@@ -49,27 +72,10 @@ export const queryCommand = Command.make(
       const results = yield* QueryProject.queryProject(queryText, clamped.value)
 
       if (json) {
-        const output = results.map((r) => ({
-          score: r.score,
-          file: r.file,
-          startLine: r.startLine,
-          endLine: r.endLine,
-          text: r.text,
-          ...(ctxLines > 0 && r.contextBefore && { contextBefore: r.contextBefore }),
-          ...(ctxLines > 0 && r.contextAfter && { contextAfter: r.contextAfter }),
-        }))
-        return yield* Console.log(JSON.stringify(output, null, 2))
+        return yield* Console.log(JSON.stringify(toJsonOutput(results, ctxLines), null, 2))
       }
 
-      if (results.length === 0) {
-        yield* Effect.logInfo("No results found")
-        return
-      }
-
-      for (const result of results) {
-        yield* Console.log(formatResult(result))
-        yield* Console.log("---")
-      }
+      yield* renderResults(results)
     }).pipe(
       Effect.catchTags({
         ModelLoadError: reportError,
