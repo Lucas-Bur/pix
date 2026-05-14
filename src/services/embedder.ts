@@ -2,14 +2,14 @@ import { env } from "@huggingface/transformers"
 import { Effect, Layer } from "effect"
 
 import type { Embedding } from "../domain/embedding.js"
+import { DEFAULT_CONFIG } from "../domain/config.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
-import { Embedder } from "../domain/ports.js"
+import { ConfigStore, Embedder } from "../domain/ports.js"
 export { Embedder }
 
 const MODEL_NAME = "Xenova/all-MiniLM-L6-v2"
 const DIMS = 384
 const CACHE_DIR = ".pix/cache"
-const BATCH_SIZE = 16
 
 env.cacheDir = CACHE_DIR
 
@@ -28,6 +28,11 @@ const normalize = (arr: Float32Array): Float32Array => {
 }
 
 const make = Effect.gen(function* () {
+  const configStore = yield* ConfigStore
+  const config = yield* configStore
+    .readConfig()
+    .pipe(Effect.catchAll(() => Effect.succeed(DEFAULT_CONFIG)))
+
   const getExtractor = yield* Effect.cached(
     Effect.tryPromise(async () => {
       const { pipeline } = await import("@huggingface/transformers")
@@ -71,12 +76,12 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const extractor = yield* getExtractor
       const results: Float32Array[] = []
-      for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-        const slice = texts.slice(i, i + BATCH_SIZE)
+      for (let i = 0; i < texts.length; i += config.batchSize) {
+        const slice = texts.slice(i, i + config.batchSize)
         const tensor = yield* Effect.tryPromise(() =>
           extractor(slice, { pooling: "mean", normalize: false }),
         ).pipe(
-          Effect.mapError(
+
             (cause) =>
               new InferenceError({
                 message: `Batch embedding inference failed`,

@@ -16,21 +16,18 @@ import { VectorStoreLive } from "./services/vector-store.js"
 // === Layer 1: Infrastructure services ===
 // These services only require NodeContext (FileSystem, Environment, etc.)
 // and have no dependencies on each other.
-const ServicesLayer = Layer.mergeAll(
-  ConfigStoreLive,
-  ScannerLive,
-  OnnxEmbedderLive,
-  VectorStoreLive,
-)
+const ServicesLayer = Layer.mergeAll(ConfigStoreLive, ScannerLive, VectorStoreLive)
 
 // === Layer 2: Services that depend on other services ===
-// ChunkerLive requires ConfigStore, so we provide ServicesLayer here.
+// ChunkerLive and OnnxEmbedderLive both require ConfigStore, so we provide
+// ServicesLayer here so each gets access to the config.
 const ChunkerLayer = ChunkerLive.pipe(Layer.provide(ServicesLayer))
+const EmbedderLayer = OnnxEmbedderLive.pipe(Layer.provide(ServicesLayer))
 
 // === Layer 3: Full infrastructure layer ===
 // Merges all infra services and satisfies their shared NodeContext dependency
 // in one place. NodeContext is provided here so it doesn't leak upward.
-const InfraLayer = Layer.mergeAll(ServicesLayer, ChunkerLayer).pipe(
+const InfraLayer = Layer.mergeAll(ServicesLayer, ChunkerLayer, EmbedderLayer).pipe(
   Layer.provide(NodeContext.layer),
 )
 

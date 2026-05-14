@@ -3,9 +3,14 @@ import { expect, test } from "vite-plus/test"
 
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import type { Embedding } from "../domain/embedding.js"
+import { ConfigStoreLive } from "./config-store.ts"
 import { Embedder, OnnxEmbedderLive } from "./embedder.ts"
 
-const testLayer = Layer.provideMerge(OnnxEmbedderLive, memoryFsLayer({}))
+const fsLayer = memoryFsLayer({})
+const testLayer = Layer.provideMerge(
+  OnnxEmbedderLive,
+  Layer.provideMerge(ConfigStoreLive, fsLayer),
+)
 
 test("OnnxEmbedder.embed returns normalized Embedding with correct dims", () =>
   Effect.gen(function* () {
