@@ -59,7 +59,7 @@ Zero-vector mock Embedder provided by `testLayer()`. Returns `Float32Array(384)`
 
 ### Memory FileSystem Layer
 
-Shared utility for Adapter tests. Builds a `MemoryFileSystem.layer` pre-populated with fixture contents plus `NodeContext.layer` (for crypto, stat, etc). Exported from `tests/test-utils/memfs.ts`. Adapter tests use minimal layers (`Layer.provideMerge(AdapterLive, memoryFsLayer(fixtures))`); Use Case and Command tests use the full `testLayer()`.
+Shared utility for Adapter tests. Builds a `MemoryFileSystem.layer` pre-populated with fixture contents — the sole `FileSystem` provider with no competing real-FS implementation. Exported from `tests/test-utils/memfs.ts`. Adapter tests use minimal layers (`Layer.provideMerge(AdapterLive, memoryFsLayer(fixtures))`); Use Case and Command tests use the full `testLayer()`.
 
 ### Decision Coverage
 

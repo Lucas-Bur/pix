@@ -57,7 +57,7 @@ test("pix reset without --json logs deletion info", () =>
     const lines = yield* getLines()
     // logInfo writes to logger, not Console.log via MockConsole
     expect(lines.length).toBe(0)
-  }).pipe(Effect.provide(testLayer())))
+  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
 
 test("pix reset without --json logs nothing to reset when clean", () =>
   Effect.gen(function* () {
@@ -65,7 +65,7 @@ test("pix reset without --json logs nothing to reset when clean", () =>
     const { getLines } = yield* MockConsole
     const lines = yield* getLines()
     expect(lines.length).toBe(0)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+  }).pipe(Effect.provide(testLayer())))
 
 const failingVectorStore = Layer.succeed(VectorStore, {
   store: () => Effect.succeed(undefined),

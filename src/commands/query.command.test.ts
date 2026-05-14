@@ -30,6 +30,7 @@ test("pix query with --top flag clamps to valid range", () =>
     expect(lines.length).toBeGreaterThan(0)
     const output = JSON.parse(lines[0])
     expect(Array.isArray(output)).toBe(true)
+    expect(output.length).toBeLessThanOrEqual(3)
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures }))))
 
 const failingEmbedderLayer = Layer.succeed(Embedder, {
@@ -48,6 +49,9 @@ test("pix query --json clamps --top below minimum to 1", () =>
     const { getLines } = yield* MockConsole
     const lines = yield* getLines()
     expect(lines.length).toBeGreaterThan(0)
+    const output = JSON.parse(lines[0])
+    expect(Array.isArray(output)).toBe(true)
+    expect(output.length).toBeLessThanOrEqual(1)
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures }))))
 
 test("pix query --json clamps --top above maximum to 100", () =>
@@ -56,6 +60,9 @@ test("pix query --json clamps --top above maximum to 100", () =>
     const { getLines } = yield* MockConsole
     const lines = yield* getLines()
     expect(lines.length).toBeGreaterThan(0)
+    const output = JSON.parse(lines[0])
+    expect(Array.isArray(output)).toBe(true)
+    expect(output.length).toBeLessThanOrEqual(2)
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures }))))
 
 test("pix query --json with --context-lines includes context fields", () =>
@@ -66,6 +73,14 @@ test("pix query --json with --context-lines includes context fields", () =>
     expect(lines.length).toBeGreaterThan(0)
     const output = JSON.parse(lines[0])
     expect(Array.isArray(output)).toBe(true)
+    if (output.length > 0) {
+      expect(output[0]).toHaveProperty("score")
+      expect(output[0]).toHaveProperty("file")
+      expect(output[0]).toHaveProperty("startLine")
+      expect(output[0]).toHaveProperty("endLine")
+      expect(output[0]).toHaveProperty("text")
+      // context-lines flag should include context fields if present in chunks
+    }
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures }))))
 
 test("pix query --json on empty index returns empty array", () =>
