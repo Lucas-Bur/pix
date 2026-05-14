@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.7.0...pix-v0.8.0) (2026-05-14)
+
+
+### Features
+
+* add model registry and EmbedderConfig to domain layer ([b3a6d5d](https://github.com/Lucas-Bur/pix/commit/b3a6d5d0bcd7540a85d9370cf7ee337e2c3a29f4))
+* embedder reads config via ConfigStore, validates against model registry ([076898e](https://github.com/Lucas-Bur/pix/commit/076898eb949e84ffd0e35c986f57382beac82cd0))
+
+
+### Bug Fixes
+
+* fall back to cpu when auto/dml device fails to load embedding model ([3d6ebed](https://github.com/Lucas-Bur/pix/commit/3d6ebedccc227e852e3b50a50348feba9037ca8d))
+
 ## [0.7.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.6.0...pix-v0.7.0) (2026-05-14)
 
 
