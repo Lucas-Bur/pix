@@ -5,7 +5,10 @@ import { expect } from "vite-plus/test"
 import { MockConsole } from "./MockConsole.js"
 
 export const indexFixtures: MemoryFileSystem.Contents = {
-  ".pix/config.json": JSON.stringify({ schemaVersion: "1" }),
+  ".pix/config.json": JSON.stringify({
+    schema: "1",
+    embedder: { model: "test-model", device: "auto", dtype: "fp32" },
+  }),
   ".pix/chunks.jsonl": [
     JSON.stringify({
       id: "a1",

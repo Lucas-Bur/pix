@@ -5,7 +5,22 @@ import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import type { Embedding } from "../domain/embedding.js"
 import { Embedder, OnnxEmbedderLive } from "./embedder.ts"
 
-const testLayer = Layer.provideMerge(OnnxEmbedderLive, memoryFsLayer({}))
+const embedderConfig = {
+  schema: "1",
+  embedder: {
+    model: "Xenova/all-MiniLM-L6-v2",
+    device: "auto" as const,
+    dtype: "fp32" as const,
+  },
+  chunkLines: 60,
+  overlapLines: 10,
+  files: {},
+}
+
+const testLayer = Layer.provideMerge(
+  OnnxEmbedderLive,
+  memoryFsLayer({ ".pix/config.json": JSON.stringify(embedderConfig) }),
+)
 
 test("OnnxEmbedder.embed returns normalized Embedding with correct dims", () =>
   Effect.gen(function* () {
