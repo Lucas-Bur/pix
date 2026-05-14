@@ -1,37 +1,14 @@
 import { Command } from "@effect/cli"
-import { Effect, Exit, Layer } from "effect"
+import { Effect, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
+import { assertCommandError, indexFixtures } from "../../tests/test-utils/command.js"
 import { MockConsole } from "../../tests/test-utils/MockConsole.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { Embedder } from "../domain/ports.js"
 import { queryCommand } from "./query.js"
 
 const run = (args: string[]) => Command.run(queryCommand, { name: "pix", version: "0.0.0" })(args)
-
-const fixtures = {
-  ".pix/config.json": JSON.stringify({ schemaVersion: "1" }),
-  ".pix/chunks.jsonl": [
-    JSON.stringify({
-      id: "a1",
-      idx: 0,
-      file: "/src/a.ts",
-      startLine: 1,
-      endLine: 2,
-      text: "const x = 1\nconst y = 2",
-      model: "test-model",
-    }),
-    JSON.stringify({
-      id: "b1",
-      idx: 1,
-      file: "/src/b.ts",
-      startLine: 1,
-      endLine: 1,
-      text: "export const z = 3",
-    }),
-  ].join("\n"),
-  ".pix/vectors.bin": "binary",
-}
 
 test("pix query --json outputs search results", () =>
   Effect.gen(function* () {
@@ -42,7 +19,7 @@ test("pix query --json outputs search results", () =>
     expect(lines.length).toBeGreaterThan(0)
     const output = JSON.parse(lines[0])
     expect(Array.isArray(output)).toBe(true)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures }))))
 
 test("pix query with --top flag clamps to valid range", () =>
   Effect.gen(function* () {
@@ -53,7 +30,7 @@ test("pix query with --top flag clamps to valid range", () =>
     expect(lines.length).toBeGreaterThan(0)
     const output = JSON.parse(lines[0])
     expect(Array.isArray(output)).toBe(true)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures }))))
 
 const failingEmbedderLayer = Layer.succeed(Embedder, {
   embed: () => Effect.dieMessage("embed failed"),
@@ -61,19 +38,9 @@ const failingEmbedderLayer = Layer.succeed(Embedder, {
 })
 
 test("pix query --json with failing embedder produces error JSON", () =>
-  Effect.gen(function* () {
-    const exit = yield* Effect.exit(run(["query", "--json", "test"]))
-
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBeGreaterThan(0)
-    const output = JSON.parse(lines[0])
-    expect(output.error).toBe(true)
-    expect(typeof output.code).toBe("string")
-    expect(typeof output.message).toBe("string")
-
-    expect(Exit.isFailure(exit)).toBe(true)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures, embedderLayer: failingEmbedderLayer }))))
+  assertCommandError(run(["query", "--json", "test"])).pipe(
+    Effect.provide(testLayer({ contents: indexFixtures, embedderLayer: failingEmbedderLayer })),
+  ))
 
 test("pix query --json clamps --top below minimum to 1", () =>
   Effect.gen(function* () {
@@ -81,7 +48,7 @@ test("pix query --json clamps --top below minimum to 1", () =>
     const { getLines } = yield* MockConsole
     const lines = yield* getLines()
     expect(lines.length).toBeGreaterThan(0)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures }))))
 
 test("pix query --json clamps --top above maximum to 100", () =>
   Effect.gen(function* () {
@@ -89,7 +56,7 @@ test("pix query --json clamps --top above maximum to 100", () =>
     const { getLines } = yield* MockConsole
     const lines = yield* getLines()
     expect(lines.length).toBeGreaterThan(0)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures }))))
 
 test("pix query --json with --context-lines includes context fields", () =>
   Effect.gen(function* () {
@@ -99,7 +66,7 @@ test("pix query --json with --context-lines includes context fields", () =>
     expect(lines.length).toBeGreaterThan(0)
     const output = JSON.parse(lines[0])
     expect(Array.isArray(output)).toBe(true)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures }))))
 
 test("pix query --json on empty index returns empty array", () =>
   Effect.gen(function* () {
@@ -128,4 +95,4 @@ test("pix query without --json outputs formatted results", () =>
     expect(lines.length).toBeGreaterThan(0)
     // formatResult outputs score:file and text
     expect(lines.some((l: string) => l.includes(":"))).toBe(true)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures }))))

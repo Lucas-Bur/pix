@@ -1,7 +1,8 @@
 import { Command } from "@effect/cli"
-import { Effect, Exit, Layer } from "effect"
+import { Effect, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
+import { assertCommandError } from "../../tests/test-utils/command.js"
 import { MockConsole } from "../../tests/test-utils/MockConsole.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { ConfigStore } from "../domain/ports.js"
@@ -37,15 +38,6 @@ const failingConfigStore = Layer.succeed(ConfigStore, {
 })
 
 test("pix init --json with failing ConfigStore produces error JSON", () =>
-  Effect.gen(function* () {
-    const exit = yield* Effect.exit(run(["init", "--json"]))
-    expect(Exit.isFailure(exit)).toBe(true)
-
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBeGreaterThan(0)
-    const output = JSON.parse(lines[0])
-    expect(output.error).toBe(true)
-    expect(typeof output.code).toBe("string")
-    expect(typeof output.message).toBe("string")
-  }).pipe(Effect.provide(testLayer({ configStoreLayer: failingConfigStore }))))
+  assertCommandError(run(["init", "--json"])).pipe(
+    Effect.provide(testLayer({ configStoreLayer: failingConfigStore })),
+  ))

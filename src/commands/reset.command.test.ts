@@ -1,7 +1,8 @@
 import { Command } from "@effect/cli"
-import { Effect, Exit, Layer } from "effect"
+import { Effect, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
+import { assertCommandError } from "../../tests/test-utils/command.js"
 import { MockConsole } from "../../tests/test-utils/MockConsole.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { VectorStore } from "../domain/ports.js"
@@ -75,15 +76,6 @@ const failingVectorStore = Layer.succeed(VectorStore, {
 })
 
 test("pix reset --json with failing VectorStore produces error JSON", () =>
-  Effect.gen(function* () {
-    const exit = yield* Effect.exit(run(["reset", "--json"]))
-    expect(Exit.isFailure(exit)).toBe(true)
-
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBeGreaterThan(0)
-    const output = JSON.parse(lines[0])
-    expect(output.error).toBe(true)
-    expect(typeof output.code).toBe("string")
-    expect(typeof output.message).toBe("string")
-  }).pipe(Effect.provide(testLayer({ vectorStoreLayer: failingVectorStore }))))
+  assertCommandError(run(["reset", "--json"])).pipe(
+    Effect.provide(testLayer({ vectorStoreLayer: failingVectorStore })),
+  ))
