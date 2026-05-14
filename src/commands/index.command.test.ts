@@ -60,3 +60,19 @@ test("pix index --json without config produces error JSON", () =>
     expect(output.code).toBe("CONFIG_MISSING")
     expect(typeof output.message).toBe("string")
   }).pipe(Effect.provide(testLayer())))
+
+test("pix index --force logs not-implemented warning", () =>
+  Effect.gen(function* () {
+    yield* run(["index", "--force"])
+    const { getLines } = yield* MockConsole
+    const lines = yield* getLines()
+    expect(lines.length).toBe(0)
+  }).pipe(Effect.provide(testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer }))))
+
+test("pix index --verbose logs not-implemented warning", () =>
+  Effect.gen(function* () {
+    yield* run(["index", "--verbose"])
+    const { getLines } = yield* MockConsole
+    const lines = yield* getLines()
+    expect(lines.length).toBe(0)
+  }).pipe(Effect.provide(testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer }))))

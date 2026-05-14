@@ -101,3 +101,39 @@ test("IndexProject.index propagates errors from VectorStore", () =>
 
     expect(Exit.isFailure(exit)).toBe(true)
   }))
+
+test("IndexProject.index returns zero status when no files found", () =>
+  Effect.gen(function* () {
+    const result = yield* IndexProject.index()
+    expect(result.success).toBe(true)
+    expect(result.status.chunks).toBe(0)
+    expect(result.status.files).toBe(0)
+    expect(result.status.totalLines).toBe(0)
+    expect(result.status.byteSize).toBe(0)
+  }).pipe(Effect.provide(testLayer({})), Effect.scoped))
+
+test("IndexProject.index uses custom extensions from config", () =>
+  Effect.gen(function* () {
+    const result = yield* IndexProject.index()
+    expect(result.success).toBe(true)
+    expect(result.status.chunks).toBeGreaterThan(0)
+    expect(result.status.files).toBe(1)
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        contents: {
+          [`.pix/config.json`]: JSON.stringify({
+            schema: "1",
+            model: "test-model",
+            dims: 384,
+            chunkLines: 60,
+            overlapLines: 10,
+            files: { ".py": 1 },
+          }),
+          [`${cwd}/src/script.py`]: `# Python script\n${"print('line')\n".repeat(70)}`,
+        },
+        scannerLayer: ScannerLive,
+      }),
+    ),
+    Effect.scoped,
+  ))

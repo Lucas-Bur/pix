@@ -1,9 +1,10 @@
 import { Command } from "@effect/cli"
-import { Effect } from "effect"
+import { Effect, Exit, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { MockConsole } from "../../tests/test-utils/MockConsole.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import { VectorStore } from "../domain/ports.js"
 import { statusCommand } from "./status.js"
 
 const run = (args: string[]) => Command.run(statusCommand, { name: "pix", version: "0.0.0" })(args)
@@ -57,3 +58,33 @@ test("pix status --json on empty project shows zero status", () =>
     expect(output.files).toBe(0)
     expect(output.totalLines).toBe(0)
   }).pipe(Effect.provide(testLayer())))
+
+test("pix status without --json logs info via Effect.logInfo", () =>
+  Effect.gen(function* () {
+    yield* run(["status"])
+    const { getLines } = yield* MockConsole
+    const lines = yield* getLines()
+    // logInfo writes to logger, not to Console.log via MockConsole
+    expect(lines.length).toBe(0)
+  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+
+const failingVectorStore = Layer.succeed(VectorStore, {
+  store: () => Effect.succeed(undefined),
+  search: () => Effect.succeed([]),
+  getStatus: () => Effect.dieMessage("getStatus failed"),
+  reset: () => Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),
+})
+
+test("pix status --json with failing VectorStore produces error JSON", () =>
+  Effect.gen(function* () {
+    const exit = yield* Effect.exit(run(["status", "--json"]))
+    expect(Exit.isFailure(exit)).toBe(true)
+
+    const { getLines } = yield* MockConsole
+    const lines = yield* getLines()
+    expect(lines.length).toBeGreaterThan(0)
+    const output = JSON.parse(lines[0])
+    expect(output.error).toBe(true)
+    expect(typeof output.code).toBe("string")
+    expect(typeof output.message).toBe("string")
+  }).pipe(Effect.provide(testLayer({ vectorStoreLayer: failingVectorStore }))))
