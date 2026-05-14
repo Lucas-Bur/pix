@@ -121,7 +121,7 @@ test("IndexProject.index uses custom extensions from config", () =>
     Effect.provide(
       testLayer({
         contents: {
-          [`.pix/config.json`]: JSON.stringify({
+          ".pix/config.json": JSON.stringify({
             schema: "1",
             model: "test-model",
             dims: 384,
@@ -147,7 +147,7 @@ test("IndexProject.index falls back to default chunkConcurrency when missing", (
     Effect.provide(
       testLayer({
         contents: {
-          [`.pix/config.json`]: JSON.stringify({
+          ".pix/config.json": JSON.stringify({
             schema: "1",
             model: "test-model",
             dims: 384,
@@ -174,7 +174,7 @@ test("IndexProject.index works with explicit chunkConcurrency: 1", () =>
     Effect.provide(
       testLayer({
         contents: {
-          [`.pix/config.json`]: JSON.stringify({
+          ".pix/config.json": JSON.stringify({
             schema: "1",
             model: "test-model",
             dims: 384,
@@ -202,7 +202,7 @@ test("IndexProject.index clamps chunkConcurrency: 0 to 1", () =>
     Effect.provide(
       testLayer({
         contents: {
-          [`.pix/config.json`]: JSON.stringify({
+          ".pix/config.json": JSON.stringify({
             schema: "1",
             model: "test-model",
             dims: 384,
@@ -230,7 +230,7 @@ test("IndexProject.index works with high chunkConcurrency: 64", () =>
     Effect.provide(
       testLayer({
         contents: {
-          [`.pix/config.json`]: JSON.stringify({
+          ".pix/config.json": JSON.stringify({
             schema: "1",
             model: "test-model",
             dims: 384,
