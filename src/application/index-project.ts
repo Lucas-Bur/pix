@@ -46,7 +46,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         const fileChunkArrays = yield* Effect.forEach(
           scanResult.files,
           (file) => chunker.chunkFile(file),
-          { concurrency: config.chunkConcurrency ?? 8 },
+          { concurrency: Math.max(1, config.chunkConcurrency ?? 8) },
         )
 
         const allChunks = fileChunkArrays.flat()
