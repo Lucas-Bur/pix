@@ -24,7 +24,7 @@ export class GetStatus extends Effect.Service<GetStatus>()("GetStatus", {
       Effect.gen(function* () {
         const status = yield* store.getStatus()
         const configModel = yield* configStore.readConfig().pipe(
-          Effect.map((c) => c.model),
+          Effect.map((c) => c.embedder.model),
           Effect.catchAll(() => Effect.succeed(status.model)),
         )
         return { ...status, model: configModel }
