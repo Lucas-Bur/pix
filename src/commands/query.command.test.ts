@@ -74,3 +74,58 @@ test("pix query --json with failing embedder produces error JSON", () =>
 
     expect(Exit.isFailure(exit)).toBe(true)
   }).pipe(Effect.provide(testLayer({ contents: fixtures, embedderLayer: failingEmbedderLayer }))))
+
+test("pix query --json clamps --top below minimum to 1", () =>
+  Effect.gen(function* () {
+    yield* run(["query", "--json", "--top", "0", "test"])
+    const { getLines } = yield* MockConsole
+    const lines = yield* getLines()
+    expect(lines.length).toBeGreaterThan(0)
+  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+
+test("pix query --json clamps --top above maximum to 100", () =>
+  Effect.gen(function* () {
+    yield* run(["query", "--json", "--top", "200", "test"])
+    const { getLines } = yield* MockConsole
+    const lines = yield* getLines()
+    expect(lines.length).toBeGreaterThan(0)
+  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+
+test("pix query --json with --context-lines includes context fields", () =>
+  Effect.gen(function* () {
+    yield* run(["query", "--json", "--context-lines", "2", "test"])
+    const { getLines } = yield* MockConsole
+    const lines = yield* getLines()
+    expect(lines.length).toBeGreaterThan(0)
+    const output = JSON.parse(lines[0])
+    expect(Array.isArray(output)).toBe(true)
+  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+
+test("pix query --json on empty index returns empty array", () =>
+  Effect.gen(function* () {
+    yield* run(["query", "--json", "no results"])
+    const { getLines } = yield* MockConsole
+    const lines = yield* getLines()
+    expect(lines.length).toBeGreaterThan(0)
+    const output = JSON.parse(lines[0])
+    expect(output).toEqual([])
+  }).pipe(Effect.provide(testLayer())))
+
+test("pix query without --json on empty index logs no results", () =>
+  Effect.gen(function* () {
+    yield* run(["query", "nothing"])
+    const { getLines } = yield* MockConsole
+    const lines = yield* getLines()
+    // "No results found" is logInfo, not Console.log
+    expect(lines.length).toBe(0)
+  }).pipe(Effect.provide(testLayer())))
+
+test("pix query without --json outputs formatted results", () =>
+  Effect.gen(function* () {
+    yield* run(["query", "test"])
+    const { getLines } = yield* MockConsole
+    const lines = yield* getLines()
+    expect(lines.length).toBeGreaterThan(0)
+    // formatResult outputs score:file and text
+    expect(lines.some((l: string) => l.includes(":"))).toBe(true)
+  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))

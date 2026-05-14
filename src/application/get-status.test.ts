@@ -42,3 +42,31 @@ test("GetStatus.getStatus returns status from VectorStore with config model", ()
     expect(result.model).toBe("test-model")
     expect(result.totalLines).toBe(3)
   }).pipe(Effect.provide(testLayer({ contents: fixtures })), Effect.scoped))
+
+test("GetStatus.getStatus falls back to VectorStore model when config read fails", () =>
+  Effect.gen(function* () {
+    const result = yield* GetStatus.getStatus()
+    // Without config.json, readConfig fails -> catchAll falls back to store model (which is "")
+    expect(result.model).toBe("")
+    expect(result.chunks).toBe(2)
+    expect(result.files).toBe(2)
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        contents: {
+          ".pix/chunks.jsonl": [
+            JSON.stringify({
+              id: "a1",
+              idx: 0,
+              file: "/src/a.ts",
+              startLine: 1,
+              endLine: 2,
+              text: "const x = 1\nconst y = 2",
+            }),
+          ].join("\n"),
+          ".pix/vectors.bin": "",
+        },
+      }),
+    ),
+    Effect.scoped,
+  ))
