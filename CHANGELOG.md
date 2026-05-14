@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.6.0...pix-v0.7.0) (2026-05-14)
+
+
+### Features
+
+* add domain error types and update port signatures ([3285c07](https://github.com/Lucas-Bur/pix/commit/3285c07bab7cfdfeb111420829a81c7c5d101995))
+* refactor CLI commands and error formatting with typed errors ([e9124b9](https://github.com/Lucas-Bur/pix/commit/e9124b99908187b496478a10b07827911d13ca77))
+* update adapters, services, and port signatures with typed errors ([1895ee5](https://github.com/Lucas-Bur/pix/commit/1895ee55ad9be5b5c86f2ba7a046a5c50cfab2b8))
+
+
+### Bug Fixes
+
+* bound chunking concurrency + map makeDirectory DiskFullError ([3d471b9](https://github.com/Lucas-Bur/pix/commit/3d471b95c746b1ea55375aba1499f85f0bf30aa6))
+* clamp chunkConcurrency with Math.max(1, ...) + add tests ([d28d9f3](https://github.com/Lucas-Bur/pix/commit/d28d9f3194c8b105e5595bd757d2fa10b21e8ce4))
+* narrow GetStatus error type — config errors are swallowed ([ec75c3d](https://github.com/Lucas-Bur/pix/commit/ec75c3d9aa9a6c428423fbb66bba418d5868b830))
+
 ## [0.6.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.5.3...pix-v0.6.0) (2026-05-14)
 
 
