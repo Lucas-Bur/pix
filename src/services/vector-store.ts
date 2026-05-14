@@ -77,19 +77,56 @@ const make = Effect.gen(function* () {
         cause,
       })
 
+  /** Wrap any fs Effect so failures become StoreError | DiskFullError. */
+  const withStoreError = <A>(
+    op: Effect.Effect<A, unknown>,
+    operation: string,
+    path?: string,
+  ): Effect.Effect<A, StoreError | DiskFullError> =>
+    op.pipe(Effect.mapError(toStoreError(operation, path)))
+
+  /** Wrap any fs Effect so failures become StoreError (read-only). */
+  const withReadError = <A>(
+    op: Effect.Effect<A, unknown>,
+    operation: string,
+    path?: string,
+  ): Effect.Effect<A, StoreError> => op.pipe(Effect.mapError(toReadError(operation, path)))
+
+  /** Ensure a directory exists, creating it recursively if absent. */
+  const ensureDirExists = (
+    dir: string,
+    description = dir,
+  ): Effect.Effect<void, StoreError | DiskFullError> =>
+    Effect.gen(function* () {
+      const exists = yield* withStoreError(fs.exists(dir), `check ${description}`)
+      if (!exists) {
+        yield* withStoreError(fs.makeDirectory(dir, { recursive: true }), `create ${description}`)
+      }
+    })
+
+  /**
+   * Remove a file if it exists, accumulating freed bytes. Returns the number of freed bytes (0 if
+   * the file was absent).
+   */
+  const removeIfExists = (
+    file: string,
+    description: string,
+  ): Effect.Effect<{ freed: number; deleted: boolean }, StoreError | DiskFullError> =>
+    Effect.gen(function* () {
+      const exists = yield* withStoreError(fs.exists(file), `check ${description}`)
+      if (!exists) return { freed: 0, deleted: false }
+      const stat = yield* withStoreError(fs.stat(file), `stat ${description}`, file)
+      const freed = stat && "size" in stat ? Number(stat.size) : 0
+      yield* withStoreError(fs.remove(file), `delete ${description}`, file)
+      return { freed, deleted: true }
+    })
+
   const store = (
     chunks: readonly Chunk[],
     embeddings: readonly Embedding[],
   ): Effect.Effect<void, StoreError | DiskFullError> =>
     Effect.gen(function* () {
-      const storeDirExists = yield* fs
-        .exists(STORE_DIR)
-        .pipe(Effect.mapError(toStoreError("check .pix directory")))
-      if (!storeDirExists) {
-        yield* fs
-          .makeDirectory(STORE_DIR, { recursive: true })
-          .pipe(Effect.mapError(toStoreError("create .pix directory")))
-      }
+      yield* ensureDirExists(STORE_DIR, ".pix directory")
 
       const chunksTemp = `${CHUNKS_FILE}.tmp`
       const chunksLines = chunks.map((c) =>
@@ -102,12 +139,12 @@ const make = Effect.gen(function* () {
           text: c.text,
         }),
       )
-      yield* fs
-        .writeFileString(chunksTemp, chunksLines.join("\n"))
-        .pipe(Effect.mapError(toStoreError("write chunks", chunksTemp)))
-      yield* fs
-        .rename(chunksTemp, CHUNKS_FILE)
-        .pipe(Effect.mapError(toStoreError("commit chunks", CHUNKS_FILE)))
+      yield* withStoreError(
+        fs.writeFileString(chunksTemp, chunksLines.join("\n")),
+        "write chunks",
+        chunksTemp,
+      )
+      yield* withStoreError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
 
       const vectorsTemp = `${VECTORS_FILE}.tmp`
       const dims = embeddings[0]?.dims ?? 384
@@ -117,12 +154,8 @@ const make = Effect.gen(function* () {
         vectorsArray.set(embeddings[i].vector, i * dims)
       }
       const buffer = Buffer.from(vectorsArray.buffer)
-      yield* fs
-        .writeFile(vectorsTemp, buffer)
-        .pipe(Effect.mapError(toStoreError("write vectors", vectorsTemp)))
-      yield* fs
-        .rename(vectorsTemp, VECTORS_FILE)
-        .pipe(Effect.mapError(toStoreError("commit vectors", VECTORS_FILE)))
+      yield* withStoreError(fs.writeFile(vectorsTemp, buffer), "write vectors", vectorsTemp)
+      yield* withStoreError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
     })
 
   const search = (
@@ -141,12 +174,8 @@ const make = Effect.gen(function* () {
     StoreError | NoIndexError
   > =>
     Effect.gen(function* () {
-      const chunksExists = yield* fs
-        .exists(CHUNKS_FILE)
-        .pipe(Effect.mapError(toReadError("check chunks file")))
-      const vectorsExists = yield* fs
-        .exists(VECTORS_FILE)
-        .pipe(Effect.mapError(toReadError("check vectors file")))
+      const chunksExists = yield* withReadError(fs.exists(CHUNKS_FILE), "check chunks file")
+      const vectorsExists = yield* withReadError(fs.exists(VECTORS_FILE), "check vectors file")
 
       if (!chunksExists || !vectorsExists) {
         return yield* new NoIndexError({
@@ -154,14 +183,18 @@ const make = Effect.gen(function* () {
         })
       }
 
-      const chunksContent = yield* fs
-        .readFileString(CHUNKS_FILE)
-        .pipe(Effect.mapError(toReadError("read chunks", CHUNKS_FILE)))
+      const chunksContent = yield* withReadError(
+        fs.readFileString(CHUNKS_FILE),
+        "read chunks",
+        CHUNKS_FILE,
+      )
       const chunkLines = chunksContent.split("\n").filter((l) => l.trim().length > 0)
 
-      const vectorsBuffer = yield* fs
-        .readFile(VECTORS_FILE)
-        .pipe(Effect.mapError(toReadError("read vectors", VECTORS_FILE)))
+      const vectorsBuffer = yield* withReadError(
+        fs.readFile(VECTORS_FILE),
+        "read vectors",
+        VECTORS_FILE,
+      )
       const vectors = new Float32Array(vectorsBuffer.buffer as ArrayBuffer)
 
       const results: {
@@ -223,12 +256,8 @@ const make = Effect.gen(function* () {
     StoreError
   > =>
     Effect.gen(function* () {
-      const chunksExists = yield* fs
-        .exists(CHUNKS_FILE)
-        .pipe(Effect.mapError(toReadError("check chunks file")))
-      const vectorsExists = yield* fs
-        .exists(VECTORS_FILE)
-        .pipe(Effect.mapError(toReadError("check vectors file")))
+      const chunksExists = yield* withReadError(fs.exists(CHUNKS_FILE), "check chunks file")
+      const vectorsExists = yield* withReadError(fs.exists(VECTORS_FILE), "check vectors file")
 
       if (!chunksExists || !vectorsExists) {
         return {
@@ -241,9 +270,11 @@ const make = Effect.gen(function* () {
         }
       }
 
-      const content = yield* fs
-        .readFileString(CHUNKS_FILE)
-        .pipe(Effect.catchAll(() => Effect.succeed("")))
+      const content = yield* withReadError(
+        fs.readFileString(CHUNKS_FILE),
+        "read chunks",
+        CHUNKS_FILE,
+      )
       const lines = content.split("\n").filter((l) => l.trim().length > 0)
       const chunks = lines.length
       const uniqueFiles = countUniqueFiles(lines)
@@ -251,10 +282,8 @@ const make = Effect.gen(function* () {
       const model = ""
       const totalLines = countTotalLines(lines)
 
-      const vectorsStat = yield* fs
-        .stat(VECTORS_FILE)
-        .pipe(Effect.catchAll(() => Effect.succeed(null)))
-      const byteSize: number = vectorsStat && "size" in vectorsStat ? Number(vectorsStat.size) : 0
+      const vectorsStat = yield* withReadError(fs.stat(VECTORS_FILE), "stat vectors", VECTORS_FILE)
+      const byteSize: number = "size" in vectorsStat ? Number(vectorsStat.size) : 0
 
       const lastIndex = Option.map(vectorsStat?.mtime ?? Option.none(), (d) =>
         d instanceof Date ? d.getTime() : 0,
@@ -268,39 +297,14 @@ const make = Effect.gen(function* () {
     StoreError | DiskFullError
   > =>
     Effect.gen(function* () {
-      let deletedChunks = false
-      let deletedVectors = false
-      let freedBytes = 0
+      const chunks = yield* removeIfExists(CHUNKS_FILE, "chunks")
+      const vectors = yield* removeIfExists(VECTORS_FILE, "vectors")
 
-      const chunksExists = yield* fs
-        .exists(CHUNKS_FILE)
-        .pipe(Effect.mapError(toStoreError("check chunks file")))
-      if (chunksExists) {
-        const stat = yield* fs
-          .stat(CHUNKS_FILE)
-          .pipe(Effect.mapError(toStoreError("stat chunks", CHUNKS_FILE)))
-        freedBytes += stat && "size" in stat ? Number(stat.size) : 0
-        yield* fs
-          .remove(CHUNKS_FILE)
-          .pipe(Effect.mapError(toStoreError("delete chunks", CHUNKS_FILE)))
-        deletedChunks = true
+      return {
+        deletedChunks: chunks.deleted,
+        deletedVectors: vectors.deleted,
+        freedBytes: chunks.freed + vectors.freed,
       }
-
-      const vectorsExists = yield* fs
-        .exists(VECTORS_FILE)
-        .pipe(Effect.mapError(toStoreError("check vectors file")))
-      if (vectorsExists) {
-        const stat = yield* fs
-          .stat(VECTORS_FILE)
-          .pipe(Effect.mapError(toStoreError("stat vectors", VECTORS_FILE)))
-        freedBytes += stat && "size" in stat ? Number(stat.size) : 0
-        yield* fs
-          .remove(VECTORS_FILE)
-          .pipe(Effect.mapError(toStoreError("delete vectors", VECTORS_FILE)))
-        deletedVectors = true
-      }
-
-      return { deletedChunks, deletedVectors, freedBytes }
     })
 
   return { store, search, getStatus, reset } as const

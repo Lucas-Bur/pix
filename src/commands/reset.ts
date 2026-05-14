@@ -19,14 +19,16 @@ const logJsonResult = (result: ResetResult, elapsedMs: number) =>
 
 const logHumanResult = (result: ResetResult, elapsedMs: number) =>
   Effect.gen(function* () {
-    if (!result.deletedChunks && !result.deletedVectors) {
+    const deletedParts = [
+      result.deletedChunks ? "chunks.jsonl" : null,
+      result.deletedVectors ? "vectors.bin" : null,
+    ].filter((part): part is string => part !== null)
+
+    if (deletedParts.length === 0) {
       yield* Effect.logInfo("Nothing to reset.")
       return
     }
-    const parts: string[] = []
-    if (result.deletedChunks) parts.push("chunks.jsonl")
-    if (result.deletedVectors) parts.push("vectors.bin")
-    yield* Effect.logInfo(`Deleted: ${parts.join(", ")}`)
+    yield* Effect.logInfo(`Deleted: ${deletedParts.join(", ")}`)
     yield* Effect.logInfo(`Freed: ${formatBytes(result.freedBytes)}`)
     yield* Effect.logInfo(`Time: ${elapsedMs}ms`)
   })

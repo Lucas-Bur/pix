@@ -3,9 +3,10 @@ import { Effect } from "effect"
 import type {
   AllConfigErrors,
   AllEmbedderErrors,
-  AllStoreErrors,
   ChunkerError,
+  DiskFullError,
   ScanFailed,
+  StoreError,
 } from "../domain/errors.js"
 import { ConfigStore, Scanner, Chunker, Embedder, VectorStore } from "../domain/ports.js"
 import type { StatusResult } from "./get-status.js"
@@ -31,7 +32,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
 
     const index = (): Effect.Effect<
       IndexResult,
-      AllConfigErrors | ScanFailed | ChunkerError | AllEmbedderErrors | AllStoreErrors
+      AllConfigErrors | ScanFailed | ChunkerError | AllEmbedderErrors | StoreError | DiskFullError
     > =>
       Effect.gen(function* () {
         const config = yield* configStore.readConfig()
@@ -45,7 +46,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         const fileChunkArrays = yield* Effect.forEach(
           scanResult.files,
           (file) => chunker.chunkFile(file),
-          { concurrency: 8 },
+          { concurrency: config.chunkConcurrency ?? 8 },
         )
 
         const allChunks = fileChunkArrays.flat()

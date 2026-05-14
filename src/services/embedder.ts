@@ -31,15 +31,12 @@ const make = Effect.gen(function* () {
   const getExtractor = yield* Effect.cached(
     Effect.tryPromise(async () => {
       const { pipeline } = await import("@huggingface/transformers")
-      return pipeline("feature-extraction", MODEL_NAME, {
-        device: "cpu",
-        dtype: "q8",
-      })
+      return pipeline("feature-extraction", MODEL_NAME, { device: "cpu", dtype: "q8" })
     }).pipe(
       Effect.mapError(
         (cause) =>
           new ModelLoadError({
-            message: `Failed to load embedding model`,
+            message: "Failed to load embedding model",
             model: MODEL_NAME,
             cause,
           }),
@@ -54,11 +51,7 @@ const make = Effect.gen(function* () {
         extractor(text, { pooling: "mean", normalize: false }),
       ).pipe(
         Effect.mapError(
-          (cause) =>
-            new InferenceError({
-              message: `Embedding inference failed`,
-              cause,
-            }),
+          (cause) => new InferenceError({ message: "Embedding inference failed", cause }),
         ),
       )
       const data = tensor.data as Float32Array
@@ -77,11 +70,7 @@ const make = Effect.gen(function* () {
           extractor(slice, { pooling: "mean", normalize: false }),
         ).pipe(
           Effect.mapError(
-            (cause) =>
-              new InferenceError({
-                message: `Batch embedding inference failed`,
-                cause,
-              }),
+            (cause) => new InferenceError({ message: "Batch embedding inference failed", cause }),
           ),
         )
         const data = tensor.data as Float32Array

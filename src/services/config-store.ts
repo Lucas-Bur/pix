@@ -16,36 +16,39 @@ const isPlatformReason = (cause: unknown, reason: string): boolean =>
   "reason" in cause &&
   String((cause as { reason: unknown }).reason) === reason
 
+const mapConfigWriteError = (
+  cause: unknown,
+  path: string,
+  action: string,
+): ConfigError | DiskFullError => {
+  if (isPlatformReason(cause, "BadResource")) {
+    return new DiskFullError({
+      message: `Disk full: could not ${action}`,
+      path,
+      cause,
+    })
+  }
+  return new ConfigError({ message: `Failed to ${action}`, cause })
+}
+
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
 
   const writeConfig = (config: Config): Effect.Effect<void, ConfigError | DiskFullError> =>
     Effect.gen(function* () {
       const configJson = JSON.stringify(config, null, 2)
-      yield* fs.makeDirectory(CONFIG_DIR, { recursive: true }).pipe(
-        Effect.mapError((cause) => {
-          if (isPlatformReason(cause, "BadResource")) {
-            return new DiskFullError({
-              message: "Disk full: could not create .pix directory",
-              path: CONFIG_DIR,
-              cause,
-            })
-          }
-          return new ConfigError({ message: "Failed to create .pix directory", cause })
-        }),
-      )
-      yield* fs.writeFileString(CONFIG_PATH, configJson).pipe(
-        Effect.mapError((cause) => {
-          if (isPlatformReason(cause, "BadResource")) {
-            return new DiskFullError({
-              message: "Disk full: could not write config.json",
-              path: CONFIG_PATH,
-              cause,
-            })
-          }
-          return new ConfigError({ message: "Failed to write config.json", cause })
-        }),
-      )
+      yield* fs
+        .makeDirectory(CONFIG_DIR, { recursive: true })
+        .pipe(
+          Effect.mapError((cause) =>
+            mapConfigWriteError(cause, CONFIG_DIR, "create .pix directory"),
+          ),
+        )
+      yield* fs
+        .writeFileString(CONFIG_PATH, configJson)
+        .pipe(
+          Effect.mapError((cause) => mapConfigWriteError(cause, CONFIG_PATH, "write config.json")),
+        )
     })
 
   const readConfig = (): Effect.Effect<

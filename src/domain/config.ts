@@ -11,6 +11,7 @@ export interface Config {
   readonly dims: number
   readonly chunkLines: number
   readonly overlapLines: number
+  readonly chunkConcurrency?: number
   readonly files: Record<string, number>
 }
 
@@ -35,5 +36,6 @@ export const DEFAULT_CONFIG: Config = {
   dims: 384,
   chunkLines: 60,
   overlapLines: 10,
+  chunkConcurrency: 8,
   files: {},
 }

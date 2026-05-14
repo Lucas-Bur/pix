@@ -4,6 +4,19 @@ import { Console, Effect } from "effect"
 import { IndexProject } from "../application/index-project.js"
 import { reportError } from "../lib/error-format.js"
 
+const logFlagWarnings = (force: boolean, verbose: boolean, json: boolean) =>
+  Effect.gen(function* () {
+    if (force && !json) {
+      yield* Effect.logInfo("--force is currently not implemented and only a placeholder.")
+    }
+    if (verbose && !json) {
+      yield* Effect.logInfo("--verbose is currently not implemented and only a placeholder.")
+    }
+  })
+
+const logHumanOutput = (chunks: number, files: number, duration: string) =>
+  Effect.logInfo(`Indexed ${chunks} chunks from ${files} files in ${duration}.`)
+
 /** CLI command: pix index [--force] [--verbose] [--json] */
 export const indexCommand = Command.make(
   "index",
@@ -14,45 +27,18 @@ export const indexCommand = Command.make(
   },
   ({ force, verbose, json }) =>
     Effect.gen(function* () {
-      if (force && !json) {
-        yield* Effect.logInfo("--force is currently not implemented and only a placeholder.")
-      }
-
-      if (verbose && !json) {
-        yield* Effect.logInfo("--verbose is currently not implemented and only a placeholder.")
-      }
+      yield* logFlagWarnings(force, verbose, json)
 
       const startTime = Date.now()
-
       const result = yield* IndexProject.index()
-
       const duration = `${((Date.now() - startTime) / 1000).toFixed(1)}s`
 
       if (json) {
         return yield* Console.log(
-          JSON.stringify({
-            chunks: result.status.chunks,
-            files: result.status.files,
-            duration,
-          }),
+          JSON.stringify({ chunks: result.status.chunks, files: result.status.files, duration }),
         )
       }
 
-      yield* Effect.logInfo(
-        `Indexed ${result.status.chunks} chunks from ${result.status.files} files in ${duration}.`,
-      )
-    }).pipe(
-      Effect.catchTags({
-        ConfigError: reportError,
-        ConfigNotFoundError: reportError,
-        ConfigMalformedError: reportError,
-        ScanFailed: reportError,
-        ChunkerError: reportError,
-        ModelLoadError: reportError,
-        InferenceError: reportError,
-        DiskFullError: reportError,
-        StoreError: reportError,
-        NoIndexError: reportError,
-      }),
-    ),
+      yield* logHumanOutput(result.status.chunks, result.status.files, duration)
+    }).pipe(Effect.catchAll(reportError)),
 )
