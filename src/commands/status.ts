@@ -28,9 +28,6 @@ export const statusCommand = Command.make(
       yield* Effect.logInfo(`Last indexed: ${lastIndexStr}`)
     }).pipe(
       Effect.catchTags({
-        ConfigError: reportError,
-        ConfigNotFoundError: reportError,
-        ConfigMalformedError: reportError,
         StoreError: reportError,
       }),
     ),
