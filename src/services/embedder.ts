@@ -75,17 +75,36 @@ const createExtractor = (opts: EmbedderConfig) =>
     Effect.mapError(
       (cause) =>
         new ModelLoadError({
-          message: "Failed to load embedding model",
+          message: `Failed to load embedding model with device "${opts.device}"`,
           model: opts.model,
           cause,
         }),
     ),
   )
 
+const createExtractorWithFallback = (opts: EmbedderConfig) => {
+  if (opts.device === "cpu") return createExtractor(opts)
+
+  return createExtractor(opts).pipe(
+    Effect.catchAll((originalError) =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning(
+          `Embedding device "${opts.device}" failed, falling back to "cpu": ${originalError.message}`,
+        )
+        const cpuOpts: EmbedderConfig = { ...opts, device: "cpu" }
+        const fallback = yield* createExtractor(cpuOpts).pipe(
+          Effect.catchAll(() => Effect.fail(originalError)),
+        )
+        return fallback
+      }),
+    ),
+  )
+}
+
 const make = Effect.gen(function* () {
   const configStore = yield* ConfigStore
   const cfg = yield* resolveEmbedderConfig(configStore)
-  const getExtractor = yield* Effect.cached(createExtractor(cfg))
+  const getExtractor = yield* Effect.cached(createExtractorWithFallback(cfg))
 
   const embed = (text: string): Effect.Effect<Embedding, ModelLoadError | InferenceError> =>
     Effect.gen(function* () {

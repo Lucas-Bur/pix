@@ -31,12 +31,24 @@ const codeFromError = (error: unknown): string => {
   return "UNKNOWN"
 }
 
+const causeFromError = (error: unknown): string => {
+  if (typeof error === "string") return error
+  if (error && typeof error === "object" && "cause" in error) {
+    return String((error as { cause: unknown }).cause)
+  }
+  return "Unknown cause"
+}
+
+// TODO: there are more keys, that maybe need to be parsed. i think that we should go over each and every key in error object and try to parse it. if there is no function for that we display a message in log. a switch would be good for this exhaustive lookup
+// some keys that i found so far: stack, model, file, path
+
 /** Format an error as spec-mandated JSON: `{ error: true, code: "...", message: "..." }`. */
 export const formatError = (error: unknown): string =>
   JSON.stringify({
     error: true,
     code: codeFromError(error),
     message: messageFromError(error),
+    cause: causeFromError(error),
   })
 
 import { Console, Effect } from "effect"
