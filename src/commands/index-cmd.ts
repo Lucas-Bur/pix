@@ -4,15 +4,16 @@ import { Console, Effect } from "effect"
 import { IndexProject } from "../application/index-project.js"
 import { reportError } from "../lib/error-format.js"
 
-const logFlagWarnings = (force: boolean, verbose: boolean, json: boolean) =>
-  Effect.gen(function* () {
-    if (force && !json) {
-      yield* Effect.logInfo("--force is currently not implemented and only a placeholder.")
-    }
-    if (verbose && !json) {
-      yield* Effect.logInfo("--verbose is currently not implemented and only a placeholder.")
-    }
-  })
+const logFlagWarnings = (force: boolean, verbose: boolean, json: boolean) => {
+  if (json) return Effect.void
+
+  const warnings = [
+    force ? "--force is currently not implemented and only a placeholder." : undefined,
+    verbose ? "--verbose is currently not implemented and only a placeholder." : undefined,
+  ].filter((msg): msg is string => msg !== undefined)
+
+  return Effect.forEach(warnings, (msg) => Effect.logInfo(msg), { discard: true })
+}
 
 const logHumanOutput = (chunks: number, files: number, duration: string) =>
   Effect.logInfo(`Indexed ${chunks} chunks from ${files} files in ${duration}.`)
