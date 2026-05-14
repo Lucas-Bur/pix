@@ -1,17 +1,43 @@
-import type { PlatformError } from "@effect/platform/Error"
 import { Effect, Context } from "effect"
 
 import type { Chunk } from "./chunk.js"
 import type { Config, ConfigError } from "./config.js"
 import type { Embedding } from "./embedding.js"
+import type {
+  ConfigMalformedError,
+  ConfigNotFoundError,
+  DiskFullError,
+  NoIndexError,
+  StoreError,
+  ChunkerError,
+  ModelLoadError,
+  InferenceError,
+} from "./errors.js"
+
+// === Scan result types ===
+
+/** A file or directory that was skipped during scanning and why. */
+export interface SkippedEntry {
+  readonly path: string
+  readonly reason: string
+}
+
+/** Result of a file scan: discovered files and entries that were skipped. */
+export interface ScanResult {
+  readonly files: readonly string[]
+  readonly skipped: readonly SkippedEntry[]
+}
 
 // === ConfigStore Port ===
 
 export class ConfigStore extends Context.Tag("ConfigStore")<
   ConfigStore,
   {
-    readonly readConfig: () => Effect.Effect<Config, ConfigError>
-    readonly writeConfig: (config: Config) => Effect.Effect<void, ConfigError>
+    readonly readConfig: () => Effect.Effect<
+      Config,
+      ConfigError | ConfigNotFoundError | ConfigMalformedError
+    >
+    readonly writeConfig: (config: Config) => Effect.Effect<void, ConfigError | DiskFullError>
     readonly configExists: () => Effect.Effect<boolean>
   }
 >() {}
@@ -21,7 +47,8 @@ export class ConfigStore extends Context.Tag("ConfigStore")<
 export class Scanner extends Context.Tag("Scanner")<
   Scanner,
   {
-    readonly scanFiles: (extensions: readonly string[]) => Effect.Effect<string[], never>
+    /** Scan project files matching the given extensions. Skipped entries are reported, not errored. */
+    readonly scanFiles: (extensions: readonly string[]) => Effect.Effect<ScanResult, never>
   }
 >() {}
 
@@ -30,7 +57,8 @@ export class Scanner extends Context.Tag("Scanner")<
 export class Chunker extends Context.Tag("Chunker")<
   Chunker,
   {
-    readonly chunkFile: (file: string) => Effect.Effect<readonly Chunk[], never>
+    /** Chunk a single file. Fails with ChunkerError if the file cannot be read. */
+    readonly chunkFile: (file: string) => Effect.Effect<readonly Chunk[], ChunkerError>
   }
 >() {}
 
@@ -39,8 +67,12 @@ export class Chunker extends Context.Tag("Chunker")<
 export class Embedder extends Context.Tag("Embedder")<
   Embedder,
   {
-    readonly embed: (text: string) => Effect.Effect<Embedding, never>
-    readonly batch: (texts: readonly string[]) => Effect.Effect<readonly Embedding[], never>
+    /** Embed a single text. Fails with ModelLoadError or InferenceError. */
+    readonly embed: (text: string) => Effect.Effect<Embedding, ModelLoadError | InferenceError>
+    /** Batch-embed texts. Fails with ModelLoadError or InferenceError. */
+    readonly batch: (
+      texts: readonly string[],
+    ) => Effect.Effect<readonly Embedding[], ModelLoadError | InferenceError>
   }
 >() {}
 
@@ -69,11 +101,11 @@ export class VectorStore extends Context.Tag("VectorStore")<
     readonly store: (
       chunks: readonly Chunk[],
       embeddings: readonly Embedding[],
-    ) => Effect.Effect<void, PlatformError>
+    ) => Effect.Effect<void, StoreError | DiskFullError>
     readonly search: (
       query: Embedding,
       topK: number,
-    ) => Effect.Effect<readonly SearchResult[], PlatformError>
+    ) => Effect.Effect<readonly SearchResult[], StoreError | NoIndexError>
     readonly getStatus: () => Effect.Effect<
       {
         chunks: number
@@ -83,8 +115,8 @@ export class VectorStore extends Context.Tag("VectorStore")<
         totalLines: number
         byteSize: number
       },
-      PlatformError
+      StoreError
     >
-    readonly reset: () => Effect.Effect<ResetResult, PlatformError>
+    readonly reset: () => Effect.Effect<ResetResult, StoreError>
   }
 >() {}
