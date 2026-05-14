@@ -6,8 +6,6 @@ import { VectorStore } from "../domain/ports.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { IndexProject } from "./index-project.js"
 
-const cwd = process.cwd().replace(/\\/g, "/")
-
 const sourceFile = `import { Effect } from "effect"
 // Line 2 - ${"padding ".repeat(50)}
 export interface AppConfig { name: string; version: string }
@@ -56,8 +54,8 @@ export const average = (arr: readonly number[]) => sum(arr) / arr.length
 `
 
 const fixtures = {
-  [`${cwd}/src/a.ts`]: sourceFile,
-  [`${cwd}/src/b.ts`]: sourceFile,
+  "src/a.ts": sourceFile,
+  "src/b.ts": sourceFile,
 }
 
 test("IndexProject.index scans, chunks, embeds, and stores", () =>
@@ -130,7 +128,7 @@ test("IndexProject.index uses custom extensions from config", () =>
             overlapLines: 10,
             files: { ".py": 1 },
           }),
-          [`${cwd}/src/script.py`]: `# Python script\n${"print('line')\n".repeat(70)}`,
+          "src/script.py": `# Python script\n${"print('line')\n".repeat(70)}`,
         },
         scannerLayer: ScannerLive,
       }),
