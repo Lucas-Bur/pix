@@ -3,11 +3,11 @@ import { Effect, Layer } from "effect"
 
 import type { Embedding } from "../domain/embedding.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
-import { Embedder } from "../domain/ports.js"
+import { MODEL_REGISTRY } from "../domain/models.js"
+import { ConfigStore, Embedder } from "../domain/ports.js"
+import { ConfigStoreLive } from "./config-store.js"
 export { Embedder }
 
-const MODEL_NAME = "Xenova/all-MiniLM-L6-v2"
-const DIMS = 384
 const CACHE_DIR = ".pix/cache"
 const BATCH_SIZE = 16
 
@@ -28,16 +28,43 @@ const normalize = (arr: Float32Array): Float32Array => {
 }
 
 const make = Effect.gen(function* () {
+  const configStore = yield* ConfigStore
+
+  const config = yield* configStore
+    .readConfig()
+    .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+
+  const model = config?.embedder.model ?? "Xenova/all-MiniLM-L6-v2"
+  const device = config?.embedder.device ?? "auto"
+  const dtype = config?.embedder.dtype ?? "fp32"
+
+  const modelInfo = MODEL_REGISTRY[model]
+  if (!modelInfo) {
+    return yield* new ModelLoadError({
+      message: `Unknown embedding model "${model}". Available: ${Object.keys(MODEL_REGISTRY).join(", ")}`,
+      model,
+    })
+  }
+
+  if (!modelInfo.dtypes.includes(dtype)) {
+    return yield* new ModelLoadError({
+      message: `Unsupported dtype "${dtype}" for model "${model}". Supported: ${modelInfo.dtypes.join(", ")}`,
+      model,
+    })
+  }
+
+  const dims = modelInfo.dims
+
   const getExtractor = yield* Effect.cached(
     Effect.tryPromise(async () => {
       const { pipeline } = await import("@huggingface/transformers")
-      return pipeline("feature-extraction", MODEL_NAME, { device: "cpu", dtype: "q8" })
+      return pipeline("feature-extraction", model, { device, dtype })
     }).pipe(
       Effect.mapError(
         (cause) =>
           new ModelLoadError({
             message: "Failed to load embedding model",
-            model: MODEL_NAME,
+            model,
             cause,
           }),
       ),
@@ -55,7 +82,7 @@ const make = Effect.gen(function* () {
         ),
       )
       const data = tensor.data as Float32Array
-      return { vector: normalize(data), dims: DIMS }
+      return { vector: normalize(data), dims }
     })
 
   const batch = (
@@ -76,14 +103,14 @@ const make = Effect.gen(function* () {
         const data = tensor.data as Float32Array
         const n = tensor.dims[0]
         for (let j = 0; j < n; j++) {
-          const offset = j * DIMS
-          results.push(normalize(data.slice(offset, offset + DIMS)))
+          const offset = j * dims
+          results.push(normalize(data.slice(offset, offset + dims)))
         }
       }
-      return results.map((vector) => ({ vector, dims: DIMS }))
+      return results.map((vector) => ({ vector, dims }))
     })
 
   return { embed, batch } as const
 })
 
-export const OnnxEmbedderLive = Layer.effect(Embedder, make)
+export const OnnxEmbedderLive = Layer.provideMerge(Layer.effect(Embedder, make), ConfigStoreLive)
