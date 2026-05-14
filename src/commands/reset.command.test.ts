@@ -12,7 +12,13 @@ import { resetCommand } from "./reset.js"
 const run = (args: string[]) => Command.run(resetCommand, { name: "pix", version: "0.0.0" })(args)
 
 const fixtures = {
-  ".pix/config.json": JSON.stringify({ schemaVersion: "1" }),
+  ".pix/config.json": JSON.stringify({
+    schema: "1",
+    embedder: { model: "test-model", device: "auto", dtype: "fp32" },
+    chunkLines: 60,
+    overlapLines: 10,
+    files: {},
+  }),
   ".pix/chunks.jsonl": JSON.stringify({
     id: "a1",
     idx: 0,

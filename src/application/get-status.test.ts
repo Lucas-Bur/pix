@@ -7,8 +7,11 @@ import { GetStatus } from "./get-status.js"
 const fixtures = {
   ".pix/config.json": JSON.stringify({
     schema: "1",
-    model: "test-model",
-    dims: 384,
+    embedder: {
+      model: "test-model",
+      device: "auto",
+      dtype: "fp32",
+    },
     chunkLines: 60,
     overlapLines: 10,
     files: {},
@@ -46,7 +49,6 @@ test("GetStatus.getStatus returns status from VectorStore with config model", ()
 test("GetStatus.getStatus falls back to VectorStore model when config read fails", () =>
   Effect.gen(function* () {
     const result = yield* GetStatus.getStatus()
-    // Without config.json, readConfig fails -> catchAll falls back to store model (which is "")
     expect(result.model).toBe("")
     expect(result.chunks).toBe(2)
     expect(result.files).toBe(2)

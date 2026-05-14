@@ -12,12 +12,11 @@ const run = (args: string[]) => Command.run(indexCommand, { name: "pix", version
 
 const fixtures = {
   ".pix/config.json": JSON.stringify({
-    schemaVersion: "1",
-    model: "test-model",
-    extensions: [".ts"],
+    schema: "1",
+    embedder: { model: "test-model", device: "auto", dtype: "fp32" },
     chunkLines: 60,
     overlapLines: 10,
-    batchSize: 16,
+    files: {},
   }),
   "src/a.ts": "export const a = 1",
 }
