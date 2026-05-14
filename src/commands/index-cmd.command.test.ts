@@ -1,7 +1,8 @@
 import { Command } from "@effect/cli"
-import { Effect, Exit, Layer } from "effect"
+import { Effect, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
+import { assertCommandError } from "../../tests/test-utils/command.js"
 import { MockConsole } from "../../tests/test-utils/MockConsole.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { Scanner } from "../domain/ports.js"
@@ -48,18 +49,7 @@ test("pix index without --json logs info summary", () =>
   }).pipe(Effect.provide(testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer }))))
 
 test("pix index --json without config produces error JSON", () =>
-  Effect.gen(function* () {
-    const exit = yield* Effect.exit(run(["index", "--json"]))
-    expect(Exit.isFailure(exit)).toBe(true)
-
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBeGreaterThan(0)
-    const output = JSON.parse(lines[0])
-    expect(output.error).toBe(true)
-    expect(output.code).toBe("CONFIG_MISSING")
-    expect(typeof output.message).toBe("string")
-  }).pipe(Effect.provide(testLayer())))
+  assertCommandError(run(["index", "--json"]), "CONFIG_MISSING").pipe(Effect.provide(testLayer())))
 
 test("pix index --force logs not-implemented warning", () =>
   Effect.gen(function* () {
