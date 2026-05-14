@@ -3,6 +3,7 @@ import { expect, test } from "vite-plus/test"
 
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { StoreError } from "../domain/errors.js"
+import { ConfigStore } from "../domain/ports.js"
 import { VectorStore } from "../domain/ports.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { IndexProject } from "./index-project.js"
@@ -181,3 +182,20 @@ test("IndexProject.index respects chunkConcurrency values", () =>
       expect(result.status.files, `chunkConcurrency=${label}`).toBe(2)
     }
   }))
+
+test("IndexProject.index auto-initializes when config is missing", () =>
+  Effect.gen(function* () {
+    const result = yield* IndexProject.index()
+    expect(result.success).toBe(true)
+    const configStore = yield* ConfigStore
+    const exists = yield* configStore.configExists()
+    expect(exists).toBe(true)
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        contents: { "src/a.ts": sourceFile },
+        scannerLayer: ScannerLive,
+      }),
+    ),
+    Effect.scoped,
+  ))
