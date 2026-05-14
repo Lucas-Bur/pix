@@ -1,6 +1,3 @@
----
----
-
 # Coding Standards for pix
 
 ## TypeScript Rules
