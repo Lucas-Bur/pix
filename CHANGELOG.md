@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.5.3...pix-v0.6.0) (2026-05-14)
+
+
+### Features
+
+* **tests:** add memoryFsLayer + extend testLayer with configStore, vectorStore, cleanStore ([#51](https://github.com/Lucas-Bur/pix/issues/51)) ([b59e031](https://github.com/Lucas-Bur/pix/commit/b59e03191c478da86f3ccd03c31fcb5da81dae9f))
+
+
+### Bug Fixes
+
+* address CodeRabbit review — CONTEXT.md docs, clamping assertions, swapped fixtures ([f634308](https://github.com/Lucas-Bur/pix/commit/f634308aa4e5589aec8ae36b42a620097ec4b50b))
+
 ## [0.5.3](https://github.com/Lucas-Bur/pix/compare/pix-v0.5.2...pix-v0.5.3) (2026-05-13)
 
 
