@@ -22,13 +22,18 @@ const make = Effect.gen(function* () {
   const writeConfig = (config: Config): Effect.Effect<void, ConfigError | DiskFullError> =>
     Effect.gen(function* () {
       const configJson = JSON.stringify(config, null, 2)
-      yield* fs
-        .makeDirectory(CONFIG_DIR, { recursive: true })
-        .pipe(
-          Effect.mapError(
-            (cause) => new ConfigError({ message: "Failed to create .pix directory", cause }),
-          ),
-        )
+      yield* fs.makeDirectory(CONFIG_DIR, { recursive: true }).pipe(
+        Effect.mapError((cause) => {
+          if (isPlatformReason(cause, "BadResource")) {
+            return new DiskFullError({
+              message: "Disk full: could not create .pix directory",
+              path: CONFIG_DIR,
+              cause,
+            })
+          }
+          return new ConfigError({ message: "Failed to create .pix directory", cause })
+        }),
+      )
       yield* fs.writeFileString(CONFIG_PATH, configJson).pipe(
         Effect.mapError((cause) => {
           if (isPlatformReason(cause, "BadResource")) {

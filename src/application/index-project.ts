@@ -45,7 +45,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         const fileChunkArrays = yield* Effect.forEach(
           scanResult.files,
           (file) => chunker.chunkFile(file),
-          { concurrency: "unbounded" },
+          { concurrency: 8 },
         )
 
         const allChunks = fileChunkArrays.flat()
