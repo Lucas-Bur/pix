@@ -1,5 +1,7 @@
 import { Data } from "effect"
 
+import type { ConfigError } from "./config.js"
+
 // === Config errors ===
 
 /** Config file or directory does not exist. Run pix init first. */
@@ -69,8 +71,6 @@ export class ScanFailed extends Data.TaggedError("ScanFailed")<{
 }> {}
 
 // === Error union types ===
-
-import type { ConfigError } from "./config.js"
 
 /** All config-related error types. */
 export type AllConfigErrors = ConfigError | ConfigNotFoundError | ConfigMalformedError

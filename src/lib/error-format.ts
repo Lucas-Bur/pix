@@ -1,3 +1,5 @@
+import { Console, Effect } from "effect"
+
 /**
  * Maps Data.TaggedError _tag values to JSON error codes for structured output. Used by formatError
  * to produce the spec-mandated `{ error: true, code, message }` format.
@@ -38,8 +40,6 @@ export const formatError = (error: unknown): string =>
     code: codeFromError(error),
     message: messageFromError(error),
   })
-
-import { Console, Effect } from "effect"
 
 /** Log the error as JSON to stdout, then re-fail to preserve non-zero exit code. */
 export const reportError = <E>(error: E): Effect.Effect<never, E> =>
