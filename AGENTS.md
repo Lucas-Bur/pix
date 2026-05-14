@@ -1,4 +1,4 @@
-**STRICT:** Load and follow ALL rules in `.claude/rules/` and `memory/` before every action. No exceptions.
+Load and follow ALL rules in `docs/rules/` before any action. No exceptions.
 
 ## Agent skills
 
@@ -16,8 +16,8 @@ Single-context repo: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/
 
 ### Additional Guidelines
 
-- Coding standards & patterns: @.claude/rules/coding-standards.md
-- Behavioral rules: @.claude/rules/behavior.md
+- Coding standards & patterns: @docs/rules/coding-standards.md
+- Behavioral rules: @docs/rules/behavior.md
 - Project context: @CONTEXT.md
 
 ## Using Vite+, the Unified Toolchain for the Web
@@ -57,7 +57,7 @@ Run them in order: `vp check && vp test && vp run lint:fallow`.
 
 When working with code that imports from `effect`, **invoke the `/effect-ts` skill** before starting implementation. It provides detailed patterns, reference docs, and critical rules.
 
-Follow the coding standards in `@.claude/rules/coding-standards.md` for Effect-TS patterns, TypeScript rules, and TDD process.
+Follow the coding standards in `@docs/rules/coding-standards.md` for Effect-TS patterns, TypeScript rules, and TDD process.
 
 ### Prerequisites Check
 

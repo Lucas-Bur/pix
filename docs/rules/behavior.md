@@ -1,6 +1,3 @@
----
----
-
 # Behavioral Rules for pix
 
 ## GitHub Issue Management
@@ -12,7 +9,7 @@
 
 ## Documentation Requirements
 
-- If you add/change a pattern → update relevant `.claude/rules/` file
+- If you add/change a pattern → update relevant `docs/rules/` file
 - If you learn something new → add to appropriate rules file
 - Keep it concise, not a novel
 - Explain magic values (e.g., `schema: "1"` = MVP schema version)
