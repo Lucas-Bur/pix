@@ -27,49 +27,65 @@ const normalize = (arr: Float32Array): Float32Array => {
   return result
 }
 
-const make = Effect.gen(function* () {
-  const configStore = yield* ConfigStore
+interface EmbedderConfig {
+  readonly model: string
+  readonly device: "auto" | "cpu" | "cuda" | "dml" | "coreml"
+  readonly dtype: "fp32" | "fp16" | "q8"
+  readonly dims: number
+}
 
-  const config = yield* configStore
-    .readConfig()
-    .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+const resolveEmbedderConfig = (
+  configStore: typeof ConfigStore.Service,
+): Effect.Effect<EmbedderConfig, ModelLoadError> =>
+  Effect.gen(function* () {
+    const config = yield* configStore
+      .readConfig()
+      .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
 
-  const model = config?.embedder.model ?? "Xenova/all-MiniLM-L6-v2"
-  const device = config?.embedder.device ?? "auto"
-  const dtype = config?.embedder.dtype ?? "fp32"
+    const model = config?.embedder.model ?? "Xenova/all-MiniLM-L6-v2"
+    const device = config?.embedder.device ?? "auto"
+    const dtype = config?.embedder.dtype ?? "fp32"
 
-  const modelInfo = MODEL_REGISTRY[model]
-  if (!modelInfo) {
-    return yield* new ModelLoadError({
-      message: `Unknown embedding model "${model}". Available: ${Object.keys(MODEL_REGISTRY).join(", ")}`,
-      model,
+    const modelInfo = MODEL_REGISTRY[model]
+    if (!modelInfo) {
+      return yield* new ModelLoadError({
+        message: `Unknown embedding model "${model}". Available: ${Object.keys(MODEL_REGISTRY).join(", ")}`,
+        model,
+      })
+    }
+
+    if (!modelInfo.dtypes.includes(dtype)) {
+      return yield* new ModelLoadError({
+        message: `Unsupported dtype "${dtype}" for model "${model}". Supported: ${modelInfo.dtypes.join(", ")}`,
+        model,
+      })
+    }
+
+    return { model, device, dtype, dims: modelInfo.dims }
+  })
+
+const createExtractor = (opts: EmbedderConfig) =>
+  Effect.tryPromise(async () => {
+    const { pipeline } = await import("@huggingface/transformers")
+    return pipeline("feature-extraction", opts.model, {
+      device: opts.device,
+      dtype: opts.dtype,
     })
-  }
-
-  if (!modelInfo.dtypes.includes(dtype)) {
-    return yield* new ModelLoadError({
-      message: `Unsupported dtype "${dtype}" for model "${model}". Supported: ${modelInfo.dtypes.join(", ")}`,
-      model,
-    })
-  }
-
-  const dims = modelInfo.dims
-
-  const getExtractor = yield* Effect.cached(
-    Effect.tryPromise(async () => {
-      const { pipeline } = await import("@huggingface/transformers")
-      return pipeline("feature-extraction", model, { device, dtype })
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ModelLoadError({
-            message: "Failed to load embedding model",
-            model,
-            cause,
-          }),
-      ),
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ModelLoadError({
+          message: "Failed to load embedding model",
+          model: opts.model,
+          cause,
+        }),
     ),
   )
+
+const make = Effect.gen(function* () {
+  const configStore = yield* ConfigStore
+  const cfg = yield* resolveEmbedderConfig(configStore)
+  const getExtractor = yield* Effect.cached(createExtractor(cfg))
 
   const embed = (text: string): Effect.Effect<Embedding, ModelLoadError | InferenceError> =>
     Effect.gen(function* () {
@@ -82,7 +98,7 @@ const make = Effect.gen(function* () {
         ),
       )
       const data = tensor.data as Float32Array
-      return { vector: normalize(data), dims }
+      return { vector: normalize(data), dims: cfg.dims }
     })
 
   const batch = (
@@ -103,11 +119,11 @@ const make = Effect.gen(function* () {
         const data = tensor.data as Float32Array
         const n = tensor.dims[0]
         for (let j = 0; j < n; j++) {
-          const offset = j * dims
-          results.push(normalize(data.slice(offset, offset + dims)))
+          const offset = j * cfg.dims
+          results.push(normalize(data.slice(offset, offset + cfg.dims)))
         }
       }
-      return results.map((vector) => ({ vector, dims }))
+      return results.map((vector) => ({ vector, dims: cfg.dims }))
     })
 
   return { embed, batch } as const
