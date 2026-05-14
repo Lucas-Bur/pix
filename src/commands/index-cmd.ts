@@ -2,7 +2,7 @@ import { Command, Options } from "@effect/cli"
 import { Console, Effect } from "effect"
 
 import { IndexProject } from "../application/index-project.js"
-import { formatError } from "../lib/error-format.js"
+import { reportError } from "../lib/error-format.js"
 
 /** CLI command: pix index [--force] [--verbose] [--json] */
 export const indexCommand = Command.make(
@@ -24,26 +24,35 @@ export const indexCommand = Command.make(
 
       const startTime = Date.now()
 
-      const result = yield* IndexProject.index().pipe(Effect.either)
-
-      if (result._tag === "Left") {
-        return yield* Effect.fail(result.left)
-      }
+      const result = yield* IndexProject.index()
 
       const duration = `${((Date.now() - startTime) / 1000).toFixed(1)}s`
 
       if (json) {
         return yield* Console.log(
           JSON.stringify({
-            chunks: result.right.status.chunks,
-            files: result.right.status.files,
+            chunks: result.status.chunks,
+            files: result.status.files,
             duration,
           }),
         )
       }
 
       yield* Effect.logInfo(
-        `Indexed ${result.right.status.chunks} chunks from ${result.right.status.files} files in ${duration}.`,
+        `Indexed ${result.status.chunks} chunks from ${result.status.files} files in ${duration}.`,
       )
-    }).pipe(Effect.tapError((error) => Console.log(formatError(error)))),
+    }).pipe(
+      Effect.catchTags({
+        ConfigError: reportError,
+        ConfigNotFoundError: reportError,
+        ConfigMalformedError: reportError,
+        ScanFailed: reportError,
+        ChunkerError: reportError,
+        ModelLoadError: reportError,
+        InferenceError: reportError,
+        DiskFullError: reportError,
+        StoreError: reportError,
+        NoIndexError: reportError,
+      }),
+    ),
 )

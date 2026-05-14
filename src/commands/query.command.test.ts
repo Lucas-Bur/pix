@@ -5,6 +5,7 @@ import { expect, test } from "vite-plus/test"
 import { assertCommandError, indexFixtures } from "../../tests/test-utils/command.js"
 import { MockConsole } from "../../tests/test-utils/MockConsole.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import { ModelLoadError } from "../domain/errors.js"
 import { Embedder } from "../domain/ports.js"
 import { queryCommand } from "./query.js"
 
@@ -34,8 +35,8 @@ test("pix query with --top flag clamps to valid range", () =>
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures }))))
 
 const failingEmbedderLayer = Layer.succeed(Embedder, {
-  embed: () => Effect.dieMessage("embed failed"),
-  batch: () => Effect.dieMessage("batch failed"),
+  embed: () => Effect.fail(new ModelLoadError({ model: "test", message: "embed failed" })),
+  batch: () => Effect.fail(new ModelLoadError({ model: "test", message: "batch failed" })),
 })
 
 test("pix query --json with failing embedder produces error JSON", () =>

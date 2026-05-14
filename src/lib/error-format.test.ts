@@ -22,18 +22,35 @@ test("formatError handles null / unknown error", () => {
   expect(result.message).toBe("Unknown error")
 })
 
-test("formatError maps ConfigError _tag to CONFIG_MISSING code", () => {
+test("formatError maps ConfigError _tag to CONFIG_ERROR code", () => {
   const result = JSON.parse(formatError({ _tag: "ConfigError", message: "config missing" }))
   expect(result.error).toBe(true)
-  expect(result.code).toBe("CONFIG_MISSING")
+  expect(result.code).toBe("CONFIG_ERROR")
   expect(result.message).toBe("config missing")
 })
 
-test("formatError maps PlatformError _tag to PLATFORM_ERROR code", () => {
-  const result = JSON.parse(formatError({ _tag: "PlatformError", message: "io error" }))
-  expect(result.error).toBe(true)
-  expect(result.code).toBe("PLATFORM_ERROR")
-  expect(result.message).toBe("io error")
+test("formatError maps new error tags correctly", () => {
+  expect(JSON.parse(formatError({ _tag: "ConfigNotFoundError", message: "not found" })).code).toBe(
+    "CONFIG_NOT_FOUND",
+  )
+  expect(JSON.parse(formatError({ _tag: "ConfigMalformedError", message: "bad json" })).code).toBe(
+    "CONFIG_MALFORMED",
+  )
+  expect(JSON.parse(formatError({ _tag: "NoIndexError", message: "no index" })).code).toBe(
+    "NO_INDEX",
+  )
+  expect(JSON.parse(formatError({ _tag: "DiskFullError", message: "full" })).code).toBe("DISK_FULL")
+  expect(JSON.parse(formatError({ _tag: "StoreError", message: "io" })).code).toBe("STORE_ERROR")
+  expect(JSON.parse(formatError({ _tag: "ChunkerError", message: "chunk" })).code).toBe(
+    "CHUNK_ERROR",
+  )
+  expect(JSON.parse(formatError({ _tag: "ModelLoadError", message: "load" })).code).toBe(
+    "MODEL_LOAD_ERROR",
+  )
+  expect(JSON.parse(formatError({ _tag: "InferenceError", message: "infer" })).code).toBe(
+    "INFERENCE_ERROR",
+  )
+  expect(JSON.parse(formatError({ _tag: "ScanFailed", message: "scan" })).code).toBe("SCAN_FAILED")
 })
 
 test("formatError returns UNKNOWN for unrecognized _tag", () => {

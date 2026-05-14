@@ -49,7 +49,7 @@ test("pix index without --json logs info summary", () =>
   }).pipe(Effect.provide(testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer }))))
 
 test("pix index --json without config produces error JSON", () =>
-  assertCommandError(run(["index", "--json"]), "CONFIG_MISSING").pipe(Effect.provide(testLayer())))
+  assertCommandError(run(["index", "--json"]), "CONFIG_ERROR").pipe(Effect.provide(testLayer())))
 
 test("pix index --force logs not-implemented warning", () =>
   Effect.gen(function* () {

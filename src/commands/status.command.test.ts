@@ -5,6 +5,7 @@ import { expect, test } from "vite-plus/test"
 import { assertCommandError, indexFixtures } from "../../tests/test-utils/command.js"
 import { MockConsole } from "../../tests/test-utils/MockConsole.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import { StoreError } from "../domain/errors.js"
 import { VectorStore } from "../domain/ports.js"
 import { statusCommand } from "./status.js"
 
@@ -48,7 +49,7 @@ test("pix status without --json logs info via Effect.logInfo", () =>
 const failingVectorStore = Layer.succeed(VectorStore, {
   store: () => Effect.succeed(undefined),
   search: () => Effect.succeed([]),
-  getStatus: () => Effect.dieMessage("getStatus failed"),
+  getStatus: () => Effect.fail(new StoreError({ message: "getStatus failed" })),
   reset: () => Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),
 })
 
