@@ -2,6 +2,7 @@ import { env } from "@huggingface/transformers"
 import { Effect, Layer } from "effect"
 
 import type { Embedding } from "../domain/embedding.js"
+import { InferenceError, ModelLoadError } from "../domain/errors.js"
 import { Embedder } from "../domain/ports.js"
 export { Embedder }
 
@@ -10,7 +11,6 @@ const DIMS = 384
 const CACHE_DIR = ".pix/cache"
 const BATCH_SIZE = 16
 
-// Configure model cache location
 env.cacheDir = CACHE_DIR
 
 const normalize = (arr: Float32Array): Float32Array => {
@@ -28,9 +28,6 @@ const normalize = (arr: Float32Array): Float32Array => {
 }
 
 const make = Effect.gen(function* () {
-  // Lazy: import + model load are deferred until first embed/batch call.
-  // Effect.cached ensures the pipeline is only initialized once per invocation,
-  // even if embed/batch are called concurrently.
   const getExtractor = yield* Effect.cached(
     Effect.tryPromise(async () => {
       const { pipeline } = await import("@huggingface/transformers")
@@ -38,27 +35,39 @@ const make = Effect.gen(function* () {
         device: "cpu",
         dtype: "q8",
       })
-    }),
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ModelLoadError({
+            message: `Failed to load embedding model`,
+            model: MODEL_NAME,
+            cause,
+          }),
+      ),
+    ),
   )
 
-  const embed = (text: string): Effect.Effect<Embedding, never> =>
+  const embed = (text: string): Effect.Effect<Embedding, ModelLoadError | InferenceError> =>
     Effect.gen(function* () {
       const extractor = yield* getExtractor
       const tensor = yield* Effect.tryPromise(() =>
         extractor(text, { pooling: "mean", normalize: false }),
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new InferenceError({
+              message: `Embedding inference failed`,
+              cause,
+            }),
+        ),
       )
       const data = tensor.data as Float32Array
       return { vector: normalize(data), dims: DIMS }
-    }).pipe(
-      Effect.catchAll(() =>
-        Effect.succeed({
-          vector: new Float32Array(DIMS),
-          dims: DIMS,
-        }),
-      ),
-    )
+    })
 
-  const batch = (texts: readonly string[]): Effect.Effect<readonly Embedding[], never> =>
+  const batch = (
+    texts: readonly string[],
+  ): Effect.Effect<readonly Embedding[], ModelLoadError | InferenceError> =>
     Effect.gen(function* () {
       const extractor = yield* getExtractor
       const results: Float32Array[] = []
@@ -66,6 +75,14 @@ const make = Effect.gen(function* () {
         const slice = texts.slice(i, i + BATCH_SIZE)
         const tensor = yield* Effect.tryPromise(() =>
           extractor(slice, { pooling: "mean", normalize: false }),
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new InferenceError({
+                message: `Batch embedding inference failed`,
+                cause,
+              }),
+          ),
         )
         const data = tensor.data as Float32Array
         const n = tensor.dims[0]
@@ -75,7 +92,7 @@ const make = Effect.gen(function* () {
         }
       }
       return results.map((vector) => ({ vector, dims: DIMS }))
-    }).pipe(Effect.catchAll(() => Effect.succeed([])))
+    })
 
   return { embed, batch } as const
 })

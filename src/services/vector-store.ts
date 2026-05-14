@@ -1,14 +1,20 @@
 import { FileSystem } from "@effect/platform"
-import type { PlatformError } from "@effect/platform/Error"
 import { Effect, Layer, Option } from "effect"
 
 import type { Chunk } from "../domain/chunk.js"
 import type { Embedding } from "../domain/embedding.js"
+import { DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
 import { VectorStore } from "../domain/ports.js"
 
 const STORE_DIR = ".pix"
 const CHUNKS_FILE = `${STORE_DIR}/chunks.jsonl`
 const VECTORS_FILE = `${STORE_DIR}/vectors.bin`
+
+const isPlatformReason = (cause: unknown, reason: string): boolean =>
+  typeof cause === "object" &&
+  cause !== null &&
+  "reason" in cause &&
+  String((cause as { reason: unknown }).reason) === reason
 
 /**
  * FileSystem adapter for VectorStore port. Reads from chunks.jsonl and vectors.bin to provide index
@@ -45,18 +51,46 @@ const make = Effect.gen(function* () {
     return files
   }
 
+  const toStoreError =
+    (operation: string, path?: string) =>
+    (cause: unknown): StoreError | DiskFullError => {
+      if (isPlatformReason(cause, "BadResource")) {
+        return new DiskFullError({
+          message: `Disk full during ${operation}`,
+          path,
+          cause,
+        })
+      }
+      return new StoreError({
+        message: `Failed to ${operation}`,
+        path,
+        cause,
+      })
+    }
+
+  const toReadError =
+    (operation: string, path?: string) =>
+    (cause: unknown): StoreError =>
+      new StoreError({
+        message: `Failed to ${operation}`,
+        path,
+        cause,
+      })
+
   const store = (
     chunks: readonly Chunk[],
     embeddings: readonly Embedding[],
-  ): Effect.Effect<void, PlatformError> =>
+  ): Effect.Effect<void, StoreError | DiskFullError> =>
     Effect.gen(function* () {
-      // Ensure .pix directory exists
-      const storeDirExists = yield* fs.exists(STORE_DIR)
+      const storeDirExists = yield* fs
+        .exists(STORE_DIR)
+        .pipe(Effect.mapError(toStoreError("check .pix directory")))
       if (!storeDirExists) {
-        yield* fs.makeDirectory(STORE_DIR, { recursive: true })
+        yield* fs
+          .makeDirectory(STORE_DIR, { recursive: true })
+          .pipe(Effect.mapError(toStoreError("create .pix directory")))
       }
 
-      // Write chunks to temp file first, then atomic rename
       const chunksTemp = `${CHUNKS_FILE}.tmp`
       const chunksLines = chunks.map((c) =>
         JSON.stringify({
@@ -68,10 +102,13 @@ const make = Effect.gen(function* () {
           text: c.text,
         }),
       )
-      yield* fs.writeFileString(chunksTemp, chunksLines.join("\n"))
-      yield* fs.rename(chunksTemp, CHUNKS_FILE)
+      yield* fs
+        .writeFileString(chunksTemp, chunksLines.join("\n"))
+        .pipe(Effect.mapError(toStoreError("write chunks", chunksTemp)))
+      yield* fs
+        .rename(chunksTemp, CHUNKS_FILE)
+        .pipe(Effect.mapError(toStoreError("commit chunks", CHUNKS_FILE)))
 
-      // Write vectors to temp file, then atomic rename
       const vectorsTemp = `${VECTORS_FILE}.tmp`
       const dims = embeddings[0]?.dims ?? 384
       const totalFloats = embeddings.length * dims
@@ -79,10 +116,13 @@ const make = Effect.gen(function* () {
       for (let i = 0; i < embeddings.length; i++) {
         vectorsArray.set(embeddings[i].vector, i * dims)
       }
-      // Write as binary buffer
       const buffer = Buffer.from(vectorsArray.buffer)
-      yield* fs.writeFile(vectorsTemp, buffer)
-      yield* fs.rename(vectorsTemp, VECTORS_FILE)
+      yield* fs
+        .writeFile(vectorsTemp, buffer)
+        .pipe(Effect.mapError(toStoreError("write vectors", vectorsTemp)))
+      yield* fs
+        .rename(vectorsTemp, VECTORS_FILE)
+        .pipe(Effect.mapError(toStoreError("commit vectors", VECTORS_FILE)))
     })
 
   const search = (
@@ -98,26 +138,32 @@ const make = Effect.gen(function* () {
       contextBefore?: string
       contextAfter?: string
     }[],
-    PlatformError
+    StoreError | NoIndexError
   > =>
     Effect.gen(function* () {
-      const chunksExists = yield* fs.exists(CHUNKS_FILE)
-      const vectorsExists = yield* fs.exists(VECTORS_FILE)
+      const chunksExists = yield* fs
+        .exists(CHUNKS_FILE)
+        .pipe(Effect.mapError(toReadError("check chunks file")))
+      const vectorsExists = yield* fs
+        .exists(VECTORS_FILE)
+        .pipe(Effect.mapError(toReadError("check vectors file")))
 
-      // No index — return empty results
       if (!chunksExists || !vectorsExists) {
-        return []
+        return yield* new NoIndexError({
+          message: "No index found. Run pix index first.",
+        })
       }
 
-      // Read chunks.jsonl for metadata
-      const chunksContent = yield* fs.readFileString(CHUNKS_FILE)
+      const chunksContent = yield* fs
+        .readFileString(CHUNKS_FILE)
+        .pipe(Effect.mapError(toReadError("read chunks", CHUNKS_FILE)))
       const chunkLines = chunksContent.split("\n").filter((l) => l.trim().length > 0)
 
-      // Read vectors.bin
-      const vectorsBuffer = yield* fs.readFile(VECTORS_FILE)
+      const vectorsBuffer = yield* fs
+        .readFile(VECTORS_FILE)
+        .pipe(Effect.mapError(toReadError("read vectors", VECTORS_FILE)))
       const vectors = new Float32Array(vectorsBuffer.buffer as ArrayBuffer)
 
-      // Parse chunks and compute similarity
       const results: {
         score: number
         file: string
@@ -139,11 +185,9 @@ const make = Effect.gen(function* () {
             contextAfter?: string
           }
 
-          // Get vector for this chunk (row i)
           const startIdx = i * query.dims
           const chunkVector = vectors.slice(startIdx, startIdx + query.dims)
 
-          // Compute cosine similarity (dot product since vectors are L2-normalized)
           let dotProduct = 0
           for (let j = 0; j < query.dims; j++) {
             dotProduct += chunkVector[j] * query.vector[j]
@@ -163,7 +207,6 @@ const make = Effect.gen(function* () {
         }
       }
 
-      // Sort by score descending and take topK
       results.sort((a, b) => b.score - a.score)
       return results.slice(0, topK)
     })
@@ -177,14 +220,16 @@ const make = Effect.gen(function* () {
       totalLines: number
       byteSize: number
     },
-    PlatformError,
-    never
+    StoreError
   > =>
     Effect.gen(function* () {
-      const chunksExists = yield* fs.exists(CHUNKS_FILE)
-      const vectorsExists = yield* fs.exists(VECTORS_FILE)
+      const chunksExists = yield* fs
+        .exists(CHUNKS_FILE)
+        .pipe(Effect.mapError(toReadError("check chunks file")))
+      const vectorsExists = yield* fs
+        .exists(VECTORS_FILE)
+        .pipe(Effect.mapError(toReadError("check vectors file")))
 
-      // No index exists — return zeros
       if (!chunksExists || !vectorsExists) {
         return {
           chunks: 0,
@@ -196,7 +241,6 @@ const make = Effect.gen(function* () {
         }
       }
 
-      // Read chunks.jsonl to count chunks and gather metadata
       const content = yield* fs
         .readFileString(CHUNKS_FILE)
         .pipe(Effect.catchAll(() => Effect.succeed("")))
@@ -207,13 +251,11 @@ const make = Effect.gen(function* () {
       const model = ""
       const totalLines = countTotalLines(lines)
 
-      // Get vectors.bin size and mtime
       const vectorsStat = yield* fs
         .stat(VECTORS_FILE)
         .pipe(Effect.catchAll(() => Effect.succeed(null)))
       const byteSize: number = vectorsStat && "size" in vectorsStat ? Number(vectorsStat.size) : 0
 
-      // Extract mtime from Option<Date> - Info.mtime is Option<Date>
       const lastIndex = Option.map(vectorsStat?.mtime ?? Option.none(), (d) =>
         d instanceof Date ? d.getTime() : 0,
       ).pipe(Option.getOrElse(() => 0))
@@ -223,26 +265,38 @@ const make = Effect.gen(function* () {
 
   const reset = (): Effect.Effect<
     { deletedChunks: boolean; deletedVectors: boolean; freedBytes: number },
-    PlatformError
+    StoreError | DiskFullError
   > =>
     Effect.gen(function* () {
       let deletedChunks = false
       let deletedVectors = false
       let freedBytes = 0
 
-      const chunksExists = yield* fs.exists(CHUNKS_FILE)
+      const chunksExists = yield* fs
+        .exists(CHUNKS_FILE)
+        .pipe(Effect.mapError(toStoreError("check chunks file")))
       if (chunksExists) {
-        const stat = yield* fs.stat(CHUNKS_FILE)
+        const stat = yield* fs
+          .stat(CHUNKS_FILE)
+          .pipe(Effect.mapError(toStoreError("stat chunks", CHUNKS_FILE)))
         freedBytes += stat && "size" in stat ? Number(stat.size) : 0
-        yield* fs.remove(CHUNKS_FILE)
+        yield* fs
+          .remove(CHUNKS_FILE)
+          .pipe(Effect.mapError(toStoreError("delete chunks", CHUNKS_FILE)))
         deletedChunks = true
       }
 
-      const vectorsExists = yield* fs.exists(VECTORS_FILE)
+      const vectorsExists = yield* fs
+        .exists(VECTORS_FILE)
+        .pipe(Effect.mapError(toStoreError("check vectors file")))
       if (vectorsExists) {
-        const stat = yield* fs.stat(VECTORS_FILE)
+        const stat = yield* fs
+          .stat(VECTORS_FILE)
+          .pipe(Effect.mapError(toStoreError("stat vectors", VECTORS_FILE)))
         freedBytes += stat && "size" in stat ? Number(stat.size) : 0
-        yield* fs.remove(VECTORS_FILE)
+        yield* fs
+          .remove(VECTORS_FILE)
+          .pipe(Effect.mapError(toStoreError("delete vectors", VECTORS_FILE)))
         deletedVectors = true
       }
 

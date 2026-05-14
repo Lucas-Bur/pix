@@ -24,7 +24,7 @@ export interface TestLayerOptions {
 }
 
 const defaultScannerLayer = Layer.succeed(Scanner, {
-  scanFiles: () => Effect.succeed<string[]>([]),
+  scanFiles: () => Effect.succeed({ files: [], skipped: [] }),
 })
 
 const defaultEmbedderLayer = Layer.succeed(Embedder, {
