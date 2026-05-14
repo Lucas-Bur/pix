@@ -1,6 +1,6 @@
-import type { PlatformError } from "@effect/platform/Error"
 import { Effect } from "effect"
 
+import type { AllEmbedderErrors, AllStoreErrors, NoIndexError } from "../domain/errors.js"
 import { Embedder, VectorStore } from "../domain/ports.js"
 import type { SearchResult } from "../domain/ports.js"
 
@@ -14,7 +14,7 @@ export class QueryProject extends Effect.Service<QueryProject>()("QueryProject",
     const queryProject = (
       queryText: string,
       topK: number,
-    ): Effect.Effect<readonly SearchResult[], PlatformError> =>
+    ): Effect.Effect<readonly SearchResult[], AllEmbedderErrors | AllStoreErrors | NoIndexError> =>
       embedder.embed(queryText).pipe(Effect.flatMap((embedding) => store.search(embedding, topK)))
 
     return { queryProject }

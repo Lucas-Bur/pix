@@ -23,7 +23,7 @@ const fixtures = {
 }
 
 const emptyScannerLayer = Layer.succeed(Scanner, {
-  scanFiles: () => Effect.succeed<string[]>([]),
+  scanFiles: () => Effect.succeed({ files: [], skipped: [] }),
 })
 
 test("pix index --json outputs status after indexing", () =>

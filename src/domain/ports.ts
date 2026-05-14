@@ -12,6 +12,7 @@ import type {
   ChunkerError,
   ModelLoadError,
   InferenceError,
+  ScanFailed,
 } from "./errors.js"
 
 // === Scan result types ===
@@ -47,8 +48,11 @@ export class ConfigStore extends Context.Tag("ConfigStore")<
 export class Scanner extends Context.Tag("Scanner")<
   Scanner,
   {
-    /** Scan project files matching the given extensions. Skipped entries are reported, not errored. */
-    readonly scanFiles: (extensions: readonly string[]) => Effect.Effect<ScanResult, never>
+    /**
+     * Scan project files matching the given extensions. Non-fatal per-entry skips are reported in
+     * ScanResult.skipped. Fatal errors surface as ScanFailed.
+     */
+    readonly scanFiles: (extensions: readonly string[]) => Effect.Effect<ScanResult, ScanFailed>
   }
 >() {}
 
@@ -117,6 +121,6 @@ export class VectorStore extends Context.Tag("VectorStore")<
       },
       StoreError
     >
-    readonly reset: () => Effect.Effect<ResetResult, StoreError>
+    readonly reset: () => Effect.Effect<ResetResult, StoreError | DiskFullError>
   }
 >() {}

@@ -2,6 +2,7 @@ import { Effect } from "effect"
 
 import type { Config } from "../domain/config.js"
 import { DEFAULT_CONFIG, ConfigError } from "../domain/config.js"
+import type { DiskFullError } from "../domain/errors.js"
 import { ConfigStore } from "../domain/ports.js"
 
 /** Result of initializing a project. */
@@ -19,7 +20,7 @@ export class InitProject extends Effect.Service<InitProject>()("InitProject", {
   effect: Effect.gen(function* () {
     const store = yield* ConfigStore
 
-    const init = (): Effect.Effect<InitResult, ConfigError> =>
+    const init = (): Effect.Effect<InitResult, ConfigError | DiskFullError> =>
       store
         .writeConfig(DEFAULT_CONFIG)
         .pipe(Effect.as({ success: true as const, config: DEFAULT_CONFIG }))

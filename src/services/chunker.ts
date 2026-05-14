@@ -5,6 +5,7 @@ import { Effect, Layer } from "effect"
 
 import type { Chunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
+import { ChunkerError } from "../domain/errors.js"
 import { ConfigStore, Chunker } from "../domain/ports.js"
 export { Chunker }
 
@@ -18,13 +19,17 @@ const make = Effect.gen(function* () {
     .readConfig()
     .pipe(Effect.catchAll(() => Effect.succeed(DEFAULT_CONFIG)))
 
-  const chunkFile = (file: string): Effect.Effect<readonly Chunk[], never> =>
+  const chunkFile = (file: string): Effect.Effect<readonly Chunk[], ChunkerError> =>
     Effect.gen(function* () {
       const content = yield* fs.readFileString(file).pipe(
-        Effect.tapError((err) =>
-          Effect.logWarning(`[Chunker] Skipping unreadable file: ${file} — ${String(err)}`),
+        Effect.mapError(
+          (cause) =>
+            new ChunkerError({
+              message: `Could not read source file for chunking`,
+              file,
+              cause,
+            }),
         ),
-        Effect.catchAll(() => Effect.succeed("")),
       )
 
       if (content === "") {
@@ -61,7 +66,6 @@ const make = Effect.gen(function* () {
           idx++
         }
 
-        // Slide window by chunkLines - overlapLines
         startLine += config.chunkLines - config.overlapLines
       }
 

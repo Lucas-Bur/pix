@@ -1,6 +1,6 @@
-import type { PlatformError } from "@effect/platform/Error"
 import { Effect } from "effect"
 
+import type { AllConfigErrors, StoreError } from "../domain/errors.js"
 import { ConfigStore, VectorStore } from "../domain/ports.js"
 
 /** Return type for pix status */
@@ -20,7 +20,7 @@ export class GetStatus extends Effect.Service<GetStatus>()("GetStatus", {
     const store = yield* VectorStore
     const configStore = yield* ConfigStore
 
-    const getStatus = (): Effect.Effect<StatusResult, PlatformError> =>
+    const getStatus = (): Effect.Effect<StatusResult, AllConfigErrors | StoreError> =>
       Effect.gen(function* () {
         const status = yield* store.getStatus()
         const configModel = yield* configStore.readConfig().pipe(

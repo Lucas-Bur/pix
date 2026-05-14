@@ -1,7 +1,12 @@
-import type { PlatformError } from "@effect/platform/Error"
 import { Effect } from "effect"
 
-import type { ConfigError } from "../domain/config.js"
+import type {
+  AllConfigErrors,
+  AllEmbedderErrors,
+  AllStoreErrors,
+  ChunkerError,
+  ScanFailed,
+} from "../domain/errors.js"
 import { ConfigStore, Scanner, Chunker, Embedder, VectorStore } from "../domain/ports.js"
 import type { StatusResult } from "./get-status.js"
 
@@ -24,24 +29,25 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
     const embedder = yield* Embedder
     const vectorStore = yield* VectorStore
 
-    const index = (): Effect.Effect<IndexResult, ConfigError | PlatformError> =>
+    const index = (): Effect.Effect<
+      IndexResult,
+      AllConfigErrors | ScanFailed | ChunkerError | AllEmbedderErrors | AllStoreErrors
+    > =>
       Effect.gen(function* () {
-        // 1. Read config for extensions
         const config = yield* configStore.readConfig()
         const extensions =
           Object.keys(config.files).length > 0
             ? Object.keys(config.files)
             : [".ts", ".tsx", ".js", ".jsx"]
 
-        // 2. Scan files
-        const files = yield* scanner.scanFiles(extensions)
+        const scanResult = yield* scanner.scanFiles(extensions)
 
-        // 3. Chunk files in parallel
-        const fileChunkArrays = yield* Effect.forEach(files, (file) => chunker.chunkFile(file), {
-          concurrency: "unbounded",
-        })
+        const fileChunkArrays = yield* Effect.forEach(
+          scanResult.files,
+          (file) => chunker.chunkFile(file),
+          { concurrency: "unbounded" },
+        )
 
-        // Flatten chunks
         const allChunks = fileChunkArrays.flat()
         const totalChunks = allChunks.length
         const uniqueFiles = new Set(allChunks.map((c) => c.file))
@@ -56,11 +62,9 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           }
         }
 
-        // 4. Extract texts and embed in batches
         const texts = allChunks.map((c) => c.text)
         const embeddings = yield* embedder.batch(texts)
 
-        // 5. Store chunks and embeddings
         yield* vectorStore.store(allChunks, embeddings)
 
         const dims = embeddings[0]?.dims ?? 384
