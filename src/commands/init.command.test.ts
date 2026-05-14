@@ -5,6 +5,7 @@ import { expect, test } from "vite-plus/test"
 import { assertCommandError } from "../../tests/test-utils/command.js"
 import { MockConsole } from "../../tests/test-utils/MockConsole.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import { ConfigError } from "../domain/config.js"
 import { ConfigStore } from "../domain/ports.js"
 import { initCommand } from "./init.js"
 
@@ -32,8 +33,8 @@ test("pix init without --json does not write to Console", () =>
   }).pipe(Effect.provide(testLayer())))
 
 const failingConfigStore = Layer.succeed(ConfigStore, {
-  writeConfig: () => Effect.dieMessage("writeConfig failed"),
-  readConfig: () => Effect.dieMessage("readConfig failed"),
+  writeConfig: () => Effect.fail(new ConfigError({ message: "writeConfig failed" })),
+  readConfig: () => Effect.fail(new ConfigError({ message: "readConfig failed" })),
   configExists: () => Effect.succeed(false),
 })
 

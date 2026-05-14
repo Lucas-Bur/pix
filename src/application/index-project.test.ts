@@ -2,6 +2,7 @@ import { Effect, Exit, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import { StoreError } from "../domain/errors.js"
 import { VectorStore } from "../domain/ports.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { IndexProject } from "./index-project.js"
@@ -73,7 +74,7 @@ test("IndexProject.index scans, chunks, embeds, and stores", () =>
 test("IndexProject.index propagates errors from VectorStore", () =>
   Effect.gen(function* () {
     const failingVectorStore = Layer.succeed(VectorStore, {
-      store: () => Effect.fail({ _tag: "PlatformError" } as never),
+      store: () => Effect.fail(new StoreError({ message: "store failed" })),
       search: () => Effect.succeed([]),
       getStatus: () =>
         Effect.succeed({

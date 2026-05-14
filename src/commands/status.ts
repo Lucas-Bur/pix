@@ -2,7 +2,7 @@ import { Command, Options } from "@effect/cli"
 import { Console, Effect } from "effect"
 
 import { GetStatus } from "../application/get-status.js"
-import { formatError } from "../lib/error-format.js"
+import { reportError } from "../lib/error-format.js"
 import { formatBytes } from "../lib/format.js"
 
 /** CLI command: pix status [--json] */
@@ -26,5 +26,12 @@ export const statusCommand = Command.make(
       yield* Effect.logInfo(`Total lines: ${result.totalLines.toLocaleString()}`)
       yield* Effect.logInfo(`Index size: ${formatBytes(result.byteSize)}`)
       yield* Effect.logInfo(`Last indexed: ${lastIndexStr}`)
-    }).pipe(Effect.tapError((error) => Console.log(formatError(error)))),
+    }).pipe(
+      Effect.catchTags({
+        ConfigError: reportError,
+        ConfigNotFoundError: reportError,
+        ConfigMalformedError: reportError,
+        StoreError: reportError,
+      }),
+    ),
 )

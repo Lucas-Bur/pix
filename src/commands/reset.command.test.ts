@@ -5,6 +5,7 @@ import { expect, test } from "vite-plus/test"
 import { assertCommandError } from "../../tests/test-utils/command.js"
 import { MockConsole } from "../../tests/test-utils/MockConsole.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import { StoreError } from "../domain/errors.js"
 import { VectorStore } from "../domain/ports.js"
 import { resetCommand } from "./reset.js"
 
@@ -72,7 +73,7 @@ const failingVectorStore = Layer.succeed(VectorStore, {
   search: () => Effect.succeed([]),
   getStatus: () =>
     Effect.succeed({ chunks: 0, files: 0, model: "", lastIndex: 0, totalLines: 0, byteSize: 0 }),
-  reset: () => Effect.dieMessage("reset failed"),
+  reset: () => Effect.fail(new StoreError({ message: "reset failed" })),
 })
 
 test("pix reset --json with failing VectorStore produces error JSON", () =>

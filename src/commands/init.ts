@@ -2,7 +2,7 @@ import { Command, Options } from "@effect/cli"
 import { Console, Effect } from "effect"
 
 import { InitProject } from "../application/init-project.js"
-import { formatError } from "../lib/error-format.js"
+import { reportError } from "../lib/error-format.js"
 
 /** CLI command: pix init [--json] */
 export const initCommand = Command.make(
@@ -22,5 +22,10 @@ export const initCommand = Command.make(
       yield* Effect.logInfo(
         "Reminder: Add `.pix` to your `.gitignore` file to avoid committing the index.",
       )
-    }).pipe(Effect.tapError((error) => Console.log(formatError(error)))),
+    }).pipe(
+      Effect.catchTags({
+        ConfigError: reportError,
+        DiskFullError: reportError,
+      }),
+    ),
 )
