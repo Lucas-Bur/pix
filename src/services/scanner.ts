@@ -11,22 +11,58 @@ const ALWAYS_IGNORE = new Set([".pix", "node_modules", ".git", "dist", "build", 
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
 
+  const readFileWithSkip = (
+    path: string,
+    mkReason: (error: unknown) => string,
+  ): Effect.Effect<{ content: string; skipped: SkippedEntry | null }, never> =>
+    fs.readFileString(path).pipe(
+      Effect.map((content) => ({ content, skipped: null as SkippedEntry | null })),
+      Effect.catchAll((error) =>
+        Effect.succeed({
+          content: "",
+          skipped: { path, reason: mkReason(error) } satisfies SkippedEntry,
+        }),
+      ),
+    )
+
+  const readDirectoryWithSkip = (
+    dir: string,
+  ): Effect.Effect<{ entries: string[]; skipped: SkippedEntry | null }, never> =>
+    fs.readDirectory(dir).pipe(
+      Effect.map((entries) => ({ entries, skipped: null as SkippedEntry | null })),
+      Effect.catchAll((error) =>
+        Effect.succeed({
+          entries: [] as string[],
+          skipped: {
+            path: dir,
+            reason: `Could not read directory: ${String(error)}`,
+          } satisfies SkippedEntry,
+        }),
+      ),
+    )
+
+  const statWithSkip = (fullPath: string) =>
+    fs.stat(fullPath).pipe(
+      Effect.map((info) => ({ info, skipped: null as SkippedEntry | null })),
+      Effect.catchAll((error) =>
+        Effect.succeed({
+          info: null,
+          skipped: {
+            path: fullPath,
+            reason: `Could not stat: ${String(error)}`,
+          } satisfies SkippedEntry,
+        }),
+      ),
+    )
+
   const loadGitignoreRules = Effect.gen(function* () {
     const ig = ignore()
     const cwd = process.cwd()
     const skipped: SkippedEntry[] = []
 
-    const rootContent = yield* fs.readFileString(`${cwd}/.gitignore`).pipe(
-      Effect.map((content) => ({ content, skipped: null })),
-      Effect.catchAll((error) =>
-        Effect.succeed({
-          content: "",
-          skipped: {
-            path: `${cwd}/.gitignore`,
-            reason: `Could not read gitignore: ${String(error)}`,
-          } satisfies SkippedEntry,
-        }),
-      ),
+    const rootContent = yield* readFileWithSkip(
+      `${cwd}/.gitignore`,
+      (error) => `Could not read gitignore: ${String(error)}`,
     )
     if (rootContent.skipped) skipped.push(rootContent.skipped)
     if (rootContent.content.trim()) {
@@ -36,17 +72,9 @@ const make = Effect.gen(function* () {
     const excludePath = `${cwd}/.git/info/exclude`
     const excludeExists = yield* fs.exists(excludePath)
     if (excludeExists) {
-      const excludeContent = yield* fs.readFileString(excludePath).pipe(
-        Effect.map((content) => ({ content, skipped: null })),
-        Effect.catchAll((error) =>
-          Effect.succeed({
-            content: "",
-            skipped: {
-              path: excludePath,
-              reason: `Could not read exclude file: ${String(error)}`,
-            } satisfies SkippedEntry,
-          }),
-        ),
+      const excludeContent = yield* readFileWithSkip(
+        excludePath,
+        (error) => `Could not read exclude file: ${String(error)}`,
       )
       if (excludeContent.skipped) skipped.push(excludeContent.skipped)
       if (excludeContent.content.trim()) {
@@ -62,18 +90,7 @@ const make = Effect.gen(function* () {
     extensions: ReadonlySet<string>,
   ): Effect.Effect<{ files: string[]; skipped: SkippedEntry[] }, never> =>
     Effect.gen(function* () {
-      const result = yield* fs.readDirectory(dir).pipe(
-        Effect.map((entries) => ({ entries, skipped: null })),
-        Effect.catchAll((error) =>
-          Effect.succeed({
-            entries: [] as string[],
-            skipped: {
-              path: dir,
-              reason: `Could not read directory: ${String(error)}`,
-            } satisfies SkippedEntry,
-          }),
-        ),
-      )
+      const result = yield* readDirectoryWithSkip(dir)
 
       let files: string[] = []
       const skipped: SkippedEntry[] = []
@@ -83,18 +100,7 @@ const make = Effect.gen(function* () {
         if (ALWAYS_IGNORE.has(entry)) continue
 
         const fullPath = `${dir}/${entry}`
-        const info = yield* fs.stat(fullPath).pipe(
-          Effect.map((info) => ({ info, skipped: null })),
-          Effect.catchAll((error) =>
-            Effect.succeed({
-              info: null,
-              skipped: {
-                path: fullPath,
-                reason: `Could not stat: ${String(error)}`,
-              } satisfies SkippedEntry,
-            }),
-          ),
-        )
+        const info = yield* statWithSkip(fullPath)
 
         if (info.skipped) {
           skipped.push(info.skipped)

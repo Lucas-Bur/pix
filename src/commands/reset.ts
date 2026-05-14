@@ -2,8 +2,34 @@ import { Command, Options } from "@effect/cli"
 import { Clock, Console, Effect } from "effect"
 
 import { ResetIndex } from "../application/reset-index.js"
+import type { ResetResult } from "../domain/ports.js"
 import { reportError } from "../lib/error-format.js"
 import { formatBytes } from "../lib/format.js"
+
+const logJsonResult = (result: ResetResult, elapsedMs: number) =>
+  Console.log(
+    JSON.stringify({
+      status: "ok",
+      deletedChunks: result.deletedChunks,
+      deletedVectors: result.deletedVectors,
+      freedBytes: result.freedBytes,
+      elapsedMs,
+    }),
+  )
+
+const logHumanResult = (result: ResetResult, elapsedMs: number) =>
+  Effect.gen(function* () {
+    if (!result.deletedChunks && !result.deletedVectors) {
+      yield* Effect.logInfo("Nothing to reset.")
+      return
+    }
+    const parts: string[] = []
+    if (result.deletedChunks) parts.push("chunks.jsonl")
+    if (result.deletedVectors) parts.push("vectors.bin")
+    yield* Effect.logInfo(`Deleted: ${parts.join(", ")}`)
+    yield* Effect.logInfo(`Freed: ${formatBytes(result.freedBytes)}`)
+    yield* Effect.logInfo(`Time: ${elapsedMs}ms`)
+  })
 
 /** CLI command: pix reset [--json] */
 export const resetCommand = Command.make(
@@ -18,30 +44,8 @@ export const resetCommand = Command.make(
       const end = yield* Clock.currentTimeMillis
       const elapsedMs = end - start
 
-      if (json) {
-        return yield* Console.log(
-          JSON.stringify({
-            status: "ok",
-            deletedChunks: result.deletedChunks,
-            deletedVectors: result.deletedVectors,
-            freedBytes: result.freedBytes,
-            elapsedMs,
-          }),
-        )
-      }
-
-      if (!result.deletedChunks && !result.deletedVectors) {
-        yield* Effect.logInfo("Nothing to reset.")
-        return
-      }
-
-      const parts: string[] = []
-      if (result.deletedChunks) parts.push("chunks.jsonl")
-      if (result.deletedVectors) parts.push("vectors.bin")
-
-      yield* Effect.logInfo(`Deleted: ${parts.join(", ")}`)
-      yield* Effect.logInfo(`Freed: ${formatBytes(result.freedBytes)}`)
-      yield* Effect.logInfo(`Time: ${elapsedMs}ms`)
+      if (json) return yield* logJsonResult(result, elapsedMs)
+      yield* logHumanResult(result, elapsedMs)
     }).pipe(
       Effect.catchTags({
         DiskFullError: reportError,
