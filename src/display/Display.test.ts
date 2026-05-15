@@ -97,13 +97,32 @@ describe("SilentDisplay", () => {
     }).pipe(Effect.provide(layer))
   })
 
-  it("records progress entries", () => {
+  it("records message entries", () => {
     const { ref, layer } = setup()
     return Effect.gen(function* () {
       const d = yield* Display
-      yield* d.progress("Scanned 12 files")
+      yield* d.message("Scanned 12 files")
       const entries = yield* Ref.get(ref)
-      expect(entries).toEqual([{ _tag: "progress", message: "Scanned 12 files" }])
+      expect(entries).toEqual([{ _tag: "message", message: "Scanned 12 files" }])
+    }).pipe(Effect.provide(layer))
+  })
+
+  it("progress bar passes through effect result", () => {
+    const { layer } = setup()
+    return Effect.gen(function* () {
+      const d = yield* Display
+      const result = yield* d.progress({ message: "Embedding...", max: 47 }, Effect.succeed(42))
+      expect(result).toBe(42)
+    }).pipe(Effect.provide(layer))
+  })
+
+  it("progress bar records options", () => {
+    const { ref, layer } = setup()
+    return Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.progress({ message: "Embedding...", max: 47 }, Effect.void)
+      const entries = yield* Ref.get(ref)
+      expect(entries).toEqual([{ _tag: "progress", message: "Embedding...", max: 47 }])
     }).pipe(Effect.provide(layer))
   })
 
@@ -124,7 +143,8 @@ describe("SilentDisplay", () => {
       yield* d.intro("pix")
       yield* d.status("Running...", "info")
       yield* d.spinner("Indexing...", Effect.succeed(42))
-      yield* d.progress("Scanned 12 files")
+      yield* d.message("Scanned 12 files")
+      yield* d.progress({ message: "Embedding...", max: 47 }, Effect.void)
       yield* d.note("Tips")
       yield* d.text("result line")
       yield* d.json({ ok: true })
@@ -134,6 +154,7 @@ describe("SilentDisplay", () => {
         "intro",
         "status",
         "spinner",
+        "message",
         "progress",
         "note",
         "text",

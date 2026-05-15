@@ -6,6 +6,15 @@ import { Context, Effect, Layer, Ref } from "effect"
 /** Severity level for status messages */
 export type Severity = "info" | "success" | "warn" | "error"
 
+/** Options for the progress bar method */
+export interface ProgressOptions {
+  readonly message: string
+  readonly max: number
+  readonly style?: "light" | "heavy" | "block"
+  readonly size?: number
+  readonly indicator?: "dots" | "timer"
+}
+
 /** Union of all display entries recorded by SilentDisplay for test assertions */
 export type DisplayEntry =
   | { readonly _tag: "intro"; readonly title: string }
@@ -14,7 +23,8 @@ export type DisplayEntry =
   | { readonly _tag: "note"; readonly content: string; readonly title?: string }
   | { readonly _tag: "text"; readonly message: string }
   | { readonly _tag: "spinner"; readonly message: string }
-  | { readonly _tag: "progress"; readonly message: string }
+  | { readonly _tag: "progress"; readonly message: string; readonly max: number }
+  | { readonly _tag: "message"; readonly message: string }
   | { readonly _tag: "json"; readonly data: unknown }
 
 /** Display service — abstracts CLI output behind structured methods */
@@ -24,11 +34,18 @@ export interface DisplayService {
   readonly status: (message: string, severity: Severity) => Effect.Effect<void>
   readonly note: (content: string, title?: string) => Effect.Effect<void>
   readonly text: (message: string) => Effect.Effect<void>
+  /** Wrap an effect with a spinner lifecycle. Inner effects can call d.message() for updates. */
   readonly spinner: <A, E, R>(
     message: string,
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, R>
-  readonly progress: (message: string) => Effect.Effect<void>
+  /** Wrap an effect with a progress bar lifecycle. Inner effects can call d.message() for updates. */
+  readonly progress: <A, E, R>(
+    opts: ProgressOptions,
+    effect: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E, R>
+  /** Update the active spinner or progress bar message in-place. No-op if none active. */
+  readonly message: (message: string) => Effect.Effect<void>
   readonly json: (data: unknown) => Effect.Effect<void>
 }
 
@@ -50,10 +67,15 @@ const terminalStyle = {
 }
 
 /**
- * Active spinner handle. Only one spinner runs at a time per the @clack constraint of a single
- * interactive line. `progress` updates this spinner's message in-place.
+ * Active interactive element. @clack supports only one interactive line at a time (spinner or
+ * progress bar). Methods that update in-place (d.message) target whichever element is active.
  */
-let activeSpinner: ReturnType<typeof clack.spinner> | null = null
+type ActiveInteractive =
+  | { readonly type: "spinner"; readonly handle: ReturnType<typeof clack.spinner> }
+  | { readonly type: "progress"; readonly handle: ReturnType<typeof clack.progress> }
+  | null
+
+let activeInteractive: ActiveInteractive = null
 
 /** Display implementation using @clack/prompts for interactive terminal output */
 export const ClackDisplay = {
@@ -74,13 +96,13 @@ export const ClackDisplay = {
         Effect.sync(() => {
           const s = clack.spinner()
           s.start(message)
-          activeSpinner = s
+          activeInteractive = { type: "spinner", handle: s }
           return s
         }),
         () => effect,
         (s, exit) =>
           Effect.sync(() => {
-            activeSpinner = null
+            activeInteractive = null
             if (exit._tag === "Success") {
               s.stop(message)
             } else {
@@ -89,9 +111,41 @@ export const ClackDisplay = {
           }),
       ),
 
-    progress: (message) =>
+    progress: <A, E, R>(
+      opts: ProgressOptions,
+      effect: Effect.Effect<A, E, R>,
+    ): Effect.Effect<A, E, R> =>
+      Effect.acquireUseRelease(
+        Effect.sync(() => {
+          const bar = clack.progress({
+            max: opts.max,
+            style: opts.style ?? "heavy",
+            size: opts.size ?? 40,
+            indicator: opts.indicator ?? "dots",
+          })
+          bar.start(opts.message)
+          activeInteractive = { type: "progress", handle: bar }
+          return bar
+        }),
+        () => effect,
+        (bar, exit) =>
+          Effect.sync(() => {
+            activeInteractive = null
+            if (exit._tag === "Success") {
+              bar.stop(opts.message)
+            } else {
+              bar.error(opts.message)
+            }
+          }),
+      ),
+
+    message: (msg) =>
       Effect.sync(() => {
-        activeSpinner?.message(message)
+        if (activeInteractive?.type === "spinner") {
+          activeInteractive.handle.message(msg)
+        } else if (activeInteractive?.type === "progress") {
+          activeInteractive.handle.message(msg)
+        }
       }),
 
     json: () => Effect.void,
@@ -108,14 +162,18 @@ export const JsonDisplay = {
     text: () => Effect.void,
     spinner: <A, E, R>(_message: string, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
       effect,
-    progress: () => Effect.void,
+    progress: <A, E, R>(
+      _opts: ProgressOptions,
+      effect: Effect.Effect<A, E, R>,
+    ): Effect.Effect<A, E, R> => effect,
+    message: () => Effect.void,
     json: (data) => Effect.sync(() => process.stdout.write(`${JSON.stringify(data)}\n`)),
   }),
 }
 
 /**
- * Display implementation that records all calls to a Ref for test assertions. Spinner passes
- * through the wrapped effect result unchanged.
+ * Display implementation that records all calls to a Ref for test assertions. Spinner and progress
+ * pass through the wrapped effect result unchanged.
  */
 export const SilentDisplay = {
   layer: (ref: Ref.Ref<ReadonlyArray<DisplayEntry>>): Layer.Layer<Display> =>
@@ -142,8 +200,21 @@ export const SilentDisplay = {
           ),
         ),
 
-      progress: (message) =>
-        Ref.update(ref, (entries) => [...entries, { _tag: "progress" as const, message }]),
+      progress: <A, E, R>(
+        opts: ProgressOptions,
+        effect: Effect.Effect<A, E, R>,
+      ): Effect.Effect<A, E, R> =>
+        effect.pipe(
+          Effect.tap(() =>
+            Ref.update(ref, (entries) => [
+              ...entries,
+              { _tag: "progress" as const, message: opts.message, max: opts.max },
+            ]),
+          ),
+        ),
+
+      message: (msg) =>
+        Ref.update(ref, (entries) => [...entries, { _tag: "message" as const, message: msg }]),
 
       json: (data) => Ref.update(ref, (entries) => [...entries, { _tag: "json" as const, data }]),
     }),

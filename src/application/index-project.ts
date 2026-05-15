@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 
+import { Display } from "../display/Display.js"
 import type {
   AllConfigErrors,
   AllEmbedderErrors,
@@ -19,7 +20,7 @@ interface IndexResult {
 
 /**
  * Use case: index project files. Pipeline: scan → chunk → embed → store. Depends on ConfigStore,
- * Scanner, Chunker, Embedder, VectorStore via Effect tags.
+ * Scanner, Chunker, Embedder, VectorStore, Display via Effect tags.
  */
 export class IndexProject extends Effect.Service<IndexProject>()("IndexProject", {
   accessors: true,
@@ -29,6 +30,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
     const chunker = yield* Chunker
     const embedder = yield* Embedder
     const vectorStore = yield* VectorStore
+    const d = yield* Display
 
     const index = (): Effect.Effect<
       IndexResult,
@@ -41,8 +43,10 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
             ? Object.keys(config.files)
             : [".ts", ".tsx", ".js", ".jsx"]
 
+        yield* d.message("Scanning source files...")
         const scanResult = yield* scanner.scanFiles(extensions)
 
+        yield* d.message(`Chunking ${scanResult.files.length} files...`)
         const fileChunkArrays = yield* Effect.forEach(
           scanResult.files,
           (file) => chunker.chunkFile(file),
@@ -62,6 +66,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           }
         }
 
+        yield* d.message(`Embedding ${totalChunks} chunks...`)
         const texts = allChunks.map((c) => c.text)
         const embeddings = yield* embedder.batch(texts)
 

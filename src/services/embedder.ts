@@ -1,7 +1,7 @@
 import { env } from "@huggingface/transformers"
 import { Effect, Layer } from "effect"
 
-import type { Embedding } from "../domain/embedding.js"
+import { Display } from "../display/Display.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
 import { MODEL_REGISTRY } from "../domain/models.js"
 import { ConfigStore, Embedder } from "../domain/ports.js"
@@ -88,9 +88,13 @@ const createExtractorWithFallback = (opts: EmbedderConfig) => {
   return createExtractor(opts).pipe(
     Effect.catchAll((originalError) =>
       Effect.gen(function* () {
-        yield* Effect.logWarning(
-          `Embedding device "${opts.device}" failed, falling back to "cpu": ${originalError.message}`,
-        )
+        const d = yield* Display
+        yield* d.status(`GPU (${opts.device}) failed, falling back to CPU...`, "warn")
+        yield* d.json({
+          event: "embedder_fallback",
+          originalDevice: opts.device,
+          reason: originalError.message,
+        })
         const cpuOpts: EmbedderConfig = { ...opts, device: "cpu" }
         const fallback = yield* createExtractor(cpuOpts).pipe(
           Effect.catchAll(() => Effect.fail(originalError)),
@@ -103,10 +107,11 @@ const createExtractorWithFallback = (opts: EmbedderConfig) => {
 
 const make = Effect.gen(function* () {
   const configStore = yield* ConfigStore
+  const d = yield* Display
   const cfg = yield* resolveEmbedderConfig(configStore)
   const getExtractor = yield* Effect.cached(createExtractorWithFallback(cfg))
 
-  const embed = (text: string): Effect.Effect<Embedding, ModelLoadError | InferenceError> =>
+  const embed = (text: string) =>
     Effect.gen(function* () {
       const extractor = yield* getExtractor
       const tensor = yield* Effect.tryPromise(() =>
@@ -118,11 +123,9 @@ const make = Effect.gen(function* () {
       )
       const data = tensor.data as Float32Array
       return { vector: normalize(data), dims: cfg.dims }
-    })
+    }).pipe(Effect.provideService(Display, d))
 
-  const batch = (
-    texts: readonly string[],
-  ): Effect.Effect<readonly Embedding[], ModelLoadError | InferenceError> =>
+  const batch = (texts: readonly string[]) =>
     Effect.gen(function* () {
       const extractor = yield* getExtractor
       const results: Float32Array[] = []
@@ -143,7 +146,7 @@ const make = Effect.gen(function* () {
         }
       }
       return results.map((vector) => ({ vector, dims: cfg.dims }))
-    })
+    }).pipe(Effect.provideService(Display, d))
 
   return { embed, batch } as const
 })

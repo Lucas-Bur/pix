@@ -1,7 +1,7 @@
 import { createRequire } from "node:module"
 
-import { CliConfig, Command } from "@effect/cli"
-import { Effect, Layer } from "effect"
+import { Command } from "@effect/cli"
+import { Effect } from "effect"
 
 import { indexCommand } from "./commands/index-cmd.ts"
 import { initCommand } from "./commands/init.ts"
@@ -28,7 +28,7 @@ export const cli = (args: readonly string[]) => {
   const isJson = args.some((a) => a === "--json")
   const displayLayer = isJson ? JsonDisplay.layer : ClackDisplay.layer
 
-  return Command.run(pix, { name: "pix", version: VERSION })(args).pipe(
-    Effect.provide(Layer.mergeAll(displayLayer, CliConfig.layer({ showTypes: false }))),
-  )
+  const effect = Command.run(pix, { name: "pix", version: VERSION })(args)
+
+  return { effect, displayLayer }
 }
