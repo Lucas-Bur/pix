@@ -40,6 +40,11 @@ const buildIndexOptions = (args: {
   ignorePaths: ReadonlyArray<string>
   ignoreGitignore: boolean
 }): IndexOptions => {
+  if (Option.isSome(args.batchSize) && args.batchSize.value <= 0)
+    throw new Error(`--batch-size must be positive, got ${args.batchSize.value}`)
+  if (Option.isSome(args.chunkConcurrency) && args.chunkConcurrency.value <= 0)
+    throw new Error(`--chunk-concurrency must be positive, got ${args.chunkConcurrency.value}`)
+
   const cliSkipExtensions = splitCsv(args.skipExtensions)
   const cliIgnorePaths = [
     ...args.ignorePath.map((s) => s.trim()).filter((s) => s.length > 0),
