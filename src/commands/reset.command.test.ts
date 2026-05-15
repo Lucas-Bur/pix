@@ -90,11 +90,11 @@ test("pix reset without --json on clean project shows info", () => {
 })
 
 const failingVectorStore = Layer.succeed(VectorStore, {
-  store: () => Effect.succeed(undefined),
-  storeBegin: () => Effect.succeed(undefined),
-  storeBatch: () => Effect.succeed(undefined),
+  store: () => Effect.void,
+  storeBegin: () => Effect.void,
+  storeBatch: () => Effect.void,
   storeCommit: () => Effect.succeed({ chunks: 0, files: 0, totalLines: 0, byteSize: 0 }),
-  storeAbort: () => Effect.succeed(undefined),
+  storeAbort: () => Effect.void,
   search: () => Effect.succeed([]),
   getStatus: () =>
     Effect.succeed({ chunks: 0, files: 0, model: "", lastIndex: 0, totalLines: 0, byteSize: 0 }),

@@ -55,11 +55,11 @@ test("pix status without --json logs status entries via Display", () => {
 })
 
 const failingVectorStore = Layer.succeed(VectorStore, {
-  store: () => Effect.succeed(undefined),
-  storeBegin: () => Effect.succeed(undefined),
-  storeBatch: () => Effect.succeed(undefined),
+  store: () => Effect.void,
+  storeBegin: () => Effect.void,
+  storeBatch: () => Effect.void,
   storeCommit: () => Effect.succeed({ chunks: 0, files: 0, totalLines: 0, byteSize: 0 }),
-  storeAbort: () => Effect.succeed(undefined),
+  storeAbort: () => Effect.void,
   search: () => Effect.succeed([]),
   getStatus: () => Effect.fail(new StoreError({ message: "getStatus failed" })),
   reset: () => Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),

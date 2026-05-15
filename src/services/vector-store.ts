@@ -26,9 +26,6 @@ const make = Effect.gen(function* () {
 
   const chunksTemp = `${CHUNKS_FILE}.tmp`
   const vectorsTemp = `${VECTORS_FILE}.tmp`
-
-  const chunksHandle = yield* Ref.make<Option.Option<unknown>>(Option.none())
-  const vectorsHandle = yield* Ref.make<Option.Option<unknown>>(Option.none())
   const seenFiles = yield* Ref.make<Set<string>>(new Set())
   const statsAccumulator = yield* Ref.make<IndexStats>({
     chunks: 0,
@@ -148,8 +145,6 @@ const make = Effect.gen(function* () {
   const storeBegin = (): Effect.Effect<void, StoreError | DiskFullError> =>
     Effect.gen(function* () {
       yield* ensureDirExists(STORE_DIR, ".pix directory")
-      yield* Ref.set(chunksHandle, Option.none())
-      yield* Ref.set(vectorsHandle, Option.none())
       yield* Ref.set(seenFiles, new Set())
       yield* Ref.set(statsAccumulator, { chunks: 0, files: 0, totalLines: 0, byteSize: 0 })
 
@@ -212,17 +207,14 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* withStoreError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
       yield* withStoreError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
-      yield* Ref.set(chunksHandle, Option.none())
-      yield* Ref.set(vectorsHandle, Option.none())
       const stats = yield* Ref.get(statsAccumulator)
       const files = yield* Ref.get(seenFiles)
+      yield* Ref.set(seenFiles, new Set())
       return { ...stats, files: files.size }
     })
 
   const storeAbort = (): Effect.Effect<void, StoreError> =>
     Effect.gen(function* () {
-      yield* Ref.set(chunksHandle, Option.none())
-      yield* Ref.set(vectorsHandle, Option.none())
       yield* Ref.set(seenFiles, new Set())
       const chunksExists = yield* withReadError(fs.exists(chunksTemp), "check chunks temp")
       if (chunksExists) {

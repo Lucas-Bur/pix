@@ -94,10 +94,10 @@ test("IndexProject.index propagates errors from VectorStore", () =>
   Effect.gen(function* () {
     const failingVectorStore = Layer.succeed(VectorStore, {
       store: () => Effect.fail(new StoreError({ message: "store failed" })),
-      storeBegin: () => Effect.succeed(undefined),
+      storeBegin: () => Effect.void,
       storeBatch: () => Effect.fail(new StoreError({ message: "store failed" })),
       storeCommit: () => Effect.fail(new StoreError({ message: "store failed" })),
-      storeAbort: () => Effect.succeed(undefined),
+      storeAbort: () => Effect.void,
       search: () => Effect.succeed([]),
       getStatus: () =>
         Effect.succeed({
