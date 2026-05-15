@@ -29,12 +29,23 @@ const make = Effect.gen(function* () {
 
   const chunksHandle = yield* Ref.make<Option.Option<unknown>>(Option.none())
   const vectorsHandle = yield* Ref.make<Option.Option<unknown>>(Option.none())
+  const seenFiles = yield* Ref.make<Set<string>>(new Set())
   const statsAccumulator = yield* Ref.make<IndexStats>({
     chunks: 0,
     files: 0,
     totalLines: 0,
     byteSize: 0,
   })
+
+  const serializeVectors = (embeddings: readonly Embedding[]): Buffer => {
+    const dims = embeddings[0]?.dims ?? 384
+    const totalFloats = embeddings.length * dims
+    const vectorsArray = new Float32Array(totalFloats)
+    for (let i = 0; i < embeddings.length; i++) {
+      vectorsArray.set(embeddings[i].vector, i * dims)
+    }
+    return Buffer.from(vectorsArray.buffer)
+  }
 
   /**
    * Count total lines across all chunks in chunks.jsonl. Each line is a JSON object; the 'text'
@@ -139,6 +150,7 @@ const make = Effect.gen(function* () {
       yield* ensureDirExists(STORE_DIR, ".pix directory")
       yield* Ref.set(chunksHandle, Option.none())
       yield* Ref.set(vectorsHandle, Option.none())
+      yield* Ref.set(seenFiles, new Set())
       yield* Ref.set(statsAccumulator, { chunks: 0, files: 0, totalLines: 0, byteSize: 0 })
 
       const chunksExists = yield* withStoreError(fs.exists(chunksTemp), "check chunks temp")
@@ -173,26 +185,24 @@ const make = Effect.gen(function* () {
         chunksTemp,
       )
 
-      const dims = embeddings[0]?.dims ?? 384
-      const totalFloats = embeddings.length * dims
-      const vectorsArray = new Float32Array(totalFloats)
-      for (let i = 0; i < embeddings.length; i++) {
-        vectorsArray.set(embeddings[i].vector, i * dims)
-      }
-      const buffer = Buffer.from(vectorsArray.buffer)
+      const buffer = serializeVectors(embeddings)
       yield* withStoreError(
         fs.writeFile(vectorsTemp, buffer, { flag: "a" }),
         "append vectors",
         vectorsTemp,
       )
 
-      const uniqueFiles = new Set(chunks.map((c) => c.file))
+      const dims = embeddings[0]?.dims ?? 384
       const batchLines = chunks.reduce((sum, c) => sum + (c.endLine - c.startLine + 1), 0)
       const batchBytes = embeddings.length * dims * 4
 
+      yield* Ref.update(seenFiles, (prev) => {
+        for (const c of chunks) prev.add(c.file)
+        return prev
+      })
       yield* Ref.update(statsAccumulator, (prev) => ({
         chunks: prev.chunks + chunks.length,
-        files: prev.files + uniqueFiles.size,
+        files: 0,
         totalLines: prev.totalLines + batchLines,
         byteSize: prev.byteSize + batchBytes,
       }))
@@ -204,13 +214,16 @@ const make = Effect.gen(function* () {
       yield* withStoreError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
       yield* Ref.set(chunksHandle, Option.none())
       yield* Ref.set(vectorsHandle, Option.none())
-      return yield* Ref.get(statsAccumulator)
+      const stats = yield* Ref.get(statsAccumulator)
+      const files = yield* Ref.get(seenFiles)
+      return { ...stats, files: files.size }
     })
 
   const storeAbort = (): Effect.Effect<void, StoreError> =>
     Effect.gen(function* () {
       yield* Ref.set(chunksHandle, Option.none())
       yield* Ref.set(vectorsHandle, Option.none())
+      yield* Ref.set(seenFiles, new Set())
       const chunksExists = yield* withReadError(fs.exists(chunksTemp), "check chunks temp")
       if (chunksExists) {
         yield* withReadError(fs.remove(chunksTemp), "abort chunks temp", chunksTemp)
@@ -247,13 +260,7 @@ const make = Effect.gen(function* () {
       yield* withStoreError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
 
       const vectorsTemp = `${VECTORS_FILE}.tmp`
-      const dims = embeddings[0]?.dims ?? 384
-      const totalFloats = embeddings.length * dims
-      const vectorsArray = new Float32Array(totalFloats)
-      for (let i = 0; i < embeddings.length; i++) {
-        vectorsArray.set(embeddings[i].vector, i * dims)
-      }
-      const buffer = Buffer.from(vectorsArray.buffer)
+      const buffer = serializeVectors(embeddings)
       yield* withStoreError(fs.writeFile(vectorsTemp, buffer), "write vectors", vectorsTemp)
       yield* withStoreError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
     })
