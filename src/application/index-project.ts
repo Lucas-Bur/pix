@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 
 import { Display } from "../display/Display.js"
+import { DEFAULT_CONFIG } from "../domain/config.js"
 import type {
   AllConfigErrors,
   AllEmbedderErrors,
@@ -37,6 +38,10 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
       AllConfigErrors | ScanFailed | ChunkerError | AllEmbedderErrors | StoreError | DiskFullError
     > =>
       Effect.gen(function* () {
+        const hasConfig = yield* configStore.configExists()
+        if (!hasConfig) {
+          yield* configStore.writeConfig(DEFAULT_CONFIG)
+        }
         const config = yield* configStore.readConfig()
         const extensions =
           Object.keys(config.files).length > 0

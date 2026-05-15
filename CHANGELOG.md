@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.8.0...pix-v0.9.0) (2026-05-15)
+
+
+### Features
+
+* auto-init on index when no config exists ([860e152](https://github.com/Lucas-Bur/pix/commit/860e152ef4cfbcdf5038b81437d44e9963d1b54b))
+
 ## [0.8.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.7.0...pix-v0.8.0) (2026-05-14)
 
 
