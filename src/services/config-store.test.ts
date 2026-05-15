@@ -19,6 +19,16 @@ test("ConfigStore.writeConfig creates .pix/config.json with defaults", () =>
     expect(config.chunkLines).toBe(60)
     expect(config.overlapLines).toBe(10)
     expect(config.skipExtensions).toEqual([])
+    expect(config.ignoredPaths).toEqual([
+      ".agents",
+      ".claude",
+      ".vscode",
+      ".github",
+      "coverage",
+      "*-lock.yaml",
+      "*-lock.json",
+      "*.lock",
+    ])
   }).pipe(Effect.provide(makeLayer())))
 
 test("ConfigStore.readConfig returns ConfigError when config doesn't exist", () =>

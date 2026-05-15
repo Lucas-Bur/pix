@@ -30,6 +30,11 @@ export interface Config {
   readonly chunkConcurrency?: number
   /** File extensions to skip during indexing. Overrides domain processor map. */
   readonly skipExtensions: readonly string[]
+  /**
+   * Gitignore-style patterns for directories and files to exclude from scanning. Merged with
+   * .gitignore rules and ALWAYS_IGNORE. Supports glob patterns.
+   */
+  readonly ignoredPaths: readonly string[]
   /** Embedder runtime configuration. */
   readonly embedder: EmbedderConfig
 }
@@ -40,6 +45,16 @@ export const DEFAULT_CONFIG: Config = {
   overlapLines: 10,
   chunkConcurrency: 8,
   skipExtensions: [],
+  ignoredPaths: [
+    ".agents",
+    ".claude",
+    ".vscode",
+    ".github",
+    "coverage",
+    "*-lock.yaml",
+    "*-lock.json",
+    "*.lock",
+  ],
   embedder: {
     model: "Xenova/all-MiniLM-L6-v2",
     device: "auto",

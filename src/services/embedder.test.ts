@@ -14,7 +14,8 @@ const embedderConfig = {
   },
   chunkLines: 60,
   overlapLines: 10,
-  files: {},
+  skipExtensions: [],
+  ignoredPaths: [],
 }
 
 const testLayer = Layer.provideMerge(

@@ -49,11 +49,11 @@ export class Scanner extends Context.Tag("Scanner")<
   Scanner,
   {
     /**
-     * Scan project files, applying .gitignore rules and ALWAYS_IGNORE directories. Returns all
-     * discovered non-binary text files. Per-entry skips are reported in ScanResult.skipped. Fatal
-     * errors surface as ScanFailed.
+     * Scan project files, applying .gitignore rules, ALWAYS_IGNORE directories, and user-defined
+     * ignoredPaths patterns. Returns all discovered files. Per-entry skips are reported in
+     * ScanResult.skipped. Fatal errors surface as ScanFailed.
      */
-    readonly scanFiles: () => Effect.Effect<ScanResult, ScanFailed>
+    readonly scanFiles: (ignoredPaths: readonly string[]) => Effect.Effect<ScanResult, ScanFailed>
   }
 >() {}
 

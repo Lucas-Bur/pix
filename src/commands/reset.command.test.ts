@@ -17,7 +17,8 @@ const fixtures = {
     embedder: { model: "test-model", device: "auto", dtype: "fp32" },
     chunkLines: 60,
     overlapLines: 10,
-    files: {},
+    skipExtensions: [],
+    ignoredPaths: [],
   }),
   ".pix/chunks.jsonl": JSON.stringify({
     id: "a1",

@@ -134,6 +134,7 @@ test("IndexProject.index uses custom extensions from config", () =>
             chunkLines: 60,
             overlapLines: 10,
             skipExtensions: [],
+            ignoredPaths: [],
           }),
           "src/script.py": `# Python script\n${"print('line')\n".repeat(70)}`,
         },
@@ -158,6 +159,7 @@ test("IndexProject.index respects chunkConcurrency values", () =>
         chunkLines: 60,
         overlapLines: 10,
         skipExtensions: [],
+        ignoredPaths: [],
       }
       if (chunkConcurrency !== undefined) {
         configObj.chunkConcurrency = chunkConcurrency
@@ -236,6 +238,7 @@ test("IndexProject.index skips files in skipExtensions", () =>
             chunkLines: 60,
             overlapLines: 10,
             skipExtensions: [".py"],
+            ignoredPaths: [],
           }),
           "src/a.ts": sourceFile,
           "src/script.py": `# Python script\n${"print('line')\n".repeat(70)}`,
