@@ -161,9 +161,8 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
 
         yield* d.updateInteractive(`Processing ${knownFiles.length} files...`)
 
-        const embedded = yield* Ref.make(0)
-
-        const pipeline = Stream.fromIterable(knownFiles).pipe(
+        // Phase 1: extract + chunk (fast, CPU-bound)
+        const allChunks = yield* Stream.fromIterable(knownFiles).pipe(
           Stream.mapEffect(
             (file) =>
               extractor.extract(file).pipe(
@@ -186,30 +185,55 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           Stream.filterMap((opt: Option.Option<ExtractedFile>) => opt),
           Stream.mapEffect(({ file, text }) => chunker.chunkText(text, file), { concurrency }),
           Stream.flatMap((chunks) => Stream.fromIterable(chunks)),
-          Stream.buffer({ capacity: 5000 }),
-          Stream.grouped(batchSize),
-          Stream.mapEffect((batchChunk) =>
-            Effect.gen(function* () {
-              const batch = Chunk.toArray(batchChunk)
-              const texts = batch.map((c: DomainChunk) => c.text)
-              const embeddings = yield* embedder.batch(texts)
-              yield* vectorStore.storeBatch(batch, embeddings)
-              yield* Ref.update(embedded, (n) => n + batch.length)
-              const count = yield* Ref.get(embedded)
-              yield* d.updateInteractive(`${count} chunks embedded`)
-            }),
-          ),
-          Stream.runDrain,
+          Stream.runCollect,
         )
 
+        const chunks = Chunk.toArray(allChunks)
+        const totalChunks = chunks.length
+
+        if (totalChunks === 0) {
+          const collected = yield* Ref.get(skipped)
+          yield* displaySkippedNote(d, collected)
+          return {
+            success: true as const,
+            status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0 },
+            durationMs: Date.now() - start,
+          }
+        }
+
+        // Phase 2: embed + store (slow, GPU/CPU-bound) with progress bar
         yield* vectorStore.storeBegin()
 
-        const stats = yield* pipeline.pipe(
-          Effect.matchEffect({
-            onSuccess: () => vectorStore.storeCommit(),
-            onFailure: (err) =>
-              vectorStore.storeAbort().pipe(Effect.flatMap(() => Effect.fail(err))),
-          }),
+        const embedded = yield* Ref.make(0)
+
+        const stats = yield* d.progress(
+          { message: `Embedding ${totalChunks} chunks...`, max: totalChunks },
+          Stream.fromIterable(chunks)
+            .pipe(
+              Stream.grouped(batchSize),
+              Stream.mapEffect((batchChunk) =>
+                Effect.gen(function* () {
+                  const batch = Chunk.toArray(batchChunk)
+                  const texts = batch.map((c: DomainChunk) => c.text)
+                  const embeddings = yield* embedder.batch(texts)
+                  yield* vectorStore.storeBatch(batch, embeddings)
+                  yield* Ref.update(embedded, (n) => n + batch.length)
+                  const count = yield* Ref.get(embedded)
+                  yield* d.updateInteractive({
+                    message: `Embedding ${count} of ${totalChunks} chunks`,
+                    setTo: count,
+                  })
+                }),
+              ),
+              Stream.runDrain,
+            )
+            .pipe(
+              Effect.matchEffect({
+                onSuccess: () => vectorStore.storeCommit(),
+                onFailure: (err) =>
+                  vectorStore.storeAbort().pipe(Effect.flatMap(() => Effect.fail(err))),
+              }),
+            ),
         )
 
         const collected = yield* Ref.get(skipped)
