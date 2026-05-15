@@ -15,6 +15,34 @@ export interface ProgressOptions {
   readonly indicator?: "dots" | "timer"
 }
 
+/** Payload for d.message() — plain string updates text only, object adds position control */
+export type MessagePayload =
+  | string
+  | {
+      readonly message: string
+      readonly advanceBy?: never
+      readonly setTo?: never
+      readonly setToPercent?: never
+    }
+  | {
+      readonly message: string
+      readonly advanceBy: number
+      readonly setTo?: never
+      readonly setToPercent?: never
+    }
+  | {
+      readonly message: string
+      readonly setTo: number
+      readonly advanceBy?: never
+      readonly setToPercent?: never
+    }
+  | {
+      readonly message: string
+      readonly setToPercent: number
+      readonly advanceBy?: never
+      readonly setTo?: never
+    }
+
 /** Union of all display entries recorded by SilentDisplay for test assertions */
 export type DisplayEntry =
   | { readonly _tag: "intro"; readonly title: string }
@@ -24,7 +52,13 @@ export type DisplayEntry =
   | { readonly _tag: "text"; readonly message: string }
   | { readonly _tag: "spinner"; readonly message: string }
   | { readonly _tag: "progress"; readonly message: string; readonly max: number }
-  | { readonly _tag: "message"; readonly message: string }
+  | {
+      readonly _tag: "message"
+      readonly message: string
+      readonly advanceBy?: number
+      readonly setTo?: number
+      readonly setToPercent?: number
+    }
   | { readonly _tag: "json"; readonly data: unknown }
 
 /** Display service — abstracts CLI output behind structured methods */
@@ -44,8 +78,8 @@ export interface DisplayService {
     opts: ProgressOptions,
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, R>
-  /** Update the active spinner or progress bar message in-place. No-op if none active. */
-  readonly message: (message: string) => Effect.Effect<void>
+  /** Update active spinner/progress text and optionally advance the progress bar. */
+  readonly message: (payload: MessagePayload) => Effect.Effect<void>
   readonly json: (data: unknown) => Effect.Effect<void>
 }
 
@@ -72,10 +106,40 @@ const terminalStyle = {
  */
 type ActiveInteractive =
   | { readonly type: "spinner"; readonly handle: ReturnType<typeof clack.spinner> }
-  | { readonly type: "progress"; readonly handle: ReturnType<typeof clack.progress> }
+  | {
+      readonly type: "progress"
+      readonly handle: ReturnType<typeof clack.progress>
+      readonly state: { value: number; max: number }
+    }
   | null
 
 let activeInteractive: ActiveInteractive = null
+
+/** Extract the message text from a MessagePayload */
+const messageText = (p: MessagePayload): string => (typeof p === "string" ? p : p.message)
+
+/**
+ * Compute the delta for a progress bar from the payload + current state. Returns 0 if there is no
+ * numeric payload or if the active element is a spinner.
+ */
+const computeDelta = (
+  p: MessagePayload,
+  state: { readonly value: number; readonly max: number },
+): number => {
+  if (typeof p === "string") return 0
+  if ("advanceBy" in p && p.advanceBy !== undefined) {
+    return Math.max(-state.value, p.advanceBy)
+  }
+  if ("setTo" in p && p.setTo !== undefined) {
+    const target = Math.max(0, Math.min(state.max, p.setTo))
+    return target - state.value
+  }
+  if ("setToPercent" in p && p.setToPercent !== undefined) {
+    const target = Math.floor((state.max * p.setToPercent) / 100)
+    return Math.max(-state.value, Math.min(state.max - state.value, target - state.value))
+  }
+  return 0
+}
 
 /** Display implementation using @clack/prompts for interactive terminal output */
 export const ClackDisplay = {
@@ -124,7 +188,7 @@ export const ClackDisplay = {
             indicator: opts.indicator ?? "dots",
           })
           bar.start(opts.message)
-          activeInteractive = { type: "progress", handle: bar }
+          activeInteractive = { type: "progress", handle: bar, state: { value: 0, max: opts.max } }
           return bar
         }),
         () => effect,
@@ -139,13 +203,20 @@ export const ClackDisplay = {
           }),
       ),
 
-    message: (msg) =>
+    message: (payload) =>
       Effect.sync(() => {
-        if (activeInteractive?.type === "spinner") {
+        const msg = messageText(payload)
+        if (!activeInteractive) return
+
+        if (activeInteractive.type === "spinner") {
           activeInteractive.handle.message(msg)
-        } else if (activeInteractive?.type === "progress") {
-          activeInteractive.handle.message(msg)
+          return
         }
+
+        const { handle, state } = activeInteractive
+        const delta = computeDelta(payload, state)
+        handle.advance(delta, msg)
+        state.value = Math.max(0, Math.min(state.max, state.value + delta))
       }),
 
     json: () => Effect.void,
@@ -213,8 +284,22 @@ export const SilentDisplay = {
           ),
         ),
 
-      message: (msg) =>
-        Ref.update(ref, (entries) => [...entries, { _tag: "message" as const, message: msg }]),
+      message: (payload) => {
+        const msg = messageText(payload)
+        const base: DisplayEntry = { _tag: "message", message: msg }
+        if (typeof payload === "string") return Ref.update(ref, (entries) => [...entries, base])
+
+        const entry: DisplayEntry = {
+          _tag: "message",
+          message: msg,
+          ...("advanceBy" in payload &&
+            payload.advanceBy !== undefined && { advanceBy: payload.advanceBy }),
+          ...("setTo" in payload && payload.setTo !== undefined && { setTo: payload.setTo }),
+          ...("setToPercent" in payload &&
+            payload.setToPercent !== undefined && { setToPercent: payload.setToPercent }),
+        } as DisplayEntry
+        return Ref.update(ref, (entries) => [...entries, entry])
+      },
 
       json: (data) => Ref.update(ref, (entries) => [...entries, { _tag: "json" as const, data }]),
     }),

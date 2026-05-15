@@ -107,6 +107,36 @@ describe("SilentDisplay", () => {
     }).pipe(Effect.provide(layer))
   })
 
+  it("records message with advanceBy", () => {
+    const { ref, layer } = setup()
+    return Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.message({ message: "Embedding...", advanceBy: 5 })
+      const entries = yield* Ref.get(ref)
+      expect(entries).toEqual([{ _tag: "message", message: "Embedding...", advanceBy: 5 }])
+    }).pipe(Effect.provide(layer))
+  })
+
+  it("records message with setTo", () => {
+    const { ref, layer } = setup()
+    return Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.message({ message: "Done", setTo: 47 })
+      const entries = yield* Ref.get(ref)
+      expect(entries).toEqual([{ _tag: "message", message: "Done", setTo: 47 }])
+    }).pipe(Effect.provide(layer))
+  })
+
+  it("records message with setToPercent", () => {
+    const { ref, layer } = setup()
+    return Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.message({ message: "Halfway", setToPercent: 50 })
+      const entries = yield* Ref.get(ref)
+      expect(entries).toEqual([{ _tag: "message", message: "Halfway", setToPercent: 50 }])
+    }).pipe(Effect.provide(layer))
+  })
+
   it("progress bar passes through effect result", () => {
     const { layer } = setup()
     return Effect.gen(function* () {
