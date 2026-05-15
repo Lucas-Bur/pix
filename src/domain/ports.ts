@@ -138,12 +138,19 @@ export class VectorStore extends Context.Tag("VectorStore")<
       chunks: readonly Chunk[],
       embeddings: readonly Embedding[],
     ) => Effect.Effect<void, StoreError | DiskFullError>
+    /** Initialize transactional staging: clean stale temp files and reset accumulators. */
     readonly storeBegin: () => Effect.Effect<void, StoreError | DiskFullError>
+    /**
+     * Append a batch of chunks and embeddings to staging temp files. Called per batch during
+     * streaming; sequential with no interleaving.
+     */
     readonly storeBatch: (
       chunks: readonly Chunk[],
       embeddings: readonly Embedding[],
     ) => Effect.Effect<void, StoreError | DiskFullError>
+    /** Commit staged data to final index files atomically and return accumulated stats. */
     readonly storeCommit: () => Effect.Effect<IndexStats, StoreError | DiskFullError>
+    /** Abort staging and clean up temp files without committing. */
     readonly storeAbort: () => Effect.Effect<void, StoreError>
     readonly search: (
       query: Embedding,

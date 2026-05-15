@@ -8,7 +8,7 @@ The index pipeline is split into two phases: Phase 1 (extract + chunk) runs fast
 
 ### Pipeline shape
 
-```
+```text
 Phase 1: Stream.fromIterable(files) → mapEffect(extract) → mapEffect(chunkText) → flatMap → runCollect
 Phase 2: Stream.fromIterable(chunks) → grouped(batchSize) → mapEffect(embed) → mapEffect(storeBatch) → drain
 ```

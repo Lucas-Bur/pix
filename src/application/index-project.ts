@@ -212,32 +212,29 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
 
         const stats = yield* d.progress(
           { message: `Embedding ${totalChunks} chunks...`, max: totalChunks },
-          Stream.fromIterable(chunks)
-            .pipe(
-              Stream.grouped(batchSize),
-              Stream.mapEffect((batchChunk) =>
-                Effect.gen(function* () {
-                  const batch = Chunk.toArray(batchChunk)
-                  const texts = batch.map((c: DomainChunk) => c.text)
-                  const embeddings = yield* embedder.batch(texts)
-                  yield* vectorStore.storeBatch(batch, embeddings)
-                  yield* Ref.update(embedded, (n) => n + batch.length)
-                  const count = yield* Ref.get(embedded)
-                  yield* d.updateInteractive({
-                    message: `Embedding ${count} of ${totalChunks} chunks`,
-                    setTo: count,
-                  })
-                }),
-              ),
-              Stream.runDrain,
-            )
-            .pipe(
-              Effect.matchEffect({
-                onSuccess: () => vectorStore.storeCommit(),
-                onFailure: (err) =>
-                  vectorStore.storeAbort().pipe(Effect.flatMap(() => Effect.fail(err))),
+          Stream.fromIterable(chunks).pipe(
+            Stream.grouped(batchSize),
+            Stream.mapEffect((batchChunk) =>
+              Effect.gen(function* () {
+                const batch = Chunk.toArray(batchChunk)
+                const texts = batch.map((c: DomainChunk) => c.text)
+                const embeddings = yield* embedder.batch(texts)
+                yield* vectorStore.storeBatch(batch, embeddings)
+                yield* Ref.update(embedded, (n) => n + batch.length)
+                const count = yield* Ref.get(embedded)
+                yield* d.updateInteractive({
+                  message: `Embedding ${count} of ${totalChunks} chunks`,
+                  setTo: count,
+                })
               }),
             ),
+            Stream.runDrain,
+            Effect.matchEffect({
+              onSuccess: () => vectorStore.storeCommit(),
+              onFailure: (err) =>
+                vectorStore.storeAbort().pipe(Effect.flatMap(() => Effect.fail(err))),
+            }),
+          ),
         )
 
         const collected = yield* Ref.get(skipped)
