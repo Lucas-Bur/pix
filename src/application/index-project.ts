@@ -162,8 +162,6 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         yield* d.updateInteractive(`Processing ${knownFiles.length} files...`)
 
         const embedded = yield* Ref.make(0)
-        const chunksProduced = yield* Ref.make(0)
-        const totalChunks = yield* Ref.make<Option.Option<number>>(Option.none())
 
         const pipeline = Stream.fromIterable(knownFiles).pipe(
           Stream.mapEffect(
@@ -188,7 +186,6 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           Stream.filterMap((opt: Option.Option<ExtractedFile>) => opt),
           Stream.mapEffect(({ file, text }) => chunker.chunkText(text, file), { concurrency }),
           Stream.flatMap((chunks) => Stream.fromIterable(chunks)),
-          Stream.tap(() => Ref.update(chunksProduced, (n) => n + 1)),
           Stream.buffer({ capacity: 5000 }),
           Stream.grouped(batchSize),
           Stream.mapEffect((batchChunk) =>
@@ -199,26 +196,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
               yield* vectorStore.storeBatch(batch, embeddings)
               yield* Ref.update(embedded, (n) => n + batch.length)
               const count = yield* Ref.get(embedded)
-              const produced = yield* Ref.get(chunksProduced)
-
-              if (Option.isNone(yield* Ref.get(totalChunks)) && produced === count && count > 0) {
-                yield* Ref.set(totalChunks, Option.some(count))
-                yield* d.updateInteractive({
-                  message: `${count} of ${count} chunks embedded`,
-                  setMax: count,
-                  setTo: count,
-                })
-              } else {
-                const maybeTotal = yield* Ref.get(totalChunks)
-                if (Option.isSome(maybeTotal)) {
-                  yield* d.updateInteractive({
-                    message: `${count} of ${maybeTotal.value} chunks embedded`,
-                    setToPercent: Math.round((count / maybeTotal.value) * 100),
-                  })
-                } else {
-                  yield* d.updateInteractive(`${count} chunks embedded`)
-                }
-              }
+              yield* d.updateInteractive(`${count} chunks embedded`)
             }),
           ),
           Stream.runDrain,
@@ -238,9 +216,8 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         yield* displaySkippedNote(d, collected)
 
         const durationSec = ((Date.now() - start) / 1000).toFixed(1)
-        yield* d.log(
+        yield* d.updateInteractive(
           `Indexed ${stats.chunks} chunks from ${stats.files} files in ${durationSec}s`,
-          "success",
         )
 
         return {
