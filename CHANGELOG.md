@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.9.1...pix-v0.10.0) (2026-05-15)
+
+
+### Features
+
+* add ignoredPaths config with gitignore-style patterns ([2f47687](https://github.com/Lucas-Bur/pix/commit/2f47687e448540c70406864606a95bc2197e9421)), closes [#43](https://github.com/Lucas-Bur/pix/issues/43)
+* content extraction pipeline with processor map ([80ff42c](https://github.com/Lucas-Bur/pix/commit/80ff42cbed58cb5d7afc5200ab3192785b433eb9)), closes [#43](https://github.com/Lucas-Bur/pix/issues/43)
+
+
+### Bug Fixes
+
+* address remaining CodeRabbit comments ([a4a487a](https://github.com/Lucas-Bur/pix/commit/a4a487a98284a3a9669ac8987c823518ea44d061)), closes [#43](https://github.com/Lucas-Bur/pix/issues/43)
+
 ## [0.9.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.9.0...pix-v0.9.1) (2026-05-15)
 
 
