@@ -129,8 +129,11 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
             Effect.gen(function* () {
               const result = yield* Effect.either(extractor.extract(file))
               if (result._tag === "Left") {
-                yield* d.log(`Skipping ${file}: ${result.left.message}`, "warn")
-                return [] as Chunk[]
+                if (result.left._tag === "UnsupportedFormat") {
+                  yield* d.log(`Skipping ${file}: ${result.left.message}`, "warn")
+                  return [] as Chunk[]
+                }
+                return yield* Effect.fail(result.left)
               }
               return yield* chunker.chunkText(result.right, file)
             }),
