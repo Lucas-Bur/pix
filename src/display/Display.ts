@@ -1,13 +1,13 @@
 import { styleText } from "node:util"
 
 import * as clack from "@clack/prompts"
-import { Context, Effect, Layer, Ref } from "effect"
+import { Context, Data, Effect, Layer, Ref } from "effect"
 
 /** Severity level for log messages */
 export type Severity = "info" | "success" | "warn" | "error"
 
 /** Options for the progress bar method */
-export interface ProgressOptions {
+export type ProgressOptions = {
   readonly message: string
   readonly max: number
   readonly style?: "light" | "heavy" | "block"
@@ -44,22 +44,24 @@ export type UpdateInteractivePayload =
     }
 
 /** Union of all display entries recorded by SilentDisplay for test assertions */
-export type DisplayEntry =
-  | { readonly _tag: "intro"; readonly title: string }
-  | { readonly _tag: "outro"; readonly message: string }
-  | { readonly _tag: "log"; readonly message: string; readonly severity: Severity }
-  | { readonly _tag: "note"; readonly content: string; readonly title?: string }
-  | { readonly _tag: "text"; readonly message: string }
-  | { readonly _tag: "spinner"; readonly message: string }
-  | { readonly _tag: "progress"; readonly message: string; readonly max: number }
-  | {
-      readonly _tag: "updateInteractive"
-      readonly message: string
-      readonly advanceBy?: number
-      readonly setTo?: number
-      readonly setToPercent?: number
-    }
-  | { readonly _tag: "json"; readonly data: unknown }
+export type DisplayEntry = Data.TaggedEnum<{
+  readonly intro: { readonly title: string }
+  readonly outro: { readonly message: string }
+  readonly log: { readonly message: string; readonly severity: Severity }
+  readonly note: { readonly content: string; readonly title?: string }
+  readonly text: { readonly message: string }
+  readonly spinner: { readonly message: string }
+  readonly progress: { readonly message: string; readonly max: number }
+  readonly updateInteractive: {
+    readonly message: string
+    readonly advanceBy?: number
+    readonly setTo?: number
+    readonly setToPercent?: number
+  }
+  readonly json: { readonly data: unknown }
+}>
+
+export const DisplayEntry = Data.taggedEnum<DisplayEntry>()
 
 /** Display service — abstracts CLI output behind structured methods */
 interface DisplayService {
@@ -108,18 +110,17 @@ const terminalStyle = {
 
 /**
  * Active interactive element. @clack supports only one interactive line at a time (spinner or
- * progress bar). Methods that update in-place (d.message) target whichever element is active.
+ * progress bar). State is tracked immutably inside a Ref scoped to the layer lifecycle.
  */
 type ActiveInteractive =
   | { readonly type: "spinner"; readonly handle: ReturnType<typeof clack.spinner> }
   | {
       readonly type: "progress"
       readonly handle: ReturnType<typeof clack.progress>
-      readonly state: { value: number; max: number }
+      readonly value: number
+      readonly max: number
     }
   | null
-
-let activeInteractive: ActiveInteractive = null
 
 /** Extract the message text from an UpdateInteractivePayload */
 const payloadText = (p: UpdateInteractivePayload): string => (typeof p === "string" ? p : p.message)
@@ -149,84 +150,126 @@ const computeDelta = (
 
 /** Display implementation using @clack/prompts for interactive terminal output */
 export const ClackDisplay = {
-  layer: Layer.succeed(Display, {
-    intro: (title) => Effect.sync(() => clack.intro(styleText("inverse", ` ${title} `))),
+  layer: Layer.effect(
+    Display,
+    Effect.gen(function* () {
+      const activeRef = yield* Ref.make<ActiveInteractive>(null)
 
-    outro: (message) => Effect.sync(() => clack.outro(message)),
+      return {
+        intro: (title) => Effect.sync(() => clack.intro(styleText("inverse", ` ${title} `))),
 
-    log: (message, severity) =>
-      Effect.sync(() => severityToClack[severity](terminalStyle.status(message))),
+        outro: (message) => Effect.sync(() => clack.outro(message)),
 
-    note: (content, title) => Effect.sync(() => clack.note(content, title)),
+        log: (message, severity) =>
+          Effect.sync(() => severityToClack[severity](terminalStyle.status(message))),
 
-    text: (message) => Effect.sync(() => clack.log.message(message)),
+        note: (content, title) => Effect.sync(() => clack.note(content, title)),
 
-    spinner: <A, E, R>(message: string, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-      Effect.acquireUseRelease(
-        Effect.sync(() => {
-          const s = clack.spinner()
-          s.start(message)
-          activeInteractive = { type: "spinner", handle: s }
-          return s
-        }),
-        () => effect,
-        (s, exit) =>
-          Effect.sync(() => {
-            activeInteractive = null
-            if (exit._tag === "Success") {
-              s.stop(message)
-            } else {
-              s.stop(`${message} (failed)`)
-            }
-          }),
-      ),
+        text: (message) => Effect.sync(() => clack.log.message(message)),
 
-    progress: <A, E, R>(
-      opts: ProgressOptions,
-      effect: Effect.Effect<A, E, R>,
-    ): Effect.Effect<A, E, R> =>
-      Effect.acquireUseRelease(
-        Effect.sync(() => {
-          const bar = clack.progress({
-            max: opts.max,
-            style: opts.style ?? "heavy",
-            size: opts.size ?? 40,
-            indicator: opts.indicator ?? "dots",
-          })
-          bar.start(opts.message)
-          activeInteractive = { type: "progress", handle: bar, state: { value: 0, max: opts.max } }
-          return bar
-        }),
-        () => effect,
-        (bar, exit) =>
-          Effect.sync(() => {
-            activeInteractive = null
-            if (exit._tag === "Success") {
-              bar.stop(opts.message)
-            } else {
-              bar.error(opts.message)
-            }
-          }),
-      ),
+        spinner: <A, E, R>(
+          message: string,
+          effect: Effect.Effect<A, E, R>,
+        ): Effect.Effect<A, E, R> =>
+          Ref.get(activeRef).pipe(
+            Effect.flatMap((current) =>
+              current !== null
+                ? effect
+                : Effect.acquireUseRelease(
+                    Effect.sync(() => {
+                      const s = clack.spinner()
+                      s.start(message)
+                      return s
+                    }).pipe(Effect.tap((s) => Ref.set(activeRef, { type: "spinner", handle: s }))),
+                    () => effect,
+                    (s, exit) =>
+                      Ref.set(activeRef, null).pipe(
+                        Effect.andThen(
+                          Effect.sync(() => {
+                            if (exit._tag === "Success") {
+                              s.stop(message)
+                            } else {
+                              s.stop(`${message} (failed)`)
+                            }
+                          }),
+                        ),
+                      ),
+                  ),
+            ),
+          ),
 
-    updateInteractive: (payload) =>
-      Effect.sync(() => {
-        const msg = payloadText(payload)
-        if (!activeInteractive) return
+        progress: <A, E, R>(
+          opts: ProgressOptions,
+          effect: Effect.Effect<A, E, R>,
+        ): Effect.Effect<A, E, R> =>
+          Ref.get(activeRef).pipe(
+            Effect.flatMap((current) =>
+              current !== null
+                ? effect
+                : Effect.acquireUseRelease(
+                    Effect.sync(() => {
+                      const bar = clack.progress({
+                        max: opts.max,
+                        style: opts.style ?? "heavy",
+                        size: opts.size ?? 40,
+                        indicator: opts.indicator ?? "dots",
+                      })
+                      bar.start(opts.message)
+                      return bar
+                    }).pipe(
+                      Effect.tap((bar) =>
+                        Ref.set(activeRef, {
+                          type: "progress",
+                          handle: bar,
+                          value: 0,
+                          max: opts.max,
+                        }),
+                      ),
+                    ),
+                    () => effect,
+                    (bar, exit) =>
+                      Ref.set(activeRef, null).pipe(
+                        Effect.andThen(
+                          Effect.sync(() => {
+                            if (exit._tag === "Success") {
+                              bar.stop(opts.message)
+                            } else {
+                              bar.error(opts.message)
+                            }
+                          }),
+                        ),
+                      ),
+                  ),
+            ),
+          ),
 
-        if (activeInteractive.type === "spinner") {
-          activeInteractive.handle.message(msg)
-          return
-        }
+        updateInteractive: (payload) =>
+          Ref.get(activeRef).pipe(
+            Effect.flatMap((active) => {
+              if (!active) return Effect.void
+              if (active.type === "spinner") {
+                return Effect.sync(() => active.handle.message(payloadText(payload)))
+              }
+              const delta = computeDelta(payload, { value: active.value, max: active.max })
+              const newValue = Math.max(0, Math.min(active.max, active.value + delta))
+              return Effect.sync(() => {
+                active.handle.advance(delta, payloadText(payload))
+              }).pipe(
+                Effect.andThen(
+                  Ref.update(activeRef, (current) =>
+                    current && current.type === "progress"
+                      ? { ...current, value: newValue }
+                      : current,
+                  ),
+                ),
+              )
+            }),
+          ),
 
-        const { handle, state } = activeInteractive
-        const delta = computeDelta(payload, state)
-        handle.advance(delta, msg)
-        state.value = Math.max(0, Math.min(state.max, state.value + delta))
-      }),
-
-    json: () => Effect.void,
-  }),
+        json: () => Effect.void,
+      }
+    }),
+  ),
 }
 
 /** Display implementation for --json mode — no-ops interactive methods, writes JSON to stdout */
@@ -250,63 +293,57 @@ export const JsonDisplay = {
 
 /**
  * Display implementation that records all calls to a Ref for test assertions. Spinner and progress
- * pass through the wrapped effect result unchanged.
+ * are recorded on entry (before the wrapped effect runs) for reliable test assertions.
  */
 export const SilentDisplay = {
   layer: (ref: Ref.Ref<ReadonlyArray<DisplayEntry>>): Layer.Layer<Display> =>
     Layer.succeed(Display, {
-      intro: (title) =>
-        Ref.update(ref, (entries) => [...entries, { _tag: "intro" as const, title }]),
+      intro: (title) => Ref.update(ref, (entries) => [...entries, DisplayEntry.intro({ title })]),
 
       outro: (message) =>
-        Ref.update(ref, (entries) => [...entries, { _tag: "outro" as const, message }]),
+        Ref.update(ref, (entries) => [...entries, DisplayEntry.outro({ message })]),
 
       log: (message, severity) =>
-        Ref.update(ref, (entries) => [...entries, { _tag: "log" as const, message, severity }]),
+        Ref.update(ref, (entries) => [...entries, DisplayEntry.log({ message, severity })]),
 
       note: (content, title) =>
-        Ref.update(ref, (entries) => [...entries, { _tag: "note" as const, content, title }]),
+        Ref.update(ref, (entries) => [...entries, DisplayEntry.note({ content, title })]),
 
-      text: (message) =>
-        Ref.update(ref, (entries) => [...entries, { _tag: "text" as const, message }]),
+      text: (message) => Ref.update(ref, (entries) => [...entries, DisplayEntry.text({ message })]),
 
       spinner: <A, E, R>(message: string, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-        effect.pipe(
-          Effect.tap(() =>
-            Ref.update(ref, (entries) => [...entries, { _tag: "spinner" as const, message }]),
-          ),
+        Ref.update(ref, (entries) => [...entries, DisplayEntry.spinner({ message })]).pipe(
+          Effect.andThen(effect),
         ),
 
       progress: <A, E, R>(
         opts: ProgressOptions,
         effect: Effect.Effect<A, E, R>,
       ): Effect.Effect<A, E, R> =>
-        effect.pipe(
-          Effect.tap(() =>
-            Ref.update(ref, (entries) => [
-              ...entries,
-              { _tag: "progress" as const, message: opts.message, max: opts.max },
-            ]),
-          ),
-        ),
+        Ref.update(ref, (entries) => [
+          ...entries,
+          DisplayEntry.progress({ message: opts.message, max: opts.max }),
+        ]).pipe(Effect.andThen(effect)),
 
       updateInteractive: (payload) => {
         const msg = payloadText(payload)
-        const base: DisplayEntry = { _tag: "updateInteractive", message: msg }
-        if (typeof payload === "string") return Ref.update(ref, (entries) => [...entries, base])
-
-        const entry: DisplayEntry = {
-          _tag: "updateInteractive",
+        if (typeof payload === "string") {
+          return Ref.update(ref, (entries) => [
+            ...entries,
+            DisplayEntry.updateInteractive({ message: msg }),
+          ])
+        }
+        const entry = DisplayEntry.updateInteractive({
           message: msg,
           ...("advanceBy" in payload &&
             payload.advanceBy !== undefined && { advanceBy: payload.advanceBy }),
           ...("setTo" in payload && payload.setTo !== undefined && { setTo: payload.setTo }),
           ...("setToPercent" in payload &&
             payload.setToPercent !== undefined && { setToPercent: payload.setToPercent }),
-        } as DisplayEntry
+        })
         return Ref.update(ref, (entries) => [...entries, entry])
       },
 
-      json: (data) => Ref.update(ref, (entries) => [...entries, { _tag: "json" as const, data }]),
+      json: (data) => Ref.update(ref, (entries) => [...entries, DisplayEntry.json({ data })]),
     }),
 }

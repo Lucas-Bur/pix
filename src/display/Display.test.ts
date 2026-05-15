@@ -1,8 +1,7 @@
 import { Effect, Ref } from "effect"
 import { describe, expect, it } from "vite-plus/test"
 
-import { Display, SilentDisplay } from "./Display.js"
-import type { DisplayEntry } from "./Display.js"
+import { Display, DisplayEntry, SilentDisplay } from "./Display.js"
 
 const setup = () => {
   const ref = Ref.unsafeMake<ReadonlyArray<DisplayEntry>>([])

@@ -77,13 +77,15 @@ Methods:
 | `{ message, setTo: N }`        | ignores setTo        | `b.advance(N - state, msg)`; state = N              |
 | `{ message, setToPercent: P }` | ignores setToPercent | `b.advance(target - state, msg)`; state = P% of max |
 
-The progress bar's `state: { value, max }` is tracked locally since `@clack` only exposes `advance(step)` — we compute the delta and clamp to `[0, max]`. Spinners ignore numeric fields.
+The progress bar's `{ value, max }` state is tracked immutably inside a `Ref` since `@clack` only exposes `advance(step)` — we compute the delta and clamp to `[0, max]`. Spinners ignore numeric fields.
 
 Three implementations:
 
-- **ClackDisplay** (`--json` not set): renders via `@clack/prompts` with spinners, styled icons, frames
+- **ClackDisplay** (`--json` not set): renders via `@clack/prompts` with spinners, styled icons, frames. Uses `Layer.effect` with a `Ref<ActiveInteractive>` scoped to the layer lifecycle — double-open (nested spinner/progress) silently ignores the second call and runs the effect directly.
 - **JsonDisplay** (`--json` set): no-ops all interactive methods; `json()` writes to `stdout`
-- **SilentDisplay** (tests): records `DisplayEntry[]` to a `Ref` for test assertions
+- **SilentDisplay** (tests): records `DisplayEntry[]` to a `Ref` for test assertions. Spinner/progress entries are recorded on scope entry (before the wrapped effect runs) for reliable assertions regardless of outcome.
+
+**`DisplayEntry`**: Defined via `Data.TaggedEnum<{ intro, outro, log, note, text, spinner, progress, updateInteractive, json }>`. Provides typed constructors (`DisplayEntry.log({ message, severity })`) instead of manual `{ _tag: "log" as const, ... }` objects.
 
 ### Silent Display (test)
 
