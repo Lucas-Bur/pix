@@ -3,6 +3,7 @@ import * as Chunk from "effect/Chunk"
 
 import { Display } from "../display/Display.js"
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
+import type { Config } from "../domain/config.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type {
   AllConfigErrors,
@@ -42,6 +43,26 @@ export interface IndexOptions {
   readonly ignorePaths?: readonly string[]
   readonly ignoreGitignore?: boolean
 }
+
+interface EffectiveConfig {
+  readonly batchSize: number
+  readonly concurrency: number
+  readonly skipExtensions: readonly string[]
+  readonly ignoredPaths: readonly string[]
+  readonly ignoreGitignore: boolean
+}
+
+const deriveEffectiveConfig = (opts: IndexOptions, config: Config): EffectiveConfig => ({
+  batchSize: opts.batchSize ?? config.embedder.batchSize ?? 16,
+  concurrency: Math.max(1, opts.chunkConcurrency ?? config.chunkConcurrency ?? 8),
+  skipExtensions: opts.skipExtensions
+    ? [...config.skipExtensions, ...opts.skipExtensions]
+    : config.skipExtensions,
+  ignoredPaths: opts.ignorePaths
+    ? [...(config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths), ...opts.ignorePaths]
+    : (config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths),
+  ignoreGitignore: opts.ignoreGitignore ?? config.ignoreGitignore ?? false,
+})
 
 function getExtension(file: string): string {
   const lastSlash = file.lastIndexOf("/")
@@ -84,6 +105,43 @@ interface ExtractedFile {
   readonly text: string
 }
 
+interface Phase1Result {
+  readonly chunks: DomainChunk[]
+  readonly totalChunks: number
+}
+
+const classifyAndCollectChunks = (
+  knownFiles: string[],
+  extractor: typeof ContentExtractor.Service,
+  chunker: typeof Chunker.Service,
+  concurrency: number,
+  skipped: Ref.Ref<readonly SkippedEntry[]>,
+): Effect.Effect<Phase1Result, AllProcessorErrors | ChunkerError> =>
+  Stream.fromIterable(knownFiles).pipe(
+    Stream.mapEffect(
+      (file) =>
+        extractor.extract(file).pipe(
+          Effect.flatMap((text) =>
+            Effect.succeed<Option.Option<ExtractedFile>>(Option.some({ file, text })),
+          ),
+          Effect.catchAll((err) =>
+            Ref.update(skipped, (prev) => [...prev, { path: file, reason: err.message }]).pipe(
+              Effect.flatMap(() => Effect.succeed<Option.Option<ExtractedFile>>(Option.none())),
+            ),
+          ),
+        ),
+      { concurrency },
+    ),
+    Stream.filterMap((opt: Option.Option<ExtractedFile>) => opt),
+    Stream.mapEffect(({ file, text }) => chunker.chunkText(text, file), { concurrency }),
+    Stream.flatMap((chunks) => Stream.fromIterable(chunks)),
+    Stream.runCollect,
+    Effect.map((allChunks) => {
+      const chunks = Chunk.toArray(allChunks)
+      return { chunks, totalChunks: chunks.length }
+    }),
+  )
+
 export class IndexProject extends Effect.Service<IndexProject>()("IndexProject", {
   accessors: true,
   effect: Effect.gen(function* () {
@@ -115,21 +173,12 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           yield* configStore.writeConfig(DEFAULT_CONFIG)
         }
         const config = yield* configStore.readConfig()
+        const eff = deriveEffectiveConfig(opts, config)
 
-        const batchSize = opts.batchSize ?? config.embedder.batchSize ?? 16
-        const concurrency = Math.max(1, opts.chunkConcurrency ?? config.chunkConcurrency ?? 8)
-        const skipExtensions = opts.skipExtensions
-          ? [...config.skipExtensions, ...opts.skipExtensions]
-          : config.skipExtensions
-        const ignoredPaths = opts.ignorePaths
-          ? [...(config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths), ...opts.ignorePaths]
-          : (config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths)
-        const ignoreGitignore = opts.ignoreGitignore ?? config.ignoreGitignore ?? false
-
-        const processorMap = buildProcessorMap(skipExtensions)
+        const processorMap = buildProcessorMap(eff.skipExtensions)
 
         yield* d.updateInteractive("Scanning source files...")
-        const scanResult = yield* scanner.scanFiles(ignoredPaths, ignoreGitignore)
+        const scanResult = yield* scanner.scanFiles(eff.ignoredPaths, eff.ignoreGitignore)
 
         const { knownFiles, skippedFiles, unknownExtensions } = classifyFiles(
           scanResult.files,
@@ -165,35 +214,13 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
 
         yield* d.updateInteractive(`Processing ${knownFiles.length} files...`)
 
-        // Phase 1: extract + chunk (fast, CPU-bound)
-        const allChunks = yield* Stream.fromIterable(knownFiles).pipe(
-          Stream.mapEffect(
-            (file) =>
-              extractor.extract(file).pipe(
-                Effect.flatMap((text) =>
-                  Effect.succeed<Option.Option<ExtractedFile>>(Option.some({ file, text })),
-                ),
-                Effect.catchAll((err) =>
-                  Ref.update(skipped, (prev) => [
-                    ...prev,
-                    { path: file, reason: err.message },
-                  ]).pipe(
-                    Effect.flatMap(() =>
-                      Effect.succeed<Option.Option<ExtractedFile>>(Option.none()),
-                    ),
-                  ),
-                ),
-              ),
-            { concurrency },
-          ),
-          Stream.filterMap((opt: Option.Option<ExtractedFile>) => opt),
-          Stream.mapEffect(({ file, text }) => chunker.chunkText(text, file), { concurrency }),
-          Stream.flatMap((chunks) => Stream.fromIterable(chunks)),
-          Stream.runCollect,
+        const { chunks, totalChunks } = yield* classifyAndCollectChunks(
+          knownFiles,
+          extractor,
+          chunker,
+          eff.concurrency,
+          skipped,
         )
-
-        const chunks = Chunk.toArray(allChunks)
-        const totalChunks = chunks.length
 
         if (totalChunks === 0) {
           const collected = yield* Ref.get(skipped)
@@ -205,22 +232,21 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           }
         }
 
-        // Phase 2: embed + store (slow, GPU/CPU-bound) with progress bar
         yield* vectorStore.storeBegin()
 
-        const embedded = yield* Ref.make(0)
+        const embeddedRef = yield* Ref.make(0)
 
         const stats = yield* d.progress(
           { message: `Embedding ${totalChunks} chunks...`, max: totalChunks },
           Stream.fromIterable(chunks).pipe(
-            Stream.grouped(batchSize),
+            Stream.grouped(eff.batchSize),
             Stream.mapEffect((batchChunk) =>
               Effect.gen(function* () {
                 const batch = Chunk.toArray(batchChunk)
                 const texts = batch.map((c: DomainChunk) => c.text)
                 const embeddings = yield* embedder.batch(texts)
                 yield* vectorStore.storeBatch(batch, embeddings)
-                const count = yield* Ref.updateAndGet(embedded, (n) => n + batch.length)
+                const count = yield* Ref.updateAndGet(embeddedRef, (n) => n + batch.length)
                 yield* d.updateInteractive({
                   message: `Embedding ${count} of ${totalChunks} chunks`,
                   setTo: count,
