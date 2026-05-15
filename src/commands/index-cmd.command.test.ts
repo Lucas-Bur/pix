@@ -23,7 +23,8 @@ const fixtures = {
 }
 
 const emptyScannerLayer = Layer.succeed(Scanner, {
-  scanFiles: (_ignoredPaths: readonly string[]) => Effect.succeed({ files: [], skipped: [] }),
+  scanFiles: (_ignoredPaths: readonly string[], _ignoreGitignore?: boolean) =>
+    Effect.succeed({ files: [], skipped: [] }),
 })
 
 test("pix index --json outputs status after indexing", () => {
