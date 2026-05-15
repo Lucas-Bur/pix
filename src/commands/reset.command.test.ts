@@ -1,12 +1,10 @@
 import { Command } from "@effect/cli"
-import { Effect, Layer, Ref } from "effect"
+import { Effect, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
-import { assertCommandError } from "../../tests/test-utils/command.js"
+import { assertCommandError, makeFailingVectorStore } from "../../tests/test-utils/command.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
-import { StoreError } from "../domain/errors.js"
-import { VectorStore } from "../domain/ports.js"
 import { resetCommand } from "./reset.js"
 
 const run = (args: string[]) => Command.run(resetCommand, { name: "pix", version: "0.0.0" })(args)
@@ -89,21 +87,11 @@ test("pix reset without --json on clean project shows info", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-const failingVectorStore = Layer.succeed(VectorStore, {
-  store: () => Effect.void,
-  storeBegin: () => Effect.void,
-  storeBatch: () => Effect.void,
-  storeCommit: () => Effect.succeed({ chunks: 0, files: 0, totalLines: 0, byteSize: 0 }),
-  storeAbort: () => Effect.void,
-  search: () => Effect.succeed([]),
-  getStatus: () =>
-    Effect.succeed({ chunks: 0, files: 0, model: "", lastIndex: 0, totalLines: 0, byteSize: 0 }),
-  reset: () => Effect.fail(new StoreError({ message: "reset failed" })),
-})
-
 test("pix reset --json with failing VectorStore produces error JSON", () => {
   const { ref, layer } = silentDisplay()
   return assertCommandError(run(["reset", "--json"]), ref).pipe(
-    Effect.provide(testLayer({ vectorStoreLayer: failingVectorStore, displayLayer: layer })),
+    Effect.provide(
+      testLayer({ vectorStoreLayer: makeFailingVectorStore("reset"), displayLayer: layer }),
+    ),
   )
 })

@@ -1,8 +1,10 @@
-import { Effect, Exit, Ref } from "effect"
+import { Effect, Exit, Layer, Ref } from "effect"
 import type { MemoryFileSystem } from "effect-memfs"
 import { expect } from "vite-plus/test"
 
 import type { DisplayEntry } from "../../src/display/Display.js"
+import { StoreError } from "../../src/domain/errors.js"
+import { VectorStore } from "../../src/domain/ports.js"
 
 export const indexFixtures: MemoryFileSystem.Contents = {
   ".pix/config.json": JSON.stringify({
@@ -55,3 +57,48 @@ export const assertCommandError = <E, R>(
       expect(typeof output.message).toBe("string")
     }
   })
+
+type FailingMethod =
+  | "store"
+  | "storeBegin"
+  | "storeBatch"
+  | "storeCommit"
+  | "storeAbort"
+  | "search"
+  | "getStatus"
+  | "reset"
+
+/** Create a VectorStore layer where one method fails and all others succeed. */
+export const makeFailingVectorStore = (
+  failingMethod: FailingMethod,
+  message = `${failingMethod} failed`,
+): Layer.Layer<VectorStore> => {
+  const failEffect = Effect.fail(new StoreError({ message }))
+
+  return Layer.succeed(VectorStore, {
+    store: () => (failingMethod === "store" ? failEffect : Effect.void),
+    storeBegin: () => (failingMethod === "storeBegin" ? failEffect : Effect.void),
+    storeBatch: () => (failingMethod === "storeBatch" ? failEffect : Effect.void),
+    storeCommit: () =>
+      failingMethod === "storeCommit"
+        ? failEffect
+        : Effect.succeed({ chunks: 0, files: 0, totalLines: 0, byteSize: 0 }),
+    storeAbort: () => (failingMethod === "storeAbort" ? failEffect : Effect.void),
+    search: () => (failingMethod === "search" ? failEffect : Effect.succeed([])),
+    getStatus: () =>
+      failingMethod === "getStatus"
+        ? failEffect
+        : Effect.succeed({
+            chunks: 0,
+            files: 0,
+            model: "",
+            lastIndex: 0,
+            totalLines: 0,
+            byteSize: 0,
+          }),
+    reset: () =>
+      failingMethod === "reset"
+        ? failEffect
+        : Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),
+  })
+}

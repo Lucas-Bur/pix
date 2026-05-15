@@ -35,7 +35,7 @@ interface IndexResult {
   }
 }
 
-interface IndexOptions {
+export interface IndexOptions {
   readonly batchSize?: number
   readonly chunkConcurrency?: number
   readonly skipExtensions?: readonly string[]
