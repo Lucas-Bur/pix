@@ -133,7 +133,7 @@ test("IndexProject.index uses custom extensions from config", () =>
             dims: 384,
             chunkLines: 60,
             overlapLines: 10,
-            files: { ".py": 1 },
+            skipExtensions: [],
           }),
           "src/script.py": `# Python script\n${"print('line')\n".repeat(70)}`,
         },
@@ -157,7 +157,7 @@ test("IndexProject.index respects chunkConcurrency values", () =>
         dims: 384,
         chunkLines: 60,
         overlapLines: 10,
-        files: {},
+        skipExtensions: [],
       }
       if (chunkConcurrency !== undefined) {
         configObj.chunkConcurrency = chunkConcurrency
@@ -196,6 +196,50 @@ test("IndexProject.index auto-initializes when config is missing", () =>
     Effect.provide(
       testLayer({
         contents: { "src/a.ts": sourceFile },
+        scannerLayer: ScannerLive,
+      }),
+    ),
+    Effect.scoped,
+  ))
+
+test("IndexProject.index skips files with unknown extensions", () =>
+  Effect.gen(function* () {
+    const result = yield* IndexProject.index()
+    expect(result.success).toBe(true)
+    expect(result.status.files).toBe(1)
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        contents: {
+          "src/a.ts": sourceFile,
+          "docs/manual.xyz": "some content with unknown extension type here",
+        },
+        scannerLayer: ScannerLive,
+      }),
+    ),
+    Effect.scoped,
+  ))
+
+test("IndexProject.index skips files in skipExtensions", () =>
+  Effect.gen(function* () {
+    const result = yield* IndexProject.index()
+    expect(result.success).toBe(true)
+    expect(result.status.files).toBe(1)
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        contents: {
+          ".pix/config.json": JSON.stringify({
+            schema: "1",
+            model: "test-model",
+            dims: 384,
+            chunkLines: 60,
+            overlapLines: 10,
+            skipExtensions: [".py"],
+          }),
+          "src/a.ts": sourceFile,
+          "src/script.py": `# Python script\n${"print('line')\n".repeat(70)}`,
+        },
         scannerLayer: ScannerLive,
       }),
     ),

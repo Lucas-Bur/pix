@@ -144,3 +144,25 @@ test("Chunker skips chunks shorter than 20 characters", () =>
       expect(chunk.text.length).toBeGreaterThanOrEqual(20)
     }
   }).pipe(Effect.provide(testLayer), Effect.scoped))
+
+test("Chunker.chunkText produces chunks from raw text", () =>
+  Effect.gen(function* () {
+    const chunker = yield* Chunker
+    const lines = Array.from({ length: 70 }, (_, i) => `Line ${i + 1} - some content here`)
+    const text = lines.join("\n")
+    const chunks = yield* chunker.chunkText(text, "src/test.ts")
+    expect(chunks.length).toBeGreaterThan(0)
+    for (const chunk of chunks) {
+      expect(chunk.file).toBe("src/test.ts")
+      expect(chunk.startLine).toBeGreaterThan(0)
+      expect(chunk.endLine).toBeGreaterThanOrEqual(chunk.startLine)
+      expect(chunk.id.length).toBe(12)
+    }
+  }).pipe(Effect.provide(testLayer), Effect.scoped))
+
+test("Chunker.chunkText returns empty array for empty text", () =>
+  Effect.gen(function* () {
+    const chunker = yield* Chunker
+    const chunks = yield* chunker.chunkText("", "src/empty.ts")
+    expect(chunks).toEqual([])
+  }).pipe(Effect.provide(testLayer), Effect.scoped))

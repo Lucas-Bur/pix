@@ -80,3 +80,22 @@ export type AllStoreErrors = StoreError | DiskFullError | NoIndexError
 
 /** All embedder error types. */
 export type AllEmbedderErrors = ModelLoadError | InferenceError
+
+// === Content extraction errors ===
+
+/** File type is unsupported for text extraction. */
+export class UnsupportedFormat extends Data.TaggedError("UnsupportedFormat")<{
+  readonly message: string
+  readonly extension: string
+  readonly file?: string
+}> {}
+
+/** Text extraction failed for a supported file type. */
+export class ExtractionFailed extends Data.TaggedError("ExtractionFailed")<{
+  readonly message: string
+  readonly file: string
+  readonly cause?: unknown
+}> {}
+
+/** All content extraction error types. */
+export type AllProcessorErrors = UnsupportedFormat | ExtractionFailed

@@ -28,33 +28,18 @@ export interface Config {
    * pipeline. Defaults to 8 when absent.
    */
   readonly chunkConcurrency?: number
-  /** File extensions to index, mapped to priority weight. */
-  readonly files: Record<string, number>
+  /** File extensions to skip during indexing. Overrides domain processor map. */
+  readonly skipExtensions: readonly string[]
   /** Embedder runtime configuration. */
   readonly embedder: EmbedderConfig
 }
-
-/** Default file extensions to index. Whitelist approach. */
-export const DEFAULT_EXTENSIONS = [
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".py",
-  ".rs",
-  ".go",
-  ".java",
-  ".c",
-  ".cpp",
-  ".h",
-] as const
 
 export const DEFAULT_CONFIG: Config = {
   schema: "1",
   chunkLines: 60,
   overlapLines: 10,
   chunkConcurrency: 8,
-  files: {},
+  skipExtensions: [],
   embedder: {
     model: "Xenova/all-MiniLM-L6-v2",
     device: "auto",
