@@ -7,7 +7,7 @@ import { Context, Data, Effect, Layer, Ref } from "effect"
 export type Severity = "info" | "success" | "warn" | "error"
 
 /** Options for the progress bar method */
-export type ProgressOptions = {
+type ProgressOptions = {
   readonly message: string
   readonly max: number
   readonly style?: "light" | "heavy" | "block"
@@ -16,7 +16,7 @@ export type ProgressOptions = {
 }
 
 /** Payload for d.updateInteractive() — plain string updates text only, object adds position control */
-export type UpdateInteractivePayload =
+type UpdateInteractivePayload =
   | string
   | {
       readonly message: string
@@ -61,7 +61,7 @@ export type DisplayEntry = Data.TaggedEnum<{
   readonly json: { readonly data: unknown }
 }>
 
-export const DisplayEntry = Data.taggedEnum<DisplayEntry>()
+const DisplayEntry = Data.taggedEnum<DisplayEntry>()
 
 /** Display service — abstracts CLI output behind structured methods */
 interface DisplayService {

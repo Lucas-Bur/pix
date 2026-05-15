@@ -30,10 +30,12 @@ test("pix index --json outputs status after indexing", () => {
   return Effect.gen(function* () {
     yield* run(["index", "--json"])
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(1)
-    expect(entries[0]._tag).toBe("json")
-    if (entries[0]._tag === "json") {
-      const data = entries[0].data as Record<string, unknown>
+    expect(entries).toHaveLength(3)
+    expect(entries[0]._tag).toBe("spinner")
+    expect(entries[1]._tag).toBe("json")
+    expect(entries[2]._tag).toBe("log")
+    if (entries[1]._tag === "json") {
+      const data = entries[1].data as Record<string, unknown>
       expect(data.chunks).toBe(0)
       expect(data.files).toBe(0)
     }
@@ -49,8 +51,10 @@ test("pix index without --json logs status via Display", () => {
   return Effect.gen(function* () {
     yield* run(["index"])
     const entries = yield* Ref.get(ref)
-    expect(entries[0]._tag).toBe("json")
-    expect(entries.some((e) => e._tag === "log")).toBe(true)
+    expect(entries).toHaveLength(3)
+    expect(entries[0]._tag).toBe("spinner")
+    expect(entries[1]._tag).toBe("json")
+    expect(entries[2]._tag).toBe("log")
   }).pipe(
     Effect.provide(
       testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer, displayLayer: layer }),

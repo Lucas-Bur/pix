@@ -6,7 +6,7 @@ describe("makeTerminalCleanupHandler", () => {
   it("calls setRawMode(false) and writes show-cursor when stdin is a TTY", () => {
     const setRawMode = vi.fn()
     const write = vi.fn(() => true)
-    const handler = makeTerminalCleanupHandler({ isTTY: true, setRawMode }, { write })
+    const handler = makeTerminalCleanupHandler({ isTTY: true, setRawMode }, { isTTY: true, write })
     handler()
     expect(setRawMode).toHaveBeenCalledOnce()
     expect(setRawMode).toHaveBeenCalledWith(false)
@@ -16,7 +16,7 @@ describe("makeTerminalCleanupHandler", () => {
   it("skips setRawMode when stdin is not a TTY", () => {
     const setRawMode = vi.fn()
     const write = vi.fn(() => true)
-    const handler = makeTerminalCleanupHandler({ isTTY: false, setRawMode }, { write })
+    const handler = makeTerminalCleanupHandler({ isTTY: false, setRawMode }, { isTTY: true, write })
     handler()
     expect(setRawMode).not.toHaveBeenCalled()
     expect(write).toHaveBeenCalledWith(SHOW_CURSOR)
@@ -27,8 +27,17 @@ describe("makeTerminalCleanupHandler", () => {
       throw new Error("setRawMode failed")
     })
     const write = vi.fn(() => true)
-    const handler = makeTerminalCleanupHandler({ isTTY: true, setRawMode }, { write })
+    const handler = makeTerminalCleanupHandler({ isTTY: true, setRawMode }, { isTTY: true, write })
     expect(() => handler()).not.toThrow()
     expect(write).toHaveBeenCalledWith(SHOW_CURSOR)
+  })
+
+  it("skips show-cursor write when stdout is not a TTY", () => {
+    const setRawMode = vi.fn()
+    const write = vi.fn(() => true)
+    const handler = makeTerminalCleanupHandler({ isTTY: true, setRawMode }, { isTTY: false, write })
+    handler()
+    expect(setRawMode).toHaveBeenCalledOnce()
+    expect(write).not.toHaveBeenCalled()
   })
 })

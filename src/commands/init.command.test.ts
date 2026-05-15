@@ -16,10 +16,13 @@ test("pix init --json outputs config JSON via Display", () => {
   return Effect.gen(function* () {
     yield* run(["init", "--json"])
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(1)
-    expect(entries[0]._tag).toBe("json")
-    if (entries[0]._tag === "json") {
-      const data = entries[0].data as { success: boolean; config: { schemaVersion: string } }
+    expect(entries).toHaveLength(4)
+    expect(entries[0]._tag).toBe("spinner")
+    expect(entries[1]._tag).toBe("json")
+    expect(entries[2]._tag).toBe("log")
+    expect(entries[3]._tag).toBe("note")
+    if (entries[1]._tag === "json") {
+      const data = entries[1].data as { success: boolean; config: { schemaVersion: string } }
       expect(data.success).toBe(true)
       expect(data.config.schemaVersion).toBe("1")
     }
@@ -31,9 +34,11 @@ test("pix init without --json shows status and note via Display", () => {
   return Effect.gen(function* () {
     yield* run(["init"])
     const entries = yield* Ref.get(ref)
-    expect(entries.length).toBe(2)
-    expect(entries[0]._tag).toBe("log")
-    expect(entries[1]._tag).toBe("note")
+    expect(entries).toHaveLength(4)
+    expect(entries[0]._tag).toBe("spinner")
+    expect(entries[1]._tag).toBe("json")
+    expect(entries[2]._tag).toBe("log")
+    expect(entries[3]._tag).toBe("note")
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 

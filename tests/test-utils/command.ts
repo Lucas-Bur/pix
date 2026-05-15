@@ -43,7 +43,7 @@ export const assertCommandError = <E, R>(
 
     const entries = yield* Ref.get(ref)
     expect(entries.length).toBeGreaterThan(0)
-    const jsonEntry = entries.find((e) => e._tag === "json")
+    const jsonEntry = [...entries].reverse().find((e) => e._tag === "json")
     expect(jsonEntry).toBeDefined()
     if (jsonEntry && jsonEntry._tag === "json") {
       const output = jsonEntry.data as { error: boolean; code: string; message: string }

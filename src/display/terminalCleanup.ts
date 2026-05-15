@@ -20,7 +20,7 @@ export const SHOW_CURSOR = "\x1b[?25h"
 export const makeTerminalCleanupHandler =
   (
     stdin: { isTTY?: boolean; setRawMode?: (raw: boolean) => void },
-    stdout: { write: (data: string) => boolean },
+    stdout: { isTTY?: boolean; write: (data: string) => boolean },
   ) =>
   (): void => {
     if (stdin.isTTY && stdin.setRawMode) {
@@ -30,7 +30,15 @@ export const makeTerminalCleanupHandler =
         // Best-effort — may fail if stdin is already closed
       }
     }
-    stdout.write(SHOW_CURSOR)
+    // Only write ANSI escape sequences to interactive terminals.
+    // Writing to piped/redirected stdout would corrupt machine-readable output (e.g. --json mode).
+    if (stdout.isTTY) {
+      try {
+        stdout.write(SHOW_CURSOR)
+      } catch {
+        // Best-effort — may fail if stdout is already closed
+      }
+    }
   }
 
 /**

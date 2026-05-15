@@ -1,5 +1,6 @@
 import { Command } from "@effect/cli"
 import { Effect, Layer, Ref } from "effect"
+import type { MemoryFileSystem } from "effect-memfs"
 import { expect, test } from "vite-plus/test"
 
 import { assertCommandError, indexFixtures } from "../../tests/test-utils/command.js"
@@ -16,10 +17,11 @@ test("pix query --json outputs search results", () => {
   return Effect.gen(function* () {
     yield* run(["query", "--json", "test query"])
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(1)
-    expect(entries[0]._tag).toBe("json")
-    if (entries[0]._tag === "json") {
-      expect(Array.isArray(entries[0].data)).toBe(true)
+    expect(entries[0]._tag).toBe("spinner")
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json") {
+      expect(Array.isArray(jsonEntry.data)).toBe(true)
     }
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
@@ -29,9 +31,10 @@ test("pix query with --top flag clamps to valid range", () => {
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--top", "3", "search term"])
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(1)
-    if (entries[0]._tag === "json" && Array.isArray(entries[0].data)) {
-      expect(entries[0].data.length).toBeLessThanOrEqual(3)
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json" && Array.isArray(jsonEntry.data)) {
+      expect(jsonEntry.data.length).toBeLessThanOrEqual(3)
     }
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
@@ -59,23 +62,53 @@ test("pix query --json clamps --top below minimum to 1", () => {
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--top", "0", "test"])
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(1)
-    if (entries[0]._tag === "json" && Array.isArray(entries[0].data)) {
-      expect(entries[0].data.length).toBeLessThanOrEqual(1)
+    expect(
+      entries.some(
+        (e) => e._tag === "log" && e.severity === "warn" && e.message.includes("clamped"),
+      ),
+    ).toBe(true)
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json" && Array.isArray(jsonEntry.data)) {
+      expect(jsonEntry.data.length).toBeLessThanOrEqual(1)
     }
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
 
 test("pix query --json clamps --top above maximum to 100", () => {
+  const largeFixtures: MemoryFileSystem.Contents = {
+    ".pix/config.json": JSON.stringify({
+      schema: "1",
+      embedder: { model: "test-model", device: "auto", dtype: "fp32" },
+    }),
+    ".pix/chunks.jsonl": Array.from({ length: 150 }, (_, i) =>
+      JSON.stringify({
+        id: `chunk${i}`,
+        idx: i,
+        file: `/src/file${i}.ts`,
+        startLine: 1,
+        endLine: 1,
+        text: `content ${i}`,
+        model: "test-model",
+      }),
+    ).join("\n"),
+    ".pix/vectors.bin": "fake binary content",
+  }
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--top", "200", "test"])
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(1)
-    if (entries[0]._tag === "json" && Array.isArray(entries[0].data)) {
-      expect(entries[0].data.length).toBeLessThanOrEqual(2)
+    expect(
+      entries.some(
+        (e) => e._tag === "log" && e.severity === "warn" && e.message.includes("clamped"),
+      ),
+    ).toBe(true)
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json" && Array.isArray(jsonEntry.data)) {
+      expect(jsonEntry.data.length).toBeLessThanOrEqual(100)
     }
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+  }).pipe(Effect.provide(testLayer({ contents: largeFixtures, displayLayer: layer })))
 })
 
 test("pix query --json with --context-lines includes context fields", () => {
@@ -83,13 +116,10 @@ test("pix query --json with --context-lines includes context fields", () => {
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--context-lines", "2", "test"])
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(1)
-    if (
-      entries[0]._tag === "json" &&
-      Array.isArray(entries[0].data) &&
-      entries[0].data.length > 0
-    ) {
-      const first = entries[0].data[0] as Record<string, unknown>
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json" && Array.isArray(jsonEntry.data) && jsonEntry.data.length > 0) {
+      const first = jsonEntry.data[0] as Record<string, unknown>
       expect(first).toHaveProperty("score")
       expect(first).toHaveProperty("file")
       expect(first).toHaveProperty("startLine")
@@ -104,9 +134,11 @@ test("pix query --json on empty index returns empty array", () => {
   return Effect.gen(function* () {
     yield* run(["query", "--json", "no results"])
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(1)
-    if (entries[0]._tag === "json") {
-      expect(entries[0].data).toEqual([])
+    expect(entries.some((e) => e._tag === "spinner")).toBe(true)
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json") {
+      expect(jsonEntry.data).toEqual([])
     }
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
@@ -116,7 +148,8 @@ test("pix query without --json on empty index shows warning", () => {
   return Effect.gen(function* () {
     yield* run(["query", "nothing"])
     const entries = yield* Ref.get(ref)
-    expect(entries[0]._tag).toBe("json")
+    expect(entries.some((e) => e._tag === "spinner")).toBe(true)
+    expect(entries.some((e) => e._tag === "json")).toBe(true)
     expect(entries.some((e) => e._tag === "log" && e.severity === "warn")).toBe(true)
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
@@ -126,7 +159,8 @@ test("pix query without --json outputs formatted results", () => {
   return Effect.gen(function* () {
     yield* run(["query", "test"])
     const entries = yield* Ref.get(ref)
-    expect(entries[0]._tag).toBe("json")
+    expect(entries.some((e) => e._tag === "spinner")).toBe(true)
+    expect(entries.some((e) => e._tag === "json")).toBe(true)
     expect(entries.some((e) => e._tag === "text")).toBe(true)
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })

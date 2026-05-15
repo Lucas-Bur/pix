@@ -33,9 +33,10 @@ test("pix status --json on empty project shows zero status", () => {
   return Effect.gen(function* () {
     yield* run(["status", "--json"])
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(1)
-    if (entries[0]._tag === "json") {
-      const data = entries[0].data as Record<string, unknown>
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json") {
+      const data = jsonEntry.data as Record<string, unknown>
       expect(data.chunks).toBe(0)
       expect(data.files).toBe(0)
       expect(data.totalLines).toBe(0)
@@ -48,9 +49,8 @@ test("pix status without --json logs status entries via Display", () => {
   return Effect.gen(function* () {
     yield* run(["status"])
     const entries = yield* Ref.get(ref)
-    expect(entries.length).toBeGreaterThan(0)
-    expect(entries[0]._tag).toBe("json")
-    expect(entries.some((e) => e._tag === "log")).toBe(true)
+    expect(entries.some((e) => e._tag === "json")).toBe(true)
+    expect(entries.filter((e) => e._tag === "log").length).toBe(5)
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
 

@@ -35,10 +35,11 @@ test("pix reset --json deletes index files and reports status", () => {
   return Effect.gen(function* () {
     yield* run(["reset", "--json"])
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(1)
-    expect(entries[0]._tag).toBe("json")
-    if (entries[0]._tag === "json") {
-      const data = entries[0].data as Record<string, unknown>
+    expect(entries[0]._tag).toBe("spinner")
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json") {
+      const data = jsonEntry.data as Record<string, unknown>
       expect(data.status).toBe("ok")
       expect(data.deletedChunks).toBe(true)
       expect(data.deletedVectors).toBe(true)
@@ -52,9 +53,11 @@ test("pix reset --json on clean project reports nothing deleted", () => {
   return Effect.gen(function* () {
     yield* run(["reset", "--json"])
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(1)
-    if (entries[0]._tag === "json") {
-      const data = entries[0].data as Record<string, unknown>
+    expect(entries[0]._tag).toBe("spinner")
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json") {
+      const data = jsonEntry.data as Record<string, unknown>
       expect(data.status).toBe("ok")
       expect(data.deletedChunks).toBe(false)
       expect(data.deletedVectors).toBe(false)
@@ -68,7 +71,8 @@ test("pix reset without --json logs status entries via Display", () => {
   return Effect.gen(function* () {
     yield* run(["reset"])
     const entries = yield* Ref.get(ref)
-    expect(entries[0]._tag).toBe("json")
+    expect(entries.some((e) => e._tag === "spinner")).toBe(true)
+    expect(entries.some((e) => e._tag === "json")).toBe(true)
     expect(entries.some((e) => e._tag === "log")).toBe(true)
   }).pipe(Effect.provide(testLayer({ contents: fixtures, displayLayer: layer })))
 })
@@ -78,7 +82,8 @@ test("pix reset without --json on clean project shows info", () => {
   return Effect.gen(function* () {
     yield* run(["reset"])
     const entries = yield* Ref.get(ref)
-    expect(entries[0]._tag).toBe("json")
+    expect(entries.some((e) => e._tag === "spinner")).toBe(true)
+    expect(entries.some((e) => e._tag === "json")).toBe(true)
     expect(entries.some((e) => e._tag === "log")).toBe(true)
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
