@@ -20,6 +20,12 @@ test("ConfigStore.writeConfig creates .pix/config.json with defaults", () =>
     expect(config.overlapLines).toBe(10)
     expect(config.skipExtensions).toEqual([])
     expect(config.ignoredPaths).toEqual([
+      ".pix",
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+      ".next",
       ".agents",
       ".claude",
       ".vscode",

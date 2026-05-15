@@ -46,6 +46,12 @@ export const DEFAULT_CONFIG: Config = {
   chunkConcurrency: 8,
   skipExtensions: [],
   ignoredPaths: [
+    ".pix",
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    ".next",
     ".agents",
     ".claude",
     ".vscode",

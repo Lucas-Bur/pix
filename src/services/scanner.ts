@@ -6,8 +6,6 @@ import { ScanFailed } from "../domain/errors.js"
 import type { ScanResult, SkippedEntry } from "../domain/ports.js"
 import { Scanner } from "../domain/ports.js"
 
-const ALWAYS_IGNORE = new Set([".pix", "node_modules", ".git", "dist", "build", ".next"])
-
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
 
@@ -104,8 +102,6 @@ const make = Effect.gen(function* () {
       if (result.skipped) skipped.push(result.skipped)
 
       for (const entry of result.entries) {
-        if (ALWAYS_IGNORE.has(entry)) continue
-
         const fullPath = `${dir}/${entry}`
         const info = yield* statWithSkip(fullPath)
 

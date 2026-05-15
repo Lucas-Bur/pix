@@ -33,7 +33,14 @@ test("Scanner respects gitignore", () =>
 test("Scanner always ignores .pix, node_modules, .git", () =>
   Effect.gen(function* () {
     const scanner = yield* Scanner
-    const scanResult = yield* scanner.scanFiles([])
+    const scanResult = yield* scanner.scanFiles([
+      ".pix",
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+      ".next",
+    ])
     expect(scanResult.files.some((f) => f.includes(".pix/"))).toBe(false)
     expect(scanResult.files.some((f) => f.includes("node_modules/"))).toBe(false)
     expect(scanResult.files.some((f) => f.includes(".git/"))).toBe(false)
