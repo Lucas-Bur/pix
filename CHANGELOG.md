@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.11.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.10.0...pix-v0.11.0) (2026-05-15)
+
+
+### Features
+
+* add CLI flags, timer, progress bar, and grouped skipped display ([1fe4297](https://github.com/Lucas-Bur/pix/commit/1fe4297e4911950d14c9a110568a8646469c9ea1))
+* add embedder.batchSize config and remove internal BATCH_SIZE loop ([3aa6df0](https://github.com/Lucas-Bur/pix/commit/3aa6df0b3a292746464f477272e3e2ecf4fe7179))
+* add embedder.batchSize to config with default 16 ([8a29900](https://github.com/Lucas-Bur/pix/commit/8a29900c4eaf653387c4be1467807f6b9a5de04a))
+* add ignoreGitignore config and update ignoredPaths defaults ([9a2a0b4](https://github.com/Lucas-Bur/pix/commit/9a2a0b4102be08bfb62a61aca2d491860aa3b5a1))
+* add VectorStore lifecycle methods (storeBegin/Batch/Commit/Abort) ([601ce30](https://github.com/Lucas-Bur/pix/commit/601ce30985604976ccdac39f24215f537ee6415a))
+* emit single JSON object on stdout for --json mode ([316a982](https://github.com/Lucas-Bur/pix/commit/316a982ae8a2a0f1b5b7355818a3475c23d0681b))
+* rewrite index pipeline to Effect Stream topology ([072310e](https://github.com/Lucas-Bur/pix/commit/072310eaf1f48d7a8d694d43484d41287d19cb23))
+* split index pipeline into chunk phase + embed phase with progress bar ([1ce28f8](https://github.com/Lucas-Bur/pix/commit/1ce28f84dcaa9403edd3450894e92c07e934d942))
+
+
+### Bug Fixes
+
+* address CodeRabbit nitpicks (JSDoc, Effect.void, pipe flattening, gitignore ternary, remove unused refs) ([7ad46a6](https://github.com/Lucas-Bur/pix/commit/7ad46a6abe6d34e3ff170d9c03b1795c512da55f))
+* address CodeRabbit review comments ([c3d9869](https://github.com/Lucas-Bur/pix/commit/c3d9869b232b0b6d19df8251cb0ea01c9450c4fe))
+* show timer after progress bar completes ([e38c6fb](https://github.com/Lucas-Bur/pix/commit/e38c6fbdbe7f453c3cb816ef219b17a27193c2f5))
+* spinner shows final summary message instead of initial text ([881abc0](https://github.com/Lucas-Bur/pix/commit/881abc0aa12904badb932f4c95f94bb42ac8a4c9))
+* validate positive values for --batch-size and --chunk-concurrency CLI options ([38e0bae](https://github.com/Lucas-Bur/pix/commit/38e0bae84b8aa645c8f9ba606d1f3e55212cfdaf))
+
 ## [0.10.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.9.1...pix-v0.10.0) (2026-05-15)
 
 
