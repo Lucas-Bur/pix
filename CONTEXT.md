@@ -49,9 +49,23 @@ Tests a single adapter (`src/services/*.ts`) with its real implementation agains
 
 Tests a single use case (`src/application/*.ts`) through `testLayer()` with real adapters underneath. Asserts the domain result (e.g. `IndexResult`), not CLI output or console side-effects.
 
+### Display Service
+
+`Context.Tag("Display")` in `src/display/Display.ts`. Abstracts all CLI output behind structured methods: `intro`, `outro`, `status`, `note`, `text`, `spinner`, `json`. Commands use `yield* Display` — never `Console.log` or `Effect.logInfo` directly.
+
+Three implementations:
+
+- **ClackDisplay** (`--json` not set): renders via `@clack/prompts` with spinners, styled status icons, frames
+- **JsonDisplay** (`--json` set): all interactive methods are no-ops; `json()` writes to `process.stdout.write` for agent consumption
+- **SilentDisplay** (tests): records typed `DisplayEntry[]` to a `Ref` — test assertions check `{ _tag: "json" | "status" | "text" | ... }` entries
+
+### Silent Display (test)
+
+`tests/test-utils/silentDisplay.ts` creates a `Ref<DisplayEntry[]>` backed `SilentDisplay` layer for Command tests. Replaced the old `MockConsole` approach. Tests assert on structured entries (`entries[0]._tag === "json"`) instead of parsing raw stdout lines.
+
 ### Command Test
 
-Tests the full `Command.run` → all layers → CLI output path. Exercises the composition root. The only test category that inspects `MockConsole` lines or `Exit` status from `Command.run`.
+Tests the full `Command.run` → all layers → CLI output path. Exercises the composition root. Asserts on `SilentDisplay` ref entries or `Exit` status from `Command.run`.
 
 ### Default Embedder (test)
 
@@ -67,7 +81,7 @@ The quality gate for tests: every branch (`if`, `Effect.catchTag`, `Exit`, fallb
 
 ### Test Layer (`testLayer()`)
 
-Factory in `tests/test-utils/testLayer.ts` that builds the full application layer against `MemoryFileSystem` with mocked Scanner and Embedder by default. Accepts overrides via `{ contents, scannerLayer, embedderLayer }` for fixture-driven test scenarios.
+Factory in `tests/test-utils/testLayer.ts` that builds the full application layer against `MemoryFileSystem` with mocked Scanner and Embedder by default. Accepts overrides via `{ contents, scannerLayer, embedderLayer, displayLayer }` for fixture-driven test scenarios. Command tests supply `displayLayer` (via `silentDisplay()`) for output assertions.
 
 ### Embedder Mocking Policy
 
@@ -129,14 +143,18 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 ### CLI Commands
 
 - `pix init` — Create `.pix/config.json` with defaults
-- `pix index` — Scan, chunk, embed, store (full re-index; `--force` flag reserved for Phase 3)
+- `pix index` — Scan, chunk, embed, store (full re-index; `--force` flag reserved for Phase 3). Uses spinner for long-running indexing.
 - `pix query "<text>" [--top N] [--json] [--context-lines N]` — Semantic search via cosine similarity
 - `pix status` — Show index statistics
 - `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
 
-All commands support `--json` for agent-ready structured output on stdout.
+All commands support `--json` for agent-ready structured output on stdout. `src/cli.ts` selects `JsonDisplay` when `--json` is present, `ClackDisplay` otherwise. Commands always call `d.json(result)` for structured output and conditionally call interactive methods (`d.status`, `d.note`, `d.spinner`, `d.text`) when `!json`.
 
 ## Architecture Decisions
+
+### Display service with JSON mode switching
+
+CLI output goes through a `Display` context tag (`src/display/Display.ts`). Two production implementations selectable by `--json`: `ClackDisplay` (interactive, uses `@clack/prompts` for spinners, styled status, frames) and `JsonDisplay` (machine-readable, no-ops interactive methods, writes JSON to stdout). All commands always call `d.json(result)` for structured output; interactive methods are conditional on `!json`. A third implementation (`SilentDisplay`) records calls to a `Ref<DisplayEntry[]>` for test assertions. See ADR 0005.
 
 ### Flat-file storage (not SQLite)
 
@@ -186,4 +204,3 @@ with ports-as-tags and adapters-as-layers. See [ADR 0003](docs/adr/0003-hexagona
 - In-memory search optimization (mmap for large indexes)
 - `.pixignore` as additional blacklist (research needed)
 - Ranking improvements for query results
-- **CLI printing overhaul** — replace `console.log` with clack/chalk or similar Effect-compatible library

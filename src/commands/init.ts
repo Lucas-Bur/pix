@@ -1,7 +1,8 @@
 import { Command, Options } from "@effect/cli"
-import { Console, Effect } from "effect"
+import { Effect } from "effect"
 
 import { InitProject } from "../application/init-project.js"
+import { Display } from "../display/Display.js"
 import { reportError } from "../lib/error-format.js"
 
 /** CLI command: pix init [--json] */
@@ -12,16 +13,18 @@ export const initCommand = Command.make(
   },
   ({ json }) =>
     Effect.gen(function* () {
+      const d = yield* Display
       const result = yield* InitProject.init()
 
-      if (json) {
-        return yield* Console.log(JSON.stringify(result, null, 2))
-      }
+      yield* d.json(result)
 
-      yield* Effect.logInfo("Created .pix/config.json with default settings.")
-      yield* Effect.logInfo(
-        "Reminder: Add `.pix` to your `.gitignore` file to avoid committing the index.",
-      )
+      if (!json) {
+        yield* d.status("Created .pix/config.json with default settings.", "success")
+        yield* d.note(
+          "Add `.pix` to your `.gitignore` file to avoid committing the index.",
+          "Reminder",
+        )
+      }
     }).pipe(
       Effect.catchTags({
         ConfigError: reportError,

@@ -1,7 +1,8 @@
 import { Args, Command, Options } from "@effect/cli"
-import { Console, Effect, Option } from "effect"
+import { Effect, Option } from "effect"
 
 import { QueryProject } from "../application/query-project.js"
+import { Display } from "../display/Display.js"
 import type { SearchResult } from "../domain/ports.js"
 import { reportError } from "../lib/error-format.js"
 
@@ -35,18 +36,6 @@ const toJsonOutput = (results: readonly SearchResult[], ctxLines: number) =>
     ...(ctxLines > 0 && r.contextAfter && { contextAfter: r.contextAfter }),
   }))
 
-const renderResults = (results: readonly SearchResult[]) =>
-  Effect.gen(function* () {
-    if (results.length === 0) {
-      yield* Effect.logInfo("No results found")
-      return
-    }
-    for (const result of results) {
-      yield* Console.log(formatResult(result))
-      yield* Console.log("---")
-    }
-  })
-
 /** CLI command: pix query "<text>" [--top N] [--json] [--context-lines N] */
 export const queryCommand = Command.make(
   "query",
@@ -61,21 +50,28 @@ export const queryCommand = Command.make(
   },
   ({ queryText, top, json, contextLines }) =>
     Effect.gen(function* () {
+      const d = yield* Display
       const topK = Option.getOrElse(top, () => DEFAULT_TOP_K)
       const ctxLines = Option.getOrElse(contextLines, () => DEFAULT_CONTEXT_LINES)
       const clamped = clampTopK(topK)
 
       if (clamped.clamped && !json) {
-        yield* Effect.logDebug(`topK clamped from ${topK} to ${clamped.value}`)
+        yield* d.status(`topK clamped from ${topK} to ${clamped.value}`, "warn")
       }
 
       const results = yield* QueryProject.queryProject(queryText, clamped.value)
 
-      if (json) {
-        return yield* Console.log(JSON.stringify(toJsonOutput(results, ctxLines), null, 2))
-      }
+      yield* d.json(toJsonOutput(results, ctxLines))
 
-      yield* renderResults(results)
+      if (!json) {
+        if (results.length === 0) {
+          yield* d.status("No results found", "warn")
+        } else {
+          for (const result of results) {
+            yield* d.text(formatResult(result))
+          }
+        }
+      }
     }).pipe(
       Effect.catchTags({
         ModelLoadError: reportError,

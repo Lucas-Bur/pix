@@ -7,6 +7,7 @@ import { InitProject } from "./application/init-project.js"
 import { QueryProject } from "./application/query-project.js"
 import { ResetIndex } from "./application/reset-index.js"
 import { cli } from "./cli.js"
+import { setupTerminalCleanup } from "./display/terminalCleanup.js"
 import { ChunkerLive } from "./services/chunker.js"
 import { ConfigStoreLive } from "./services/config-store.js"
 import { OnnxEmbedderLive } from "./services/embedder.js"
@@ -52,6 +53,8 @@ const UseCaseLayer = Layer.mergeAll(
 // Using Layer.merge instead of Layer.provide ensures the NodeContext outputs
 // are part of the AppLayer's output — a single Effect.provide is enough.
 const AppLayer = Layer.merge(UseCaseLayer.pipe(Layer.provide(InfraLayer)), NodeContext.layer)
+
+setupTerminalCleanup()
 
 cli(process.argv).pipe(
   Effect.provide(AppLayer),

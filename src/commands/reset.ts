@@ -1,37 +1,10 @@
 import { Command, Options } from "@effect/cli"
-import { Clock, Console, Effect } from "effect"
+import { Clock, Effect } from "effect"
 
 import { ResetIndex } from "../application/reset-index.js"
-import type { ResetResult } from "../domain/ports.js"
+import { Display } from "../display/Display.js"
 import { reportError } from "../lib/error-format.js"
 import { formatBytes } from "../lib/format.js"
-
-const logJsonResult = (result: ResetResult, elapsedMs: number) =>
-  Console.log(
-    JSON.stringify({
-      status: "ok",
-      deletedChunks: result.deletedChunks,
-      deletedVectors: result.deletedVectors,
-      freedBytes: result.freedBytes,
-      elapsedMs,
-    }),
-  )
-
-const logHumanResult = (result: ResetResult, elapsedMs: number) =>
-  Effect.gen(function* () {
-    const deletedParts = [
-      result.deletedChunks ? "chunks.jsonl" : null,
-      result.deletedVectors ? "vectors.bin" : null,
-    ].filter((part): part is string => part !== null)
-
-    if (deletedParts.length === 0) {
-      yield* Effect.logInfo("Nothing to reset.")
-      return
-    }
-    yield* Effect.logInfo(`Deleted: ${deletedParts.join(", ")}`)
-    yield* Effect.logInfo(`Freed: ${formatBytes(result.freedBytes)}`)
-    yield* Effect.logInfo(`Time: ${elapsedMs}ms`)
-  })
 
 /** CLI command: pix reset [--json] */
 export const resetCommand = Command.make(
@@ -41,13 +14,34 @@ export const resetCommand = Command.make(
   },
   ({ json }) =>
     Effect.gen(function* () {
+      const d = yield* Display
       const start = yield* Clock.currentTimeMillis
       const result = yield* ResetIndex.reset()
       const end = yield* Clock.currentTimeMillis
       const elapsedMs = end - start
 
-      if (json) return yield* logJsonResult(result, elapsedMs)
-      yield* logHumanResult(result, elapsedMs)
+      yield* d.json({
+        status: "ok",
+        deletedChunks: result.deletedChunks,
+        deletedVectors: result.deletedVectors,
+        freedBytes: result.freedBytes,
+        elapsedMs,
+      })
+
+      if (!json) {
+        const deletedParts = [
+          result.deletedChunks ? "chunks.jsonl" : null,
+          result.deletedVectors ? "vectors.bin" : null,
+        ].filter((part): part is string => part !== null)
+
+        if (deletedParts.length === 0) {
+          yield* d.status("Nothing to reset.", "info")
+        } else {
+          yield* d.status(`Deleted: ${deletedParts.join(", ")}`, "success")
+          yield* d.status(`Freed: ${formatBytes(result.freedBytes)}`, "info")
+          yield* d.status(`Time: ${elapsedMs}ms`, "info")
+        }
+      }
     }).pipe(
       Effect.catchTags({
         DiskFullError: reportError,
