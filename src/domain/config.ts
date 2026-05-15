@@ -13,6 +13,8 @@ export interface EmbedderConfig {
   readonly device: "auto" | "cpu" | "cuda" | "dml" | "coreml"
   /** Numerical precision for the model. Must be supported by the chosen model. */
   readonly dtype: "fp32" | "fp16" | "q8"
+  /** Number of chunks to embed in a single batch. Controls GPU memory pressure. */
+  readonly batchSize: number
 }
 
 /** Pix project configuration stored in .pix/config.json. */
@@ -65,5 +67,6 @@ export const DEFAULT_CONFIG: Config = {
     model: "Xenova/all-MiniLM-L6-v2",
     device: "auto",
     dtype: "fp32",
+    batchSize: 16,
   },
 }
