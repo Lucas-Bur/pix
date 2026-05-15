@@ -240,8 +240,9 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         yield* displaySkippedNote(d, collected)
 
         const durationSec = ((Date.now() - start) / 1000).toFixed(1)
-        yield* d.updateInteractive(
+        yield* d.log(
           `Indexed ${stats.chunks} chunks from ${stats.files} files in ${durationSec}s`,
+          "success",
         )
 
         return {
