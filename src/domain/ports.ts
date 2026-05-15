@@ -116,6 +116,14 @@ export interface ResetResult {
   readonly freedBytes: number
 }
 
+/** Statistics returned after a successful store commit. */
+export interface IndexStats {
+  readonly chunks: number
+  readonly files: number
+  readonly totalLines: number
+  readonly byteSize: number
+}
+
 export class VectorStore extends Context.Tag("VectorStore")<
   VectorStore,
   {
@@ -123,6 +131,13 @@ export class VectorStore extends Context.Tag("VectorStore")<
       chunks: readonly Chunk[],
       embeddings: readonly Embedding[],
     ) => Effect.Effect<void, StoreError | DiskFullError>
+    readonly storeBegin: () => Effect.Effect<void, StoreError | DiskFullError>
+    readonly storeBatch: (
+      chunks: readonly Chunk[],
+      embeddings: readonly Embedding[],
+    ) => Effect.Effect<void, StoreError | DiskFullError>
+    readonly storeCommit: () => Effect.Effect<IndexStats, StoreError | DiskFullError>
+    readonly storeAbort: () => Effect.Effect<void, StoreError>
     readonly search: (
       query: Embedding,
       topK: number,
