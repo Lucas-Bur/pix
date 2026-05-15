@@ -76,11 +76,6 @@ export const indexCommand = Command.make(
 
       if (result.status.chunks === 0) {
         yield* d.log("No chunks to index.", "warn")
-      } else {
-        yield* d.log(
-          `Indexed ${result.status.chunks} chunks from ${result.status.files} files.`,
-          "success",
-        )
       }
     }).pipe(Effect.catchAll(reportError)),
 )

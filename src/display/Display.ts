@@ -32,6 +32,12 @@ type UpdateInteractivePayload =
     }
   | {
       readonly message: string
+      readonly setToPercent: number
+      readonly advanceBy?: never
+      readonly setTo?: never
+    }
+  | {
+      readonly message: string
       readonly setTo: number
       readonly advanceBy?: never
       readonly setToPercent?: never
@@ -185,6 +191,7 @@ export const ClackDisplay = {
     Display,
     Effect.gen(function* () {
       const activeRef = yield* Ref.make<ActiveInteractive>(null)
+      const lastSpinnerMsg = yield* Ref.make<string>("")
 
       return {
         intro: (title) => Effect.sync(() => clack.intro(styleText("inverse", ` ${title} `))),
@@ -208,10 +215,16 @@ export const ClackDisplay = {
               const s = clack.spinner()
               s.start(message)
               return s
-            }),
+            }).pipe(Effect.tap(() => Ref.set(lastSpinnerMsg, message))),
             (s) => ({ type: "spinner", handle: s }),
             (s, exit) =>
-              Effect.sync(() => s.stop(exit._tag === "Success" ? message : `${message} (failed)`)),
+              lastSpinnerMsg.pipe(
+                Effect.flatMap((lastMsg) =>
+                  Effect.sync(() =>
+                    s.stop(exit._tag === "Success" && lastMsg ? lastMsg : `${message} (failed)`),
+                  ),
+                ),
+              ),
             effect,
           ),
 
@@ -244,48 +257,10 @@ export const ClackDisplay = {
             Effect.flatMap((active) => {
               if (!active) return Effect.void
               if (active.type === "spinner") {
-                if (
-                  typeof payload !== "string" &&
-                  "setMax" in payload &&
-                  payload.setMax !== undefined
-                ) {
-                  const bar = clack.progress({
-                    max: payload.setMax,
-                    style: "heavy",
-                    size: 40,
-                    indicator: "dots",
-                  })
-                  bar.start(payload.message)
-                  bar.advance(payload.setTo, payload.message)
-                  return Ref.set(activeRef, {
-                    type: "progress",
-                    handle: bar,
-                    value: payload.setTo,
-                    max: payload.setMax,
-                  })
-                }
-                return Effect.sync(() => active.handle.message(payloadText(payload)))
-              }
-              if (
-                typeof payload !== "string" &&
-                "setMax" in payload &&
-                payload.setMax !== undefined
-              ) {
-                active.handle.stop(payload.message)
-                const bar = clack.progress({
-                  max: payload.setMax,
-                  style: "heavy",
-                  size: 40,
-                  indicator: "dots",
-                })
-                bar.start(payload.message)
-                bar.advance(payload.setTo, payload.message)
-                return Ref.set(activeRef, {
-                  type: "progress",
-                  handle: bar,
-                  value: payload.setTo,
-                  max: payload.setMax,
-                })
+                const msg = payloadText(payload)
+                return Effect.sync(() => active.handle.message(msg)).pipe(
+                  Effect.andThen(Ref.set(lastSpinnerMsg, msg)),
+                )
               }
               const delta = computeDelta(payload, { value: active.value, max: active.max })
               const newValue = Math.max(0, Math.min(active.max, active.value + delta))
