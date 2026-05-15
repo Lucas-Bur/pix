@@ -220,8 +220,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
                 const texts = batch.map((c: DomainChunk) => c.text)
                 const embeddings = yield* embedder.batch(texts)
                 yield* vectorStore.storeBatch(batch, embeddings)
-                yield* Ref.update(embedded, (n) => n + batch.length)
-                const count = yield* Ref.get(embedded)
+                const count = yield* Ref.updateAndGet(embedded, (n) => n + batch.length)
                 yield* d.updateInteractive({
                   message: `Embedding ${count} of ${totalChunks} chunks`,
                   setTo: count,
