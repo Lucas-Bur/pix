@@ -43,10 +43,10 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
             ? Object.keys(config.files)
             : [".ts", ".tsx", ".js", ".jsx"]
 
-        yield* d.message("Scanning source files...")
+        yield* d.updateInteractive("Scanning source files...")
         const scanResult = yield* scanner.scanFiles(extensions)
 
-        yield* d.message(`Chunking ${scanResult.files.length} files...`)
+        yield* d.updateInteractive(`Chunking ${scanResult.files.length} files...`)
         const fileChunkArrays = yield* Effect.forEach(
           scanResult.files,
           (file) => chunker.chunkFile(file),
@@ -66,7 +66,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           }
         }
 
-        yield* d.message(`Embedding ${totalChunks} chunks...`)
+        yield* d.updateInteractive(`Embedding ${totalChunks} chunks...`)
         const texts = allChunks.map((c) => c.text)
         const embeddings = yield* embedder.batch(texts)
 

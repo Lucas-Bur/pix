@@ -16,7 +16,7 @@ const VERSION = (require("../package.json") as { version: string }).version
 const rootCommand = Command.make("pix", {}, () =>
   Effect.gen(function* () {
     const d = yield* Display
-    yield* d.status(`pix v${VERSION} - Lightweight local semantic project indexer`, "info")
+    yield* d.log(`pix v${VERSION} - Lightweight local semantic project indexer`, "info")
   }),
 )
 

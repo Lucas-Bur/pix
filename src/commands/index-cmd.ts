@@ -18,18 +18,18 @@ export const indexCommand = Command.make(
       const d = yield* Display
 
       if (force)
-        yield* d.status("--force is currently not implemented and only a placeholder.", "warn")
+        yield* d.log("--force is currently not implemented and only a placeholder.", "warn")
       if (verbose)
-        yield* d.status("--verbose is currently not implemented and only a placeholder.", "warn")
+        yield* d.log("--verbose is currently not implemented and only a placeholder.", "warn")
 
       const result = yield* d.spinner("Indexing project...", IndexProject.index())
 
       yield* d.json({ chunks: result.status.chunks, files: result.status.files })
 
       if (result.status.chunks === 0) {
-        yield* d.status("No chunks to index.", "warn")
+        yield* d.log("No chunks to index.", "warn")
       } else {
-        yield* d.status(
+        yield* d.log(
           `Indexed ${result.status.chunks} chunks from ${result.status.files} files.`,
           "success",
         )

@@ -11,13 +11,13 @@ const setup = () => {
 }
 
 describe("SilentDisplay", () => {
-  it("records status messages with severity", () => {
+  it("records log messages with severity", () => {
     const { ref, layer } = setup()
     return Effect.gen(function* () {
       const d = yield* Display
-      yield* d.status("Syncing files...", "info")
+      yield* d.log("Syncing files...", "info")
       const entries = yield* Ref.get(ref)
-      expect(entries).toEqual([{ _tag: "status", message: "Syncing files...", severity: "info" }])
+      expect(entries).toEqual([{ _tag: "log", message: "Syncing files...", severity: "info" }])
     }).pipe(Effect.provide(layer))
   })
 
@@ -49,18 +49,18 @@ describe("SilentDisplay", () => {
     }).pipe(Effect.provide(layer))
   })
 
-  it("captures multiple status calls in order", () => {
+  it("captures multiple log calls in order", () => {
     const { ref, layer } = setup()
     return Effect.gen(function* () {
       const d = yield* Display
-      yield* d.status("Starting...", "info")
-      yield* d.status("Done!", "success")
-      yield* d.status("Something failed", "error")
+      yield* d.log("Starting...", "info")
+      yield* d.log("Done!", "success")
+      yield* d.log("Something failed", "error")
       const entries = yield* Ref.get(ref)
       expect(entries).toEqual([
-        { _tag: "status", message: "Starting...", severity: "info" },
-        { _tag: "status", message: "Done!", severity: "success" },
-        { _tag: "status", message: "Something failed", severity: "error" },
+        { _tag: "log", message: "Starting...", severity: "info" },
+        { _tag: "log", message: "Done!", severity: "success" },
+        { _tag: "log", message: "Something failed", severity: "error" },
       ])
     }).pipe(Effect.provide(layer))
   })
@@ -97,43 +97,45 @@ describe("SilentDisplay", () => {
     }).pipe(Effect.provide(layer))
   })
 
-  it("records message entries", () => {
+  it("records updateInteractive entries", () => {
     const { ref, layer } = setup()
     return Effect.gen(function* () {
       const d = yield* Display
-      yield* d.message("Scanned 12 files")
+      yield* d.updateInteractive("Scanned 12 files")
       const entries = yield* Ref.get(ref)
-      expect(entries).toEqual([{ _tag: "message", message: "Scanned 12 files" }])
+      expect(entries).toEqual([{ _tag: "updateInteractive", message: "Scanned 12 files" }])
     }).pipe(Effect.provide(layer))
   })
 
-  it("records message with advanceBy", () => {
+  it("records updateInteractive with advanceBy", () => {
     const { ref, layer } = setup()
     return Effect.gen(function* () {
       const d = yield* Display
-      yield* d.message({ message: "Embedding...", advanceBy: 5 })
+      yield* d.updateInteractive({ message: "Embedding...", advanceBy: 5 })
       const entries = yield* Ref.get(ref)
-      expect(entries).toEqual([{ _tag: "message", message: "Embedding...", advanceBy: 5 }])
+      expect(entries).toEqual([
+        { _tag: "updateInteractive", message: "Embedding...", advanceBy: 5 },
+      ])
     }).pipe(Effect.provide(layer))
   })
 
-  it("records message with setTo", () => {
+  it("records updateInteractive with setTo", () => {
     const { ref, layer } = setup()
     return Effect.gen(function* () {
       const d = yield* Display
-      yield* d.message({ message: "Done", setTo: 47 })
+      yield* d.updateInteractive({ message: "Done", setTo: 47 })
       const entries = yield* Ref.get(ref)
-      expect(entries).toEqual([{ _tag: "message", message: "Done", setTo: 47 }])
+      expect(entries).toEqual([{ _tag: "updateInteractive", message: "Done", setTo: 47 }])
     }).pipe(Effect.provide(layer))
   })
 
-  it("records message with setToPercent", () => {
+  it("records updateInteractive with setToPercent", () => {
     const { ref, layer } = setup()
     return Effect.gen(function* () {
       const d = yield* Display
-      yield* d.message({ message: "Halfway", setToPercent: 50 })
+      yield* d.updateInteractive({ message: "Halfway", setToPercent: 50 })
       const entries = yield* Ref.get(ref)
-      expect(entries).toEqual([{ _tag: "message", message: "Halfway", setToPercent: 50 }])
+      expect(entries).toEqual([{ _tag: "updateInteractive", message: "Halfway", setToPercent: 50 }])
     }).pipe(Effect.provide(layer))
   })
 
@@ -171,9 +173,9 @@ describe("SilentDisplay", () => {
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.intro("pix")
-      yield* d.status("Running...", "info")
+      yield* d.log("Running...", "info")
       yield* d.spinner("Indexing...", Effect.succeed(42))
-      yield* d.message("Scanned 12 files")
+      yield* d.updateInteractive("Scanned 12 files")
       yield* d.progress({ message: "Embedding...", max: 47 }, Effect.void)
       yield* d.note("Tips")
       yield* d.text("result line")
@@ -182,9 +184,9 @@ describe("SilentDisplay", () => {
       const entries = yield* Ref.get(ref)
       expect(entries.map((e) => e._tag)).toEqual([
         "intro",
-        "status",
+        "log",
         "spinner",
-        "message",
+        "updateInteractive",
         "progress",
         "note",
         "text",

@@ -50,7 +50,7 @@ test("pix status without --json logs status entries via Display", () => {
     const entries = yield* Ref.get(ref)
     expect(entries.length).toBeGreaterThan(0)
     expect(entries[0]._tag).toBe("json")
-    expect(entries.some((e) => e._tag === "status")).toBe(true)
+    expect(entries.some((e) => e._tag === "log")).toBe(true)
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
 

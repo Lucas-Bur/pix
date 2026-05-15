@@ -117,7 +117,7 @@ test("pix query without --json on empty index shows warning", () => {
     yield* run(["query", "nothing"])
     const entries = yield* Ref.get(ref)
     expect(entries[0]._tag).toBe("json")
-    expect(entries.some((e) => e._tag === "status" && e.severity === "warn")).toBe(true)
+    expect(entries.some((e) => e._tag === "log" && e.severity === "warn")).toBe(true)
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 

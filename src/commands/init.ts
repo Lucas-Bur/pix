@@ -17,7 +17,7 @@ export const initCommand = Command.make(
       const result = yield* d.spinner("Initializing...", InitProject.init())
 
       yield* d.json(result)
-      yield* d.status("Created .pix/config.json with default settings.", "success")
+      yield* d.log("Created .pix/config.json with default settings.", "success")
       yield* d.note(
         "Add `.pix` to your `.gitignore` file to avoid committing the index.",
         "Reminder",

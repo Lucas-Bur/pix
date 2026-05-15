@@ -32,7 +32,7 @@ test("pix init without --json shows status and note via Display", () => {
     yield* run(["init"])
     const entries = yield* Ref.get(ref)
     expect(entries.length).toBe(2)
-    expect(entries[0]._tag).toBe("status")
+    expect(entries[0]._tag).toBe("log")
     expect(entries[1]._tag).toBe("note")
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })

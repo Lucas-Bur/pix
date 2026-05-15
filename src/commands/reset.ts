@@ -34,11 +34,11 @@ export const resetCommand = Command.make(
       ].filter((part): part is string => part !== null)
 
       if (deletedParts.length === 0) {
-        yield* d.status("Nothing to reset.", "info")
+        yield* d.log("Nothing to reset.", "info")
       } else {
-        yield* d.status(`Deleted: ${deletedParts.join(", ")}`, "success")
-        yield* d.status(`Freed: ${formatBytes(result.freedBytes)}`, "info")
-        yield* d.status(`Time: ${elapsedMs}ms`, "info")
+        yield* d.log(`Deleted: ${deletedParts.join(", ")}`, "success")
+        yield* d.log(`Freed: ${formatBytes(result.freedBytes)}`, "info")
+        yield* d.log(`Time: ${elapsedMs}ms`, "info")
       }
     }).pipe(
       Effect.catchTags({

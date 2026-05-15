@@ -55,26 +55,26 @@ Tests a single use case (`src/application/*.ts`) through `testLayer()` with real
 
 Methods:
 
-| Method                  | Effect                                              | Human               | JSON           |
-| ----------------------- | --------------------------------------------------- | ------------------- | -------------- |
-| `intro(title)`          | Opens a frame header                                | `clack.intro`       | no-op          |
-| `outro(msg)`            | Closes a frame                                      | `clack.outro`       | no-op          |
-| `status(msg, sev)`      | Styled log line (severity: info/success/warn/error) | `clack.log.*`       | no-op          |
-| `note(content, title?)` | Boxed note block                                    | `clack.note`        | no-op          |
-| `text(msg)`             | Plain unstyled output line                          | `clack.log.message` | no-op          |
-| `spinner(msg, eff)`     | Wrap effect with spinner (live text updates via `d.message`)      | runs spinner     | runs effect    |
-| `progress(opts, eff)`   | Wrap effect with progress bar (also accepts `d.message` payloads) | runs bar         | runs effect    |
-| `message(payload)`      | Update text & optionally advance progress bar                     | see below        | no-op          |
-| `json(data)`            | Structured agent output                                           | no-op            | `stdout.write` |
+| Method                       | Effect                                                                      | Human               | JSON           |
+| ---------------------------- | --------------------------------------------------------------------------- | ------------------- | -------------- |
+| `intro(title)`               | Opens a frame header                                                        | `clack.intro`       | no-op          |
+| `outro(msg)`                 | Closes a frame                                                              | `clack.outro`       | no-op          |
+| `log(msg, sev)`              | Styled permanent line (severity: info/success/warn/error)                   | `clack.log.*`       | no-op          |
+| `note(content, title?)`      | Boxed note block                                                            | `clack.note`        | no-op          |
+| `text(msg)`                  | Plain unstyled output line                                                  | `clack.log.message` | no-op          |
+| `spinner(msg, eff)`          | Wrap effect with spinner (live text updates via `d.updateInteractive`)      | runs spinner        | runs effect    |
+| `progress(opts, eff)`        | Wrap effect with progress bar (also accepts `d.updateInteractive` payloads) | runs bar            | runs effect    |
+| `updateInteractive(payload)` | Update text & optionally advance progress bar                               | see below           | no-op          |
+| `json(data)`                 | Structured agent output                                                     | no-op               | `stdout.write` |
 
-**`d.message(payload)` payloads** (discriminated union, exclusive keys via `never`):
+**`d.updateInteractive(payload)` payloads** (discriminated union, exclusive keys via `never`):
 
-| Shape | Effect on spinner | Effect on progress bar |
-|-------|-------------------|-----------------------|
-| `"text"` | `s.message("text")` | `b.advance(0, "text")` |
-| `{ message }` | same as string | same as string |
-| `{ message, advanceBy: N }` | ignores advanceBy | `b.advance(N, msg)`; state += N |
-| `{ message, setTo: N }` | ignores setTo | `b.advance(N - state, msg)`; state = N |
+| Shape                          | Effect on spinner    | Effect on progress bar                              |
+| ------------------------------ | -------------------- | --------------------------------------------------- |
+| `"text"`                       | `s.message("text")`  | `b.advance(0, "text")`                              |
+| `{ message }`                  | same as string       | same as string                                      |
+| `{ message, advanceBy: N }`    | ignores advanceBy    | `b.advance(N, msg)`; state += N                     |
+| `{ message, setTo: N }`        | ignores setTo        | `b.advance(N - state, msg)`; state = N              |
 | `{ message, setToPercent: P }` | ignores setToPercent | `b.advance(target - state, msg)`; state = P% of max |
 
 The progress bar's `state: { value, max }` is tracked locally since `@clack` only exposes `advance(step)` — we compute the delta and clamp to `[0, max]`. Spinners ignore numeric fields.
@@ -84,12 +84,6 @@ Three implementations:
 - **ClackDisplay** (`--json` not set): renders via `@clack/prompts` with spinners, styled icons, frames
 - **JsonDisplay** (`--json` set): no-ops all interactive methods; `json()` writes to `stdout`
 - **SilentDisplay** (tests): records `DisplayEntry[]` to a `Ref` for test assertions
-
-**Naming note (TODO)**: `log`/`text`/`message` overlap is fuzzy. Proposed rename for clarity:
-
-- `log(msg, sev)` stays — styled permanent line
-- `text(msg)` → `write(msg)` or merge into `log` with `severity: "plain"`
-- `message(msg)` → `update(msg)` — emphasizes it's temporary in-place text
 
 ### Silent Display (test)
 
@@ -193,13 +187,14 @@ CLI output goes through a `Display` context tag (`src/display/Display.ts`). Two 
 **Interactive constraints**: Only one interactive line (spinner or progress bar) at a time. `d.message(msg)` calls `s.message(msg)` on the active spinner or computes delta + calls `b.advance(delta, msg)` on the active progress bar.
 
 For spinners, text updates are sufficient visual feedback. For progress bars, `d.message()` supports three position controls via discriminated union:
+
 - `advanceBy: N` — advance the bar by N steps relative to current position
 - `setTo: N` — jump to absolute position N (clamped to `[0, max]`)
 - `setToPercent: P` — jump to P% of max (clamped to `[0, 100]`)
 
 Position state is tracked locally (`state: { value, max }`) since `@clack` only exposes `advance(step)`. All delta computations clamp to `[0, max]` — safe against backwards moves or overshoot.
 
-**Display flowing into app/services**: Display is composed into the AppLayer via `Layer.mergeAll(AppLayer, cliLayer)` in `src/index.ts`. Services that need operational logging (e.g. `index-project.ts` for scan/chunk/embed progress, `embedder.ts` for GPU fallback events) simply `yield* Display` and call `d.message()` or `d.json()`. For ports that must stay `Effect<..., never>` (e.g. `Embedder`), the implementation uses `Effect.provideService(Display, d)` internally to satisfy Display without leaking it into the port contract. The `0` Effect.log\* calls remain (both replaced by Display).
+**Display flowing into app/services**: Display is composed into the AppLayer via `Layer.mergeAll(AppLayer, cliLayer)` in `src/index.ts`. Services that need operational logging (e.g. `index-project.ts` for scan/chunk/embed progress, `embedder.ts` for GPU fallback events) simply `yield* Display` and call `d.updateInteractive()` or `d.json()`. For ports that must stay `Effect<..., never>` (e.g. `Embedder`), the implementation uses `Effect.provideService(Display, d)` internally to satisfy Display without leaking it into the port contract. The `0` Effect.log\* calls remain (both replaced by Display).
 
 ### Flat-file storage (not SQLite)
 
@@ -238,7 +233,6 @@ with ports-as-tags and adapters-as-layers. See [ADR 0003](docs/adr/0003-hexagona
 
 ## Future Considerations
 
-- **Display method naming**: `status` / `text` / `message` overlap is fuzzy. Proposed: `status` → `log`, `text` → `write` (or merge into `log` with severity `"plain"`), `message` → `update`. Opens a separate rename PR.
 - Extension→Processor mapping (Phase 2+) — lookup table that decides how each file extension is processed:
   - **Known code extensions** (`.ts`, `.py`, `.rs`, etc.) → Chunker → Embedder (MVP behavior)
   - **Known binary extensions** (`.pdf`, `.mp4`, `.jpg`, `.zip`, `.exe`, etc.) → Skip with warning log. Future Phase 2+ converts to text first (e.g. PDF→text extraction, MP4→Whisper transcription)

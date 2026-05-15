@@ -50,7 +50,7 @@ test("pix index without --json logs status via Display", () => {
     yield* run(["index"])
     const entries = yield* Ref.get(ref)
     expect(entries[0]._tag).toBe("json")
-    expect(entries.some((e) => e._tag === "status")).toBe(true)
+    expect(entries.some((e) => e._tag === "log")).toBe(true)
   }).pipe(
     Effect.provide(
       testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer, displayLayer: layer }),
@@ -70,7 +70,7 @@ test("pix index --force shows warning via Display", () => {
   return Effect.gen(function* () {
     yield* run(["index", "--force"])
     const entries = yield* Ref.get(ref)
-    expect(entries.some((e) => e._tag === "status" && e.severity === "warn")).toBe(true)
+    expect(entries.some((e) => e._tag === "log" && e.severity === "warn")).toBe(true)
   }).pipe(
     Effect.provide(
       testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer, displayLayer: layer }),
@@ -83,7 +83,7 @@ test("pix index --verbose shows warning via Display", () => {
   return Effect.gen(function* () {
     yield* run(["index", "--verbose"])
     const entries = yield* Ref.get(ref)
-    expect(entries.some((e) => e._tag === "status" && e.severity === "warn")).toBe(true)
+    expect(entries.some((e) => e._tag === "log" && e.severity === "warn")).toBe(true)
   }).pipe(
     Effect.provide(
       testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer, displayLayer: layer }),

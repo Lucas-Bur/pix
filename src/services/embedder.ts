@@ -89,7 +89,7 @@ const createExtractorWithFallback = (opts: EmbedderConfig) => {
     Effect.catchAll((originalError) =>
       Effect.gen(function* () {
         const d = yield* Display
-        yield* d.status(`GPU (${opts.device}) failed, falling back to CPU...`, "warn")
+        yield* d.log(`GPU (${opts.device}) failed, falling back to CPU...`, "warn")
         yield* d.json({
           event: "embedder_fallback",
           originalDevice: opts.device,

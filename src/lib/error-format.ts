@@ -59,7 +59,7 @@ import { Display } from "../display/Display.js"
 export const reportError = <E>(error: E): Effect.Effect<never, E, Display> =>
   Effect.gen(function* () {
     const d = yield* Display
-    yield* d.status(`${codeFromError(error)}: ${messageFromError(error)}`, "error")
+    yield* d.log(`${codeFromError(error)}: ${messageFromError(error)}`, "error")
     yield* d.json(JSON.parse(formatError(error)))
     return yield* Effect.fail(error)
   })

@@ -3,7 +3,7 @@ import { styleText } from "node:util"
 import * as clack from "@clack/prompts"
 import { Context, Effect, Layer, Ref } from "effect"
 
-/** Severity level for status messages */
+/** Severity level for log messages */
 export type Severity = "info" | "success" | "warn" | "error"
 
 /** Options for the progress bar method */
@@ -15,8 +15,8 @@ export interface ProgressOptions {
   readonly indicator?: "dots" | "timer"
 }
 
-/** Payload for d.message() — plain string updates text only, object adds position control */
-export type MessagePayload =
+/** Payload for d.updateInteractive() — plain string updates text only, object adds position control */
+export type UpdateInteractivePayload =
   | string
   | {
       readonly message: string
@@ -47,13 +47,13 @@ export type MessagePayload =
 export type DisplayEntry =
   | { readonly _tag: "intro"; readonly title: string }
   | { readonly _tag: "outro"; readonly message: string }
-  | { readonly _tag: "status"; readonly message: string; readonly severity: Severity }
+  | { readonly _tag: "log"; readonly message: string; readonly severity: Severity }
   | { readonly _tag: "note"; readonly content: string; readonly title?: string }
   | { readonly _tag: "text"; readonly message: string }
   | { readonly _tag: "spinner"; readonly message: string }
   | { readonly _tag: "progress"; readonly message: string; readonly max: number }
   | {
-      readonly _tag: "message"
+      readonly _tag: "updateInteractive"
       readonly message: string
       readonly advanceBy?: number
       readonly setTo?: number
@@ -62,24 +62,30 @@ export type DisplayEntry =
   | { readonly _tag: "json"; readonly data: unknown }
 
 /** Display service — abstracts CLI output behind structured methods */
-export interface DisplayService {
+interface DisplayService {
   readonly intro: (title: string) => Effect.Effect<void>
   readonly outro: (message: string) => Effect.Effect<void>
-  readonly status: (message: string, severity: Severity) => Effect.Effect<void>
+  readonly log: (message: string, severity: Severity) => Effect.Effect<void>
   readonly note: (content: string, title?: string) => Effect.Effect<void>
   readonly text: (message: string) => Effect.Effect<void>
-  /** Wrap an effect with a spinner lifecycle. Inner effects can call d.message() for updates. */
+  /**
+   * Wrap an effect with a spinner lifecycle. Inner effects can call d.updateInteractive() for
+   * updates.
+   */
   readonly spinner: <A, E, R>(
     message: string,
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, R>
-  /** Wrap an effect with a progress bar lifecycle. Inner effects can call d.message() for updates. */
+  /**
+   * Wrap an effect with a progress bar lifecycle. Inner effects can call d.updateInteractive() for
+   * updates.
+   */
   readonly progress: <A, E, R>(
     opts: ProgressOptions,
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, R>
   /** Update active spinner/progress text and optionally advance the progress bar. */
-  readonly message: (payload: MessagePayload) => Effect.Effect<void>
+  readonly updateInteractive: (payload: UpdateInteractivePayload) => Effect.Effect<void>
   readonly json: (data: unknown) => Effect.Effect<void>
 }
 
@@ -115,15 +121,15 @@ type ActiveInteractive =
 
 let activeInteractive: ActiveInteractive = null
 
-/** Extract the message text from a MessagePayload */
-const messageText = (p: MessagePayload): string => (typeof p === "string" ? p : p.message)
+/** Extract the message text from an UpdateInteractivePayload */
+const payloadText = (p: UpdateInteractivePayload): string => (typeof p === "string" ? p : p.message)
 
 /**
  * Compute the delta for a progress bar from the payload + current state. Returns 0 if there is no
  * numeric payload or if the active element is a spinner.
  */
 const computeDelta = (
-  p: MessagePayload,
+  p: UpdateInteractivePayload,
   state: { readonly value: number; readonly max: number },
 ): number => {
   if (typeof p === "string") return 0
@@ -148,7 +154,7 @@ export const ClackDisplay = {
 
     outro: (message) => Effect.sync(() => clack.outro(message)),
 
-    status: (message, severity) =>
+    log: (message, severity) =>
       Effect.sync(() => severityToClack[severity](terminalStyle.status(message))),
 
     note: (content, title) => Effect.sync(() => clack.note(content, title)),
@@ -203,9 +209,9 @@ export const ClackDisplay = {
           }),
       ),
 
-    message: (payload) =>
+    updateInteractive: (payload) =>
       Effect.sync(() => {
-        const msg = messageText(payload)
+        const msg = payloadText(payload)
         if (!activeInteractive) return
 
         if (activeInteractive.type === "spinner") {
@@ -228,7 +234,7 @@ export const JsonDisplay = {
   layer: Layer.succeed(Display, {
     intro: () => Effect.void,
     outro: () => Effect.void,
-    status: () => Effect.void,
+    log: () => Effect.void,
     note: () => Effect.void,
     text: () => Effect.void,
     spinner: <A, E, R>(_message: string, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
@@ -237,7 +243,7 @@ export const JsonDisplay = {
       _opts: ProgressOptions,
       effect: Effect.Effect<A, E, R>,
     ): Effect.Effect<A, E, R> => effect,
-    message: () => Effect.void,
+    updateInteractive: () => Effect.void,
     json: (data) => Effect.sync(() => process.stdout.write(`${JSON.stringify(data)}\n`)),
   }),
 }
@@ -255,8 +261,8 @@ export const SilentDisplay = {
       outro: (message) =>
         Ref.update(ref, (entries) => [...entries, { _tag: "outro" as const, message }]),
 
-      status: (message, severity) =>
-        Ref.update(ref, (entries) => [...entries, { _tag: "status" as const, message, severity }]),
+      log: (message, severity) =>
+        Ref.update(ref, (entries) => [...entries, { _tag: "log" as const, message, severity }]),
 
       note: (content, title) =>
         Ref.update(ref, (entries) => [...entries, { _tag: "note" as const, content, title }]),
@@ -284,13 +290,13 @@ export const SilentDisplay = {
           ),
         ),
 
-      message: (payload) => {
-        const msg = messageText(payload)
-        const base: DisplayEntry = { _tag: "message", message: msg }
+      updateInteractive: (payload) => {
+        const msg = payloadText(payload)
+        const base: DisplayEntry = { _tag: "updateInteractive", message: msg }
         if (typeof payload === "string") return Ref.update(ref, (entries) => [...entries, base])
 
         const entry: DisplayEntry = {
-          _tag: "message",
+          _tag: "updateInteractive",
           message: msg,
           ...("advanceBy" in payload &&
             payload.advanceBy !== undefined && { advanceBy: payload.advanceBy }),

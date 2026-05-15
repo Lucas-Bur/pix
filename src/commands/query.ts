@@ -56,7 +56,7 @@ export const queryCommand = Command.make(
       const clamped = clampTopK(topK)
 
       if (clamped.clamped) {
-        yield* d.status(`topK clamped from ${topK} to ${clamped.value}`, "warn")
+        yield* d.log(`topK clamped from ${topK} to ${clamped.value}`, "warn")
       }
 
       const results = yield* d.spinner(
@@ -67,7 +67,7 @@ export const queryCommand = Command.make(
       yield* d.json(toJsonOutput(results, ctxLines))
 
       if (results.length === 0) {
-        yield* d.status("No results found", "warn")
+        yield* d.log("No results found", "warn")
       } else {
         for (const result of results) {
           yield* d.text(formatResult(result))

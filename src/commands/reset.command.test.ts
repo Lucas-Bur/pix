@@ -69,7 +69,7 @@ test("pix reset without --json logs status entries via Display", () => {
     yield* run(["reset"])
     const entries = yield* Ref.get(ref)
     expect(entries[0]._tag).toBe("json")
-    expect(entries.some((e) => e._tag === "status")).toBe(true)
+    expect(entries.some((e) => e._tag === "log")).toBe(true)
   }).pipe(Effect.provide(testLayer({ contents: fixtures, displayLayer: layer })))
 })
 
@@ -79,7 +79,7 @@ test("pix reset without --json on clean project shows info", () => {
     yield* run(["reset"])
     const entries = yield* Ref.get(ref)
     expect(entries[0]._tag).toBe("json")
-    expect(entries.some((e) => e._tag === "status")).toBe(true)
+    expect(entries.some((e) => e._tag === "log")).toBe(true)
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
