@@ -41,6 +41,14 @@ type UpdateInteractivePayload =
       readonly setToPercent: number
       readonly advanceBy?: never
       readonly setTo?: never
+      readonly setMax?: never
+    }
+  | {
+      readonly message: string
+      readonly setMax: number
+      readonly setTo: number
+      readonly advanceBy?: never
+      readonly setToPercent?: never
     }
 
 /** Union of all display entries recorded by SilentDisplay for test assertions */
@@ -236,7 +244,48 @@ export const ClackDisplay = {
             Effect.flatMap((active) => {
               if (!active) return Effect.void
               if (active.type === "spinner") {
+                if (
+                  typeof payload !== "string" &&
+                  "setMax" in payload &&
+                  payload.setMax !== undefined
+                ) {
+                  const bar = clack.progress({
+                    max: payload.setMax,
+                    style: "heavy",
+                    size: 40,
+                    indicator: "dots",
+                  })
+                  bar.start(payload.message)
+                  bar.advance(payload.setTo, payload.message)
+                  return Ref.set(activeRef, {
+                    type: "progress",
+                    handle: bar,
+                    value: payload.setTo,
+                    max: payload.setMax,
+                  })
+                }
                 return Effect.sync(() => active.handle.message(payloadText(payload)))
+              }
+              if (
+                typeof payload !== "string" &&
+                "setMax" in payload &&
+                payload.setMax !== undefined
+              ) {
+                active.handle.stop(payload.message)
+                const bar = clack.progress({
+                  max: payload.setMax,
+                  style: "heavy",
+                  size: 40,
+                  indicator: "dots",
+                })
+                bar.start(payload.message)
+                bar.advance(payload.setTo, payload.message)
+                return Ref.set(activeRef, {
+                  type: "progress",
+                  handle: bar,
+                  value: payload.setTo,
+                  max: payload.setMax,
+                })
               }
               const delta = computeDelta(payload, { value: active.value, max: active.max })
               const newValue = Math.max(0, Math.min(active.max, active.value + delta))
