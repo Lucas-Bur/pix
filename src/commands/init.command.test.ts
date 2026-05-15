@@ -1,36 +1,47 @@
 import { Command } from "@effect/cli"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { assertCommandError } from "../../tests/test-utils/command.js"
-import { MockConsole } from "../../tests/test-utils/MockConsole.js"
+import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import type { DisplayEntry } from "../display/Display.js"
 import { ConfigError } from "../domain/config.js"
 import { ConfigStore } from "../domain/ports.js"
 import { initCommand } from "./init.js"
 
 const run = (args: string[]) => Command.run(initCommand, { name: "pix", version: "0.0.0" })(args)
 
-test("pix init --json outputs config JSON on stdout", () =>
+const assertInitDisplayEntries = (ref: Ref.Ref<ReadonlyArray<DisplayEntry>>) =>
   Effect.gen(function* () {
+    const entries = yield* Ref.get(ref)
+    expect(entries).toHaveLength(4)
+    expect(entries[0]._tag).toBe("spinner")
+    expect(entries[1]._tag).toBe("json")
+    expect(entries[2]._tag).toBe("log")
+    expect(entries[3]._tag).toBe("note")
+    if (entries[1]._tag === "json") {
+      const data = entries[1].data as { success: boolean; config: { schemaVersion: string } }
+      expect(data.success).toBe(true)
+      expect(data.config.schemaVersion).toBe("1")
+    }
+  })
+
+test("pix init --json outputs config JSON via Display", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
     yield* run(["init", "--json"])
+    yield* assertInitDisplayEntries(ref)
+  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+})
 
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBeGreaterThan(0)
-    const output = JSON.parse(lines[0])
-    expect(output.success).toBe(true)
-    expect(output.config.schemaVersion).toBe("1")
-  }).pipe(Effect.provide(testLayer())))
-
-test("pix init without --json does not write to Console", () =>
-  Effect.gen(function* () {
+test("pix init without --json shows status and note via Display", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
     yield* run(["init"])
-
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBe(0)
-  }).pipe(Effect.provide(testLayer())))
+    yield* assertInitDisplayEntries(ref)
+  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+})
 
 const failingConfigStore = Layer.succeed(ConfigStore, {
   writeConfig: () => Effect.fail(new ConfigError({ message: "writeConfig failed" })),
@@ -38,7 +49,9 @@ const failingConfigStore = Layer.succeed(ConfigStore, {
   configExists: () => Effect.succeed(false),
 })
 
-test("pix init --json with failing ConfigStore produces error JSON", () =>
-  assertCommandError(run(["init", "--json"])).pipe(
-    Effect.provide(testLayer({ configStoreLayer: failingConfigStore })),
-  ))
+test("pix init --json with failing ConfigStore produces error JSON", () => {
+  const { ref, layer } = silentDisplay()
+  return assertCommandError(run(["init", "--json"]), ref).pipe(
+    Effect.provide(testLayer({ configStoreLayer: failingConfigStore, displayLayer: layer })),
+  )
+})

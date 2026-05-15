@@ -1,22 +1,9 @@
 import { Command, Options } from "@effect/cli"
-import { Console, Effect } from "effect"
+import { Effect } from "effect"
 
 import { IndexProject } from "../application/index-project.js"
+import { Display } from "../display/Display.js"
 import { reportError } from "../lib/error-format.js"
-
-const logFlagWarnings = (force: boolean, verbose: boolean, json: boolean) => {
-  if (json) return Effect.void
-
-  const warnings = [
-    force ? "--force is currently not implemented and only a placeholder." : undefined,
-    verbose ? "--verbose is currently not implemented and only a placeholder." : undefined,
-  ].filter((msg): msg is string => msg !== undefined)
-
-  return Effect.forEach(warnings, (msg) => Effect.logInfo(msg), { discard: true })
-}
-
-const logHumanOutput = (chunks: number, files: number, duration: string) =>
-  Effect.logInfo(`Indexed ${chunks} chunks from ${files} files in ${duration}.`)
 
 /** CLI command: pix index [--force] [--verbose] [--json] */
 export const indexCommand = Command.make(
@@ -26,20 +13,26 @@ export const indexCommand = Command.make(
     verbose: Options.boolean("verbose").pipe(Options.withDefault(false)),
     json: Options.boolean("json").pipe(Options.withDefault(false)),
   },
-  ({ force, verbose, json }) =>
+  ({ force, verbose }) =>
     Effect.gen(function* () {
-      yield* logFlagWarnings(force, verbose, json)
+      const d = yield* Display
 
-      const startTime = Date.now()
-      const result = yield* IndexProject.index()
-      const duration = `${((Date.now() - startTime) / 1000).toFixed(1)}s`
+      if (force)
+        yield* d.log("--force is currently not implemented and only a placeholder.", "warn")
+      if (verbose)
+        yield* d.log("--verbose is currently not implemented and only a placeholder.", "warn")
 
-      if (json) {
-        return yield* Console.log(
-          JSON.stringify({ chunks: result.status.chunks, files: result.status.files, duration }),
+      const result = yield* d.spinner("Indexing project...", IndexProject.index())
+
+      yield* d.json({ chunks: result.status.chunks, files: result.status.files })
+
+      if (result.status.chunks === 0) {
+        yield* d.log("No chunks to index.", "warn")
+      } else {
+        yield* d.log(
+          `Indexed ${result.status.chunks} chunks from ${result.status.files} files.`,
+          "success",
         )
       }
-
-      yield* logHumanOutput(result.status.chunks, result.status.files, duration)
     }).pipe(Effect.catchAll(reportError)),
 )

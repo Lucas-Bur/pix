@@ -1,8 +1,8 @@
-import { Effect, Exit } from "effect"
+import { Effect, Exit, Ref } from "effect"
 import type { MemoryFileSystem } from "effect-memfs"
 import { expect } from "vite-plus/test"
 
-import { MockConsole } from "./MockConsole.js"
+import type { DisplayEntry } from "../../src/display/Display.js"
 
 export const indexFixtures: MemoryFileSystem.Contents = {
   ".pix/config.json": JSON.stringify({
@@ -31,23 +31,27 @@ export const indexFixtures: MemoryFileSystem.Contents = {
   ".pix/vectors.bin": "fake binary content",
 }
 
-/** Assert that a command effect fails and produces error JSON on MockConsole. */
+/** Assert that a command effect fails and produces error JSON recorded via SilentDisplay. */
 export const assertCommandError = <E, R>(
   effect: Effect.Effect<unknown, E, R>,
+  ref: Ref.Ref<ReadonlyArray<DisplayEntry>>,
   expectedCode?: string,
 ) =>
   Effect.gen(function* () {
     const exit = yield* Effect.exit(effect)
     expect(Exit.isFailure(exit)).toBe(true)
 
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBeGreaterThan(0)
-    const output = JSON.parse(lines[0])
-    expect(output.error).toBe(true)
-    if (expectedCode !== undefined) {
-      expect(output.code).toBe(expectedCode)
+    const entries = yield* Ref.get(ref)
+    expect(entries.length).toBeGreaterThan(0)
+    const jsonEntry = [...entries].reverse().find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry && jsonEntry._tag === "json") {
+      const output = jsonEntry.data as { error: boolean; code: string; message: string }
+      expect(output.error).toBe(true)
+      if (expectedCode !== undefined) {
+        expect(output.code).toBe(expectedCode)
+      }
+      expect(typeof output.code).toBe("string")
+      expect(typeof output.message).toBe("string")
     }
-    expect(typeof output.code).toBe("string")
-    expect(typeof output.message).toBe("string")
   })

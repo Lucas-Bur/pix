@@ -1,9 +1,9 @@
 import { Command } from "@effect/cli"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { assertCommandError } from "../../tests/test-utils/command.js"
-import { MockConsole } from "../../tests/test-utils/MockConsole.js"
+import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { StoreError } from "../domain/errors.js"
 import { VectorStore } from "../domain/ports.js"
@@ -30,49 +30,63 @@ const fixtures = {
   ".pix/vectors.bin": "binary-data",
 }
 
-test("pix reset --json deletes index files and reports status", () =>
-  Effect.gen(function* () {
+test("pix reset --json deletes index files and reports status", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
     yield* run(["reset", "--json"])
+    const entries = yield* Ref.get(ref)
+    expect(entries[0]._tag).toBe("spinner")
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json") {
+      const data = jsonEntry.data as Record<string, unknown>
+      expect(data.status).toBe("ok")
+      expect(data.deletedChunks).toBe(true)
+      expect(data.deletedVectors).toBe(true)
+      expect(data.freedBytes).toBeGreaterThan(0)
+    }
+  }).pipe(Effect.provide(testLayer({ contents: fixtures, displayLayer: layer })))
+})
 
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBeGreaterThan(0)
-    const output = JSON.parse(lines[0])
-    expect(output.status).toBe("ok")
-    expect(output.deletedChunks).toBe(true)
-    expect(output.deletedVectors).toBe(true)
-    expect(output.freedBytes).toBeGreaterThan(0)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
-
-test("pix reset --json on clean project reports nothing deleted", () =>
-  Effect.gen(function* () {
+test("pix reset --json on clean project reports nothing deleted", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
     yield* run(["reset", "--json"])
+    const entries = yield* Ref.get(ref)
+    expect(entries[0]._tag).toBe("spinner")
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json") {
+      const data = jsonEntry.data as Record<string, unknown>
+      expect(data.status).toBe("ok")
+      expect(data.deletedChunks).toBe(false)
+      expect(data.deletedVectors).toBe(false)
+      expect(data.freedBytes).toBe(0)
+    }
+  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+})
 
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    const output = JSON.parse(lines[0])
-    expect(output.status).toBe("ok")
-    expect(output.deletedChunks).toBe(false)
-    expect(output.deletedVectors).toBe(false)
-    expect(output.freedBytes).toBe(0)
-  }).pipe(Effect.provide(testLayer())))
-
-test("pix reset without --json logs deletion info", () =>
-  Effect.gen(function* () {
+test("pix reset without --json logs status entries via Display", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
     yield* run(["reset"])
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    // logInfo writes to logger, not Console.log via MockConsole
-    expect(lines.length).toBe(0)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures }))))
+    const entries = yield* Ref.get(ref)
+    expect(entries.some((e) => e._tag === "spinner")).toBe(true)
+    expect(entries.some((e) => e._tag === "json")).toBe(true)
+    expect(entries.some((e) => e._tag === "log")).toBe(true)
+  }).pipe(Effect.provide(testLayer({ contents: fixtures, displayLayer: layer })))
+})
 
-test("pix reset without --json logs nothing to reset when clean", () =>
-  Effect.gen(function* () {
+test("pix reset without --json on clean project shows info", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
     yield* run(["reset"])
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBe(0)
-  }).pipe(Effect.provide(testLayer())))
+    const entries = yield* Ref.get(ref)
+    expect(entries.some((e) => e._tag === "spinner")).toBe(true)
+    expect(entries.some((e) => e._tag === "json")).toBe(true)
+    expect(entries.some((e) => e._tag === "log")).toBe(true)
+  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+})
 
 const failingVectorStore = Layer.succeed(VectorStore, {
   store: () => Effect.succeed(undefined),
@@ -82,7 +96,9 @@ const failingVectorStore = Layer.succeed(VectorStore, {
   reset: () => Effect.fail(new StoreError({ message: "reset failed" })),
 })
 
-test("pix reset --json with failing VectorStore produces error JSON", () =>
-  assertCommandError(run(["reset", "--json"])).pipe(
-    Effect.provide(testLayer({ vectorStoreLayer: failingVectorStore })),
-  ))
+test("pix reset --json with failing VectorStore produces error JSON", () => {
+  const { ref, layer } = silentDisplay()
+  return assertCommandError(run(["reset", "--json"]), ref).pipe(
+    Effect.provide(testLayer({ vectorStoreLayer: failingVectorStore, displayLayer: layer })),
+  )
+})

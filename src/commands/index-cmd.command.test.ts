@@ -1,9 +1,9 @@
 import { Command } from "@effect/cli"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { assertCommandError } from "../../tests/test-utils/command.js"
-import { MockConsole } from "../../tests/test-utils/MockConsole.js"
+import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { Scanner } from "../domain/ports.js"
 import { indexCommand } from "./index-cmd.js"
@@ -25,43 +25,72 @@ const emptyScannerLayer = Layer.succeed(Scanner, {
   scanFiles: () => Effect.succeed({ files: [], skipped: [] }),
 })
 
-test("pix index --json outputs status after indexing", () =>
-  Effect.gen(function* () {
+test("pix index --json outputs status after indexing", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
     yield* run(["index", "--json"])
+    const entries = yield* Ref.get(ref)
+    expect(entries).toHaveLength(3)
+    expect(entries[0]._tag).toBe("spinner")
+    expect(entries[1]._tag).toBe("json")
+    expect(entries[2]._tag).toBe("log")
+    if (entries[1]._tag === "json") {
+      const data = entries[1].data as Record<string, unknown>
+      expect(data.chunks).toBe(0)
+      expect(data.files).toBe(0)
+    }
+  }).pipe(
+    Effect.provide(
+      testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer, displayLayer: layer }),
+    ),
+  )
+})
 
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBeGreaterThan(0)
-    const output = JSON.parse(lines[0])
-    expect(output.chunks).toBe(0)
-    expect(output.files).toBe(0)
-    expect(typeof output.duration).toBe("string")
-  }).pipe(Effect.provide(testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer }))))
-
-test("pix index without --json logs info summary", () =>
-  Effect.gen(function* () {
+test("pix index without --json logs status via Display", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
     yield* run(["index"])
+    const entries = yield* Ref.get(ref)
+    expect(entries).toHaveLength(3)
+    expect(entries[0]._tag).toBe("spinner")
+    expect(entries[1]._tag).toBe("json")
+    expect(entries[2]._tag).toBe("log")
+  }).pipe(
+    Effect.provide(
+      testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer, displayLayer: layer }),
+    ),
+  )
+})
 
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBe(0)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer }))))
+test("pix index --json without config produces error JSON", () => {
+  const { ref, layer } = silentDisplay()
+  return assertCommandError(run(["index", "--json"]), ref, "CONFIG_ERROR").pipe(
+    Effect.provide(testLayer({ displayLayer: layer })),
+  )
+})
 
-test("pix index --json without config produces error JSON", () =>
-  assertCommandError(run(["index", "--json"]), "CONFIG_ERROR").pipe(Effect.provide(testLayer())))
-
-test("pix index --force logs not-implemented warning", () =>
-  Effect.gen(function* () {
+test("pix index --force shows warning via Display", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
     yield* run(["index", "--force"])
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBe(0)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer }))))
+    const entries = yield* Ref.get(ref)
+    expect(entries.some((e) => e._tag === "log" && e.severity === "warn")).toBe(true)
+  }).pipe(
+    Effect.provide(
+      testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer, displayLayer: layer }),
+    ),
+  )
+})
 
-test("pix index --verbose logs not-implemented warning", () =>
-  Effect.gen(function* () {
+test("pix index --verbose shows warning via Display", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
     yield* run(["index", "--verbose"])
-    const { getLines } = yield* MockConsole
-    const lines = yield* getLines()
-    expect(lines.length).toBe(0)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer }))))
+    const entries = yield* Ref.get(ref)
+    expect(entries.some((e) => e._tag === "log" && e.severity === "warn")).toBe(true)
+  }).pipe(
+    Effect.provide(
+      testLayer({ contents: fixtures, scannerLayer: emptyScannerLayer, displayLayer: layer }),
+    ),
+  )
+})

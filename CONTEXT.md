@@ -49,9 +49,51 @@ Tests a single adapter (`src/services/*.ts`) with its real implementation agains
 
 Tests a single use case (`src/application/*.ts`) through `testLayer()` with real adapters underneath. Asserts the domain result (e.g. `IndexResult`), not CLI output or console side-effects.
 
+### Display Service
+
+`Context.Tag("Display")` in `src/display/Display.ts`. Abstracts all CLI output behind structured methods. Commands and services use `yield* Display` — never `Console.log` or `Effect.logInfo` directly.
+
+Methods:
+
+| Method                       | Effect                                                                      | Human               | JSON           |
+| ---------------------------- | --------------------------------------------------------------------------- | ------------------- | -------------- |
+| `intro(title)`               | Opens a frame header                                                        | `clack.intro`       | no-op          |
+| `outro(msg)`                 | Closes a frame                                                              | `clack.outro`       | no-op          |
+| `log(msg, sev)`              | Styled permanent line (severity: info/success/warn/error)                   | `clack.log.*`       | no-op          |
+| `note(content, title?)`      | Boxed note block                                                            | `clack.note`        | no-op          |
+| `text(msg)`                  | Plain unstyled output line                                                  | `clack.log.message` | no-op          |
+| `spinner(msg, eff)`          | Wrap effect with spinner (live text updates via `d.updateInteractive`)      | runs spinner        | runs effect    |
+| `progress(opts, eff)`        | Wrap effect with progress bar (also accepts `d.updateInteractive` payloads) | runs bar            | runs effect    |
+| `updateInteractive(payload)` | Update text & optionally advance progress bar                               | see below           | no-op          |
+| `json(data)`                 | Structured agent output                                                     | no-op               | `stdout.write` |
+
+**`d.updateInteractive(payload)` payloads** (discriminated union, exclusive keys via `never`):
+
+| Shape                          | Effect on spinner    | Effect on progress bar                              |
+| ------------------------------ | -------------------- | --------------------------------------------------- |
+| `"text"`                       | `s.message("text")`  | `b.advance(0, "text")`                              |
+| `{ message }`                  | same as string       | same as string                                      |
+| `{ message, advanceBy: N }`    | ignores advanceBy    | `b.advance(N, msg)`; state += N                     |
+| `{ message, setTo: N }`        | ignores setTo        | `b.advance(N - state, msg)`; state = N              |
+| `{ message, setToPercent: P }` | ignores setToPercent | `b.advance(target - state, msg)`; state = P% of max |
+
+The progress bar's `{ value, max }` state is tracked immutably inside a `Ref` since `@clack` only exposes `advance(step)` — we compute the delta and clamp to `[0, max]`. Spinners ignore numeric fields.
+
+Three implementations:
+
+- **ClackDisplay** (`--json` not set): renders via `@clack/prompts` with spinners, styled icons, frames. Uses `Layer.effect` with a `Ref<ActiveInteractive>` scoped to the layer lifecycle — double-open (nested spinner/progress) silently ignores the second call and runs the effect directly.
+- **JsonDisplay** (`--json` set): no-ops all interactive methods; `json()` writes to `stdout`
+- **SilentDisplay** (tests): records `DisplayEntry[]` to a `Ref` for test assertions. Spinner/progress entries are recorded on scope entry (before the wrapped effect runs) for reliable assertions regardless of outcome.
+
+**`DisplayEntry`**: Defined via `Data.TaggedEnum<{ intro, outro, log, note, text, spinner, progress, updateInteractive, json }>`. Provides typed constructors (`DisplayEntry.log({ message, severity })`) instead of manual `{ _tag: "log" as const, ... }` objects.
+
+### Silent Display (test)
+
+`tests/test-utils/silentDisplay.ts` creates a `Ref<DisplayEntry[]>` backed `SilentDisplay` layer for Command tests. Replaced the old `MockConsole` approach. Tests assert on structured entries (`entries[0]._tag === "json"`) instead of parsing raw stdout lines.
+
 ### Command Test
 
-Tests the full `Command.run` → all layers → CLI output path. Exercises the composition root. The only test category that inspects `MockConsole` lines or `Exit` status from `Command.run`.
+Tests the full `Command.run` → all layers → CLI output path. Exercises the composition root. Asserts on `SilentDisplay` ref entries or `Exit` status from `Command.run`.
 
 ### Default Embedder (test)
 
@@ -67,7 +109,7 @@ The quality gate for tests: every branch (`if`, `Effect.catchTag`, `Exit`, fallb
 
 ### Test Layer (`testLayer()`)
 
-Factory in `tests/test-utils/testLayer.ts` that builds the full application layer against `MemoryFileSystem` with mocked Scanner and Embedder by default. Accepts overrides via `{ contents, scannerLayer, embedderLayer }` for fixture-driven test scenarios.
+Factory in `tests/test-utils/testLayer.ts` that builds the full application layer against `MemoryFileSystem` with mocked Scanner and Embedder by default. Accepts overrides via `{ contents, scannerLayer, embedderLayer, displayLayer }` for fixture-driven test scenarios. Command tests supply `displayLayer` (via `silentDisplay()`) for output assertions.
 
 ### Embedder Mocking Policy
 
@@ -129,14 +171,32 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 ### CLI Commands
 
 - `pix init` — Create `.pix/config.json` with defaults
-- `pix index` — Scan, chunk, embed, store (full re-index; `--force` flag reserved for Phase 3)
+- `pix index` — Scan, chunk, embed, store (full re-index; `--force` flag reserved for Phase 3). Uses spinner for long-running indexing.
 - `pix query "<text>" [--top N] [--json] [--context-lines N]` — Semantic search via cosine similarity
 - `pix status` — Show index statistics
 - `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
 
-All commands support `--json` for agent-ready structured output on stdout.
+All commands support `--json` for agent-ready structured output on stdout. `src/cli.ts` returns the raw `Command.run` effect and the selected `displayLayer`; `src/index.ts` composes them with AppLayer via `Layer.mergeAll`. Commands call methods unconditionally — the Display implementation handles the split: ClackDisplay renders interactive output, JsonDisplay no-ops it and writes JSON instead. Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent) — each Display picks its surface.
 
 ## Architecture Decisions
+
+### Display service with JSON mode switching
+
+CLI output goes through a `Display` context tag (`src/display/Display.ts`). Two production implementations selectable by `--json`: `ClackDisplay` (interactive, uses `@clack/prompts` for spinners, styled status, frames) and `JsonDisplay` (machine-readable, no-ops interactive methods, writes JSON to stdout). A third implementation (`SilentDisplay`) records calls to a `Ref<DisplayEntry[]>` for test assertions.
+
+**Output separation**: `ClackDisplay.json` is a no-op — structured output never appears in human mode. `JsonDisplay` no-ops all interactive methods. Each Display handles its own surface. Commands call all methods unconditionally; no `if (!json)` branching. Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent) — ClackDisplay renders the log, JsonDisplay emits the JSON.
+
+**Interactive constraints**: Only one interactive line (spinner or progress bar) at a time. `d.updateInteractive(msg)` calls `s.message(msg)` on the active spinner or computes delta + calls `b.advance(delta, msg)` on the active progress bar.
+
+For spinners, text updates are sufficient visual feedback. For progress bars, `d.updateInteractive()` supports three position controls via discriminated union:
+
+- `advanceBy: N` — advance the bar by N steps relative to current position
+- `setTo: N` — jump to absolute position N (clamped to `[0, max]`)
+- `setToPercent: P` — jump to P% of max (clamped to `[0, 100]`)
+
+Position state is tracked locally (`state: { value, max }`) since `@clack` only exposes `advance(step)`. All delta computations clamp to `[0, max]` — safe against backwards moves or overshoot.
+
+**Display flowing into app/services**: Display is composed into the AppLayer via `Layer.mergeAll(AppLayer, cliLayer)` in `src/index.ts`. Services that need operational logging (e.g. `index-project.ts` for scan/chunk/embed progress, `embedder.ts` for GPU fallback events) simply `yield* Display` and call `d.updateInteractive()` or `d.json()`. For ports that must stay `Effect<..., never>` (e.g. `Embedder`), the implementation uses `Effect.provideService(Display, d)` internally to satisfy Display without leaking it into the port contract. The `0` Effect.log\* calls remain (both replaced by Display).
 
 ### Flat-file storage (not SQLite)
 
@@ -186,4 +246,3 @@ with ports-as-tags and adapters-as-layers. See [ADR 0003](docs/adr/0003-hexagona
 - In-memory search optimization (mmap for large indexes)
 - `.pixignore` as additional blacklist (research needed)
 - Ranking improvements for query results
-- **CLI printing overhaul** — replace `console.log` with clack/chalk or similar Effect-compatible library

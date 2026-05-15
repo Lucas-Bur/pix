@@ -8,11 +8,11 @@ import { IndexProject } from "../../src/application/index-project.js"
 import { InitProject } from "../../src/application/init-project.js"
 import { QueryProject } from "../../src/application/query-project.js"
 import { ResetIndex } from "../../src/application/reset-index.js"
+import { Display } from "../../src/display/Display.js"
 import { ConfigStore, Embedder, Scanner, VectorStore } from "../../src/domain/ports.js"
 import { ChunkerLive } from "../../src/services/chunker.js"
 import { ConfigStoreLive } from "../../src/services/config-store.js"
 import { VectorStoreLive } from "../../src/services/vector-store.js"
-import { layer as MockConsoleLayer } from "./MockConsole.js"
 
 export interface TestLayerOptions {
   readonly contents?: MemoryFileSystem.Contents
@@ -20,6 +20,7 @@ export interface TestLayerOptions {
   readonly embedderLayer?: Layer.Layer<Embedder, never, FileSystem.FileSystem>
   readonly configStoreLayer?: Layer.Layer<ConfigStore, never, FileSystem.FileSystem>
   readonly vectorStoreLayer?: Layer.Layer<VectorStore, never, FileSystem.FileSystem>
+  readonly displayLayer?: Layer.Layer<Display>
   readonly cleanStore?: boolean
 }
 
@@ -44,6 +45,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     embedderLayer,
     configStoreLayer,
     vectorStoreLayer,
+    displayLayer,
     cleanStore,
   } = opts
 
@@ -70,11 +72,8 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
 
   const appLayer = Layer.merge(useCaseLayer.pipe(Layer.provide(infraLayer)), memFs)
 
-  const withConsole = Layer.mergeAll(
-    appLayer,
-    MockConsoleLayer,
-    CliConfig.layer({ showTypes: false }),
-  )
+  const baseLayers = Layer.mergeAll(appLayer, CliConfig.layer({ showTypes: false }))
+  const withConsole = displayLayer ? Layer.merge(baseLayers, displayLayer) : baseLayers
 
   if (cleanStore) {
     const cleanStoreLayer = Layer.scopedDiscard(
