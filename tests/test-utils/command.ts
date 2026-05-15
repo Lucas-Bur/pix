@@ -7,7 +7,7 @@ import type { DisplayEntry } from "../../src/display/Display.js"
 export const indexFixtures: MemoryFileSystem.Contents = {
   ".pix/config.json": JSON.stringify({
     schema: "1",
-    embedder: { model: "test-model", device: "auto", dtype: "fp32" },
+    embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
   }),
   ".pix/chunks.jsonl": [
     JSON.stringify({

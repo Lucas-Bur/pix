@@ -14,7 +14,7 @@ const run = (args: string[]) => Command.run(resetCommand, { name: "pix", version
 const fixtures = {
   ".pix/config.json": JSON.stringify({
     schema: "1",
-    embedder: { model: "test-model", device: "auto", dtype: "fp32" },
+    embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
     chunkLines: 60,
     overlapLines: 10,
     skipExtensions: [],
@@ -91,6 +91,10 @@ test("pix reset without --json on clean project shows info", () => {
 
 const failingVectorStore = Layer.succeed(VectorStore, {
   store: () => Effect.succeed(undefined),
+  storeBegin: () => Effect.succeed(undefined),
+  storeBatch: () => Effect.succeed(undefined),
+  storeCommit: () => Effect.succeed({ chunks: 0, files: 0, totalLines: 0, byteSize: 0 }),
+  storeAbort: () => Effect.succeed(undefined),
   search: () => Effect.succeed([]),
   getStatus: () =>
     Effect.succeed({ chunks: 0, files: 0, model: "", lastIndex: 0, totalLines: 0, byteSize: 0 }),

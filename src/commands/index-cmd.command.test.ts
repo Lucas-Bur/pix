@@ -13,7 +13,7 @@ const run = (args: string[]) => Command.run(indexCommand, { name: "pix", version
 const fixtures = {
   ".pix/config.json": JSON.stringify({
     schema: "1",
-    embedder: { model: "test-model", device: "auto", dtype: "fp32" },
+    embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
     chunkLines: 60,
     overlapLines: 10,
     skipExtensions: [],

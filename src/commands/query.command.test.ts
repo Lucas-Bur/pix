@@ -79,7 +79,7 @@ test("pix query --json clamps --top above maximum to 100", () => {
   const largeFixtures: MemoryFileSystem.Contents = {
     ".pix/config.json": JSON.stringify({
       schema: "1",
-      embedder: { model: "test-model", device: "auto", dtype: "fp32" },
+      embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
     }),
     ".pix/chunks.jsonl": Array.from({ length: 150 }, (_, i) =>
       JSON.stringify({

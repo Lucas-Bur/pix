@@ -2,6 +2,7 @@ import { env } from "@huggingface/transformers"
 import { Effect, Layer } from "effect"
 
 import { Display } from "../display/Display.js"
+import type { Embedding } from "../domain/embedding.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
 import { MODEL_REGISTRY } from "../domain/models.js"
 import { ConfigStore, Embedder } from "../domain/ports.js"
@@ -9,7 +10,6 @@ import { ConfigStoreLive } from "./config-store.js"
 export { Embedder }
 
 const CACHE_DIR = ".pix/cache"
-const BATCH_SIZE = 16
 
 env.cacheDir = CACHE_DIR
 
@@ -128,24 +128,21 @@ const make = Effect.gen(function* () {
   const batch = (texts: readonly string[]) =>
     Effect.gen(function* () {
       const extractor = yield* getExtractor
-      const results: Float32Array[] = []
-      for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-        const slice = texts.slice(i, i + BATCH_SIZE)
-        const tensor = yield* Effect.tryPromise(() =>
-          extractor(slice, { pooling: "mean", normalize: false }),
-        ).pipe(
-          Effect.mapError(
-            (cause) => new InferenceError({ message: "Batch embedding inference failed", cause }),
-          ),
-        )
-        const data = tensor.data as Float32Array
-        const n = tensor.dims[0]
-        for (let j = 0; j < n; j++) {
-          const offset = j * cfg.dims
-          results.push(normalize(data.slice(offset, offset + cfg.dims)))
-        }
+      const tensor = yield* Effect.tryPromise(() =>
+        extractor([...texts], { pooling: "mean", normalize: false }),
+      ).pipe(
+        Effect.mapError(
+          (cause) => new InferenceError({ message: "Batch embedding inference failed", cause }),
+        ),
+      )
+      const data = tensor.data as Float32Array
+      const n = tensor.dims[0]
+      const results: Embedding[] = []
+      for (let j = 0; j < n; j++) {
+        const offset = j * cfg.dims
+        results.push({ vector: normalize(data.slice(offset, offset + cfg.dims)), dims: cfg.dims })
       }
-      return results.map((vector) => ({ vector, dims: cfg.dims }))
+      return results
     }).pipe(Effect.provideService(Display, d))
 
   return { embed, batch } as const
