@@ -19,6 +19,7 @@ test("ConfigStore.writeConfig creates .pix/config.json with defaults", () =>
     expect(config.chunkLines).toBe(60)
     expect(config.overlapLines).toBe(10)
     expect(config.skipExtensions).toEqual([])
+    expect(config.embedder.batchSize).toBe(16)
     expect(config.ignoredPaths).toEqual([
       ".pix",
       "node_modules",

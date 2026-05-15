@@ -1,9 +1,10 @@
 import { FileSystem } from "@effect/platform"
-import { Effect, Layer, Option } from "effect"
+import { Effect, Layer, Option, Ref } from "effect"
 
 import type { Chunk } from "../domain/chunk.js"
 import type { Embedding } from "../domain/embedding.js"
 import { DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
+import type { IndexStats } from "../domain/ports.js"
 import { VectorStore } from "../domain/ports.js"
 
 const STORE_DIR = ".pix"
@@ -22,6 +23,18 @@ const isPlatformReason = (cause: unknown, reason: string): boolean =>
  */
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
+
+  const chunksTemp = `${CHUNKS_FILE}.tmp`
+  const vectorsTemp = `${VECTORS_FILE}.tmp`
+
+  const chunksHandle = yield* Ref.make<Option.Option<unknown>>(Option.none())
+  const vectorsHandle = yield* Ref.make<Option.Option<unknown>>(Option.none())
+  const statsAccumulator = yield* Ref.make<IndexStats>({
+    chunks: 0,
+    files: 0,
+    totalLines: 0,
+    byteSize: 0,
+  })
 
   /**
    * Count total lines across all chunks in chunks.jsonl. Each line is a JSON object; the 'text'
@@ -119,6 +132,93 @@ const make = Effect.gen(function* () {
       const freed = stat && "size" in stat ? Number(stat.size) : 0
       yield* withStoreError(fs.remove(file), `delete ${description}`, file)
       return { freed, deleted: true }
+    })
+
+  const storeBegin = (): Effect.Effect<void, StoreError | DiskFullError> =>
+    Effect.gen(function* () {
+      yield* ensureDirExists(STORE_DIR, ".pix directory")
+      yield* Ref.set(chunksHandle, Option.none())
+      yield* Ref.set(vectorsHandle, Option.none())
+      yield* Ref.set(statsAccumulator, { chunks: 0, files: 0, totalLines: 0, byteSize: 0 })
+
+      const chunksExists = yield* withStoreError(fs.exists(chunksTemp), "check chunks temp")
+      if (chunksExists) {
+        yield* withStoreError(fs.remove(chunksTemp), "clean stale chunks temp", chunksTemp)
+      }
+      const vectorsExists = yield* withStoreError(fs.exists(vectorsTemp), "check vectors temp")
+      if (vectorsExists) {
+        yield* withStoreError(fs.remove(vectorsTemp), "clean stale vectors temp", vectorsTemp)
+      }
+    })
+
+  const storeBatch = (
+    chunks: readonly Chunk[],
+    embeddings: readonly Embedding[],
+  ): Effect.Effect<void, StoreError | DiskFullError> =>
+    Effect.gen(function* () {
+      const chunksLines = chunks.map((c) =>
+        JSON.stringify({
+          id: c.id,
+          idx: c.idx,
+          file: c.file,
+          startLine: c.startLine,
+          endLine: c.endLine,
+          text: c.text,
+        }),
+      )
+      const content = chunksLines.join("\n") + "\n"
+      yield* withStoreError(
+        fs.writeFile(chunksTemp, Buffer.from(content), { flag: "a" }),
+        "append chunks",
+        chunksTemp,
+      )
+
+      const dims = embeddings[0]?.dims ?? 384
+      const totalFloats = embeddings.length * dims
+      const vectorsArray = new Float32Array(totalFloats)
+      for (let i = 0; i < embeddings.length; i++) {
+        vectorsArray.set(embeddings[i].vector, i * dims)
+      }
+      const buffer = Buffer.from(vectorsArray.buffer)
+      yield* withStoreError(
+        fs.writeFile(vectorsTemp, buffer, { flag: "a" }),
+        "append vectors",
+        vectorsTemp,
+      )
+
+      const uniqueFiles = new Set(chunks.map((c) => c.file))
+      const batchLines = chunks.reduce((sum, c) => sum + (c.endLine - c.startLine + 1), 0)
+      const batchBytes = embeddings.length * dims * 4
+
+      yield* Ref.update(statsAccumulator, (prev) => ({
+        chunks: prev.chunks + chunks.length,
+        files: prev.files + uniqueFiles.size,
+        totalLines: prev.totalLines + batchLines,
+        byteSize: prev.byteSize + batchBytes,
+      }))
+    })
+
+  const storeCommit = (): Effect.Effect<IndexStats, StoreError | DiskFullError> =>
+    Effect.gen(function* () {
+      yield* withStoreError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
+      yield* withStoreError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
+      yield* Ref.set(chunksHandle, Option.none())
+      yield* Ref.set(vectorsHandle, Option.none())
+      return yield* Ref.get(statsAccumulator)
+    })
+
+  const storeAbort = (): Effect.Effect<void, StoreError> =>
+    Effect.gen(function* () {
+      yield* Ref.set(chunksHandle, Option.none())
+      yield* Ref.set(vectorsHandle, Option.none())
+      const chunksExists = yield* withReadError(fs.exists(chunksTemp), "check chunks temp")
+      if (chunksExists) {
+        yield* withReadError(fs.remove(chunksTemp), "abort chunks temp", chunksTemp)
+      }
+      const vectorsExists = yield* withReadError(fs.exists(vectorsTemp), "check vectors temp")
+      if (vectorsExists) {
+        yield* withReadError(fs.remove(vectorsTemp), "abort vectors temp", vectorsTemp)
+      }
     })
 
   const store = (
@@ -307,7 +407,16 @@ const make = Effect.gen(function* () {
       }
     })
 
-  return { store, search, getStatus, reset } as const
+  return {
+    store,
+    storeBegin,
+    storeBatch,
+    storeCommit,
+    storeAbort,
+    search,
+    getStatus,
+    reset,
+  } as const
 })
 
 export const VectorStoreLive = Layer.effect(VectorStore, make)

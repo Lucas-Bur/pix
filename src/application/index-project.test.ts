@@ -17,6 +17,12 @@ const makeConfig = (overrides: Record<string, unknown> = {}): string =>
     overlapLines: 10,
     skipExtensions: [],
     ignoredPaths: [],
+    embedder: {
+      model: "Xenova/all-MiniLM-L6-v2",
+      device: "auto",
+      dtype: "fp32",
+      batchSize: 16,
+    },
     ...overrides,
   })
 
@@ -88,6 +94,10 @@ test("IndexProject.index propagates errors from VectorStore", () =>
   Effect.gen(function* () {
     const failingVectorStore = Layer.succeed(VectorStore, {
       store: () => Effect.fail(new StoreError({ message: "store failed" })),
+      storeBegin: () => Effect.succeed(undefined),
+      storeBatch: () => Effect.fail(new StoreError({ message: "store failed" })),
+      storeCommit: () => Effect.fail(new StoreError({ message: "store failed" })),
+      storeAbort: () => Effect.succeed(undefined),
       search: () => Effect.succeed([]),
       getStatus: () =>
         Effect.succeed({
