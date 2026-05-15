@@ -1,7 +1,7 @@
 import { styleText } from "node:util"
 
 import * as clack from "@clack/prompts"
-import { Context, Data, Effect, Layer, Ref } from "effect"
+import { Context, Data, Effect, Layer, Ref, Exit } from "effect"
 
 /** Severity level for log messages */
 export type Severity = "info" | "success" | "warn" | "error"
@@ -232,25 +232,35 @@ export const ClackDisplay = {
           opts: ProgressOptions,
           effect: Effect.Effect<A, E, R>,
         ): Effect.Effect<A, E, R> =>
-          withInteractive(
-            activeRef,
-            Effect.sync(() => {
-              const bar = clack.progress({
-                max: opts.max,
-                style: opts.style ?? "heavy",
-                size: opts.size ?? 40,
-                indicator: opts.indicator ?? "dots",
-              })
-              bar.start(opts.message)
-              return bar
-            }),
-            (bar) => ({ type: "progress", handle: bar, value: 0, max: opts.max }),
-            (bar, exit) =>
-              Effect.sync(() =>
-                exit._tag === "Success" ? bar.stop(opts.message) : bar.error(opts.message),
-              ),
-            effect,
-          ),
+          Effect.gen(function* () {
+            const current = yield* Ref.get(activeRef)
+            if (current && current.type === "spinner") {
+              const msg = yield* Ref.get(lastSpinnerMsg)
+              current.handle.stop(msg || opts.message)
+              yield* Ref.set(activeRef, null)
+            }
+            const bar = clack.progress({
+              max: opts.max,
+              style: opts.style ?? "heavy",
+              size: opts.size ?? 40,
+              indicator: opts.indicator ?? "dots",
+            })
+            bar.start(opts.message)
+            yield* Ref.set(activeRef, {
+              type: "progress",
+              handle: bar,
+              value: 0,
+              max: opts.max,
+            })
+            const exit = yield* Effect.exit(effect)
+            yield* Ref.set(activeRef, null)
+            if (Exit.isSuccess(exit)) {
+              bar.stop(opts.message)
+              return exit.value
+            }
+            bar.error(opts.message)
+            return yield* Effect.failCause(exit.cause)
+          }),
 
         updateInteractive: (payload) =>
           Ref.get(activeRef).pipe(
