@@ -1,7 +1,8 @@
-import { Effect } from "effect"
+import { Effect, Ref, Stream, Option } from "effect"
+import * as Chunk from "effect/Chunk"
 
 import { Display } from "../display/Display.js"
-import type { Chunk } from "../domain/chunk.js"
+import type { Chunk as DomainChunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type {
   AllConfigErrors,
@@ -19,11 +20,11 @@ import {
   Embedder,
   VectorStore,
   ContentExtractor,
+  type SkippedEntry,
 } from "../domain/ports.js"
 import { buildProcessorMap } from "../services/processors/index.js"
 import type { StatusResult } from "./get-status.js"
 
-/** Result of indexing a project. */
 interface IndexResult {
   readonly success: true
   readonly status: Omit<StatusResult, "model" | "lastIndex">
@@ -65,11 +66,11 @@ const classifyFiles = (
   return { knownFiles, skippedFiles, unknownExtensions }
 }
 
-/**
- * Use case: index project files. Pipeline: scan → ContentExtractor → chunk → embed → store. Depends
- * on ConfigStore, Scanner, Chunker, Embedder, VectorStore, Display, ContentExtractor via Effect
- * tags.
- */
+interface ExtractedFile {
+  readonly file: string
+  readonly text: string
+}
+
 export class IndexProject extends Effect.Service<IndexProject>()("IndexProject", {
   accessors: true,
   effect: Effect.gen(function* () {
@@ -98,6 +99,8 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         }
         const config = yield* configStore.readConfig()
         const processorMap = buildProcessorMap(config.skipExtensions)
+        const batchSize = config.embedder.batchSize ?? 16
+        const concurrency = Math.max(1, config.chunkConcurrency ?? 8)
 
         yield* d.updateInteractive("Scanning source files...")
         const ignoredPaths = config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths
@@ -108,14 +111,28 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           processorMap,
         )
 
+        const skipped = yield* Ref.make<readonly SkippedEntry[]>(
+          scanResult.skipped.map((s) => ({ path: s.path, reason: s.reason })),
+        )
+
         if (unknownExtensions.size > 0) {
-          yield* d.log(
-            `Skipped ${skippedFiles.length} files with unknown extensions: ${[...unknownExtensions].join(", ")}`,
-            "warn",
-          )
+          yield* Ref.update(skipped, (prev) => [
+            ...prev,
+            ...skippedFiles.map((f) => ({
+              path: f,
+              reason: "unknown extension",
+            })),
+          ])
         }
 
         if (knownFiles.length === 0) {
+          const collected = yield* Ref.get(skipped)
+          if (collected.length > 0) {
+            yield* d.note(
+              `Skipped ${collected.length} files:\n${collected.map((s) => `${s.path}: ${s.reason}`).join("\n")}`,
+              "Skipped files",
+            )
+          }
           return {
             success: true as const,
             status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0 },
@@ -123,48 +140,77 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         }
 
         yield* d.updateInteractive(`Processing ${knownFiles.length} files...`)
-        const fileChunkArrays = yield* Effect.forEach(
-          knownFiles,
-          (file) =>
+
+        const embedded = yield* Ref.make(0)
+
+        const pipeline = Stream.fromIterable(knownFiles).pipe(
+          Stream.mapEffect(
+            (file) =>
+              extractor.extract(file).pipe(
+                Effect.flatMap((text) =>
+                  Effect.succeed<Option.Option<ExtractedFile>>(Option.some({ file, text })),
+                ),
+                Effect.catchAll((err) =>
+                  Ref.update(skipped, (prev) => [
+                    ...prev,
+                    { path: file, reason: err.message },
+                  ]).pipe(
+                    Effect.flatMap(() =>
+                      Effect.succeed<Option.Option<ExtractedFile>>(Option.none()),
+                    ),
+                  ),
+                ),
+              ),
+            { concurrency },
+          ),
+          Stream.filterMap((opt: Option.Option<ExtractedFile>) => opt),
+          Stream.mapEffect(({ file, text }) => chunker.chunkText(text, file), { concurrency }),
+          Stream.flatMap((chunks) => Stream.fromIterable(chunks)),
+          Stream.grouped(batchSize),
+          Stream.mapEffect((batchChunk) =>
             Effect.gen(function* () {
-              const result = yield* Effect.either(extractor.extract(file))
-              if (result._tag === "Left") {
-                if (result.left._tag === "UnsupportedFormat") {
-                  yield* d.log(`Skipping ${file}: ${result.left.message}`, "warn")
-                  return [] as Chunk[]
-                }
-                return yield* Effect.fail(result.left)
+              const batch = Chunk.toArray(batchChunk)
+              const texts = batch.map((c: DomainChunk) => c.text)
+              const embeddings = yield* embedder.batch(texts)
+              yield* vectorStore.storeBatch(batch, embeddings)
+              yield* Ref.update(embedded, (n) => n + batch.length)
+              const count = yield* Ref.get(embedded)
+              if (count % 20 === 0) {
+                yield* d.updateInteractive(`${count} chunks embedded`)
               }
-              return yield* chunker.chunkText(result.right, file)
             }),
-          { concurrency: Math.max(1, config.chunkConcurrency ?? 8) },
+          ),
+          Stream.runDrain,
         )
 
-        const allChunks = fileChunkArrays.flat()
-        const totalChunks = allChunks.length
-        const uniqueFiles = new Set(allChunks.map((c) => c.file))
-        const totalFiles = uniqueFiles.size
-        const totalLines = allChunks.reduce((sum, c) => sum + (c.endLine - c.startLine + 1), 0)
+        yield* vectorStore.storeBegin()
 
-        if (totalChunks === 0) {
-          return {
-            success: true as const,
-            status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0 },
-          }
+        const stats = yield* pipeline.pipe(
+          Effect.matchEffect({
+            onSuccess: () => vectorStore.storeCommit(),
+            onFailure: (err) =>
+              vectorStore.storeAbort().pipe(Effect.flatMap(() => Effect.fail(err))),
+          }),
+        )
+
+        const collected = yield* Ref.get(skipped)
+        if (collected.length > 0) {
+          yield* d.note(
+            `Skipped ${collected.length} files:\n${collected.map((s) => `${s.path}: ${s.reason}`).join("\n")}`,
+            "Skipped files",
+          )
         }
 
-        yield* d.updateInteractive(`Embedding ${totalChunks} chunks...`)
-        const texts = allChunks.map((c) => c.text)
-        const embeddings = yield* embedder.batch(texts)
-
-        yield* vectorStore.store(allChunks, embeddings)
-
-        const dims = embeddings[0]?.dims ?? 384
-        const byteSize = embeddings.length * dims * 4
+        yield* d.log(`Indexed ${stats.chunks} chunks from ${stats.files} files`, "success")
 
         return {
           success: true as const,
-          status: { chunks: totalChunks, files: totalFiles, totalLines, byteSize },
+          status: {
+            chunks: stats.chunks,
+            files: stats.files,
+            totalLines: stats.totalLines,
+            byteSize: stats.byteSize,
+          },
         }
       })
 
