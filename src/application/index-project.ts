@@ -267,23 +267,19 @@ const displaySkippedNote = (
 
   const extFailures = skipped.filter((s) => s.reason === "unknown extension")
   const extractErrors = skipped.filter((s) => s.reason !== "unknown extension")
-
   const lines: string[] = []
 
   if (extFailures.length > 0) {
     const byExt = new Map<string, string[]>()
     for (const s of extFailures) {
-      const file = s.path
-      const lastSlash = file.lastIndexOf("/")
-      const name = lastSlash >= 0 ? file.slice(lastSlash + 1) : file
+      const name = s.path.split("/").pop() ?? s.path
       const dotIndex = name.lastIndexOf(".")
       const ext = dotIndex >= 0 ? name.slice(dotIndex) : "(no extension)"
-      const list = byExt.get(ext) ?? []
-      list.push(name)
-      byExt.set(ext, list)
+      if (!byExt.has(ext)) byExt.set(ext, [])
+      byExt.get(ext)!.push(name)
     }
 
-    lines.push(`─ Unknown extensions (${extFailures.length}) ─`)
+    lines.push(`Unknown extensions (${extFailures.length})`)
     for (const [ext, files] of byExt) {
       const display =
         files.length > 5
@@ -295,11 +291,9 @@ const displaySkippedNote = (
 
   if (extractErrors.length > 0) {
     if (lines.length > 0) lines.push("")
-    lines.push(`─ Extraction errors (${extractErrors.length}) ─`)
+    lines.push(`Extraction errors (${extractErrors.length})`)
     for (const s of extractErrors) {
-      const file = s.path
-      const lastSlash = file.lastIndexOf("/")
-      const name = lastSlash >= 0 ? file.slice(lastSlash + 1) : file
+      const name = s.path.split("/").pop() ?? s.path
       lines.push(`  ${name}: ${s.reason}`)
     }
   }
