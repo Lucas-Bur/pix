@@ -235,10 +235,34 @@ with ports-as-tags and adapters-as-layers. See [ADR 0003](docs/adr/0003-hexagona
 
 ## Future Considerations
 
-- Extension→Processor mapping (Phase 2+) — lookup table that decides how each file extension is processed:
-  - **Known code extensions** (`.ts`, `.py`, `.rs`, etc.) → Chunker → Embedder (MVP behavior)
-  - **Known binary extensions** (`.pdf`, `.mp4`, `.jpg`, `.zip`, `.exe`, etc.) → Skip with warning log. Future Phase 2+ converts to text first (e.g. PDF→text extraction, MP4→Whisper transcription)
-  - **Future: AST preprocessing** — for languages where AST yields better embeddings than raw text
+### ContentExtractor
+
+Domain-level lookup table mapping file extensions to processing functions (`ContentExtractor`). Each processor is an `Effect<string, ProcessorError, FileSystem>` that extracts text from a file. Default processors: identity (code/text files read as-is), skip (binary/unsupported formats fail with `UnsupportedFormat`), transform (future: PDF extraction, Whisper transcription, etc.). Config allows users to add extensions to `skipExtensions` to opt out. Unknown extensions are skipped and reported at end of scan. Lives in `src/services/processors/`.
+
+### ProcessorError
+
+Domain error type for content extraction failures. Tagged variants: `UnsupportedFormat` (binary/unknown file type), `ExtractionFailed` (transform pipeline error). Distinct from `ChunkerError` — extraction happens before chunking.
+
+### Chunker
+
+Now exposes two methods: `chunkFile(file)` reads file then delegates to `chunkText(text, file)`. `chunkText(text, file)` is the pure chunking logic, called by both the identity processor and future transforms. All extraction flows through `chunkText` before embedding.
+
+### Scanner
+
+Returns all files found during FS walk, applying only `.gitignore` rules and `ALWAYS_IGNORE` directories. No extension filtering — that concern moved to `ContentExtractor`. `scanFiles()` takes no arguments.
+
+### Config
+
+Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip.
+
+### Extension→Processor mapping (Phase 2+)
+
+Lookup table that decides how each file extension is processed:
+
+- **Known code extensions** (`.ts`, `.py`, `.rs`, etc.) → ContentExtractor (identity) → Chunker → Embedder (MVP behavior)
+- **Known binary extensions** (`.pdf`, `.mp4`, `.jpg`, `.zip`, `.exe`, etc.) → Skip with warning log. Future Phase 2+ converts to text first (e.g. PDF→text extraction, MP4→Whisper transcription)
+- **Future: AST preprocessing** — for languages where AST yields better embeddings than raw text
+- **Future: Extension→Processor mapping** — lookup table that decides how each file extension is processed
 - Incremental indexing via mtime cache or file hash (Phase 3) — `--force` flag will flip default behavior; MVP always full-reindexes
 - Multi-model support (OpenAI, Mistral, OpenRouter)
 - Top-K retrieval to limit result set size

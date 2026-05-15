@@ -49,10 +49,11 @@ export class Scanner extends Context.Tag("Scanner")<
   Scanner,
   {
     /**
-     * Scan project files matching the given extensions. Non-fatal per-entry skips are reported in
-     * ScanResult.skipped. Fatal errors surface as ScanFailed.
+     * Scan project files, applying .gitignore rules and ALWAYS_IGNORE directories. Returns all
+     * discovered non-binary text files. Per-entry skips are reported in ScanResult.skipped. Fatal
+     * errors surface as ScanFailed.
      */
-    readonly scanFiles: (extensions: readonly string[]) => Effect.Effect<ScanResult, ScanFailed>
+    readonly scanFiles: () => Effect.Effect<ScanResult, ScanFailed>
   }
 >() {}
 
@@ -63,6 +64,11 @@ export class Chunker extends Context.Tag("Chunker")<
   {
     /** Chunk a single file. Fails with ChunkerError if the file cannot be read. */
     readonly chunkFile: (file: string) => Effect.Effect<readonly Chunk[], ChunkerError>
+    /** Chunk raw text with a logical file path. Used by ContentExtractor after text extraction. */
+    readonly chunkText: (
+      text: string,
+      file: string,
+    ) => Effect.Effect<readonly Chunk[], ChunkerError>
   }
 >() {}
 

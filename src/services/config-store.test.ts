@@ -18,7 +18,7 @@ test("ConfigStore.writeConfig creates .pix/config.json with defaults", () =>
     expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
     expect(config.chunkLines).toBe(60)
     expect(config.overlapLines).toBe(10)
-    expect(config.files).toEqual({})
+    expect(config.skipExtensions).toEqual([])
   }).pipe(Effect.provide(makeLayer())))
 
 test("ConfigStore.readConfig returns ConfigError when config doesn't exist", () =>

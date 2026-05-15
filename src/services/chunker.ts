@@ -57,6 +57,12 @@ const make = Effect.gen(function* () {
     .readConfig()
     .pipe(Effect.catchAll(() => Effect.succeed(DEFAULT_CONFIG)))
 
+  const chunkText = (text: string, file: string): Effect.Effect<readonly Chunk[], ChunkerError> =>
+    Effect.sync(() => {
+      if (text === "") return []
+      return buildChunks(file, text, config)
+    })
+
   const chunkFile = (file: string): Effect.Effect<readonly Chunk[], ChunkerError> =>
     Effect.gen(function* () {
       const content = yield* readFileContent(fs, file)
@@ -64,7 +70,7 @@ const make = Effect.gen(function* () {
       return buildChunks(file, content, config)
     })
 
-  return { chunkFile } as const
+  return { chunkFile, chunkText } as const
 })
 
 export const ChunkerLive = Layer.effect(Chunker, make)

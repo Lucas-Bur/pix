@@ -85,10 +85,7 @@ const make = Effect.gen(function* () {
     return { ig, skipped }
   })
 
-  const walk = (
-    dir: string,
-    extensions: ReadonlySet<string>,
-  ): Effect.Effect<{ files: string[]; skipped: SkippedEntry[] }, never> =>
+  const walk = (dir: string): Effect.Effect<{ files: string[]; skipped: SkippedEntry[] }, never> =>
     Effect.gen(function* () {
       const result = yield* readDirectoryWithSkip(dir)
 
@@ -109,22 +106,17 @@ const make = Effect.gen(function* () {
         if (!info.info) continue
 
         if (info.info.type === "Directory") {
-          const sub = yield* walk(fullPath, extensions)
+          const sub = yield* walk(fullPath)
           files.push(...sub.files)
           skipped.push(...sub.skipped)
         } else if (info.info.type === "File") {
-          const dotIndex = entry.lastIndexOf(".")
-          if (dotIndex === -1) continue
-          const ext = entry.slice(dotIndex)
-          if (extensions.has(ext)) {
-            files.push(fullPath)
-          }
+          files.push(fullPath)
         }
       }
       return { files, skipped }
     })
 
-  const scanFiles = (extensions: readonly string[]): Effect.Effect<ScanResult, ScanFailed> =>
+  const scanFiles = (): Effect.Effect<ScanResult, ScanFailed> =>
     Effect.gen(function* () {
       const { ig, skipped: ignoreSkipped } = yield* loadGitignoreRules.pipe(
         Effect.mapError(
@@ -137,8 +129,7 @@ const make = Effect.gen(function* () {
       )
       const cwd = process.cwd()
 
-      const extSet = new Set(extensions)
-      const { files: paths, skipped: walkSkipped } = yield* walk(cwd, extSet)
+      const { files: paths, skipped: walkSkipped } = yield* walk(cwd)
 
       const relativePaths = paths.map((p) => (p.startsWith(cwd) ? p.slice(cwd.length + 1) : p))
       const filtered = ig.filter(relativePaths)
