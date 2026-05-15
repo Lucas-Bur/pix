@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.9.0...pix-v0.9.1) (2026-05-15)
+
+
+### Bug Fixes
+
+* address CodeRabbit review comments on PR [#73](https://github.com/Lucas-Bur/pix/issues/73) ([53c6c25](https://github.com/Lucas-Bur/pix/commit/53c6c25637c81bd0e54523ceeab34a11a3757fd5))
+
 ## [0.9.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.8.0...pix-v0.9.0) (2026-05-15)
 
 
