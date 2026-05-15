@@ -26,7 +26,7 @@ A domain-level lookup table mapping file extensions to processing functions. Eac
 
 ### Scanner simplification
 
-Scanner returns all files found during FS walk, applying only `.gitignore` rules and `ALWAYS_IGNORE` directories. No extension filtering — that concern moved to `ContentExtractor`. `scanFiles()` takes no arguments.
+Scanner returns all files found during FS walk, applying `.gitignore` rules, `.git/info/exclude`, and configurable `ignoredPaths` patterns. No extension filtering — that concern moved to `ContentExtractor`. `scanFiles(ignoredPaths)` applies ignore patterns during directory walk.
 
 ### Config change
 
@@ -43,6 +43,10 @@ Skipped and collected in a set, reported at end of scan. Index pipeline continue
 ### Orchestration
 
 `Effect.forEach` with concurrency for now. Processors are Effect-typed functions, making them Stream-ready for future streaming pipeline implementation without rewriting processors.
+
+## Rationale
+
+The extension→processor mapping was chosen over a simple whitelist because it separates file discovery from file processing, enabling future transform pipelines (PDF extraction, audio transcription) without changing the scanner or chunker. The opt-out `skipExtensions` config is simpler for users than maintaining a whitelist — most projects only need to exclude a few types rather than enumerate all supported ones. Keeping processors as plain `Effect` functions (not a `Context.Tag`) avoids unnecessary indirection for a lookup table that is deterministic and doesn't need swapping at runtime.
 
 ## Consequences
 
@@ -62,4 +66,4 @@ Skipped and collected in a set, reported at end of scan. Index pipeline continue
 ### Risks
 
 - Processor map size grows — mitigated by lazy loading transforms only when needed
-- Unknown extensions silently skipped — mitigated by reporting summary at end
+- Unknown extensions skipped but surfaced to users via warnings and a summary report at end

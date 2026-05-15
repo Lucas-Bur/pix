@@ -8,6 +8,18 @@ import { VectorStore } from "../domain/ports.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { IndexProject } from "./index-project.js"
 
+const makeConfig = (overrides: Record<string, unknown> = {}): string =>
+  JSON.stringify({
+    schema: "1",
+    model: "test-model",
+    dims: 384,
+    chunkLines: 60,
+    overlapLines: 10,
+    skipExtensions: [],
+    ignoredPaths: [],
+    ...overrides,
+  })
+
 const sourceFile = `import { Effect } from "effect"
 // Line 2 - ${"padding ".repeat(50)}
 export interface AppConfig { name: string; version: string }
@@ -127,15 +139,7 @@ test("IndexProject.index uses custom extensions from config", () =>
     Effect.provide(
       testLayer({
         contents: {
-          ".pix/config.json": JSON.stringify({
-            schema: "1",
-            model: "test-model",
-            dims: 384,
-            chunkLines: 60,
-            overlapLines: 10,
-            skipExtensions: [],
-            ignoredPaths: [],
-          }),
+          ".pix/config.json": makeConfig(),
           "src/script.py": `# Python script\n${"print('line')\n".repeat(70)}`,
         },
         scannerLayer: ScannerLive,
@@ -152,24 +156,13 @@ test("IndexProject.index respects chunkConcurrency values", () =>
       { label: "clamped 0 to 1", chunkConcurrency: 0 },
       { label: "high 64", chunkConcurrency: 64 },
     ]) {
-      const configObj: Record<string, unknown> = {
-        schema: "1",
-        model: "test-model",
-        dims: 384,
-        chunkLines: 60,
-        overlapLines: 10,
-        skipExtensions: [],
-        ignoredPaths: [],
-      }
-      if (chunkConcurrency !== undefined) {
-        configObj.chunkConcurrency = chunkConcurrency
-      }
+      const configObj = chunkConcurrency !== undefined ? { chunkConcurrency } : {}
 
       const result = yield* IndexProject.index().pipe(
         Effect.provide(
           testLayer({
             contents: {
-              ".pix/config.json": JSON.stringify(configObj),
+              ".pix/config.json": makeConfig(configObj),
               "src/a.ts": sourceFile,
               "src/b.ts": sourceFile,
             },
@@ -231,15 +224,7 @@ test("IndexProject.index skips files in skipExtensions", () =>
     Effect.provide(
       testLayer({
         contents: {
-          ".pix/config.json": JSON.stringify({
-            schema: "1",
-            model: "test-model",
-            dims: 384,
-            chunkLines: 60,
-            overlapLines: 10,
-            skipExtensions: [".py"],
-            ignoredPaths: [],
-          }),
+          ".pix/config.json": makeConfig({ skipExtensions: [".py"] }),
           "src/a.ts": sourceFile,
           "src/script.py": `# Python script\n${"print('line')\n".repeat(70)}`,
         },

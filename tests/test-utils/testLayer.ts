@@ -12,6 +12,7 @@ import { Display } from "../../src/display/Display.js"
 import { ConfigStore, Embedder, Scanner, VectorStore } from "../../src/domain/ports.js"
 import { ChunkerLive } from "../../src/services/chunker.js"
 import { ConfigStoreLive } from "../../src/services/config-store.js"
+import { ContentExtractorLive } from "../../src/services/content-extractor.js"
 import { VectorStoreLive } from "../../src/services/vector-store.js"
 
 export interface TestLayerOptions {
@@ -56,6 +57,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     scannerLayer ?? defaultScannerLayer,
     embedderLayer ?? defaultEmbedderLayer,
     vectorStoreLayer ?? VectorStoreLive,
+    ContentExtractorLive,
   )
 
   const chunkerLayer = ChunkerLive.pipe(Layer.provide(servicesLayer))

@@ -1,7 +1,7 @@
-import { FileSystem } from "@effect/platform"
 import { Effect } from "effect"
 
 import { Display } from "../display/Display.js"
+import type { Chunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type {
   AllConfigErrors,
@@ -12,7 +12,14 @@ import type {
   ScanFailed,
   StoreError,
 } from "../domain/errors.js"
-import { ConfigStore, Scanner, Chunker, Embedder, VectorStore } from "../domain/ports.js"
+import {
+  ConfigStore,
+  Scanner,
+  Chunker,
+  Embedder,
+  VectorStore,
+  ContentExtractor,
+} from "../domain/ports.js"
 import { buildProcessorMap } from "../services/processors/index.js"
 import type { StatusResult } from "./get-status.js"
 
@@ -30,9 +37,38 @@ function getExtension(file: string): string {
   return name.slice(dotIndex).toLowerCase()
 }
 
+interface FileClassification {
+  readonly knownFiles: string[]
+  readonly skippedFiles: string[]
+  readonly unknownExtensions: Set<string>
+}
+
+const classifyFiles = (
+  files: readonly string[],
+  processorMap: Record<string, unknown>,
+): FileClassification => {
+  const knownFiles: string[] = []
+  const skippedFiles: string[] = []
+  const unknownExtensions = new Set<string>()
+
+  for (const file of files) {
+    const ext = getExtension(file)
+    const proc = processorMap[ext]
+    if (!proc) {
+      unknownExtensions.add(ext)
+      skippedFiles.push(file)
+    } else {
+      knownFiles.push(file)
+    }
+  }
+
+  return { knownFiles, skippedFiles, unknownExtensions }
+}
+
 /**
  * Use case: index project files. Pipeline: scan → ContentExtractor → chunk → embed → store. Depends
- * on ConfigStore, Scanner, Chunker, Embedder, VectorStore, Display via Effect tags.
+ * on ConfigStore, Scanner, Chunker, Embedder, VectorStore, Display, ContentExtractor via Effect
+ * tags.
  */
 export class IndexProject extends Effect.Service<IndexProject>()("IndexProject", {
   accessors: true,
@@ -43,6 +79,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
     const embedder = yield* Embedder
     const vectorStore = yield* VectorStore
     const d = yield* Display
+    const extractor = yield* ContentExtractor
 
     const index = (): Effect.Effect<
       IndexResult,
@@ -52,8 +89,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
       | AllEmbedderErrors
       | AllProcessorErrors
       | StoreError
-      | DiskFullError,
-      FileSystem.FileSystem
+      | DiskFullError
     > =>
       Effect.gen(function* () {
         const hasConfig = yield* configStore.configExists()
@@ -67,19 +103,10 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         const ignoredPaths = config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths
         const scanResult = yield* scanner.scanFiles(ignoredPaths)
 
-        const unknownExtensions = new Set<string>()
-        const skippedFiles: string[] = []
-
-        const knownFiles = scanResult.files.filter((file) => {
-          const ext = getExtension(file)
-          const proc = processorMap[ext]
-          if (!proc) {
-            unknownExtensions.add(ext)
-            skippedFiles.push(file)
-            return false
-          }
-          return true
-        })
+        const { knownFiles, skippedFiles, unknownExtensions } = classifyFiles(
+          scanResult.files,
+          processorMap,
+        )
 
         if (unknownExtensions.size > 0) {
           yield* d.log(
@@ -100,12 +127,10 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           knownFiles,
           (file) =>
             Effect.gen(function* () {
-              const ext = getExtension(file)
-              const processor = processorMap[ext]
-              const result = yield* Effect.either(processor(file))
+              const result = yield* Effect.either(extractor.extract(file))
               if (result._tag === "Left") {
                 yield* d.log(`Skipping ${file}: ${result.left.message}`, "warn")
-                return []
+                return [] as Chunk[]
               }
               return yield* chunker.chunkText(result.right, file)
             }),

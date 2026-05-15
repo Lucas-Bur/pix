@@ -21,7 +21,7 @@ Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable).
 
 ### Scanner
 
-Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, applies `.gitignore` rules via the `ignore` package. Whitelist of file extensions in `config.json` (e.g. `.ts`, `.py`, `.rs`). Only text/code extensions — binary formats (`.pdf`, `.mp4`, etc.) are excluded by design. Always ignores: `.pix`, `node_modules`, `.git`, `dist`, `build`, `.next`.
+Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, applies `.gitignore` rules via the `ignore` package, and returns all files. Extension-based filtering is handled downstream by the ContentExtractor processor map. Configurable `ignoredPaths` patterns (gitignore-style) merged with `.gitignore` and `.git/info/exclude`. Always ignores: `.pix`, `node_modules`, `.git`, `dist`, `build`, `.next`.
 
 ### Store
 
@@ -211,10 +211,9 @@ Self-contained per project. Offline after first download (~22 MB). Alternative: 
 No AST preprocessing, no comment stripping for MVP. Code semantics depend on syntax and structure.
 Future: AST-based preprocessing as optional enhancement.
 
-### Whitelist extensions (not blacklist)
+### Extension opt-out via skipExtensions
 
-Extensions like `.ts`, `.py` must be explicitly listed in `config.json`.
-`.gitignore` provides additional filtering. Future research: `.pixignore` for project-specific exclusions.
+Users add extensions to `skipExtensions` in `config.json` to opt out of indexing (e.g. `.pdf`, `.mp4`). The domain processor map provides the base mapping; config entries swap processors to skip. `.gitignore` provides additional filtering. Future research: `.pixignore` for project-specific exclusions.
 
 ### Context lines in chunks.jsonl
 
@@ -249,7 +248,7 @@ Now exposes two methods: `chunkFile(file)` reads file then delegates to `chunkTe
 
 ### Scanner
 
-Returns all files found during FS walk, applying only `.gitignore` rules and `ALWAYS_IGNORE` directories. No extension filtering — that concern moved to `ContentExtractor`. `scanFiles()` takes no arguments.
+Returns all files found during FS walk, applying `.gitignore` rules, `.git/info/exclude`, and `ignoredPaths` patterns. No extension filtering — that concern moved to `ContentExtractor`. `scanFiles(ignoredPaths)` applies ignore patterns during directory walk.
 
 ### Config
 
@@ -260,7 +259,7 @@ Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly
 Lookup table that decides how each file extension is processed:
 
 - **Known code extensions** (`.ts`, `.py`, `.rs`, etc.) → ContentExtractor (identity) → Chunker → Embedder (MVP behavior)
-- **Known binary extensions** (`.pdf`, `.mp4`, `.jpg`, `.zip`, `.exe`, etc.) → Skip with warning log. Future Phase 2+ converts to text first (e.g. PDF→text extraction, MP4→Whisper transcription)
+- **Known binary extensions** (`.pdf`, `.mp4`, `.jpg`, `.zip`, `.exe`, etc.) → Skip with info log; unknown/unrecognized extensions trigger a warning. Future Phase 2+ converts to text first (e.g. PDF→text extraction, MP4→Whisper transcription)
 - **Future: AST preprocessing** — for languages where AST yields better embeddings than raw text
 - **Future: Extension→Processor mapping** — lookup table that decides how each file extension is processed
 - Incremental indexing via mtime cache or file hash (Phase 3) — `--force` flag will flip default behavior; MVP always full-reindexes

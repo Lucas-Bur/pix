@@ -13,6 +13,7 @@ import type {
   ModelLoadError,
   InferenceError,
   ScanFailed,
+  AllProcessorErrors,
 } from "./errors.js"
 
 // === Scan result types ===
@@ -49,11 +50,21 @@ export class Scanner extends Context.Tag("Scanner")<
   Scanner,
   {
     /**
-     * Scan project files, applying .gitignore rules, ALWAYS_IGNORE directories, and user-defined
-     * ignoredPaths patterns. Returns all discovered files. Per-entry skips are reported in
-     * ScanResult.skipped. Fatal errors surface as ScanFailed.
+     * Scan project files, applying .gitignore rules, ignoredPaths patterns, and .git/info/exclude.
+     * Returns all discovered files. Per-entry skips are reported in ScanResult.skipped. Fatal
+     * errors surface as ScanFailed.
      */
     readonly scanFiles: (ignoredPaths: readonly string[]) => Effect.Effect<ScanResult, ScanFailed>
+  }
+>() {}
+
+// === ContentExtractor Port ===
+
+export class ContentExtractor extends Context.Tag("ContentExtractor")<
+  ContentExtractor,
+  {
+    /** Extract text from a file. Fails with AllProcessorErrors if the format is unsupported. */
+    readonly extract: (file: string) => Effect.Effect<string, AllProcessorErrors>
   }
 >() {}
 
