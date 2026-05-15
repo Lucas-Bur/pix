@@ -54,11 +54,19 @@ export const indexCommand = Command.make(
       if (verbose)
         yield* d.log("--verbose is currently not implemented and only a placeholder.", "warn")
 
-      const cliSkipExtensions = skipExtensions.flatMap((v) => v.split(",").map((s) => s.trim()))
+      const splitCsv = (values: ReadonlyArray<string>) =>
+        values.flatMap((v) =>
+          v
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0),
+        )
+
+      const cliSkipExtensions = splitCsv(skipExtensions)
 
       const cliIgnorePaths = [
-        ...ignorePath,
-        ...ignorePaths.flatMap((v) => v.split(",").map((s) => s.trim())),
+        ...ignorePath.map((s) => s.trim()).filter((s) => s.length > 0),
+        ...splitCsv(ignorePaths),
       ]
 
       const result = yield* d.spinner(

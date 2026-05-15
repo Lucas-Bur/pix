@@ -268,6 +268,53 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
   }),
 }) {}
 
+const getFilename = (path: string): string => path.split("/").pop() ?? path
+
+const getFileExtension = (filename: string): string => {
+  const dotIndex = filename.lastIndexOf(".")
+  return dotIndex >= 0 ? filename.slice(dotIndex) : "(no extension)"
+}
+
+const groupByExtension = (entries: readonly SkippedEntry[]): Map<string, string[]> => {
+  const byExt = new Map<string, string[]>()
+  for (const s of entries) {
+    const name = getFilename(s.path)
+    const ext = getFileExtension(name)
+    if (!byExt.has(ext)) byExt.set(ext, [])
+    byExt.get(ext)!.push(name)
+  }
+  return byExt
+}
+
+const formatFileList = (files: string[], maxDisplay = 5): string =>
+  files.length > maxDisplay
+    ? `${files.slice(0, maxDisplay).join(", ")} +${files.length - maxDisplay} more`
+    : files.join(", ")
+
+const buildSkippedLines = (
+  extFailures: readonly SkippedEntry[],
+  extractErrors: readonly SkippedEntry[],
+): string[] => {
+  const lines: string[] = []
+
+  if (extFailures.length > 0) {
+    lines.push(`Unknown extensions (${extFailures.length})`)
+    for (const [ext, files] of groupByExtension(extFailures)) {
+      lines.push(`  ${ext} (${files.length}): ${formatFileList(files)}`)
+    }
+  }
+
+  if (extractErrors.length > 0) {
+    if (lines.length > 0) lines.push("")
+    lines.push(`Extraction errors (${extractErrors.length})`)
+    for (const s of extractErrors) {
+      lines.push(`  ${getFilename(s.path)}: ${s.reason}`)
+    }
+  }
+
+  return lines
+}
+
 const displaySkippedNote = (
   d: typeof Display.Service,
   skipped: readonly SkippedEntry[],
@@ -276,36 +323,9 @@ const displaySkippedNote = (
 
   const extFailures = skipped.filter((s) => s.reason === "unknown extension")
   const extractErrors = skipped.filter((s) => s.reason !== "unknown extension")
-  const lines: string[] = []
 
-  if (extFailures.length > 0) {
-    const byExt = new Map<string, string[]>()
-    for (const s of extFailures) {
-      const name = s.path.split("/").pop() ?? s.path
-      const dotIndex = name.lastIndexOf(".")
-      const ext = dotIndex >= 0 ? name.slice(dotIndex) : "(no extension)"
-      if (!byExt.has(ext)) byExt.set(ext, [])
-      byExt.get(ext)!.push(name)
-    }
-
-    lines.push(`Unknown extensions (${extFailures.length})`)
-    for (const [ext, files] of byExt) {
-      const display =
-        files.length > 5
-          ? `${files.slice(0, 5).join(", ")} +${files.length - 5} more`
-          : files.join(", ")
-      lines.push(`  ${ext} (${files.length}): ${display}`)
-    }
-  }
-
-  if (extractErrors.length > 0) {
-    if (lines.length > 0) lines.push("")
-    lines.push(`Extraction errors (${extractErrors.length})`)
-    for (const s of extractErrors) {
-      const name = s.path.split("/").pop() ?? s.path
-      lines.push(`  ${name}: ${s.reason}`)
-    }
-  }
-
-  return d.note(lines.join("\n"), `Skipped ${skipped.length} files`)
+  return d.note(
+    buildSkippedLines(extFailures, extractErrors).join("\n"),
+    `Skipped ${skipped.length} files`,
+  )
 }
