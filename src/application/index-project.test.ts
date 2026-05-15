@@ -185,9 +185,11 @@ test("IndexProject.index respects chunkConcurrency values", () =>
 
 test("IndexProject.index auto-initializes when config is missing", () =>
   Effect.gen(function* () {
+    const configStore = yield* ConfigStore
+    expect(yield* configStore.configExists()).toBe(false)
+
     const result = yield* IndexProject.index()
     expect(result.success).toBe(true)
-    const configStore = yield* ConfigStore
     const exists = yield* configStore.configExists()
     expect(exists).toBe(true)
   }).pipe(
