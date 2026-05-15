@@ -34,6 +34,7 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
   embed: () => Effect.succeed({ vector: new Float32Array(384), dims: 384 }),
   batch: (texts: readonly string[]) =>
     Effect.succeed(texts.map(() => ({ vector: new Float32Array(384), dims: 384 }))),
+  getFallbackInfo: () => Effect.succeed(undefined),
 })
 
 /**

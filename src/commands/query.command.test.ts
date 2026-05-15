@@ -42,6 +42,7 @@ test("pix query with --top flag clamps to valid range", () => {
 const failingEmbedderLayer = Layer.succeed(Embedder, {
   embed: () => Effect.fail(new ModelLoadError({ model: "test", message: "embed failed" })),
   batch: () => Effect.fail(new ModelLoadError({ model: "test", message: "batch failed" })),
+  getFallbackInfo: () => Effect.succeed(undefined),
 })
 
 test("pix query --json with failing embedder produces error JSON", () => {
