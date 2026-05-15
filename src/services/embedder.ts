@@ -1,5 +1,5 @@
 import { env } from "@huggingface/transformers"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Ref, Option } from "effect"
 
 import { Display } from "../display/Display.js"
 import type { Embedding } from "../domain/embedding.js"
@@ -32,6 +32,11 @@ interface EmbedderConfig {
   readonly device: "auto" | "cpu" | "cuda" | "dml" | "coreml"
   readonly dtype: "fp32" | "fp16" | "q8"
   readonly dims: number
+}
+
+interface FallbackInfo {
+  readonly originalDevice: string
+  readonly reason: string
 }
 
 const resolveEmbedderConfig = (
@@ -82,7 +87,10 @@ const createExtractor = (opts: EmbedderConfig) =>
     ),
   )
 
-const createExtractorWithFallback = (opts: EmbedderConfig) => {
+const createExtractorWithFallback = (
+  opts: EmbedderConfig,
+  fallbackRef: Ref.Ref<Option.Option<FallbackInfo>>,
+) => {
   if (opts.device === "cpu") return createExtractor(opts)
 
   return createExtractor(opts).pipe(
@@ -90,11 +98,13 @@ const createExtractorWithFallback = (opts: EmbedderConfig) => {
       Effect.gen(function* () {
         const d = yield* Display
         yield* d.log(`GPU (${opts.device}) failed, falling back to CPU...`, "warn")
-        yield* d.json({
-          event: "embedder_fallback",
-          originalDevice: opts.device,
-          reason: originalError.message,
-        })
+        yield* Ref.set(
+          fallbackRef,
+          Option.some({
+            originalDevice: opts.device,
+            reason: originalError.message,
+          }),
+        )
         const cpuOpts: EmbedderConfig = { ...opts, device: "cpu" }
         const fallback = yield* createExtractor(cpuOpts).pipe(
           Effect.catchAll(() => Effect.fail(originalError)),
@@ -109,7 +119,8 @@ const make = Effect.gen(function* () {
   const configStore = yield* ConfigStore
   const d = yield* Display
   const cfg = yield* resolveEmbedderConfig(configStore)
-  const getExtractor = yield* Effect.cached(createExtractorWithFallback(cfg))
+  const fallbackRef = yield* Ref.make<Option.Option<FallbackInfo>>(Option.none())
+  const getExtractor = yield* Effect.cached(createExtractorWithFallback(cfg, fallbackRef))
 
   const embed = (text: string) =>
     Effect.gen(function* () {
@@ -145,7 +156,10 @@ const make = Effect.gen(function* () {
       return results
     }).pipe(Effect.provideService(Display, d))
 
-  return { embed, batch } as const
+  const getFallbackInfo = () =>
+    Ref.get(fallbackRef).pipe(Effect.map(Option.getOrElse(() => undefined)))
+
+  return { embed, batch, getFallbackInfo } as const
 })
 
 export const OnnxEmbedderLive = Layer.provideMerge(Layer.effect(Embedder, make), ConfigStoreLive)

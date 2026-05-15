@@ -29,6 +29,10 @@ interface IndexResult {
   readonly success: true
   readonly status: Omit<StatusResult, "model" | "lastIndex">
   readonly durationMs: number
+  readonly embedderFallback?: {
+    readonly originalDevice: string
+    readonly reason: string
+  }
 }
 
 interface IndexOptions {
@@ -245,6 +249,8 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           "success",
         )
 
+        const fallbackInfo = yield* embedder.getFallbackInfo()
+
         return {
           success: true as const,
           status: {
@@ -254,6 +260,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
             byteSize: stats.byteSize,
           },
           durationMs: Date.now() - start,
+          embedderFallback: fallbackInfo,
         }
       })
 

@@ -72,7 +72,14 @@ export const indexCommand = Command.make(
         }),
       )
 
-      yield* d.json({ chunks: result.status.chunks, files: result.status.files })
+      yield* d.json({
+        chunks: result.status.chunks,
+        files: result.status.files,
+        totalLines: result.status.totalLines,
+        byteSize: result.status.byteSize,
+        durationMs: result.durationMs,
+        ...(result.embedderFallback && { embedderFallback: result.embedderFallback }),
+      })
 
       if (result.status.chunks === 0) {
         yield* d.log("No chunks to index.", "warn")

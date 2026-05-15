@@ -97,6 +97,10 @@ export class Embedder extends Context.Tag("Embedder")<
     readonly batch: (
       texts: readonly string[],
     ) => Effect.Effect<readonly Embedding[], ModelLoadError | InferenceError>
+    /** Returns fallback info if GPU failed and fell back to CPU. */
+    readonly getFallbackInfo: () => Effect.Effect<
+      { readonly originalDevice: string; readonly reason: string } | undefined
+    >
   }
 >() {}
 
