@@ -11,6 +11,7 @@ import { cli } from "./cli.js"
 import { setupTerminalCleanup } from "./display/terminalCleanup.js"
 import { ChunkerLive } from "./services/chunker.js"
 import { ConfigStoreLive } from "./services/config-store.js"
+import { ContentExtractorLive } from "./services/content-extractor.js"
 import { OnnxEmbedderLive } from "./services/embedder.js"
 import { ScannerLive } from "./services/scanner.js"
 import { VectorStoreLive } from "./services/vector-store.js"
@@ -21,6 +22,7 @@ const ServicesLayer = Layer.mergeAll(
   ScannerLive,
   OnnxEmbedderLive,
   VectorStoreLive,
+  ContentExtractorLive,
 )
 
 // === Layer 2: Services that depend on other services ===

@@ -41,6 +41,7 @@ const DEFAULT_PROCESSOR_MAP: Record<string, FileProcessor> = {
   ".bat": identityProcessor,
   ".cmake": identityProcessor,
   ".dockerfile": identityProcessor,
+  dockerfile: identityProcessor,
   // Config files (no leading dot)
   makefile: identityProcessor,
   gemfile: identityProcessor,

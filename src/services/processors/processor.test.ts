@@ -18,6 +18,7 @@ test("buildProcessorMap overrides with skipExtensions", () =>
     expect(map[".md"]).toBeDefined()
     expect(map[".ts"]).toBeDefined()
     const result = yield* Effect.either(map[".md"]("some/file.md"))
+    expect(result._tag).toBe("Left")
     if (result._tag === "Left") {
       expect(result.left).toHaveProperty("_tag", "UnsupportedFormat")
     }

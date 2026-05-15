@@ -53,40 +53,96 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  const loadGitignoreRules = (ignoredPaths: readonly string[]) =>
+  const computeRelative = (fullPath: string, cwd: string): string =>
+    fullPath.startsWith(cwd) ? fullPath.slice(cwd.length + 1) : fullPath
+
+  const loadIgnoreFile = (
+    filePath: string,
+    ig: ReturnType<typeof ignore>,
+    skipped: SkippedEntry[],
+  ): Effect.Effect<void, never> =>
+    Effect.gen(function* () {
+      const result = yield* readFileWithSkip(
+        filePath,
+        (error) => `Could not read ignore file: ${String(error)}`,
+      )
+      if (result.skipped) skipped.push(result.skipped)
+      if (result.content.trim()) {
+        ig.add(result.content.split("\n"))
+      }
+    })
+
+  const loadGitignoreRules = (
+    ignoredPaths: readonly string[],
+    cwd: string,
+  ): Effect.Effect<{ ig: ReturnType<typeof ignore>; skipped: SkippedEntry[] }, never> =>
     Effect.gen(function* () {
       const ig = ignore()
-      const cwd = process.cwd()
       const skipped: SkippedEntry[] = []
 
-      // User-defined ignoredPaths (gitignore-style patterns)
       if (ignoredPaths.length > 0) {
         ig.add(ignoredPaths)
       }
 
-      const rootContent = yield* readFileWithSkip(
-        `${cwd}/.gitignore`,
-        (error) => `Could not read gitignore: ${String(error)}`,
-      )
-      if (rootContent.skipped) skipped.push(rootContent.skipped)
-      if (rootContent.content.trim()) {
-        ig.add(rootContent.content.split("\n"))
-      }
+      yield* loadIgnoreFile(`${cwd}/.gitignore`, ig, skipped)
 
       const excludePath = `${cwd}/.git/info/exclude`
-      const excludeExists = yield* fs.exists(excludePath)
+      const excludeExists = yield* fs
+        .exists(excludePath)
+        .pipe(Effect.catchAll(() => Effect.succeed(false)))
       if (excludeExists) {
-        const excludeContent = yield* readFileWithSkip(
-          excludePath,
-          (error) => `Could not read exclude file: ${String(error)}`,
-        )
-        if (excludeContent.skipped) skipped.push(excludeContent.skipped)
-        if (excludeContent.content.trim()) {
-          ig.add(excludeContent.content.split("\n"))
-        }
+        yield* loadIgnoreFile(excludePath, ig, skipped)
       }
 
       return { ig, skipped }
+    })
+
+  const processEntry = (
+    entry: string,
+    dir: string,
+    ig: ReturnType<typeof ignore>,
+    cwd: string,
+  ): Effect.Effect<
+    | { files: string[]; skipped: SkippedEntry[]; recurse?: false }
+    | { files: string[]; skipped: SkippedEntry[]; recurse: true },
+    never
+  > =>
+    Effect.gen(function* () {
+      const fullPath = `${dir}/${entry}`
+      const statResult = yield* statWithSkip(fullPath)
+
+      if (statResult.skipped) {
+        return { files: [], skipped: [statResult.skipped] }
+      }
+      if (!statResult.info) {
+        return { files: [], skipped: [] }
+      }
+
+      const info = statResult.info
+
+      if (info.type === "Directory") {
+        const relativeDir = computeRelative(fullPath, cwd)
+        if (ig.ignores(relativeDir)) {
+          return {
+            files: [],
+            skipped: [{ path: fullPath, reason: `Ignored by config pattern: ${relativeDir}` }],
+          }
+        }
+        return { files: [], skipped: [], recurse: true as const }
+      }
+
+      if (info.type === "File") {
+        const relativePath = computeRelative(fullPath, cwd)
+        if (ig.ignores(relativePath)) {
+          return {
+            files: [],
+            skipped: [{ path: fullPath, reason: `Ignored by config pattern: ${relativePath}` }],
+          }
+        }
+        return { files: [fullPath], skipped: [] }
+      }
+
+      return { files: [], skipped: [] }
     })
 
   const walk = (
@@ -102,39 +158,25 @@ const make = Effect.gen(function* () {
       if (result.skipped) skipped.push(result.skipped)
 
       for (const entry of result.entries) {
-        const fullPath = `${dir}/${entry}`
-        const info = yield* statWithSkip(fullPath)
+        const entryResult = yield* processEntry(entry, dir, ig, cwd)
+        files.push(...entryResult.files)
+        skipped.push(...entryResult.skipped)
 
-        if (info.skipped) {
-          skipped.push(info.skipped)
-          continue
-        }
-        if (!info.info) continue
-
-        if (info.info.type === "Directory") {
-          const relativeDir = fullPath.startsWith(cwd) ? fullPath.slice(cwd.length + 1) : fullPath
-          if (ig.ignores(relativeDir)) {
-            skipped.push({ path: fullPath, reason: `Ignored by config pattern: ${relativeDir}` })
-            continue
-          }
-          const sub = yield* walk(fullPath, ig, cwd)
+        if ("recurse" in entryResult) {
+          const sub = yield* walk(`${dir}/${entry}`, ig, cwd)
           files.push(...sub.files)
           skipped.push(...sub.skipped)
-        } else if (info.info.type === "File") {
-          const relativePath = fullPath.startsWith(cwd) ? fullPath.slice(cwd.length + 1) : fullPath
-          if (ig.ignores(relativePath)) {
-            skipped.push({ path: fullPath, reason: `Ignored by config pattern: ${relativePath}` })
-            continue
-          }
-          files.push(fullPath)
         }
       }
+
       return { files, skipped }
     })
 
   const scanFiles = (ignoredPaths: readonly string[]): Effect.Effect<ScanResult, ScanFailed> =>
     Effect.gen(function* () {
-      const { ig, skipped: ignoreSkipped } = yield* loadGitignoreRules(ignoredPaths).pipe(
+      const cwd = process.cwd()
+
+      const { ig, skipped: ignoreSkipped } = yield* loadGitignoreRules(ignoredPaths, cwd).pipe(
         Effect.mapError(
           (cause) =>
             new ScanFailed({
@@ -143,15 +185,11 @@ const make = Effect.gen(function* () {
             }),
         ),
       )
-      const cwd = process.cwd()
 
-      const { files: paths, skipped: walkSkipped } = yield* walk(cwd, ig, cwd)
-
-      const relativePaths = paths.map((p) => (p.startsWith(cwd) ? p.slice(cwd.length + 1) : p))
-      const filtered = ig.filter(relativePaths)
+      const { files, skipped: walkSkipped } = yield* walk(cwd, ig, cwd)
 
       return {
-        files: filtered.map((p) => `${cwd}/${p}`),
+        files,
         skipped: [...ignoreSkipped, ...walkSkipped],
       }
     })
