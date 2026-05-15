@@ -27,14 +27,13 @@ test("ConfigStore.writeConfig creates .pix/config.json with defaults", () =>
       "dist",
       "build",
       ".next",
-      ".agents",
-      ".claude",
       ".vscode",
-      ".github",
       "coverage",
       "*-lock.yaml",
       "*-lock.json",
       "*.lock",
+      ".vite-hooks",
+      ".fallow",
     ])
   }).pipe(Effect.provide(makeLayer())))
 

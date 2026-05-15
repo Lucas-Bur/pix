@@ -37,6 +37,11 @@ export interface Config {
    * .gitignore rules and ALWAYS_IGNORE. Supports glob patterns.
    */
   readonly ignoredPaths: readonly string[]
+  /**
+   * When true, .gitignore and .git/info/exclude files are ignored during scanning. Only
+   * ignoredPatterns from config are applied.
+   */
+  readonly ignoreGitignore?: boolean
   /** Embedder runtime configuration. */
   readonly embedder: EmbedderConfig
 }
@@ -54,14 +59,13 @@ export const DEFAULT_CONFIG: Config = {
     "dist",
     "build",
     ".next",
-    ".agents",
-    ".claude",
     ".vscode",
-    ".github",
     "coverage",
     "*-lock.yaml",
     "*-lock.json",
     "*.lock",
+    ".vite-hooks",
+    ".fallow",
   ],
   embedder: {
     model: "Xenova/all-MiniLM-L6-v2",

@@ -74,6 +74,19 @@ const make = Effect.gen(function* () {
 
   const loadGitignoreRules = (
     ignoredPaths: readonly string[],
+  ): Effect.Effect<{ ig: ReturnType<typeof ignore>; skipped: SkippedEntry[] }, never> => {
+    const ig = ignore()
+    const skipped: SkippedEntry[] = []
+
+    if (ignoredPaths.length > 0) {
+      ig.add(ignoredPaths)
+    }
+
+    return Effect.succeed({ ig, skipped })
+  }
+
+  const loadGitignoreRulesWithFiles = (
+    ignoredPaths: readonly string[],
     cwd: string,
   ): Effect.Effect<{ ig: ReturnType<typeof ignore>; skipped: SkippedEntry[] }, never> =>
     Effect.gen(function* () {
@@ -179,15 +192,22 @@ const make = Effect.gen(function* () {
       return { files, skipped }
     })
 
-  const scanFiles = (ignoredPaths: readonly string[]): Effect.Effect<ScanResult, ScanFailed> =>
+  const scanFiles = (
+    ignoredPaths: readonly string[],
+    ignoreGitignore?: boolean,
+  ): Effect.Effect<ScanResult, ScanFailed> =>
     Effect.gen(function* () {
       const cwd = process.cwd()
 
-      const { ig, skipped: ignoreSkipped } = yield* loadGitignoreRules(ignoredPaths, cwd).pipe(
+      const { ig, skipped: ignoreSkipped } = yield* (
+        ignoreGitignore
+          ? loadGitignoreRules(ignoredPaths)
+          : loadGitignoreRulesWithFiles(ignoredPaths, cwd)
+      ).pipe(
         Effect.mapError(
           (cause) =>
             new ScanFailed({
-              message: `Failed to load gitignore rules: ${String(cause)}`,
+              message: `Failed to load ignore rules: ${String(cause)}`,
               cause,
             }),
         ),
