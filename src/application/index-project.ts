@@ -28,6 +28,15 @@ import type { StatusResult } from "./get-status.js"
 interface IndexResult {
   readonly success: true
   readonly status: Omit<StatusResult, "model" | "lastIndex">
+  readonly durationMs: number
+}
+
+interface IndexOptions {
+  readonly batchSize?: number
+  readonly chunkConcurrency?: number
+  readonly skipExtensions?: readonly string[]
+  readonly ignorePaths?: readonly string[]
+  readonly ignoreGitignore?: boolean
 }
 
 function getExtension(file: string): string {
@@ -82,7 +91,9 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
     const d = yield* Display
     const extractor = yield* ContentExtractor
 
-    const index = (): Effect.Effect<
+    const index = (
+      opts: IndexOptions = {},
+    ): Effect.Effect<
       IndexResult,
       | AllConfigErrors
       | ScanFailed
@@ -93,18 +104,28 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
       | DiskFullError
     > =>
       Effect.gen(function* () {
+        const start = Date.now()
+
         const hasConfig = yield* configStore.configExists()
         if (!hasConfig) {
           yield* configStore.writeConfig(DEFAULT_CONFIG)
         }
         const config = yield* configStore.readConfig()
-        const processorMap = buildProcessorMap(config.skipExtensions)
-        const batchSize = config.embedder.batchSize ?? 16
-        const concurrency = Math.max(1, config.chunkConcurrency ?? 8)
+
+        const batchSize = opts.batchSize ?? config.embedder.batchSize ?? 16
+        const concurrency = Math.max(1, opts.chunkConcurrency ?? config.chunkConcurrency ?? 8)
+        const skipExtensions = opts.skipExtensions
+          ? [...config.skipExtensions, ...opts.skipExtensions]
+          : config.skipExtensions
+        const ignoredPaths = opts.ignorePaths
+          ? [...(config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths), ...opts.ignorePaths]
+          : (config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths)
+        const ignoreGitignore = opts.ignoreGitignore ?? config.ignoreGitignore ?? false
+
+        const processorMap = buildProcessorMap(skipExtensions)
 
         yield* d.updateInteractive("Scanning source files...")
-        const ignoredPaths = config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths
-        const scanResult = yield* scanner.scanFiles(ignoredPaths)
+        const scanResult = yield* scanner.scanFiles(ignoredPaths, ignoreGitignore)
 
         const { knownFiles, skippedFiles, unknownExtensions } = classifyFiles(
           scanResult.files,
@@ -112,7 +133,9 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         )
 
         const skipped = yield* Ref.make<readonly SkippedEntry[]>(
-          scanResult.skipped.map((s) => ({ path: s.path, reason: s.reason })),
+          scanResult.skipped
+            .filter((s) => !s.reason.startsWith("Ignored by config pattern"))
+            .map((s) => ({ path: s.path, reason: s.reason })),
         )
 
         if (unknownExtensions.size > 0) {
@@ -127,21 +150,20 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
 
         if (knownFiles.length === 0) {
           const collected = yield* Ref.get(skipped)
-          if (collected.length > 0) {
-            yield* d.note(
-              `Skipped ${collected.length} files:\n${collected.map((s) => `${s.path}: ${s.reason}`).join("\n")}`,
-              "Skipped files",
-            )
-          }
+          yield* displaySkippedNote(d, collected)
+
           return {
             success: true as const,
             status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0 },
+            durationMs: Date.now() - start,
           }
         }
 
         yield* d.updateInteractive(`Processing ${knownFiles.length} files...`)
 
         const embedded = yield* Ref.make(0)
+        const chunksProduced = yield* Ref.make(0)
+        const totalChunks = yield* Ref.make<Option.Option<number>>(Option.none())
 
         const pipeline = Stream.fromIterable(knownFiles).pipe(
           Stream.mapEffect(
@@ -166,6 +188,8 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           Stream.filterMap((opt: Option.Option<ExtractedFile>) => opt),
           Stream.mapEffect(({ file, text }) => chunker.chunkText(text, file), { concurrency }),
           Stream.flatMap((chunks) => Stream.fromIterable(chunks)),
+          Stream.tap(() => Ref.update(chunksProduced, (n) => n + 1)),
+          Stream.buffer({ capacity: 5000 }),
           Stream.grouped(batchSize),
           Stream.mapEffect((batchChunk) =>
             Effect.gen(function* () {
@@ -175,8 +199,25 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
               yield* vectorStore.storeBatch(batch, embeddings)
               yield* Ref.update(embedded, (n) => n + batch.length)
               const count = yield* Ref.get(embedded)
-              if (count % 20 === 0) {
-                yield* d.updateInteractive(`${count} chunks embedded`)
+              const produced = yield* Ref.get(chunksProduced)
+
+              if (Option.isNone(yield* Ref.get(totalChunks)) && produced === count && count > 0) {
+                yield* Ref.set(totalChunks, Option.some(count))
+                yield* d.updateInteractive({
+                  message: `${count} of ${count} chunks embedded`,
+                  setMax: count,
+                  setTo: count,
+                })
+              } else {
+                const maybeTotal = yield* Ref.get(totalChunks)
+                if (Option.isSome(maybeTotal)) {
+                  yield* d.updateInteractive({
+                    message: `${count} of ${maybeTotal.value} chunks embedded`,
+                    setToPercent: Math.round((count / maybeTotal.value) * 100),
+                  })
+                } else {
+                  yield* d.updateInteractive(`${count} chunks embedded`)
+                }
               }
             }),
           ),
@@ -194,14 +235,13 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         )
 
         const collected = yield* Ref.get(skipped)
-        if (collected.length > 0) {
-          yield* d.note(
-            `Skipped ${collected.length} files:\n${collected.map((s) => `${s.path}: ${s.reason}`).join("\n")}`,
-            "Skipped files",
-          )
-        }
+        yield* displaySkippedNote(d, collected)
 
-        yield* d.log(`Indexed ${stats.chunks} chunks from ${stats.files} files`, "success")
+        const durationSec = ((Date.now() - start) / 1000).toFixed(1)
+        yield* d.log(
+          `Indexed ${stats.chunks} chunks from ${stats.files} files in ${durationSec}s`,
+          "success",
+        )
 
         return {
           success: true as const,
@@ -211,9 +251,58 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
             totalLines: stats.totalLines,
             byteSize: stats.byteSize,
           },
+          durationMs: Date.now() - start,
         }
       })
 
     return { index }
   }),
 }) {}
+
+const displaySkippedNote = (
+  d: typeof Display.Service,
+  skipped: readonly SkippedEntry[],
+): Effect.Effect<void> => {
+  if (skipped.length === 0) return Effect.void
+
+  const extFailures = skipped.filter((s) => s.reason === "unknown extension")
+  const extractErrors = skipped.filter((s) => s.reason !== "unknown extension")
+
+  const lines: string[] = []
+
+  if (extFailures.length > 0) {
+    const byExt = new Map<string, string[]>()
+    for (const s of extFailures) {
+      const file = s.path
+      const lastSlash = file.lastIndexOf("/")
+      const name = lastSlash >= 0 ? file.slice(lastSlash + 1) : file
+      const dotIndex = name.lastIndexOf(".")
+      const ext = dotIndex >= 0 ? name.slice(dotIndex) : "(no extension)"
+      const list = byExt.get(ext) ?? []
+      list.push(name)
+      byExt.set(ext, list)
+    }
+
+    lines.push(`─ Unknown extensions (${extFailures.length}) ─`)
+    for (const [ext, files] of byExt) {
+      const display =
+        files.length > 5
+          ? `${files.slice(0, 5).join(", ")} +${files.length - 5} more`
+          : files.join(", ")
+      lines.push(`  ${ext} (${files.length}): ${display}`)
+    }
+  }
+
+  if (extractErrors.length > 0) {
+    if (lines.length > 0) lines.push("")
+    lines.push(`─ Extraction errors (${extractErrors.length}) ─`)
+    for (const s of extractErrors) {
+      const file = s.path
+      const lastSlash = file.lastIndexOf("/")
+      const name = lastSlash >= 0 ? file.slice(lastSlash + 1) : file
+      lines.push(`  ${name}: ${s.reason}`)
+    }
+  }
+
+  return d.note(lines.join("\n"), `Skipped ${skipped.length} files`)
+}
