@@ -2,6 +2,7 @@ import { Command, Options } from "@effect/cli"
 import { Effect, Option } from "effect"
 
 import { IndexProject } from "../application/index-project.js"
+import type { IndexOptions } from "../application/index-project.js"
 import { Display } from "../display/Display.js"
 import { reportError } from "../lib/error-format.js"
 
@@ -22,6 +23,60 @@ const ignorePathOption = Options.text("ignore-path").pipe(Options.repeated)
 const ignorePathsOption = Options.text("ignore-paths").pipe(Options.repeated)
 
 const ignoreGitignoreOption = Options.boolean("ignore-gitignore").pipe(Options.withDefault(false))
+
+const splitCsv = (values: ReadonlyArray<string>): string[] =>
+  values.flatMap((v) =>
+    v
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+  )
+
+const buildIndexOptions = (args: {
+  batchSize: Option.Option<number>
+  chunkConcurrency: Option.Option<number>
+  skipExtensions: ReadonlyArray<string>
+  ignorePath: ReadonlyArray<string>
+  ignorePaths: ReadonlyArray<string>
+  ignoreGitignore: boolean
+}): IndexOptions => {
+  const cliSkipExtensions = splitCsv(args.skipExtensions)
+  const cliIgnorePaths = [
+    ...args.ignorePath.map((s) => s.trim()).filter((s) => s.length > 0),
+    ...splitCsv(args.ignorePaths),
+  ]
+
+  return {
+    batchSize: Option.getOrUndefined(args.batchSize),
+    chunkConcurrency: Option.getOrUndefined(args.chunkConcurrency),
+    skipExtensions: cliSkipExtensions.length > 0 ? cliSkipExtensions : undefined,
+    ignorePaths: cliIgnorePaths.length > 0 ? cliIgnorePaths : undefined,
+    ignoreGitignore: args.ignoreGitignore || undefined,
+  }
+}
+
+const emitIndexResult = (
+  d: typeof Display.Service,
+  result: {
+    status: { chunks: number; files: number; totalLines: number; byteSize: number }
+    durationMs: number
+    embedderFallback?: { originalDevice: string; reason: string }
+  },
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* d.json({
+      chunks: result.status.chunks,
+      files: result.status.files,
+      totalLines: result.status.totalLines,
+      byteSize: result.status.byteSize,
+      durationMs: result.durationMs,
+      ...(result.embedderFallback && { embedderFallback: result.embedderFallback }),
+    })
+
+    if (result.status.chunks === 0) {
+      yield* d.log("No chunks to index.", "warn")
+    }
+  })
 
 export const indexCommand = Command.make(
   "index",
@@ -54,43 +109,17 @@ export const indexCommand = Command.make(
       if (verbose)
         yield* d.log("--verbose is currently not implemented and only a placeholder.", "warn")
 
-      const splitCsv = (values: ReadonlyArray<string>) =>
-        values.flatMap((v) =>
-          v
-            .split(",")
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0),
-        )
-
-      const cliSkipExtensions = splitCsv(skipExtensions)
-
-      const cliIgnorePaths = [
-        ...ignorePath.map((s) => s.trim()).filter((s) => s.length > 0),
-        ...splitCsv(ignorePaths),
-      ]
-
-      const result = yield* d.spinner(
-        "Indexing project...",
-        IndexProject.index({
-          batchSize: Option.getOrUndefined(batchSize),
-          chunkConcurrency: Option.getOrUndefined(chunkConcurrency),
-          skipExtensions: cliSkipExtensions.length > 0 ? cliSkipExtensions : undefined,
-          ignorePaths: cliIgnorePaths.length > 0 ? cliIgnorePaths : undefined,
-          ignoreGitignore: ignoreGitignore || undefined,
-        }),
-      )
-
-      yield* d.json({
-        chunks: result.status.chunks,
-        files: result.status.files,
-        totalLines: result.status.totalLines,
-        byteSize: result.status.byteSize,
-        durationMs: result.durationMs,
-        ...(result.embedderFallback && { embedderFallback: result.embedderFallback }),
+      const options = buildIndexOptions({
+        batchSize,
+        chunkConcurrency,
+        skipExtensions,
+        ignorePath,
+        ignorePaths,
+        ignoreGitignore,
       })
 
-      if (result.status.chunks === 0) {
-        yield* d.log("No chunks to index.", "warn")
-      }
+      const result = yield* d.spinner("Indexing project...", IndexProject.index(options))
+
+      yield* emitIndexResult(d, result)
     }).pipe(Effect.catchAll(reportError)),
 )
