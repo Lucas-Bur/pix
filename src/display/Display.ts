@@ -148,6 +148,29 @@ const computeDelta = (
   return 0
 }
 
+/**
+ * Extracts the "guarded interactive" pattern: skip if already active, otherwise
+ * acquire-use-release.
+ */
+const withInteractive = <H, A, E, R>(
+  activeRef: Ref.Ref<ActiveInteractive>,
+  acquire: Effect.Effect<H>,
+  setActive: (h: H) => ActiveInteractive,
+  release: (h: H, exit: { readonly _tag: "Success" | "Failure" }) => Effect.Effect<void>,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> =>
+  Ref.get(activeRef).pipe(
+    Effect.flatMap((current) =>
+      current !== null
+        ? effect
+        : Effect.acquireUseRelease(
+            acquire.pipe(Effect.tap((h) => Ref.set(activeRef, setActive(h)))),
+            () => effect,
+            (h, exit) => Ref.set(activeRef, null).pipe(Effect.andThen(release(h, exit))),
+          ),
+    ),
+  )
+
 /** Display implementation using @clack/prompts for interactive terminal output */
 export const ClackDisplay = {
   layer: Layer.effect(
@@ -171,76 +194,41 @@ export const ClackDisplay = {
           message: string,
           effect: Effect.Effect<A, E, R>,
         ): Effect.Effect<A, E, R> =>
-          Ref.get(activeRef).pipe(
-            Effect.flatMap((current) =>
-              current !== null
-                ? effect
-                : Effect.acquireUseRelease(
-                    Effect.sync(() => {
-                      const s = clack.spinner()
-                      s.start(message)
-                      return s
-                    }).pipe(Effect.tap((s) => Ref.set(activeRef, { type: "spinner", handle: s }))),
-                    () => effect,
-                    (s, exit) =>
-                      Ref.set(activeRef, null).pipe(
-                        Effect.andThen(
-                          Effect.sync(() => {
-                            if (exit._tag === "Success") {
-                              s.stop(message)
-                            } else {
-                              s.stop(`${message} (failed)`)
-                            }
-                          }),
-                        ),
-                      ),
-                  ),
-            ),
+          withInteractive(
+            activeRef,
+            Effect.sync(() => {
+              const s = clack.spinner()
+              s.start(message)
+              return s
+            }),
+            (s) => ({ type: "spinner", handle: s }),
+            (s, exit) =>
+              Effect.sync(() => s.stop(exit._tag === "Success" ? message : `${message} (failed)`)),
+            effect,
           ),
 
         progress: <A, E, R>(
           opts: ProgressOptions,
           effect: Effect.Effect<A, E, R>,
         ): Effect.Effect<A, E, R> =>
-          Ref.get(activeRef).pipe(
-            Effect.flatMap((current) =>
-              current !== null
-                ? effect
-                : Effect.acquireUseRelease(
-                    Effect.sync(() => {
-                      const bar = clack.progress({
-                        max: opts.max,
-                        style: opts.style ?? "heavy",
-                        size: opts.size ?? 40,
-                        indicator: opts.indicator ?? "dots",
-                      })
-                      bar.start(opts.message)
-                      return bar
-                    }).pipe(
-                      Effect.tap((bar) =>
-                        Ref.set(activeRef, {
-                          type: "progress",
-                          handle: bar,
-                          value: 0,
-                          max: opts.max,
-                        }),
-                      ),
-                    ),
-                    () => effect,
-                    (bar, exit) =>
-                      Ref.set(activeRef, null).pipe(
-                        Effect.andThen(
-                          Effect.sync(() => {
-                            if (exit._tag === "Success") {
-                              bar.stop(opts.message)
-                            } else {
-                              bar.error(opts.message)
-                            }
-                          }),
-                        ),
-                      ),
-                  ),
-            ),
+          withInteractive(
+            activeRef,
+            Effect.sync(() => {
+              const bar = clack.progress({
+                max: opts.max,
+                style: opts.style ?? "heavy",
+                size: opts.size ?? 40,
+                indicator: opts.indicator ?? "dots",
+              })
+              bar.start(opts.message)
+              return bar
+            }),
+            (bar) => ({ type: "progress", handle: bar, value: 0, max: opts.max }),
+            (bar, exit) =>
+              Effect.sync(() =>
+                exit._tag === "Success" ? bar.stop(opts.message) : bar.error(opts.message),
+              ),
+            effect,
           ),
 
         updateInteractive: (payload) =>
@@ -325,24 +313,18 @@ export const SilentDisplay = {
           DisplayEntry.progress({ message: opts.message, max: opts.max }),
         ]).pipe(Effect.andThen(effect)),
 
-      updateInteractive: (payload) => {
-        const msg = payloadText(payload)
-        if (typeof payload === "string") {
-          return Ref.update(ref, (entries) => [
-            ...entries,
-            DisplayEntry.updateInteractive({ message: msg }),
-          ])
-        }
-        const entry = DisplayEntry.updateInteractive({
-          message: msg,
-          ...("advanceBy" in payload &&
-            payload.advanceBy !== undefined && { advanceBy: payload.advanceBy }),
-          ...("setTo" in payload && payload.setTo !== undefined && { setTo: payload.setTo }),
-          ...("setToPercent" in payload &&
-            payload.setToPercent !== undefined && { setToPercent: payload.setToPercent }),
-        })
-        return Ref.update(ref, (entries) => [...entries, entry])
-      },
+      updateInteractive: (payload) =>
+        Ref.update(ref, (entries) => [
+          ...entries,
+          typeof payload === "string"
+            ? DisplayEntry.updateInteractive({ message: payload })
+            : DisplayEntry.updateInteractive({
+                message: payload.message,
+                advanceBy: "advanceBy" in payload ? payload.advanceBy : undefined,
+                setTo: "setTo" in payload ? payload.setTo : undefined,
+                setToPercent: "setToPercent" in payload ? payload.setToPercent : undefined,
+              }),
+        ]),
 
       json: (data) => Ref.update(ref, (entries) => [...entries, DisplayEntry.json({ data })]),
     }),
