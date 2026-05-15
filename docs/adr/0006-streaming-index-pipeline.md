@@ -2,19 +2,22 @@
 
 ## Status
 
-Proposed
+Accepted
 
-The index pipeline is converted from sequential `Effect.forEach` to an Effect Stream topology: Scanner → ContentExtractor → Chunker → Embedder → VectorStore. True streaming with backpressure — chunking and embedding overlap, slow embedding throttles chunking automatically.
+The index pipeline is split into two phases: Phase 1 (extract + chunk) runs fast and collects all chunks, Phase 2 (embed + store) streams batches with a progress bar. This gives a known total for progress display while keeping embedding batched and memory-efficient.
 
 ### Pipeline shape
 
-`Stream.fromIterable(files) → mapEffect(extract) → mapEffect(chunkText) → flatMap → grouped(batchSize) → mapEffect(embed) → mapEffect(storeBatch) → drain`
+```
+Phase 1: Stream.fromIterable(files) → mapEffect(extract) → mapEffect(chunkText) → flatMap → runCollect
+Phase 2: Stream.fromIterable(chunks) → grouped(batchSize) → mapEffect(embed) → mapEffect(storeBatch) → drain
+```
 
 Scanner stays `Effect<ScanResult>` (discovery operation, not a stream), converted to `Stream` in the use case via `Stream.fromIterable`.
 
 ### VectorStore lifecycle
 
-Four new port methods replace the single `store()`: `storeBegin()` (open temp file handles), `storeBatch()` (append to temp files), `storeCommit()` (close handles, atomic rename, return stats), `storeAbort()` (close handles, delete temp files). The use case wraps the stream in `Effect.acquireUseRelease`. `storeBegin()` is idempotent — cleans up stale `.tmp` files from previous failed runs.
+Four new port methods replace the single `store()`: `storeBegin()` (idempotent — cleans stale temp files), `storeBatch()` (append to temp files), `storeCommit()` (atomic rename, return stats), `storeAbort()` (delete temp files). The use case wraps Phase 2 in `d.progress()` which handles the spinner→progress bar transition.
 
 ### Embedder simplification
 
@@ -22,22 +25,27 @@ Four new port methods replace the single `store()`: `storeBegin()` (open temp fi
 
 ### Error handling
 
-Non-blocking errors (unsupported formats, extraction failures) are collected in a `Ref<SkippedEntry[]>` and reported as a summary note at the end. The stream fails on the first fatal error. `storeAbort()` cleans up temp files on failure.
+Non-blocking errors (unsupported formats, extraction failures) are collected in a `Ref<SkippedEntry[]>` and reported as a grouped summary note after the progress bar. Config pattern matches are filtered out. The stream fails on the first fatal error. `storeAbort()` cleans up temp files on failure.
 
 ### Progress reporting
 
-Progress is tapped after each `storeBatch` (every ~16 chunks). Display shows "X chunks embedded" throughout; the final summary from `storeCommit()` gives totals. No two-phase "unknown → known" transition — in true streaming, chunking and embedding finish at roughly the same time due to backpressure.
+Phase 1 uses a spinner ("Processing N files..."). Phase 2 uses a progress bar with known total from Phase 1's `runCollect`. Display switches from spinner to progress bar via `d.progress()`. Final summary shows duration ("Indexed N chunks from M files in X.Xs").
+
+### JSON output
+
+`--json` mode emits a single JSON object at the end: `{ chunks, files, totalLines, byteSize, durationMs, embedderFallback? }`. No intermediate events on stdout.
 
 ### Considered Options
 
-- **Hybrid pipeline (chunk all first, then stream embed):** Rejected — defeats the purpose of streaming. Easy to switch to later by inserting one `runCollect` if needed.
-- **Two-phase progress (unknown → known transition):** Rejected — requires buffering after chunking to let it finish ahead of embedding, which reintroduces memory pressure.
+- **True single stream (chunking + embedding overlap):** Rejected — chunker is orders of magnitude faster than embedder, so backpressure keeps them in lockstep. Progress bar never gets ahead. Split pipeline gives the total needed for progress display.
+- **Two-phase progress (unknown → known transition via buffer):** Rejected — buffer doesn't solve the "know the total" problem. Split is cleaner.
 - **`storeTransaction` callback pattern:** Rejected — inversion of control is less idiomatic for streams and harder to test.
 - **Adapter tracks stats vs use case:** Adapter returns stats in `storeCommit()` — it already serializes the data, no duplication.
 
 ### Consequences
 
-- Memory pressure drops significantly — only one batch of chunks + embeddings in memory at a time
-- Progress feedback is simpler (absolute count, no percentage) but still meaningful
+- Memory pressure drops significantly — only one batch of embeddings in memory at a time (Phase 2)
+- Progress bar shows percentage with known total from Phase 1
 - Four new port methods on VectorStore; all tests and mocks must update
 - Embedder `batch()` is simpler but loses internal safety — misconfigured `batchSize` can OOM
+- CLI flags (`--batch-size`, `--chunk-concurrency`, etc.) override config for one-off runs

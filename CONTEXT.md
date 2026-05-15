@@ -171,12 +171,12 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 ### CLI Commands
 
 - `pix init` — Create `.pix/config.json` with defaults
-- `pix index` — Scan, chunk, embed, store (full re-index; `--force` flag reserved for Phase 3). Uses spinner for long-running indexing.
+- `pix index` — Scan, chunk, embed, store (full re-index). Two-phase pipeline: Phase 1 (extract + chunk, spinner), Phase 2 (embed + store, progress bar). CLI flags override config: `--batch-size`, `--chunk-concurrency`, `--skip-extensions`, `--ignore-path`/`--ignore-paths`, `--ignore-gitignore`. Uses spinner for Phase 1, progress bar for Phase 2.
 - `pix query "<text>" [--top N] [--json] [--context-lines N]` — Semantic search via cosine similarity
 - `pix status` — Show index statistics
 - `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
 
-All commands support `--json` for agent-ready structured output on stdout. `src/cli.ts` returns the raw `Command.run` effect and the selected `displayLayer`; `src/index.ts` composes them with AppLayer via `Layer.mergeAll`. Commands call methods unconditionally — the Display implementation handles the split: ClackDisplay renders interactive output, JsonDisplay no-ops it and writes JSON instead. Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent) — each Display picks its surface.
+All commands support `--json` for agent-ready structured output on stdout. Single JSON object emitted at end of successful operations (e.g. `{ chunks, files, totalLines, byteSize, durationMs }`). Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent).
 
 ## Architecture Decisions
 
@@ -186,7 +186,7 @@ CLI output goes through a `Display` context tag (`src/display/Display.ts`). Two 
 
 **Output separation**: `ClackDisplay.json` is a no-op — structured output never appears in human mode. `JsonDisplay` no-ops all interactive methods. Each Display handles its own surface. Commands call all methods unconditionally; no `if (!json)` branching. Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent) — ClackDisplay renders the log, JsonDisplay emits the JSON.
 
-**Interactive constraints**: Only one interactive line (spinner or progress bar) at a time. `d.updateInteractive(msg)` calls `s.message(msg)` on the active spinner or computes delta + calls `b.advance(delta, msg)` on the active progress bar.
+**Interactive constraints**: Only one interactive line (spinner or progress bar) at a time. `d.updateInteractive(msg)` calls `s.message(msg)` on the active spinner or computes delta + calls `b.advance(delta, msg)` on the active progress bar. `d.progress()` stops any active spinner before starting the progress bar.
 
 For spinners, text updates are sufficient visual feedback. For progress bars, `d.updateInteractive()` supports three position controls via discriminated union:
 
@@ -196,7 +196,7 @@ For spinners, text updates are sufficient visual feedback. For progress bars, `d
 
 Position state is tracked locally (`state: { value, max }`) since `@clack` only exposes `advance(step)`. All delta computations clamp to `[0, max]` — safe against backwards moves or overshoot.
 
-**Display flowing into app/services**: Display is composed into the AppLayer via `Layer.mergeAll(AppLayer, cliLayer)` in `src/index.ts`. Services that need operational logging (e.g. `index-project.ts` for scan/chunk/embed progress, `embedder.ts` for GPU fallback events) simply `yield* Display` and call `d.updateInteractive()` or `d.json()`. For ports that must stay `Effect<..., never>` (e.g. `Embedder`), the implementation uses `Effect.provideService(Display, d)` internally to satisfy Display without leaking it into the port contract. The `0` Effect.log\* calls remain (both replaced by Display).
+**Display flowing into app/services**: Display is composed into the AppLayer via `Layer.mergeAll(AppLayer, cliLayer)` in `src/index.ts`. Services that need operational logging (e.g. `index-project.ts` for scan/chunk/embed progress) use `d.updateInteractive()` or `d.log()`. Embedder GPU fallback uses `d.log(..., "warn")` — no `d.json()` calls in services; all structured output flows through the command layer.
 
 ### Flat-file storage (not SQLite)
 
@@ -248,11 +248,11 @@ Now exposes two methods: `chunkFile(file)` reads file then delegates to `chunkTe
 
 ### Scanner
 
-Returns all files found during FS walk, applying `.gitignore` rules, `.git/info/exclude`, and `ignoredPaths` patterns. No extension filtering — that concern moved to `ContentExtractor`. `scanFiles(ignoredPaths)` applies ignore patterns during directory walk.
+Returns all files found during FS walk, applying `.gitignore` rules (unless `ignoreGitignore` is true), `.git/info/exclude`, and `ignoredPaths` patterns. No extension filtering — that concern moved to `ContentExtractor`. `scanFiles(ignoredPaths, ignoreGitignore?)` applies ignore patterns during directory walk.
 
 ### Config
 
-Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip.
+Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip. New fields: `embedder.batchSize` (default 16), `ignoreGitignore` (default false). Updated `ignoredPaths` defaults: removed `.agents`, `.claude`, `.github`; added `.vite-hooks`, `.fallow`.
 
 ### Extension→Processor mapping (Phase 2+)
 
