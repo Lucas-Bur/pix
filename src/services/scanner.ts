@@ -84,7 +84,13 @@ const make = Effect.gen(function* () {
         ig.add(ignoredPaths)
       }
 
-      yield* loadIgnoreFile(`${cwd}/.gitignore`, ig, skipped)
+      const gitignorePath = `${cwd}/.gitignore`
+      const gitignoreExists = yield* fs
+        .exists(gitignorePath)
+        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+      if (gitignoreExists) {
+        yield* loadIgnoreFile(gitignorePath, ig, skipped)
+      }
 
       const excludePath = `${cwd}/.git/info/exclude`
       const excludeExists = yield* fs
@@ -97,6 +103,7 @@ const make = Effect.gen(function* () {
       return { ig, skipped }
     })
 
+  // fallow-ignore-next-line complexity
   const processEntry = (
     entry: string,
     dir: string,
