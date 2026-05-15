@@ -55,10 +55,11 @@ import { Effect } from "effect"
 
 import { Display } from "../display/Display.js"
 
-/** Log the error as JSON to stdout via Display, then re-fail to preserve non-zero exit code. */
+/** Log the error to Display in human + agent format, then re-fail to preserve non-zero exit code. */
 export const reportError = <E>(error: E): Effect.Effect<never, E, Display> =>
   Effect.gen(function* () {
     const d = yield* Display
+    yield* d.status(`${codeFromError(error)}: ${messageFromError(error)}`, "error")
     yield* d.json(JSON.parse(formatError(error)))
     return yield* Effect.fail(error)
   })

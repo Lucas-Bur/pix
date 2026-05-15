@@ -56,7 +56,6 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         const totalLines = allChunks.reduce((sum, c) => sum + (c.endLine - c.startLine + 1), 0)
 
         if (totalChunks === 0) {
-          yield* Effect.logInfo("No chunks to index.")
           return {
             success: true as const,
             status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0 },

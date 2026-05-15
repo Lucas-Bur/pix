@@ -12,11 +12,11 @@ export const resetCommand = Command.make(
   {
     json: Options.boolean("json").pipe(Options.withDefault(false)),
   },
-  ({ json }) =>
+  () =>
     Effect.gen(function* () {
       const d = yield* Display
       const start = yield* Clock.currentTimeMillis
-      const result = yield* ResetIndex.reset()
+      const result = yield* d.spinner("Resetting index...", ResetIndex.reset())
       const end = yield* Clock.currentTimeMillis
       const elapsedMs = end - start
 
@@ -28,19 +28,17 @@ export const resetCommand = Command.make(
         elapsedMs,
       })
 
-      if (!json) {
-        const deletedParts = [
-          result.deletedChunks ? "chunks.jsonl" : null,
-          result.deletedVectors ? "vectors.bin" : null,
-        ].filter((part): part is string => part !== null)
+      const deletedParts = [
+        result.deletedChunks ? "chunks.jsonl" : null,
+        result.deletedVectors ? "vectors.bin" : null,
+      ].filter((part): part is string => part !== null)
 
-        if (deletedParts.length === 0) {
-          yield* d.status("Nothing to reset.", "info")
-        } else {
-          yield* d.status(`Deleted: ${deletedParts.join(", ")}`, "success")
-          yield* d.status(`Freed: ${formatBytes(result.freedBytes)}`, "info")
-          yield* d.status(`Time: ${elapsedMs}ms`, "info")
-        }
+      if (deletedParts.length === 0) {
+        yield* d.status("Nothing to reset.", "info")
+      } else {
+        yield* d.status(`Deleted: ${deletedParts.join(", ")}`, "success")
+        yield* d.status(`Freed: ${formatBytes(result.freedBytes)}`, "info")
+        yield* d.status(`Time: ${elapsedMs}ms`, "info")
       }
     }).pipe(
       Effect.catchTags({

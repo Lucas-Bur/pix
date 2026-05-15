@@ -11,22 +11,20 @@ export const statusCommand = Command.make(
   {
     json: Options.boolean("json").pipe(Options.withDefault(false)),
   },
-  ({ json }) =>
+  () =>
     Effect.gen(function* () {
       const d = yield* Display
       const result = yield* GetStatus.getStatus()
 
       yield* d.json(result)
 
-      if (!json) {
-        const lastIndexStr =
-          result.lastIndex > 0 ? new Date(result.lastIndex).toISOString() : "never"
-        yield* d.status(`Indexed: ${result.chunks} chunks across ${result.files} files`, "info")
-        yield* d.status(`Model: ${result.model || "none"}`, "info")
-        yield* d.status(`Total lines: ${result.totalLines.toLocaleString()}`, "info")
-        yield* d.status(`Index size: ${result.byteSize.toLocaleString()} bytes`, "info")
-        yield* d.status(`Last indexed: ${lastIndexStr}`, "info")
-      }
+      const lastIndexStr =
+        result.lastIndex > 0 ? new Date(result.lastIndex).toLocaleString() : "never"
+      yield* d.status(`Indexed: ${result.chunks} chunks across ${result.files} files`, "info")
+      yield* d.status(`Model: ${result.model || "none"}`, "info")
+      yield* d.status(`Total lines: ${result.totalLines.toLocaleString()}`, "info")
+      yield* d.status(`Index size: ${result.byteSize.toLocaleString()} bytes`, "info")
+      yield* d.status(`Last indexed: ${lastIndexStr}`, "info")
     }).pipe(
       Effect.catchTags({
         StoreError: reportError,

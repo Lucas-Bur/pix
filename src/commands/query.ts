@@ -48,28 +48,29 @@ export const queryCommand = Command.make(
       Options.optional,
     ),
   },
-  ({ queryText, top, json, contextLines }) =>
+  ({ queryText, top, contextLines }) =>
     Effect.gen(function* () {
       const d = yield* Display
       const topK = Option.getOrElse(top, () => DEFAULT_TOP_K)
       const ctxLines = Option.getOrElse(contextLines, () => DEFAULT_CONTEXT_LINES)
       const clamped = clampTopK(topK)
 
-      if (clamped.clamped && !json) {
+      if (clamped.clamped) {
         yield* d.status(`topK clamped from ${topK} to ${clamped.value}`, "warn")
       }
 
-      const results = yield* QueryProject.queryProject(queryText, clamped.value)
+      const results = yield* d.spinner(
+        "Searching...",
+        QueryProject.queryProject(queryText, clamped.value),
+      )
 
       yield* d.json(toJsonOutput(results, ctxLines))
 
-      if (!json) {
-        if (results.length === 0) {
-          yield* d.status("No results found", "warn")
-        } else {
-          for (const result of results) {
-            yield* d.text(formatResult(result))
-          }
+      if (results.length === 0) {
+        yield* d.status("No results found", "warn")
+      } else {
+        for (const result of results) {
+          yield* d.text(formatResult(result))
         }
       }
     }).pipe(

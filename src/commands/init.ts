@@ -11,20 +11,17 @@ export const initCommand = Command.make(
   {
     json: Options.boolean("json").pipe(Options.withDefault(false)),
   },
-  ({ json }) =>
+  () =>
     Effect.gen(function* () {
       const d = yield* Display
-      const result = yield* InitProject.init()
+      const result = yield* d.spinner("Initializing...", InitProject.init())
 
       yield* d.json(result)
-
-      if (!json) {
-        yield* d.status("Created .pix/config.json with default settings.", "success")
-        yield* d.note(
-          "Add `.pix` to your `.gitignore` file to avoid committing the index.",
-          "Reminder",
-        )
-      }
+      yield* d.status("Created .pix/config.json with default settings.", "success")
+      yield* d.note(
+        "Add `.pix` to your `.gitignore` file to avoid committing the index.",
+        "Reminder",
+      )
     }).pipe(
       Effect.catchTags({
         ConfigError: reportError,

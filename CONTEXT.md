@@ -148,13 +148,19 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 - `pix status` — Show index statistics
 - `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
 
-All commands support `--json` for agent-ready structured output on stdout. `src/cli.ts` selects `JsonDisplay` when `--json` is present, `ClackDisplay` otherwise. Commands always call `d.json(result)` for structured output and conditionally call interactive methods (`d.status`, `d.note`, `d.spinner`, `d.text`) when `!json`.
+All commands support `--json` for agent-ready structured output on stdout. `src/cli.ts` selects `JsonDisplay` when `--json` is present, `ClackDisplay` otherwise. Commands call interactive methods (`d.status`, `d.note`, `d.spinner`, `d.text`) unconditionally — the Display implementation handles the split: ClackDisplay renders them, JsonDisplay no-ops them. `d.json()` writes structured output only in JsonDisplay; ClackDisplay no-ops it. Error output uses `reportError` which calls both `d.status(..., "error")` (human) and `d.json(error)` (agent) — each Display picks its surface. Commands never branch on `--json`.
 
 ## Architecture Decisions
 
 ### Display service with JSON mode switching
 
-CLI output goes through a `Display` context tag (`src/display/Display.ts`). Two production implementations selectable by `--json`: `ClackDisplay` (interactive, uses `@clack/prompts` for spinners, styled status, frames) and `JsonDisplay` (machine-readable, no-ops interactive methods, writes JSON to stdout). All commands always call `d.json(result)` for structured output; interactive methods are conditional on `!json`. A third implementation (`SilentDisplay`) records calls to a `Ref<DisplayEntry[]>` for test assertions. See ADR 0005.
+CLI output goes through a `Display` context tag (`src/display/Display.ts`). Two production implementations selectable by `--json`: `ClackDisplay` (interactive, uses `@clack/prompts` for spinners, styled status, frames) and `JsonDisplay` (machine-readable, no-ops interactive methods, writes JSON to stdout). A third implementation (`SilentDisplay`) records calls to a `Ref<DisplayEntry[]>` for test assertions.
+
+**Output separation**: `ClackDisplay.json` is a no-op — structured output never appears in human mode. `JsonDisplay` no-ops all interactive methods. Each Display handles its own surface. Commands call all methods unconditionally; no `if (!json)` branching. Error output uses `reportError` which calls both `d.status(..., "error")` and `d.json(error)` — ClackDisplay renders the status, JsonDisplay emits the JSON.
+
+**Interactive constraints**: Only one interactive line (spinner or progress bar) at a time. `s.message()` updates the spinner text in-place during long operations — no interleaved `clack.log.*` calls that break the spinner line. Use a progress bar (`p.progress`) when the total is known (e.g. N files to process); use a spinner when the duration is unpredictable or the operation is fast.
+
+**Display in application/services**: The Display tag is **not** injected into application or service layers — it stays in the CLI/command boundary. Use cases return structured results; commands read those results and call `d.status()`/`d.json()`/`d.progress()`. System-level logging (e.g. embedder GPU fallback) stays as `Effect.logWarning` on stderr. This avoids a Display dependency cascade through the entire hexagonal layer chain.
 
 ### Flat-file storage (not SQLite)
 

@@ -14,6 +14,7 @@ export type DisplayEntry =
   | { readonly _tag: "note"; readonly content: string; readonly title?: string }
   | { readonly _tag: "text"; readonly message: string }
   | { readonly _tag: "spinner"; readonly message: string }
+  | { readonly _tag: "progress"; readonly message: string }
   | { readonly _tag: "json"; readonly data: unknown }
 
 /** Display service — abstracts CLI output behind structured methods */
@@ -27,6 +28,7 @@ export interface DisplayService {
     message: string,
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, R>
+  readonly progress: (message: string) => Effect.Effect<void>
   readonly json: (data: unknown) => Effect.Effect<void>
 }
 
@@ -47,6 +49,12 @@ const terminalStyle = {
   dim: (message: string): string => styleText("dim", message),
 }
 
+/**
+ * Active spinner handle. Only one spinner runs at a time per the @clack constraint of a single
+ * interactive line. `progress` updates this spinner's message in-place.
+ */
+let activeSpinner: ReturnType<typeof clack.spinner> | null = null
+
 /** Display implementation using @clack/prompts for interactive terminal output */
 export const ClackDisplay = {
   layer: Layer.succeed(Display, {
@@ -66,11 +74,13 @@ export const ClackDisplay = {
         Effect.sync(() => {
           const s = clack.spinner()
           s.start(message)
+          activeSpinner = s
           return s
         }),
         () => effect,
         (s, exit) =>
           Effect.sync(() => {
+            activeSpinner = null
             if (exit._tag === "Success") {
               s.stop(message)
             } else {
@@ -79,7 +89,12 @@ export const ClackDisplay = {
           }),
       ),
 
-    json: (data) => Effect.sync(() => process.stdout.write(`${JSON.stringify(data)}\n`)),
+    progress: (message) =>
+      Effect.sync(() => {
+        activeSpinner?.message(message)
+      }),
+
+    json: () => Effect.void,
   }),
 }
 
@@ -93,6 +108,7 @@ export const JsonDisplay = {
     text: () => Effect.void,
     spinner: <A, E, R>(_message: string, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
       effect,
+    progress: () => Effect.void,
     json: (data) => Effect.sync(() => process.stdout.write(`${JSON.stringify(data)}\n`)),
   }),
 }
@@ -125,6 +141,9 @@ export const SilentDisplay = {
             Ref.update(ref, (entries) => [...entries, { _tag: "spinner" as const, message }]),
           ),
         ),
+
+      progress: (message) =>
+        Ref.update(ref, (entries) => [...entries, { _tag: "progress" as const, message }]),
 
       json: (data) => Ref.update(ref, (entries) => [...entries, { _tag: "json" as const, data }]),
     }),
