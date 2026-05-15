@@ -14,7 +14,8 @@ const fixtures = {
     },
     chunkLines: 60,
     overlapLines: 10,
-    files: {},
+    skipExtensions: [],
+    ignoredPaths: [],
   }),
   ".pix/chunks.jsonl": [
     JSON.stringify({

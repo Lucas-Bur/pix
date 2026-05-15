@@ -25,7 +25,7 @@ export interface TestLayerOptions {
 }
 
 const defaultScannerLayer = Layer.succeed(Scanner, {
-  scanFiles: () => Effect.succeed({ files: [], skipped: [] }),
+  scanFiles: (_ignoredPaths: readonly string[]) => Effect.succeed({ files: [], skipped: [] }),
 })
 
 const defaultEmbedderLayer = Layer.succeed(Embedder, {

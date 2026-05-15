@@ -64,7 +64,8 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         const processorMap = buildProcessorMap(config.skipExtensions)
 
         yield* d.updateInteractive("Scanning source files...")
-        const scanResult = yield* scanner.scanFiles()
+        const ignoredPaths = config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths
+        const scanResult = yield* scanner.scanFiles(ignoredPaths)
 
         const unknownExtensions = new Set<string>()
         const skippedFiles: string[] = []

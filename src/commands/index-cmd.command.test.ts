@@ -16,13 +16,14 @@ const fixtures = {
     embedder: { model: "test-model", device: "auto", dtype: "fp32" },
     chunkLines: 60,
     overlapLines: 10,
-    files: {},
+    skipExtensions: [],
+    ignoredPaths: [],
   }),
   "src/a.ts": "export const a = 1",
 }
 
 const emptyScannerLayer = Layer.succeed(Scanner, {
-  scanFiles: () => Effect.succeed({ files: [], skipped: [] }),
+  scanFiles: (_ignoredPaths: readonly string[]) => Effect.succeed({ files: [], skipped: [] }),
 })
 
 test("pix index --json outputs status after indexing", () => {
