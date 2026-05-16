@@ -32,7 +32,8 @@ export const applyCharBudget = (
       budgeted.push(result)
       remaining -= chars
     } else {
-      const textBudget = Math.max(0, remaining - metadata.length - indicator.length)
+      const textBudget = remaining - metadata.length - indicator.length
+      if (textBudget <= 0) break
       const truncated = result.text.slice(0, textBudget)
       budgeted.push({
         ...result,
