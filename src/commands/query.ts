@@ -30,20 +30,65 @@ const formatResult = (result: SearchResult): string => {
 const formatLocation = (result: SearchResult): string =>
   `${result.file}:${result.startLine}-${result.endLine} (score: ${result.score.toFixed(3)})`
 
+/** Build optional content fields for a single JSON output entry. */
+const buildContentFields = (
+  r: SearchResult,
+  ctxLines: number,
+  noContent: boolean,
+): Record<string, unknown> => {
+  if (noContent) return {}
+  return {
+    text: r.text,
+    ...(ctxLines > 0 && r.contextBefore && { contextBefore: r.contextBefore }),
+    ...(ctxLines > 0 && r.contextAfter && { contextAfter: r.contextAfter }),
+  }
+}
+
 const toJsonOutput = (results: readonly SearchResult[], ctxLines: number, noContent = false) =>
-  results.map((r) => {
-    const base: Record<string, unknown> = {
-      score: r.score,
-      file: r.file,
-      startLine: r.startLine,
-      endLine: r.endLine,
+  results.map((r) => ({
+    score: r.score,
+    file: r.file,
+    startLine: r.startLine,
+    endLine: r.endLine,
+    ...buildContentFields(r, ctxLines, noContent),
+  }))
+
+/** Build SearchOptions from parsed CLI args, clamping topK. */
+const buildSearchOptions = (
+  top: Option.Option<number>,
+  ignorePath: readonly string[],
+  onlyPath: readonly string[],
+): { options: import("../domain/ports.js").SearchOptions; clamped: boolean; rawValue: number } => {
+  const rawValue = Option.getOrElse(top, () => DEFAULT_TOP_K)
+  const clamped = clampTopK(rawValue)
+  return {
+    options: {
+      topK: clamped.value,
+      ...(ignorePath.length > 0 && { ignorePaths: [...ignorePath] }),
+      ...(onlyPath.length > 0 && { onlyPaths: [...onlyPath] }),
+    },
+    clamped: clamped.clamped,
+    rawValue,
+  }
+}
+
+/** Render search results via Display — JSON + human-readable text. */
+const renderResults = (
+  d: typeof Display.Service,
+  results: readonly SearchResult[],
+  ctxLines: number,
+  noContent: boolean,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* d.json(toJsonOutput(results, ctxLines, noContent))
+
+    if (results.length === 0) {
+      yield* d.log("No results found", "warn")
+    } else {
+      for (const result of results) {
+        yield* d.text(noContent ? formatLocation(result) : formatResult(result))
+      }
     }
-    if (!noContent) {
-      base.text = r.text
-      if (ctxLines > 0 && r.contextBefore) base.contextBefore = r.contextBefore
-      if (ctxLines > 0 && r.contextAfter) base.contextAfter = r.contextAfter
-    }
-    return base
   })
 
 /**
@@ -69,17 +114,14 @@ export const queryCommand = Command.make(
     Effect.gen(function* () {
       const d = yield* Display
       const ctxLines = Option.getOrElse(contextLines, () => DEFAULT_CONTEXT_LINES)
-      const rawTopK = Option.getOrElse(top, () => DEFAULT_TOP_K)
-      const clamped = clampTopK(rawTopK)
+      const {
+        options: searchOptions,
+        clamped,
+        rawValue,
+      } = buildSearchOptions(top, ignorePath, onlyPath)
 
-      const searchOptions: import("../domain/ports.js").SearchOptions = {
-        topK: clamped.value,
-        ...(ignorePath.length > 0 && { ignorePaths: [...ignorePath] }),
-        ...(onlyPath.length > 0 && { onlyPaths: [...onlyPath] }),
-      }
-
-      if (clamped.clamped) {
-        yield* d.log(`topK clamped from ${rawTopK} to ${clamped.value}`, "warn")
+      if (clamped) {
+        yield* d.log(`topK clamped from ${rawValue} to ${searchOptions.topK}`, "warn")
       }
 
       const results = yield* d.spinner(
@@ -91,15 +133,7 @@ export const queryCommand = Command.make(
         ? results
         : applyCharBudget(results, Option.getOrUndefined(maxCharacters)).results
 
-      yield* d.json(toJsonOutput(finalResults, ctxLines, noContent))
-
-      if (finalResults.length === 0) {
-        yield* d.log("No results found", "warn")
-      } else {
-        for (const result of finalResults) {
-          yield* d.text(noContent ? formatLocation(result) : formatResult(result))
-        }
-      }
+      yield* renderResults(d, finalResults, ctxLines, noContent)
     }).pipe(
       Effect.catchTags({
         ModelLoadError: reportError,
