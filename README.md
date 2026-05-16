@@ -23,7 +23,7 @@ pix query "authentication middleware"
 | -------------------- | ------------------------------------------- | --------- |
 | `pix init`           | Create `.pix/config.json` with defaults     | `--json`  |
 | `pix index`          | Scan, chunk, embed, and store project files | `--json`  |
-| `pix query "<text>"` | Semantic search via cosine similarity       | `--json`  |
+| `pix query "<text>" [flags]` | Semantic search via cosine similarity (`--top`, `--context-lines`, `--ignore-path`, `--only-path`, `--max-characters`, `--no-content`) | `--json`  |
 | `pix status`         | Show index statistics                       | `--json`  |
 | `pix reset`          | Delete index files (chunks + vectors)       | `--json`  |
 

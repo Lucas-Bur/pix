@@ -172,7 +172,7 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 
 - `pix init` — Create `.pix/config.json` with defaults
 - `pix index` — Scan, chunk, embed, store (full re-index). Two-phase pipeline: Phase 1 (extract + chunk, spinner), Phase 2 (embed + store, progress bar). CLI flags override config: `--batch-size`, `--chunk-concurrency`, `--skip-extensions`, `--ignore-path`/`--ignore-paths`, `--ignore-gitignore`. Uses spinner for Phase 1, progress bar for Phase 2.
-- `pix query "<text>" [--top N] [--json] [--context-lines N]` — Semantic search via cosine similarity
+- `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content]` — Semantic search via cosine similarity. `--ignore-path`/`--only-path` filter by file path (gitignore patterns, repeatable). `--max-characters` caps output character budget. `--no-content` returns `file:line` references only (no text) — useful for agents that read files themselves.
 - `pix status` — Show index statistics
 - `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
 
@@ -217,7 +217,7 @@ Users add extensions to `skipExtensions` in `config.json` to opt out of indexing
 
 ### Context lines in chunks.jsonl
 
-MVP stores context lines in `chunks.jsonl` at index time for instant retrieval.
+The chunker populates `contextBefore` and `contextAfter` on each chunk using the configured `overlapLines` value. These are serialized into `chunks.jsonl` at index time for instant retrieval. The first chunk's `contextBefore` and the last chunk's `contextAfter` are empty strings.
 Phase 3 (index freshness via mtime cache) will switch to live-fetch from source files,
 removing both `text` and `context` fields from stored chunks.
 
