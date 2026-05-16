@@ -1,5 +1,5 @@
 import { FileSystem } from "@effect/platform"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Schema } from "effect"
 
 import { ConfigSchema } from "../domain/config.js"
 import type { Config } from "../domain/config.js"
@@ -38,7 +38,10 @@ const make = Effect.gen(function* () {
 
   const writeConfig = (config: Config): Effect.Effect<void, ConfigError | DiskFullError> =>
     Effect.gen(function* () {
-      const configJson = JSON.stringify(config, null, 2)
+      const encodeJson = Schema.parseJson(ConfigSchema, { space: 2 })
+      const configJson = yield* Schema.encode(encodeJson)(config).pipe(
+        Effect.mapError((e) => new ConfigError({ message: "Failed to encode config", cause: e })),
+      )
       yield* fs
         .makeDirectory(CONFIG_DIR, { recursive: true })
         .pipe(
