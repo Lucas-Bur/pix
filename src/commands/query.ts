@@ -5,7 +5,7 @@ import { QueryProject } from "../application/query-project.js"
 import { Display } from "../display/Display.js"
 import type { SearchResult } from "../domain/ports.js"
 import { reportError } from "../lib/error-format.js"
-import { applyTokenBudget } from "../lib/format.js"
+import { applyCharBudget } from "../lib/format.js"
 
 const DEFAULT_TOP_K = 5
 const DEFAULT_CONTEXT_LINES = 0
@@ -26,24 +26,29 @@ const formatResult = (result: SearchResult): string => {
   return `${result.file}:${result.startLine}-${result.endLine} (score: ${result.score.toFixed(3)})${contextBefore}\n${result.text}${contextAfter}`
 }
 
-const toJsonOutput = (results: readonly SearchResult[], ctxLines: number) =>
-  results.map((r) => ({
-    score: r.score,
-    file: r.file,
-    startLine: r.startLine,
-    endLine: r.endLine,
-    text: r.text,
-    ...(ctxLines > 0 && r.contextBefore && { contextBefore: r.contextBefore }),
-    ...(ctxLines > 0 && r.contextAfter && { contextAfter: r.contextAfter }),
-  }))
+/** Format a result as a lightweight location reference (no text content). */
+const formatLocation = (result: SearchResult): string =>
+  `${result.file}:${result.startLine}-${result.endLine} (score: ${result.score.toFixed(3)})`
 
-const ignorePathOption = Options.text("ignore-path").pipe(Options.repeated)
-const onlyPathOption = Options.text("only-path").pipe(Options.repeated)
-const maxTokensOption = Options.integer("max-tokens").pipe(Options.optional)
+const toJsonOutput = (results: readonly SearchResult[], ctxLines: number, noContent = false) =>
+  results.map((r) => {
+    const base: Record<string, unknown> = {
+      score: r.score,
+      file: r.file,
+      startLine: r.startLine,
+      endLine: r.endLine,
+    }
+    if (!noContent) {
+      base.text = r.text
+      if (ctxLines > 0 && r.contextBefore) base.contextBefore = r.contextBefore
+      if (ctxLines > 0 && r.contextAfter) base.contextAfter = r.contextAfter
+    }
+    return base
+  })
 
 /**
  * CLI command: pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P]
- * [--only-path P] [--max-tokens N]
+ * [--only-path P] [--max-characters N] [--no-content]
  */
 export const queryCommand = Command.make(
   "query",
@@ -55,44 +60,43 @@ export const queryCommand = Command.make(
       Options.withDefault(DEFAULT_CONTEXT_LINES),
       Options.optional,
     ),
-    ignorePath: ignorePathOption,
-    onlyPath: onlyPathOption,
-    maxTokens: maxTokensOption,
+    ignorePath: Options.text("ignore-path").pipe(Options.repeated),
+    onlyPath: Options.text("only-path").pipe(Options.repeated),
+    maxCharacters: Options.integer("max-characters").pipe(Options.optional),
+    noContent: Options.boolean("no-content").pipe(Options.withDefault(false)),
   },
-  ({ queryText, top, contextLines, ignorePath, onlyPath, maxTokens }) =>
+  ({ queryText, top, contextLines, ignorePath, onlyPath, maxCharacters, noContent }) =>
     Effect.gen(function* () {
       const d = yield* Display
-      const topK = Option.getOrElse(top, () => DEFAULT_TOP_K)
       const ctxLines = Option.getOrElse(contextLines, () => DEFAULT_CONTEXT_LINES)
-      const clamped = clampTopK(topK)
+      const rawTopK = Option.getOrElse(top, () => DEFAULT_TOP_K)
+      const clamped = clampTopK(rawTopK)
 
-      const hasFilter = ignorePath.length > 0 || onlyPath.length > 0
-      const searchOptions = hasFilter
-        ? {
-            ...(ignorePath.length > 0 && { ignorePaths: [...ignorePath] }),
-            ...(onlyPath.length > 0 && { onlyPaths: [...onlyPath] }),
-          }
-        : undefined
+      const searchOptions = {
+        topK: clamped.value,
+        ...(ignorePath.length > 0 && { ignorePaths: [...ignorePath] }),
+        ...(onlyPath.length > 0 && { onlyPaths: [...onlyPath] }),
+      }
 
       if (clamped.clamped) {
-        yield* d.log(`topK clamped from ${topK} to ${clamped.value}`, "warn")
+        yield* d.log(`topK clamped from ${rawTopK} to ${clamped.value}`, "warn")
       }
 
       const results = yield* d.spinner(
         "Searching...",
-        QueryProject.queryProject(queryText, clamped.value, searchOptions),
+        QueryProject.queryProject(queryText, searchOptions),
       )
 
-      const maxTokenValue = Option.getOrUndefined(maxTokens)
-      const { results: budgetedResults } = applyTokenBudget(results, maxTokenValue)
+      const maxCharValue = Option.getOrUndefined(maxCharacters)
+      const { results: budgetedResults } = applyCharBudget(results, maxCharValue)
 
-      yield* d.json(toJsonOutput(budgetedResults, ctxLines))
+      yield* d.json(toJsonOutput(budgetedResults, ctxLines, noContent))
 
       if (budgetedResults.length === 0) {
         yield* d.log("No results found", "warn")
       } else {
         for (const result of budgetedResults) {
-          yield* d.text(formatResult(result))
+          yield* d.text(noContent ? formatLocation(result) : formatResult(result))
         }
       }
     }).pipe(

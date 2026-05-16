@@ -13,7 +13,10 @@ const STORE_DIR = ".pix"
 const CHUNKS_FILE = `${STORE_DIR}/chunks.jsonl`
 const VECTORS_FILE = `${STORE_DIR}/vectors.bin`
 
-/** Serialize a Chunk to a JSON object for storage in chunks.jsonl. */
+/**
+ * Serialize a Chunk to a JSON object for storage in chunks.jsonl. Always includes context fields
+ * for schema consistency.
+ */
 const serializeChunk = (c: Chunk): Record<string, unknown> => ({
   id: c.id,
   idx: c.idx,
@@ -21,8 +24,8 @@ const serializeChunk = (c: Chunk): Record<string, unknown> => ({
   startLine: c.startLine,
   endLine: c.endLine,
   text: c.text,
-  ...(c.contextBefore !== undefined && { contextBefore: c.contextBefore }),
-  ...(c.contextAfter !== undefined && { contextAfter: c.contextAfter }),
+  contextBefore: c.contextBefore ?? "",
+  contextAfter: c.contextAfter ?? "",
 })
 
 /**
@@ -244,7 +247,6 @@ const make = Effect.gen(function* () {
 
   const search = (
     query: Embedding,
-    topK: number,
     options?: SearchOptions,
   ): Effect.Effect<readonly SearchResult[], StoreError | NoIndexError> =>
     Effect.gen(function* () {
@@ -313,7 +315,7 @@ const make = Effect.gen(function* () {
       }
 
       results.sort((a, b) => b.score - a.score)
-      return results.slice(0, topK)
+      return options?.topK !== undefined ? results.slice(0, options.topK) : results
     })
 
   const getStatus = (): Effect.Effect<
