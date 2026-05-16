@@ -7,6 +7,10 @@ import type { Config } from "../../src/domain/config.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
 import { deepMerge } from "../../src/lib/merge.js"
 
+type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends Record<string, unknown> ? DeepPartial<T[K]> : T[K]
+}
+
 const DEFAULT_CHUNK: Chunk = {
   id: "test-id",
   idx: 0,
@@ -18,8 +22,8 @@ const DEFAULT_CHUNK: Chunk = {
   contextAfter: null,
 }
 
-export const makeConfigJson = (overrides?: Partial<Config>): string =>
+export const makeConfigJson = (overrides?: DeepPartial<Config>): string =>
   JSON.stringify(Schema.decodeUnknownSync(ConfigSchema)(deepMerge(DEFAULT_CONFIG, overrides ?? {})))
 
-export const makeChunkJson = (overrides?: Partial<Chunk>): string =>
+export const makeChunkJson = (overrides?: DeepPartial<Chunk>): string =>
   JSON.stringify(Schema.decodeUnknownSync(ChunkSchema)(deepMerge(DEFAULT_CHUNK, overrides ?? {})))
