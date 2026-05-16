@@ -1,7 +1,8 @@
 import { Effect } from "effect"
 
 import type { Config } from "../domain/config.js"
-import { DEFAULT_CONFIG, ConfigError } from "../domain/config.js"
+import { DEFAULT_CONFIG } from "../domain/config.js"
+import { ConfigError } from "../domain/errors.js"
 import type { DiskFullError } from "../domain/errors.js"
 import { ConfigStore } from "../domain/ports.js"
 

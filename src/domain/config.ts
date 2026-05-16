@@ -1,50 +1,24 @@
-import { Data } from "effect"
+import { Schema } from "effect"
 
-export class ConfigError extends Data.TaggedError("ConfigError")<{
-  readonly message: string
-  readonly cause?: unknown
-}> {}
+const EmbedderConfigSchema = Schema.Struct({
+  model: Schema.String,
+  device: Schema.Literal("auto", "cpu", "cuda", "dml", "coreml"),
+  dtype: Schema.Literal("fp32", "fp16", "q8"),
+  batchSize: Schema.Number,
+})
 
-/** Runtime settings for the embedding pipeline. */
-export interface EmbedderConfig {
-  /** HuggingFace model identifier. Must be a key in the model registry. */
-  readonly model: string
-  /** ONNX execution backend. auto picks the best available GPU backend. */
-  readonly device: "auto" | "cpu" | "cuda" | "dml" | "coreml"
-  /** Numerical precision for the model. Must be supported by the chosen model. */
-  readonly dtype: "fp32" | "fp16" | "q8"
-  /** Number of chunks to embed in a single batch. Controls GPU memory pressure. */
-  readonly batchSize: number
-}
+export const ConfigSchema = Schema.Struct({
+  schema: Schema.Literal("1"),
+  chunkLines: Schema.Number,
+  overlapLines: Schema.Number,
+  chunkConcurrency: Schema.optionalWith(Schema.Number, { exact: true }),
+  skipExtensions: Schema.Array(Schema.String),
+  ignoredPaths: Schema.Array(Schema.String),
+  ignoreGitignore: Schema.optionalWith(Schema.Boolean, { exact: true }),
+  embedder: EmbedderConfigSchema,
+})
 
-/** Pix project configuration stored in .pix/config.json. */
-export interface Config {
-  /** Config schema version. */
-  readonly schema: string
-  /** Number of source lines per chunk. */
-  readonly chunkLines: number
-  /** Number of overlapping lines between consecutive chunks. */
-  readonly overlapLines: number
-  /**
-   * Maximum concurrent file-chunking operations during indexing. Clamped to minimum 1 by the index
-   * pipeline. Defaults to 8 when absent.
-   */
-  readonly chunkConcurrency?: number
-  /** File extensions to skip during indexing. Overrides domain processor map. */
-  readonly skipExtensions: readonly string[]
-  /**
-   * Gitignore-style patterns for directories and files to exclude from scanning. Merged with
-   * .gitignore rules and ALWAYS_IGNORE. Supports glob patterns.
-   */
-  readonly ignoredPaths: readonly string[]
-  /**
-   * When true, .gitignore and .git/info/exclude files are ignored during scanning. Only
-   * ignoredPatterns from config are applied.
-   */
-  readonly ignoreGitignore?: boolean
-  /** Embedder runtime configuration. */
-  readonly embedder: EmbedderConfig
-}
+export type Config = typeof ConfigSchema.Type
 
 export const DEFAULT_CONFIG: Config = {
   schema: "1",

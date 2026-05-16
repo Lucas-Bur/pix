@@ -2,7 +2,7 @@ import { Effect, Exit, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { testLayer } from "../../tests/test-utils/testLayer.js"
-import { ConfigError } from "../domain/config.js"
+import { ConfigError } from "../domain/errors.js"
 import { ConfigStore } from "../domain/ports.js"
 import { InitProject } from "./init-project.js"
 

@@ -62,3 +62,60 @@ test("ConfigStore.configExists returns true when config exists", () =>
     const exists = yield* store.configExists()
     expect(exists).toBe(true)
   }).pipe(Effect.provide(makeLayer())))
+
+test("readConfig returns ConfigMalformedError for invalid JSON", () =>
+  Effect.gen(function* () {
+    const store = yield* ConfigStore
+    const result = yield* Effect.either(
+      store.readConfig().pipe(Effect.provide(makeLayer({ ".pix/config.json": "not json" }))),
+    )
+    expect(result._tag).toBe("Left")
+    if (result._tag === "Left") {
+      expect(result.left._tag).toBe("ConfigMalformedError")
+    }
+  }))
+
+test("readConfig returns ConfigValidationError for missing required field", () =>
+  Effect.gen(function* () {
+    const store = yield* ConfigStore
+    const result = yield* Effect.either(
+      store
+        .readConfig()
+        .pipe(
+          Effect.provide(
+            makeLayer({ ".pix/config.json": JSON.stringify({ schema: "1", chunkLines: 60 }) }),
+          ),
+        ),
+    )
+    expect(result._tag).toBe("Left")
+    if (result._tag === "Left") {
+      expect(result.left._tag).toBe("ConfigValidationError")
+      expect(result.left.message).toContain("embedder")
+    }
+  }))
+
+test("readConfig returns ConfigValidationError for invalid enum value", () =>
+  Effect.gen(function* () {
+    const store = yield* ConfigStore
+    const config = { ...DEFAULT_CONFIG, embedder: { ...DEFAULT_CONFIG.embedder, device: "cuda!" } }
+    const result = yield* Effect.either(
+      store
+        .readConfig()
+        .pipe(Effect.provide(makeLayer({ ".pix/config.json": JSON.stringify(config) }))),
+    )
+    expect(result._tag).toBe("Left")
+    if (result._tag === "Left") {
+      expect(result.left._tag).toBe("ConfigValidationError")
+      expect(result.left.message).toContain("device")
+    }
+  }))
+
+test("readConfig passes through a valid config", () =>
+  Effect.gen(function* () {
+    const store = yield* ConfigStore
+    const config = yield* store
+      .readConfig()
+      .pipe(Effect.provide(makeLayer({ ".pix/config.json": JSON.stringify(DEFAULT_CONFIG) })))
+    expect(config.schema).toBe("1")
+    expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
+  }))

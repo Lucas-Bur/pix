@@ -1,11 +1,18 @@
 import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
 
+import { ConfigSchema } from "../domain/config.js"
 import type { Config } from "../domain/config.js"
-import { ConfigError } from "../domain/config.js"
-import { ConfigMalformedError, ConfigNotFoundError, DiskFullError } from "../domain/errors.js"
+import {
+  ConfigError,
+  ConfigMalformedError,
+  ConfigNotFoundError,
+  ConfigValidationError,
+  DiskFullError,
+} from "../domain/errors.js"
 import { ConfigStore } from "../domain/ports.js"
 import { isPlatformReason } from "../lib/platform-error.js"
+import { decodeWithErrors } from "../lib/validation.js"
 export { ConfigStore }
 
 const CONFIG_DIR = ".pix"
@@ -48,7 +55,7 @@ const make = Effect.gen(function* () {
 
   const readConfig = (): Effect.Effect<
     Config,
-    ConfigError | ConfigNotFoundError | ConfigMalformedError
+    ConfigError | ConfigNotFoundError | ConfigMalformedError | ConfigValidationError
   > =>
     Effect.gen(function* () {
       const content = yield* fs.readFileString(CONFIG_PATH).pipe(
@@ -63,8 +70,8 @@ const make = Effect.gen(function* () {
           return new ConfigError({ message: "Failed to read config.json", cause })
         }),
       )
-      return yield* Effect.try({
-        try: () => JSON.parse(content) as Config,
+      const parsed = yield* Effect.try({
+        try: () => JSON.parse(content),
         catch: (error) =>
           new ConfigMalformedError({
             message: "Invalid JSON in config.json",
@@ -72,6 +79,15 @@ const make = Effect.gen(function* () {
             cause: error,
           }),
       })
+      return yield* decodeWithErrors(ConfigSchema, parsed).pipe(
+        Effect.mapError(
+          (err) =>
+            new ConfigValidationError({
+              message: err.message,
+              errors: err.errors,
+            }),
+        ),
+      )
     })
 
   const configExists = (): Effect.Effect<boolean> =>

@@ -1,7 +1,8 @@
 import { FileSystem } from "@effect/platform"
-import { Effect, Layer, Option, Ref } from "effect"
+import { Effect, Layer, Option, Ref, Schema } from "effect"
 import ignore from "ignore"
 
+import { ChunkSchema } from "../domain/chunk.js"
 import type { Chunk } from "../domain/chunk.js"
 import type { Embedding } from "../domain/embedding.js"
 import { DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
@@ -9,35 +10,12 @@ import type { IndexStats, SearchOptions, SearchResult } from "../domain/ports.js
 import { VectorStore } from "../domain/ports.js"
 import { isPlatformReason } from "../lib/platform-error.js"
 
-interface ParsedChunkLine {
-  file: string
-  startLine: number
-  endLine: number
-  text: string
-  contextBefore: string | null
-  contextAfter: string | null
-}
-
-/**
- * Parse a single JSON line from chunks.jsonl and normalize context fields (old indexes may lack
- * them).
- */
-const parseChunkLine = (line: string): ParsedChunkLine => {
-  const raw = JSON.parse(line) as {
-    file: unknown
-    startLine: unknown
-    endLine: unknown
-    text: unknown
-    contextBefore: unknown
-    contextAfter: unknown
-  }
-  return {
-    file: typeof raw.file === "string" ? raw.file : "",
-    startLine: typeof raw.startLine === "number" ? raw.startLine : 0,
-    endLine: typeof raw.endLine === "number" ? raw.endLine : 0,
-    text: typeof raw.text === "string" ? raw.text : "",
-    contextBefore: typeof raw.contextBefore === "string" ? raw.contextBefore : null,
-    contextAfter: typeof raw.contextAfter === "string" ? raw.contextAfter : null,
+const parseChunkLine = (line: string): Option.Option<Chunk> => {
+  try {
+    const parsed = JSON.parse(line)
+    return Option.some(Schema.decodeUnknownSync(ChunkSchema)(parsed))
+  } catch {
+    return Option.none()
   }
 }
 
@@ -102,23 +80,20 @@ const make = Effect.gen(function* () {
    */
   const countTotalLines = (lines: string[]): number =>
     lines.reduce((sum, line) => {
-      try {
-        const chunk = JSON.parse(line) as { text: string }
-        return sum + chunk.text.split("\n").length
-      } catch {
-        return sum
+      const chunk = parseChunkLine(line)
+      if (Option.isSome(chunk)) {
+        return sum + chunk.value.text.split("\n").length
       }
+      return sum
     }, 0)
 
   /** Count unique files across all chunks in chunks.jsonl. */
   const countUniqueFiles = (lines: string[]): Set<string> => {
     const files = new Set<string>()
     for (const line of lines) {
-      try {
-        const chunk = JSON.parse(line) as { file: string }
-        files.add(chunk.file)
-      } catch {
-        // Skip malformed lines
+      const chunk = parseChunkLine(line)
+      if (Option.isSome(chunk)) {
+        files.add(chunk.value.file)
       }
     }
     return files
@@ -324,28 +299,26 @@ const make = Effect.gen(function* () {
       const results: SearchResult[] = []
 
       for (let i = 0; i < chunkLines.length; i++) {
-        try {
-          const chunk = parseChunkLine(chunkLines[i])
+        const parsed = parseChunkLine(chunkLines[i])
+        if (Option.isNone(parsed)) continue
 
-          if (ignoreIg && ignoreIg.ignores(chunk.file)) continue
-          if (onlyIg && !onlyIg.ignores(chunk.file)) continue
+        const chunk = parsed.value
+        if (ignoreIg && ignoreIg.ignores(chunk.file)) continue
+        if (onlyIg && !onlyIg.ignores(chunk.file)) continue
 
-          const startIdx = i * query.dims
-          const chunkVector = vectors.slice(startIdx, startIdx + query.dims)
-          const score = computeDotProduct(chunkVector, query)
+        const startIdx = i * query.dims
+        const chunkVector = vectors.slice(startIdx, startIdx + query.dims)
+        const score = computeDotProduct(chunkVector, query)
 
-          results.push({
-            score,
-            file: chunk.file,
-            startLine: chunk.startLine,
-            endLine: chunk.endLine,
-            text: chunk.text,
-            contextBefore: chunk.contextBefore,
-            contextAfter: chunk.contextAfter,
-          })
-        } catch {
-          // Skip malformed lines
-        }
+        results.push({
+          score,
+          file: chunk.file,
+          startLine: chunk.startLine,
+          endLine: chunk.endLine,
+          text: chunk.text,
+          contextBefore: chunk.contextBefore,
+          contextAfter: chunk.contextAfter,
+        })
       }
 
       results.sort((a, b) => b.score - a.score)

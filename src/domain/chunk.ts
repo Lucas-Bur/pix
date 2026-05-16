@@ -1,19 +1,14 @@
-/** A single chunk of source code produced by the chunker. One chunk = N lines with overlap. */
-export interface Chunk {
-  /** SHA1(file:startLine).slice(0, 12) — unique per start position. */
-  readonly id: string
-  /** Zero-based index within the file's chunk sequence. */
-  readonly idx: number
-  /** Absolute or repo-relative file path. */
-  readonly file: string
-  /** 1-based start line of this chunk in the source file. */
-  readonly startLine: number
-  /** 1-based end line (inclusive) of this chunk in the source file. */
-  readonly endLine: number
-  /** The chunk's source text. */
-  readonly text: string
-  /** Lines immediately preceding the chunk, up to overlapLines count. Null for first chunk. */
-  readonly contextBefore: string | null
-  /** Lines immediately following the chunk, up to overlapLines count. Null for last chunk. */
-  readonly contextAfter: string | null
-}
+import { Schema } from "effect"
+
+export const ChunkSchema = Schema.Struct({
+  id: Schema.String,
+  idx: Schema.Number,
+  file: Schema.String,
+  startLine: Schema.Number,
+  endLine: Schema.Number,
+  text: Schema.String,
+  contextBefore: Schema.Union(Schema.String, Schema.Null),
+  contextAfter: Schema.Union(Schema.String, Schema.Null),
+})
+
+export type Chunk = typeof ChunkSchema.Type

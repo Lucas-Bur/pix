@@ -6,6 +6,8 @@ const errorCodes: Record<string, string> = {
   ConfigError: "CONFIG_ERROR",
   ConfigNotFoundError: "CONFIG_NOT_FOUND",
   ConfigMalformedError: "CONFIG_MALFORMED",
+  ConfigValidationError: "CONFIG_VALIDATION_ERROR",
+  ChunkValidationError: "CHUNK_VALIDATION_ERROR",
   NoIndexError: "NO_INDEX",
   DiskFullError: "DISK_FULL",
   StoreError: "STORE_ERROR",
