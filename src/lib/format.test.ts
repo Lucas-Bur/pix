@@ -25,8 +25,24 @@ test("formatBytes caps at GB for values >= 1 TB", () => {
 
 test("applyCharBudget returns all results when no maxChars", () => {
   const results = [
-    { score: 1, file: "a.ts", startLine: 1, endLine: 1, text: "hello" },
-    { score: 0.5, file: "b.ts", startLine: 1, endLine: 1, text: "world" },
+    {
+      score: 1,
+      file: "a.ts",
+      startLine: 1,
+      endLine: 1,
+      text: "hello",
+      contextBefore: null,
+      contextAfter: null,
+    },
+    {
+      score: 0.5,
+      file: "b.ts",
+      startLine: 1,
+      endLine: 1,
+      text: "world",
+      contextBefore: null,
+      contextAfter: null,
+    },
   ]
   const applied = applyCharBudget(results)
   expect(applied.results).toHaveLength(2)
@@ -34,8 +50,24 @@ test("applyCharBudget returns all results when no maxChars", () => {
 
 test("applyCharBudget truncates when budget is exceeded", () => {
   const results = [
-    { score: 1, file: "a.ts", startLine: 1, endLine: 1, text: "hello world" },
-    { score: 0.5, file: "b.ts", startLine: 1, endLine: 1, text: "foo bar baz" },
+    {
+      score: 1,
+      file: "a.ts",
+      startLine: 1,
+      endLine: 1,
+      text: "hello world",
+      contextBefore: null,
+      contextAfter: null,
+    },
+    {
+      score: 0.5,
+      file: "b.ts",
+      startLine: 1,
+      endLine: 1,
+      text: "foo bar baz",
+      contextBefore: null,
+      contextAfter: null,
+    },
   ]
   const applied = applyCharBudget(results, 5)
   expect(applied.results.length).toBe(1)
@@ -43,7 +75,7 @@ test("applyCharBudget truncates when budget is exceeded", () => {
 })
 
 test("applyCharBudget preserves contextBefore and contextAfter when within budget", () => {
-  const results = [
+  const results: import("../domain/ports.js").SearchResult[] = [
     {
       score: 1,
       file: "a.ts",
@@ -60,7 +92,7 @@ test("applyCharBudget preserves contextBefore and contextAfter when within budge
 })
 
 test("applyCharBudget strips context when truncating", () => {
-  const results = [
+  const results: import("../domain/ports.js").SearchResult[] = [
     {
       score: 1,
       file: "a.ts",
@@ -73,6 +105,6 @@ test("applyCharBudget strips context when truncating", () => {
   ]
   const applied = applyCharBudget(results, 10)
   expect(applied.results).toHaveLength(1)
-  expect(applied.results[0].contextBefore).toBeUndefined()
-  expect(applied.results[0].contextAfter).toBeUndefined()
+  expect(applied.results[0].contextBefore).toBeNull()
+  expect(applied.results[0].contextAfter).toBeNull()
 })

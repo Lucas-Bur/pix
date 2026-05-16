@@ -24,8 +24,8 @@ const serializeChunk = (c: Chunk): Record<string, unknown> => ({
   startLine: c.startLine,
   endLine: c.endLine,
   text: c.text,
-  contextBefore: c.contextBefore ?? "",
-  contextAfter: c.contextAfter ?? "",
+  contextBefore: c.contextBefore,
+  contextAfter: c.contextAfter,
 })
 
 /**
@@ -285,8 +285,8 @@ const make = Effect.gen(function* () {
             startLine: number
             endLine: number
             text: string
-            contextBefore?: string
-            contextAfter?: string
+            contextBefore: string | null
+            contextAfter: string | null
           }
 
           if (ignoreIg && ignoreIg.ignores(chunk.file)) continue
@@ -315,7 +315,10 @@ const make = Effect.gen(function* () {
       }
 
       results.sort((a, b) => b.score - a.score)
-      return options?.topK !== undefined ? results.slice(0, options.topK) : results
+      const topK = options?.topK
+      if (topK == null) return results
+      const clamped = Math.max(0, Math.min(Math.floor(topK), results.length))
+      return results.slice(0, clamped)
     })
 
   const getStatus = (): Effect.Effect<
