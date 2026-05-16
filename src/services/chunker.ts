@@ -1,6 +1,5 @@
 import crypto from "node:crypto"
 
-import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
 
 import type { Chunk } from "../domain/chunk.js"
@@ -11,18 +10,6 @@ import { ConfigStore, Chunker } from "../domain/ports.js"
 export { Chunker }
 
 const MIN_CHUNK_CHARS = 20
-
-const readFileContent = (fs: FileSystem.FileSystem, file: string) =>
-  fs.readFileString(file).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ChunkerError({
-          message: "Could not read source file for chunking",
-          file,
-          cause,
-        }),
-    ),
-  )
 
 const buildChunks = (file: string, content: string, config: Config): Chunk[] => {
   const lines = content.split("\n")
@@ -64,7 +51,6 @@ const buildChunks = (file: string, content: string, config: Config): Chunk[] => 
 }
 
 const make = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem
   const configStore = yield* ConfigStore
 
   const config = yield* configStore
@@ -77,14 +63,7 @@ const make = Effect.gen(function* () {
       return buildChunks(file, text, config)
     })
 
-  const chunkFile = (file: string): Effect.Effect<readonly Chunk[], ChunkerError> =>
-    Effect.gen(function* () {
-      const content = yield* readFileContent(fs, file)
-      if (content === "") return []
-      return buildChunks(file, content, config)
-    })
-
-  return { chunkFile, chunkText } as const
+  return { chunkText } as const
 })
 
 export const ChunkerLive = Layer.effect(Chunker, make)

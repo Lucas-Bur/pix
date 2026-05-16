@@ -1,7 +1,3 @@
-/**
- * Deep-merge override objects. Arrays and primitives are replaced, plain objects are merged
- * recursively.
- */
 export const deepMerge = <T extends Record<string, unknown>>(
   base: T,
   overrides: Record<string, unknown>,

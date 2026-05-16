@@ -14,3 +14,8 @@ export const ChunkSchema = Schema.Struct({
 
 /** Domain chunk type inferred from ChunkSchema. */
 export type Chunk = typeof ChunkSchema.Type
+
+export interface Embedding {
+  readonly vector: Float32Array
+  readonly dims: number
+}

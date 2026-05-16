@@ -5,7 +5,7 @@ import type { Chunk } from "../../src/domain/chunk.js"
 import { ConfigSchema } from "../../src/domain/config.js"
 import type { Config } from "../../src/domain/config.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
-import { deepMerge } from "../../src/lib/merge.js"
+import { deepMerge } from "./merge.js"
 
 type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends Record<string, unknown> ? DeepPartial<T[K]> : T[K]

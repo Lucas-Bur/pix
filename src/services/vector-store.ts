@@ -4,19 +4,14 @@ import ignore from "ignore"
 
 import { ChunkSchema } from "../domain/chunk.js"
 import type { Chunk } from "../domain/chunk.js"
-import type { Embedding } from "../domain/embedding.js"
+import type { Embedding } from "../domain/chunk.js"
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
 import type { IndexStats, SearchOptions, SearchResponse, SearchResult } from "../domain/ports.js"
 import { VectorStore } from "../domain/ports.js"
 import { isPlatformReason } from "../lib/platform-error.js"
 
-const parseChunkLine = (line: string): Option.Option<Chunk> => {
-  try {
-    return Option.some(Schema.decodeUnknownSync(Schema.parseJson(ChunkSchema))(line))
-  } catch {
-    return Option.none()
-  }
-}
+const parseChunkLine = (line: string): Effect.Effect<Option.Option<Chunk>> =>
+  Schema.decodeUnknown(parseJsonChunk)(line).pipe(Effect.option)
 
 /** Compute dot-product similarity between a chunk vector and the query embedding. */
 const computeDotProduct = (chunkVector: Float32Array, query: Embedding): number => {
@@ -80,21 +75,22 @@ const make = Effect.gen(function* () {
   /** Count files, total lines, and malformed lines in a single pass. */
   const countChunkStats = (
     lines: string[],
-  ): { files: Set<string>; totalLines: number; malformedLines: number } => {
-    const files = new Set<string>()
-    let totalLines = 0
-    let malformedLines = 0
-    for (const line of lines) {
-      const chunk = parseChunkLine(line)
-      if (Option.isSome(chunk)) {
-        files.add(chunk.value.file)
-        totalLines += chunk.value.text.split("\n").length
-      } else {
-        malformedLines++
+  ): Effect.Effect<{ files: Set<string>; totalLines: number; malformedLines: number }> =>
+    Effect.gen(function* () {
+      const files = new Set<string>()
+      let totalLines = 0
+      let malformedLines = 0
+      for (const line of lines) {
+        const chunk = yield* parseChunkLine(line)
+        if (Option.isSome(chunk)) {
+          files.add(chunk.value.file)
+          totalLines += chunk.value.text.split("\n").length
+        } else {
+          malformedLines++
+        }
       }
-    }
-    return { files, totalLines, malformedLines }
-  }
+      return { files, totalLines, malformedLines }
+    })
 
   /** Check that index files exist; fail with NoIndexError if either is missing. */
   const requireIndex = (): Effect.Effect<void, StoreError | NoIndexError> =>
@@ -257,29 +253,6 @@ const make = Effect.gen(function* () {
       }
     })
 
-  const store = (
-    chunks: readonly Chunk[],
-    embeddings: readonly Embedding[],
-  ): Effect.Effect<void, StoreError | DiskFullError> =>
-    Effect.gen(function* () {
-      yield* ensureDirExists(STORE_DIR, ".pix directory")
-
-      const chunksTemp = `${CHUNKS_FILE}.tmp`
-      const lines = yield* Effect.forEach(chunks, (c) =>
-        Schema.encode(parseJsonChunk)(c).pipe(
-          Effect.mapError((e) => new StoreError({ message: "Failed to encode chunk", cause: e })),
-        ),
-      )
-      const chunksJson = lines.join("\n")
-      yield* withStoreError(fs.writeFileString(chunksTemp, chunksJson), "write chunks", chunksTemp)
-      yield* withStoreError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
-
-      const vectorsTemp = `${VECTORS_FILE}.tmp`
-      const buffer = serializeVectors(embeddings)
-      yield* withStoreError(fs.writeFile(vectorsTemp, buffer), "write vectors", vectorsTemp)
-      yield* withStoreError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
-    })
-
   const search = (
     query: Embedding,
     options?: SearchOptions,
@@ -312,7 +285,7 @@ const make = Effect.gen(function* () {
       let malformedLines = 0
 
       for (let i = 0; i < chunkLines.length; i++) {
-        const parsed = parseChunkLine(chunkLines[i])
+        const parsed = yield* parseChunkLine(chunkLines[i])
         if (Option.isNone(parsed)) {
           malformedLines++
           continue
@@ -380,7 +353,7 @@ const make = Effect.gen(function* () {
         CHUNKS_FILE,
       )
       const lines = content.split("\n").filter((l) => l.trim().length > 0)
-      const { files: uniqueFiles, totalLines, malformedLines } = countChunkStats(lines)
+      const { files: uniqueFiles, totalLines, malformedLines } = yield* countChunkStats(lines)
       const chunks = lines.length - malformedLines
       const files = uniqueFiles.size
       const model = ""
@@ -413,7 +386,6 @@ const make = Effect.gen(function* () {
     })
 
   return {
-    store,
     storeBegin,
     storeBatch,
     storeCommit,
