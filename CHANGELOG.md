@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.13.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.12.0...pix-v0.13.0) (2026-05-16)
+
+
+### Features
+
+* add Effect Schema validation for Config and Chunk data ([181432a](https://github.com/Lucas-Bur/pix/commit/181432a0c319ba348bdffbc6e39324c5b5890d9c))
+* validate config/chunk at write boundaries + deepMerge utility ([99d73c3](https://github.com/Lucas-Bur/pix/commit/99d73c39124469b143a75b35a64257bcb0560650))
+
+
+### Bug Fixes
+
+* address CodeRabbit comments — JSDoc, provide scope, combine chunk stats, extract helpers ([5d28b42](https://github.com/Lucas-Bur/pix/commit/5d28b42011ad561da5b033b9ca23961936163668))
+* address remaining CodeRabbit comments — table examples, malformed-line tests ([39ea71f](https://github.com/Lucas-Bur/pix/commit/39ea71f7fb0571403580f9bfb549a51220e57219))
+* flow ChunkValidationError through return types instead of Effect.logWarning ([d7513af](https://github.com/Lucas-Bur/pix/commit/d7513af56baae091766e7b7f4afd41380f8eda17))
+* wire up ChunkValidationError in vector-store search and getStatus ([32d818a](https://github.com/Lucas-Bur/pix/commit/32d818a71e34119c9c46220ac5da48648d2d47fb))
+
 ## [0.12.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.11.0...pix-v0.12.0) (2026-05-16)
 
 
