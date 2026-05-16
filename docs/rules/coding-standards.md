@@ -24,6 +24,27 @@
 - Never use try-catch in Effect.gen — Effect failures are returned as exits
 - Never use `Effect.sync` for file operations — use `Effect.try`/`Effect.tryPromise`
 - Use `return yield*` when yielding errors or interrupts in Effect.gen
+- NEVER use `Effect.log*` — errors must flow through return types or the error channel
+
+### Schema Patterns for Effect Schema
+
+Use `Schema.Struct` with inferred types (no duplicate interfaces):
+
+```typescript
+const MySchema = Schema.Struct({ ... })
+type MyType = typeof MySchema.Type
+```
+
+| Desired behavior | Schema pattern | Example | Use when |
+|---|---|---|---|
+| Required, non-null | `Schema.String` | `name: Schema.String` | Field must always be present and have a real value |
+| Optional, non-null | `Schema.optional(Schema.String)` | `name?: string` | Field may be omitted, but if present must be a string |
+| Required, nullable | `Schema.Union(Schema.String, Schema.Null)` | `name: string \| null` | Key must exist, but value may explicitly be null |
+| Optional + nullable | `Schema.optional(Schema.Union(Schema.String, Schema.Null))` | `name?: string \| null` | Field may be missing, and if present can be string or null |
+| Optional with exact typing | `Schema.optionalWith(Schema.String, { exact: true })` | advanced optional shape | Precise optional-field typing/encoding (config fields) |
+| Optional + nullable + exact | `Schema.optionalWith(Schema.Union(Schema.String, Schema.Null), { exact: true })` | advanced form | Both missing-key support and exact optional semantics |
+
+Config validation is strict (`optionalWith` + `exact: true`). Chunk validation is non-blocking (skip malformed lines, return errors in the success value).
 
 ### Error Propagation in Services
 
