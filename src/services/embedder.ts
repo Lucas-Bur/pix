@@ -1,11 +1,10 @@
 import { env } from "@huggingface/transformers"
 import { Effect, Layer, Ref, Option } from "effect"
 
-import { Display } from "../display/Display.js"
 import type { Embedding } from "../domain/chunk.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
 import { MODEL_REGISTRY } from "../domain/models.js"
-import { ConfigStore, Embedder } from "../domain/ports.js"
+import { ConfigStore, Embedder, Logger } from "../domain/ports.js"
 import { ConfigStoreLive } from "./config-store.js"
 export { Embedder }
 
@@ -90,14 +89,14 @@ const createExtractor = (opts: EmbedderConfig) =>
 const createExtractorWithFallback = (
   opts: EmbedderConfig,
   fallbackRef: Ref.Ref<Option.Option<FallbackInfo>>,
+  warn: (message: string) => Effect.Effect<void>,
 ) => {
   if (opts.device === "cpu") return createExtractor(opts)
 
   return createExtractor(opts).pipe(
     Effect.catchAll((originalError) =>
       Effect.gen(function* () {
-        const d = yield* Display
-        yield* d.log(`GPU (${opts.device}) failed, falling back to CPU...`, "warn")
+        yield* warn(`GPU (${opts.device}) failed, falling back to CPU...`)
         yield* Ref.set(
           fallbackRef,
           Option.some({
@@ -117,10 +116,12 @@ const createExtractorWithFallback = (
 
 const make = Effect.gen(function* () {
   const configStore = yield* ConfigStore
-  const d = yield* Display
+  const logger = yield* Logger
   const cfg = yield* resolveEmbedderConfig(configStore)
   const fallbackRef = yield* Ref.make<Option.Option<FallbackInfo>>(Option.none())
-  const getExtractor = yield* Effect.cached(createExtractorWithFallback(cfg, fallbackRef))
+  const getExtractor = yield* Effect.cached(
+    createExtractorWithFallback(cfg, fallbackRef, logger.warn),
+  )
 
   const embed = (text: string) =>
     Effect.gen(function* () {
@@ -134,7 +135,7 @@ const make = Effect.gen(function* () {
       )
       const data = tensor.data as Float32Array
       return { vector: normalize(data), dims: cfg.dims }
-    }).pipe(Effect.provideService(Display, d))
+    })
 
   const batch = (texts: readonly string[]) =>
     Effect.gen(function* () {
@@ -154,7 +155,7 @@ const make = Effect.gen(function* () {
         results.push({ vector: normalize(data.slice(offset, offset + cfg.dims)), dims: cfg.dims })
       }
       return results
-    }).pipe(Effect.provideService(Display, d))
+    })
 
   const getFallbackInfo = () =>
     Ref.get(fallbackRef).pipe(Effect.map(Option.getOrElse(() => undefined)))

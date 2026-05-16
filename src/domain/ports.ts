@@ -1,4 +1,4 @@
-import { Effect, Context } from "effect"
+import { Context, Effect } from "effect"
 
 import type { Chunk } from "./chunk.js"
 import type { Embedding } from "./chunk.js"
@@ -190,5 +190,14 @@ export class VectorStore extends Context.Tag("VectorStore")<
       StoreError
     >
     readonly reset: () => Effect.Effect<ResetResult, StoreError | DiskFullError>
+  }
+>() {}
+
+// === Logger Port ===
+
+export class Logger extends Context.Tag("Logger")<
+  Logger,
+  {
+    readonly warn: (message: string) => Effect.Effect<void>
   }
 >() {}
