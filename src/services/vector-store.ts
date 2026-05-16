@@ -9,6 +9,47 @@ import type { IndexStats, SearchOptions, SearchResult } from "../domain/ports.js
 import { VectorStore } from "../domain/ports.js"
 import { isPlatformReason } from "../lib/platform-error.js"
 
+interface ParsedChunkLine {
+  file: string
+  startLine: number
+  endLine: number
+  text: string
+  contextBefore: string | null
+  contextAfter: string | null
+}
+
+/**
+ * Parse a single JSON line from chunks.jsonl and normalize context fields (old indexes may lack
+ * them).
+ */
+const parseChunkLine = (line: string): ParsedChunkLine => {
+  const raw = JSON.parse(line) as {
+    file: unknown
+    startLine: unknown
+    endLine: unknown
+    text: unknown
+    contextBefore: unknown
+    contextAfter: unknown
+  }
+  return {
+    file: typeof raw.file === "string" ? raw.file : "",
+    startLine: typeof raw.startLine === "number" ? raw.startLine : 0,
+    endLine: typeof raw.endLine === "number" ? raw.endLine : 0,
+    text: typeof raw.text === "string" ? raw.text : "",
+    contextBefore: typeof raw.contextBefore === "string" ? raw.contextBefore : null,
+    contextAfter: typeof raw.contextAfter === "string" ? raw.contextAfter : null,
+  }
+}
+
+/** Compute dot-product similarity between a chunk vector and the query embedding. */
+const computeDotProduct = (chunkVector: Float32Array, query: Embedding): number => {
+  let dot = 0
+  for (let j = 0; j < query.dims; j++) {
+    dot += chunkVector[j] * query.vector[j]
+  }
+  return dot
+}
+
 const STORE_DIR = ".pix"
 const CHUNKS_FILE = `${STORE_DIR}/chunks.jsonl`
 const VECTORS_FILE = `${STORE_DIR}/vectors.bin`
@@ -271,7 +312,11 @@ const make = Effect.gen(function* () {
         "read vectors",
         VECTORS_FILE,
       )
-      const vectors = new Float32Array(vectorsBuffer.buffer as ArrayBuffer)
+      const vectors = new Float32Array(
+        vectorsBuffer.buffer,
+        vectorsBuffer.byteOffset,
+        vectorsBuffer.byteLength / Float32Array.BYTES_PER_ELEMENT,
+      )
 
       const ignoreIg = options?.ignorePaths?.length ? ignore().add([...options.ignorePaths]) : null
       const onlyIg = options?.onlyPaths?.length ? ignore().add([...options.onlyPaths]) : null
@@ -280,28 +325,17 @@ const make = Effect.gen(function* () {
 
       for (let i = 0; i < chunkLines.length; i++) {
         try {
-          const chunk = JSON.parse(chunkLines[i]) as {
-            file: string
-            startLine: number
-            endLine: number
-            text: string
-            contextBefore: string | null
-            contextAfter: string | null
-          }
+          const chunk = parseChunkLine(chunkLines[i])
 
           if (ignoreIg && ignoreIg.ignores(chunk.file)) continue
           if (onlyIg && !onlyIg.ignores(chunk.file)) continue
 
           const startIdx = i * query.dims
           const chunkVector = vectors.slice(startIdx, startIdx + query.dims)
-
-          let dotProduct = 0
-          for (let j = 0; j < query.dims; j++) {
-            dotProduct += chunkVector[j] * query.vector[j]
-          }
+          const score = computeDotProduct(chunkVector, query)
 
           results.push({
-            score: dotProduct,
+            score,
             file: chunk.file,
             startLine: chunk.startLine,
             endLine: chunk.endLine,

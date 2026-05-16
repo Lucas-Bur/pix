@@ -50,8 +50,24 @@ test("applyCharBudget returns all results when no maxChars", () => {
 
 test("applyCharBudget truncates when budget is exceeded", () => {
   const results = [
-    { score: 1, file: "a.ts", startLine: 1, endLine: 1, text: "hello world", contextBefore: null, contextAfter: null },
-    { score: 0.5, file: "b.ts", startLine: 1, endLine: 1, text: "foo bar baz", contextBefore: null, contextAfter: null },
+    {
+      score: 1,
+      file: "a.ts",
+      startLine: 1,
+      endLine: 1,
+      text: "hello world",
+      contextBefore: null,
+      contextAfter: null,
+    },
+    {
+      score: 0.5,
+      file: "b.ts",
+      startLine: 1,
+      endLine: 1,
+      text: "foo bar baz",
+      contextBefore: null,
+      contextAfter: null,
+    },
   ]
   const applied = applyCharBudget(results, 18)
   expect(applied.results.length).toBe(1)
