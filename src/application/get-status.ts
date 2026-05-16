@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 
-import type { StoreError } from "../domain/errors.js"
+import type { ChunkValidationError, StoreError } from "../domain/errors.js"
 import { ConfigStore, VectorStore } from "../domain/ports.js"
 
 /** Return type for pix status */
@@ -11,6 +11,7 @@ export interface StatusResult {
   readonly lastIndex: number
   readonly totalLines: number
   readonly byteSize: number
+  readonly validationErrors: readonly ChunkValidationError[]
 }
 
 /** Use case: get index statistics. Depends on VectorStore and ConfigStore via Effect tags. */

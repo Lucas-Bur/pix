@@ -2,7 +2,7 @@ import { Effect } from "effect"
 
 import type { AllEmbedderErrors, AllStoreErrors, NoIndexError } from "../domain/errors.js"
 import { Embedder, VectorStore } from "../domain/ports.js"
-import type { SearchOptions, SearchResult } from "../domain/ports.js"
+import type { SearchOptions, SearchResponse } from "../domain/ports.js"
 
 /** Use case: semantic search over indexed code. Depends on Embedder + VectorStore via Effect tags. */
 export class QueryProject extends Effect.Service<QueryProject>()("QueryProject", {
@@ -14,7 +14,7 @@ export class QueryProject extends Effect.Service<QueryProject>()("QueryProject",
     const queryProject = (
       queryText: string,
       options?: SearchOptions,
-    ): Effect.Effect<readonly SearchResult[], AllEmbedderErrors | AllStoreErrors | NoIndexError> =>
+    ): Effect.Effect<SearchResponse, AllEmbedderErrors | AllStoreErrors | NoIndexError> =>
       embedder
         .embed(queryText)
         .pipe(Effect.flatMap((embedding) => store.search(embedding, options)))

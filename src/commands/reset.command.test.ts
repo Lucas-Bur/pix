@@ -25,6 +25,8 @@ const fixtures = {
     startLine: 1,
     endLine: 1,
     text: "x",
+    contextBefore: null,
+    contextAfter: null,
   }),
   ".pix/vectors.bin": "binary-data",
 }

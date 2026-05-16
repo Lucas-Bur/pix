@@ -200,7 +200,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
 
           return {
             success: true as const,
-            status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0 },
+            status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0, validationErrors: [] },
             durationMs: Date.now() - start,
           }
         }
@@ -220,7 +220,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           yield* displaySkippedNote(d, collected)
           return {
             success: true as const,
-            status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0 },
+            status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0, validationErrors: [] },
             durationMs: Date.now() - start,
           }
         }
@@ -273,6 +273,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
             files: stats.files,
             totalLines: stats.totalLines,
             byteSize: stats.byteSize,
+            validationErrors: [],
           },
           durationMs: Date.now() - start,
           embedderFallback: fallbackInfo,

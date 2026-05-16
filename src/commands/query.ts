@@ -3,7 +3,7 @@ import { Effect, Option } from "effect"
 
 import { QueryProject } from "../application/query-project.js"
 import { Display } from "../display/Display.js"
-import type { SearchResult } from "../domain/ports.js"
+import type { SearchResponse, SearchResult } from "../domain/ports.js"
 import { reportError } from "../lib/error-format.js"
 import { applyCharBudget } from "../lib/format.js"
 
@@ -75,12 +75,17 @@ const buildSearchOptions = (
 /** Render search results via Display — JSON + human-readable text. */
 const renderResults = (
   d: typeof Display.Service,
-  results: readonly SearchResult[],
+  response: SearchResponse,
   ctxLines: number,
   noContent: boolean,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    yield* d.json(toJsonOutput(results, ctxLines, noContent))
+    const { results, validationErrors } = response
+
+    yield* d.json({
+      results: toJsonOutput(results, ctxLines, noContent),
+      ...(validationErrors.length > 0 && { validationErrors }),
+    })
 
     if (results.length === 0) {
       yield* d.log("No results found", "warn")
@@ -124,16 +129,16 @@ export const queryCommand = Command.make(
         yield* d.log(`topK clamped from ${rawValue} to ${searchOptions.topK}`, "warn")
       }
 
-      const results = yield* d.spinner(
+      const searchResponse = yield* d.spinner(
         "Searching...",
         QueryProject.queryProject(queryText, searchOptions),
       )
 
       const finalResults = noContent
-        ? results
-        : applyCharBudget(results, Option.getOrUndefined(maxCharacters)).results
+        ? searchResponse.results
+        : applyCharBudget(searchResponse.results, Option.getOrUndefined(maxCharacters)).results
 
-      yield* renderResults(d, finalResults, ctxLines, noContent)
+      yield* renderResults(d, { ...searchResponse, results: finalResults }, ctxLines, noContent)
     }).pipe(
       Effect.catchTags({
         ModelLoadError: reportError,
