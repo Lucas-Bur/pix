@@ -115,13 +115,21 @@ export interface SearchOptions {
   readonly onlyPaths?: readonly string[]
 }
 
+/** A single search result from a semantic query. Results are sorted by similarity score descending. */
 export interface SearchResult {
+  /** Cosine similarity score between the query embedding and this chunk's embedding. */
   readonly score: number
+  /** Repository-relative file path of the source file. */
   readonly file: string
+  /** 1-based start line of the chunk in the source file. */
   readonly startLine: number
+  /** 1-based end line (inclusive) of the chunk in the source file. */
   readonly endLine: number
+  /** The chunk's source text (may be truncated when --max-tokens is used). */
   readonly text: string
+  /** Lines immediately preceding the chunk, populated when context lines > 0. */
   readonly contextBefore?: string
+  /** Lines immediately following the chunk, populated when context lines > 0. */
   readonly contextAfter?: string
 }
 

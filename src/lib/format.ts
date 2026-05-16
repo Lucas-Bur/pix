@@ -57,7 +57,12 @@ export const applyTokenBudget = (
       remaining -= tokens
     } else {
       const truncated = truncateToTokens(result.text, remaining)
-      budgeted.push({ ...result, text: truncated.text })
+      budgeted.push({
+        ...result,
+        text: truncated.text,
+        contextBefore: undefined,
+        contextAfter: undefined,
+      })
       break
     }
   }

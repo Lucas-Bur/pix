@@ -7,4 +7,4 @@ export const isPlatformReason = (cause: unknown, reason: string): boolean =>
   typeof cause === "object" &&
   cause !== null &&
   "reason" in cause &&
-  String((cause as { reason: unknown }).reason) === reason
+  String(cause.reason) === reason
