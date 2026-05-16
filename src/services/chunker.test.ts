@@ -176,13 +176,13 @@ test("Chunker populates contextBefore and contextAfter around each chunk", () =>
     expect(chunks.length).toBeGreaterThanOrEqual(2)
 
     const second = chunks[1]
-    expect(second.contextBefore).toBeDefined()
+    expect(second.contextBefore).not.toBeNull()
     const beforeLines = second.contextBefore!.split("\n")
     expect(beforeLines.length).toBeGreaterThan(0)
     expect(beforeLines[0]).toContain("Line 51")
 
     const first = chunks[0]
-    expect(first.contextAfter).toBeDefined()
+    expect(first.contextAfter).not.toBeNull()
     const afterLines = first.contextAfter!.split("\n")
     expect(afterLines.length).toBeGreaterThan(0)
     expect(afterLines[0]).toContain("Line 61")
@@ -200,8 +200,8 @@ test("Chunker first chunk has no contextBefore, last chunk has no contextAfter",
     expect(chunks.length).toBeGreaterThanOrEqual(1)
 
     const first = chunks[0]
-    expect(first.contextBefore).toBeUndefined()
+    expect(first.contextBefore).toBeNull()
 
     const last = chunks[chunks.length - 1]
-    expect(last.contextAfter).toBeUndefined()
+    expect(last.contextAfter).toBeNull()
   }).pipe(Effect.provide(testLayer), Effect.scoped))

@@ -72,7 +72,7 @@ export const queryCommand = Command.make(
       const rawTopK = Option.getOrElse(top, () => DEFAULT_TOP_K)
       const clamped = clampTopK(rawTopK)
 
-      const searchOptions = {
+      const searchOptions: import("../domain/ports.js").SearchOptions = {
         topK: clamped.value,
         ...(ignorePath.length > 0 && { ignorePaths: [...ignorePath] }),
         ...(onlyPath.length > 0 && { onlyPaths: [...onlyPath] }),
@@ -87,15 +87,16 @@ export const queryCommand = Command.make(
         QueryProject.queryProject(queryText, searchOptions),
       )
 
-      const maxCharValue = Option.getOrUndefined(maxCharacters)
-      const { results: budgetedResults } = applyCharBudget(results, maxCharValue)
+      const finalResults = noContent
+        ? results
+        : applyCharBudget(results, Option.getOrUndefined(maxCharacters)).results
 
-      yield* d.json(toJsonOutput(budgetedResults, ctxLines, noContent))
+      yield* d.json(toJsonOutput(finalResults, ctxLines, noContent))
 
-      if (budgetedResults.length === 0) {
+      if (finalResults.length === 0) {
         yield* d.log("No results found", "warn")
       } else {
-        for (const result of budgetedResults) {
+        for (const result of finalResults) {
           yield* d.text(noContent ? formatLocation(result) : formatResult(result))
         }
       }

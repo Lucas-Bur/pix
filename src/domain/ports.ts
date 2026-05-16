@@ -106,13 +106,19 @@ export class Embedder extends Context.Tag("Embedder")<
 
 // === VectorStore Port ===
 
-/** Options for searching the vector store. */
+/** Options for searching the vector store. All fields are optional — omitted = use default. */
 export interface SearchOptions {
   /** Maximum number of results to return. Default: no limit. */
   readonly topK?: number
-  /** Gitignore-style patterns. Files matching any pattern are excluded from results. */
+  /**
+   * Gitignore-style patterns. Files matching any pattern are excluded from results. Default: no
+   * filtering.
+   */
   readonly ignorePaths?: readonly string[]
-  /** Gitignore-style patterns. Only files matching at least one pattern are included. */
+  /**
+   * Gitignore-style patterns. Only files matching at least one pattern are included. Default: no
+   * filtering.
+   */
   readonly onlyPaths?: readonly string[]
 }
 
@@ -128,10 +134,10 @@ export interface SearchResult {
   readonly endLine: number
   /** The chunk's source text (may be truncated when --max-characters is used). */
   readonly text: string
-  /** Lines immediately preceding the chunk, populated when context lines > 0. */
-  readonly contextBefore?: string
-  /** Lines immediately following the chunk, populated when context lines > 0. */
-  readonly contextAfter?: string
+  /** Lines immediately preceding the chunk. Null when not requested or when truncated. */
+  readonly contextBefore: string | null
+  /** Lines immediately following the chunk. Null when not requested or when truncated. */
+  readonly contextAfter: string | null
 }
 
 /** Result of a reset operation — what was deleted and how many bytes were freed. */

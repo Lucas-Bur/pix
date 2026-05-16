@@ -12,8 +12,8 @@ export interface Chunk {
   readonly endLine: number
   /** The chunk's source text. */
   readonly text: string
-  /** Lines immediately preceding the chunk, up to overlapLines count. Empty string for first chunk. */
-  readonly contextBefore?: string
-  /** Lines immediately following the chunk, up to overlapLines count. Empty string for last chunk. */
-  readonly contextAfter?: string
+  /** Lines immediately preceding the chunk, up to overlapLines count. Null for first chunk. */
+  readonly contextBefore: string | null
+  /** Lines immediately following the chunk, up to overlapLines count. Null for last chunk. */
+  readonly contextAfter: string | null
 }

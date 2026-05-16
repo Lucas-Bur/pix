@@ -51,8 +51,8 @@ const buildChunks = (file: string, content: string, config: Config): Chunk[] => 
         startLine,
         endLine,
         text,
-        contextBefore: contextBefore || undefined,
-        contextAfter: contextAfter || undefined,
+        contextBefore: contextBefore || null,
+        contextAfter: contextAfter || null,
       })
       idx++
     }

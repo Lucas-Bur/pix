@@ -11,15 +11,19 @@ import { VectorStoreLive } from "./vector-store.js"
 
 const vsLayer = Layer.provideMerge(VectorStoreLive, memoryFsLayer({}))
 
-const makeChunk = (overrides?: Partial<Chunk>): Chunk => ({
-  id: "a1",
-  idx: 0,
-  file: "/test.ts",
-  startLine: 1,
-  endLine: 2,
-  text: "hello",
-  ...overrides,
-})
+const makeChunk = (overrides?: Partial<Chunk>): Chunk => {
+  const base: Chunk = {
+    id: "a1",
+    idx: 0,
+    file: "/test.ts",
+    startLine: 1,
+    endLine: 2,
+    text: "hello",
+    contextBefore: null,
+    contextAfter: null,
+  }
+  return { ...base, ...overrides } as Chunk
+}
 
 const makeEmbedding = (fill: number = 0.1): Embedding => ({
   vector: new Float32Array(384).fill(fill),
@@ -140,7 +144,7 @@ test("VectorStoreLive.search with no options returns all results", () =>
     yield* store.store(chunks, embeddings)
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
-    const results = yield* store.search(query, { topK: 5 })
+    const results = yield* store.search(query)
     expect(results.length).toBe(2)
   }).pipe(Effect.provide(vsLayer), Effect.scoped))
 
