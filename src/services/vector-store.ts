@@ -12,8 +12,7 @@ import { isPlatformReason } from "../lib/platform-error.js"
 
 const parseChunkLine = (line: string): Option.Option<Chunk> => {
   try {
-    const parsed = JSON.parse(line)
-    return Option.some(Schema.decodeUnknownSync(ChunkSchema)(parsed))
+    return Option.some(Schema.decodeUnknownSync(Schema.parseJson(ChunkSchema))(line))
   } catch {
     return Option.none()
   }
