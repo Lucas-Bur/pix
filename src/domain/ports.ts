@@ -1,11 +1,13 @@
 import { Effect, Context } from "effect"
 
 import type { Chunk } from "./chunk.js"
-import type { Config, ConfigError } from "./config.js"
+import type { Config } from "./config.js"
 import type { Embedding } from "./embedding.js"
 import type {
+  ConfigError,
   ConfigMalformedError,
   ConfigNotFoundError,
+  ConfigValidationError,
   DiskFullError,
   NoIndexError,
   StoreError,
@@ -37,7 +39,7 @@ export class ConfigStore extends Context.Tag("ConfigStore")<
   {
     readonly readConfig: () => Effect.Effect<
       Config,
-      ConfigError | ConfigNotFoundError | ConfigMalformedError
+      ConfigError | ConfigNotFoundError | ConfigMalformedError | ConfigValidationError
     >
     readonly writeConfig: (config: Config) => Effect.Effect<void, ConfigError | DiskFullError>
     readonly configExists: () => Effect.Effect<boolean>

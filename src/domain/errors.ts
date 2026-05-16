@@ -2,6 +2,11 @@ import { Data } from "effect"
 
 // === Config errors ===
 
+export class ConfigError extends Data.TaggedError("ConfigError")<{
+  readonly message: string
+  readonly cause?: unknown
+}> {}
+
 /** Config file or directory does not exist. Run pix init first. */
 export class ConfigNotFoundError extends Data.TaggedError("ConfigNotFoundError")<{
   readonly message: string
@@ -14,6 +19,15 @@ export class ConfigMalformedError extends Data.TaggedError("ConfigMalformedError
   readonly message: string
   readonly path?: string
   readonly cause?: unknown
+}> {}
+
+/** Config failed schema validation — missing/invalid fields. */
+export class ConfigValidationError extends Data.TaggedError("ConfigValidationError")<{
+  readonly message: string
+  readonly errors: ReadonlyArray<{
+    readonly path: string
+    readonly message: string
+  }>
 }> {}
 
 // === Index store errors ===
@@ -68,12 +82,25 @@ export class ScanFailed extends Data.TaggedError("ScanFailed")<{
   readonly cause?: unknown
 }> {}
 
+// === Chunk validation error ===
+
+/** A chunk line in chunks.jsonl failed schema validation. */
+export class ChunkValidationError extends Data.TaggedError("ChunkValidationError")<{
+  readonly message: string
+  readonly errors: ReadonlyArray<{
+    readonly path: string
+    readonly message: string
+  }>
+}> {}
+
 // === Error union types ===
 
-import type { ConfigError } from "./config.js"
-
 /** All config-related error types. */
-export type AllConfigErrors = ConfigError | ConfigNotFoundError | ConfigMalformedError
+export type AllConfigErrors =
+  | ConfigError
+  | ConfigNotFoundError
+  | ConfigMalformedError
+  | ConfigValidationError
 
 /** All index store error types. */
 export type AllStoreErrors = StoreError | DiskFullError | NoIndexError

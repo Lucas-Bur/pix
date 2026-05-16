@@ -187,3 +187,27 @@ test("VectorStoreLive.store works when .pix directory already exists", () =>
     Effect.provide(Layer.provideMerge(VectorStoreLive, memoryFsLayer({ ".pix": null }))),
     Effect.scoped,
   ))
+
+test("VectorStoreLive.search skips malformed chunk lines", () =>
+  Effect.gen(function* () {
+    const store = yield* VectorStore
+    const validChunk = makeChunk()
+    const validEmbedding = makeEmbedding(0.1)
+    yield* store.store([validChunk], [validEmbedding])
+
+    const result = yield* store.search({ vector: new Float32Array(384).fill(0.15), dims: 384 })
+    expect(result.length).toBe(1)
+  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+
+test("VectorStoreLive.getStatus handles chunks.jsonl with malformed lines", () =>
+  Effect.gen(function* () {
+    const store = yield* VectorStore
+    const chunks = [makeChunk(), makeChunk({ id: "a2", idx: 1, text: "line1\nline2" })]
+    const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
+    yield* store.store(chunks, embeddings)
+
+    const status = yield* store.getStatus()
+    expect(status.chunks).toBe(2)
+    expect(status.totalLines).toBe(3)
+    expect(status.files).toBe(1)
+  }).pipe(Effect.provide(vsLayer), Effect.scoped))
