@@ -1,11 +1,11 @@
-import { Cause, Effect, Exit, Layer } from "effect"
+import { Cause, Effect, Exit } from "effect"
 import { expect, test } from "vite-plus/test"
 
+import { makeFailingVectorStore } from "../../tests/test-utils/command.js"
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { StoreError } from "../domain/errors.js"
 import { ConfigStore } from "../domain/ports.js"
-import { VectorStore } from "../domain/ports.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { IndexProject } from "./index-project.js"
 
@@ -80,31 +80,12 @@ test("IndexProject.index scans, chunks, embeds, and stores", () =>
 
 test("IndexProject.index propagates errors from VectorStore", () =>
   Effect.gen(function* () {
-    const failingVectorStore = Layer.succeed(VectorStore, {
-      storeBegin: () => Effect.void,
-      storeBatch: () => Effect.fail(new StoreError({ message: "store failed" })),
-      storeCommit: () => Effect.fail(new StoreError({ message: "store failed" })),
-      storeAbort: () => Effect.void,
-      search: () => Effect.succeed({ results: [], validationErrors: [] }),
-      getStatus: () =>
-        Effect.succeed({
-          chunks: 0,
-          files: 0,
-          model: "",
-          lastIndex: 0,
-          totalLines: 0,
-          byteSize: 0,
-          validationErrors: [],
-        }),
-      reset: () => Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),
-    })
-
     const exit = yield* Effect.exit(IndexProject.index()).pipe(
       Effect.provide(
         testLayer({
           contents: fixtures,
           scannerLayer: ScannerLive,
-          vectorStoreLayer: failingVectorStore,
+          vectorStoreLayer: makeFailingVectorStore("storeBatch"),
         }),
       ),
     )

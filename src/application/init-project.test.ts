@@ -1,9 +1,8 @@
-import { Effect, Exit, Layer } from "effect"
+import { Effect, Exit } from "effect"
 import { expect, test } from "vite-plus/test"
 
+import { makeFailingConfigStore } from "../../tests/test-utils/command.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
-import { ConfigError } from "../domain/errors.js"
-import { ConfigStore } from "../domain/ports.js"
 import { InitProject } from "./init-project.js"
 
 test("InitProject.init writes DEFAULT_CONFIG via ConfigStore", () =>
@@ -16,14 +15,8 @@ test("InitProject.init writes DEFAULT_CONFIG via ConfigStore", () =>
 
 test("InitProject.init returns ConfigError when writeConfig fails", () =>
   Effect.gen(function* () {
-    const failingConfigStore = Layer.succeed(ConfigStore, {
-      writeConfig: () => Effect.fail(new ConfigError({ message: "disk full" })),
-      readConfig: () => Effect.fail(new ConfigError({ message: "no config" })),
-      configExists: () => Effect.succeed(false),
-    })
-
     const exit = yield* Effect.exit(InitProject.init()).pipe(
-      Effect.provide(testLayer({ configStoreLayer: failingConfigStore })),
+      Effect.provide(testLayer({ configStoreLayer: makeFailingConfigStore("writeConfig") })),
     )
 
     expect(Exit.isFailure(exit)).toBe(true)
