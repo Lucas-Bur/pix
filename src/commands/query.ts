@@ -5,6 +5,7 @@ import { QueryProject } from "../application/query-project.js"
 import { Display } from "../display/Display.js"
 import type { SearchResult } from "../domain/ports.js"
 import { reportError } from "../lib/error-format.js"
+import { applyTokenBudget } from "../lib/format.js"
 
 const DEFAULT_TOP_K = 5
 const DEFAULT_CONTEXT_LINES = 0
@@ -36,7 +37,14 @@ const toJsonOutput = (results: readonly SearchResult[], ctxLines: number) =>
     ...(ctxLines > 0 && r.contextAfter && { contextAfter: r.contextAfter }),
   }))
 
-/** CLI command: pix query "<text>" [--top N] [--json] [--context-lines N] */
+const ignorePathOption = Options.text("ignore-path").pipe(Options.repeated)
+const onlyPathOption = Options.text("only-path").pipe(Options.repeated)
+const maxTokensOption = Options.integer("max-tokens").pipe(Options.optional)
+
+/**
+ * CLI command: pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P]
+ * [--only-path P] [--max-tokens N]
+ */
 export const queryCommand = Command.make(
   "query",
   {
@@ -47,13 +55,24 @@ export const queryCommand = Command.make(
       Options.withDefault(DEFAULT_CONTEXT_LINES),
       Options.optional,
     ),
+    ignorePath: ignorePathOption,
+    onlyPath: onlyPathOption,
+    maxTokens: maxTokensOption,
   },
-  ({ queryText, top, contextLines }) =>
+  ({ queryText, top, contextLines, ignorePath, onlyPath, maxTokens }) =>
     Effect.gen(function* () {
       const d = yield* Display
       const topK = Option.getOrElse(top, () => DEFAULT_TOP_K)
       const ctxLines = Option.getOrElse(contextLines, () => DEFAULT_CONTEXT_LINES)
       const clamped = clampTopK(topK)
+
+      const hasFilter = ignorePath.length > 0 || onlyPath.length > 0
+      const searchOptions = hasFilter
+        ? {
+            ...(ignorePath.length > 0 && { ignorePaths: [...ignorePath] }),
+            ...(onlyPath.length > 0 && { onlyPaths: [...onlyPath] }),
+          }
+        : undefined
 
       if (clamped.clamped) {
         yield* d.log(`topK clamped from ${topK} to ${clamped.value}`, "warn")
@@ -61,15 +80,18 @@ export const queryCommand = Command.make(
 
       const results = yield* d.spinner(
         "Searching...",
-        QueryProject.queryProject(queryText, clamped.value),
+        QueryProject.queryProject(queryText, clamped.value, searchOptions),
       )
 
-      yield* d.json(toJsonOutput(results, ctxLines))
+      const maxTokenValue = Option.getOrUndefined(maxTokens)
+      const { results: budgetedResults } = applyTokenBudget(results, maxTokenValue)
 
-      if (results.length === 0) {
+      yield* d.json(toJsonOutput(budgetedResults, ctxLines))
+
+      if (budgetedResults.length === 0) {
         yield* d.log("No results found", "warn")
       } else {
-        for (const result of results) {
+        for (const result of budgetedResults) {
           yield* d.text(formatResult(result))
         }
       }

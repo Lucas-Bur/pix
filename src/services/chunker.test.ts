@@ -166,3 +166,42 @@ test("Chunker.chunkText returns empty array for empty text", () =>
     const chunks = yield* chunker.chunkText("", "src/empty.ts")
     expect(chunks).toEqual([])
   }).pipe(Effect.provide(testLayer), Effect.scoped))
+
+test("Chunker populates contextBefore and contextAfter around each chunk", () =>
+  Effect.gen(function* () {
+    const chunker = yield* Chunker
+    const lines = Array.from({ length: 80 }, (_, i) => `Line ${i + 1} - some content here`)
+    const text = lines.join("\n")
+    const chunks = yield* chunker.chunkText(text, "src/test.ts")
+    expect(chunks.length).toBeGreaterThanOrEqual(2)
+
+    const second = chunks[1]
+    expect(second.contextBefore).toBeDefined()
+    const beforeLines = second.contextBefore!.split("\n")
+    expect(beforeLines.length).toBeGreaterThan(0)
+    expect(beforeLines[0]).toContain("Line 51")
+
+    const first = chunks[0]
+    expect(first.contextAfter).toBeDefined()
+    const afterLines = first.contextAfter!.split("\n")
+    expect(afterLines.length).toBeGreaterThan(0)
+    expect(afterLines[0]).toContain("Line 61")
+
+    expect(first.file).toBe("src/test.ts")
+    expect(first.startLine).toBe(1)
+  }).pipe(Effect.provide(testLayer), Effect.scoped))
+
+test("Chunker first chunk has no contextBefore, last chunk has no contextAfter", () =>
+  Effect.gen(function* () {
+    const chunker = yield* Chunker
+    const lines = Array.from({ length: 5 }, (_, i) => `Line ${i + 1}`)
+    const text = lines.join("\n")
+    const chunks = yield* chunker.chunkText(text, "src/short.ts")
+    expect(chunks.length).toBeGreaterThanOrEqual(1)
+
+    const first = chunks[0]
+    expect(first.contextBefore).toBeUndefined()
+
+    const last = chunks[chunks.length - 1]
+    expect(last.contextAfter).toBeUndefined()
+  }).pipe(Effect.provide(testLayer), Effect.scoped))

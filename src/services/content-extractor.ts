@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect"
 
 import type { AllProcessorErrors } from "../domain/errors.js"
 import { ContentExtractor } from "../domain/ports.js"
+import { getExtension } from "../lib/extension.js"
 import { buildProcessorMap } from "./processors/index.js"
 
 const make = Effect.gen(function* () {
@@ -10,10 +11,7 @@ const make = Effect.gen(function* () {
   const processorMap = buildProcessorMap([])
 
   const extract = (file: string): Effect.Effect<string, AllProcessorErrors> => {
-    const lastSlash = file.lastIndexOf("/")
-    const name = lastSlash >= 0 ? file.slice(lastSlash + 1) : file
-    const dotIndex = name.lastIndexOf(".")
-    const ext = dotIndex === -1 ? name.toLowerCase() : name.slice(dotIndex).toLowerCase()
+    const ext = getExtension(file)
 
     const processor = processorMap[ext]
     if (!processor) {

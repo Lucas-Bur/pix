@@ -23,6 +23,7 @@ import {
   ContentExtractor,
   type SkippedEntry,
 } from "../domain/ports.js"
+import { getExtension, getFileExtension, getFilename } from "../lib/extension.js"
 import { buildProcessorMap } from "../services/processors/index.js"
 import type { StatusResult } from "./get-status.js"
 
@@ -63,14 +64,6 @@ const deriveEffectiveConfig = (opts: IndexOptions, config: Config): EffectiveCon
     : (config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths),
   ignoreGitignore: opts.ignoreGitignore ?? config.ignoreGitignore ?? false,
 })
-
-function getExtension(file: string): string {
-  const lastSlash = file.lastIndexOf("/")
-  const name = lastSlash >= 0 ? file.slice(lastSlash + 1) : file
-  const dotIndex = name.lastIndexOf(".")
-  if (dotIndex === -1) return name.toLowerCase()
-  return name.slice(dotIndex).toLowerCase()
-}
 
 interface FileClassification {
   readonly knownFiles: string[]
@@ -289,13 +282,6 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
     return { index }
   }),
 }) {}
-
-const getFilename = (path: string): string => path.split("/").pop() ?? path
-
-const getFileExtension = (filename: string): string => {
-  const dotIndex = filename.lastIndexOf(".")
-  return dotIndex >= 0 ? filename.slice(dotIndex) : "(no extension)"
-}
 
 const groupByExtension = (entries: readonly SkippedEntry[]): Map<string, string[]> => {
   const byExt = new Map<string, string[]>()

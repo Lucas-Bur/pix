@@ -1,21 +1,17 @@
 import { FileSystem } from "@effect/platform"
 import { Effect, Layer, Option, Ref } from "effect"
+import ignore from "ignore"
 
 import type { Chunk } from "../domain/chunk.js"
 import type { Embedding } from "../domain/embedding.js"
 import { DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
-import type { IndexStats } from "../domain/ports.js"
+import type { IndexStats, SearchOptions } from "../domain/ports.js"
 import { VectorStore } from "../domain/ports.js"
+import { isPlatformReason } from "../lib/platform-error.js"
 
 const STORE_DIR = ".pix"
 const CHUNKS_FILE = `${STORE_DIR}/chunks.jsonl`
 const VECTORS_FILE = `${STORE_DIR}/vectors.bin`
-
-const isPlatformReason = (cause: unknown, reason: string): boolean =>
-  typeof cause === "object" &&
-  cause !== null &&
-  "reason" in cause &&
-  String((cause as { reason: unknown }).reason) === reason
 
 /**
  * FileSystem adapter for VectorStore port. Reads from chunks.jsonl and vectors.bin to provide index
@@ -171,6 +167,8 @@ const make = Effect.gen(function* () {
           startLine: c.startLine,
           endLine: c.endLine,
           text: c.text,
+          ...(c.contextBefore !== undefined && { contextBefore: c.contextBefore }),
+          ...(c.contextAfter !== undefined && { contextAfter: c.contextAfter }),
         }),
       )
       const content = chunksLines.join("\n") + "\n"
@@ -242,6 +240,8 @@ const make = Effect.gen(function* () {
           startLine: c.startLine,
           endLine: c.endLine,
           text: c.text,
+          ...(c.contextBefore !== undefined && { contextBefore: c.contextBefore }),
+          ...(c.contextAfter !== undefined && { contextAfter: c.contextAfter }),
         }),
       )
       yield* withStoreError(
@@ -260,6 +260,7 @@ const make = Effect.gen(function* () {
   const search = (
     query: Embedding,
     topK: number,
+    options?: SearchOptions,
   ): Effect.Effect<
     readonly {
       score: number
@@ -296,6 +297,9 @@ const make = Effect.gen(function* () {
       )
       const vectors = new Float32Array(vectorsBuffer.buffer as ArrayBuffer)
 
+      const ignoreIg = options?.ignorePaths?.length ? ignore().add([...options.ignorePaths]) : null
+      const onlyIg = options?.onlyPaths?.length ? ignore().add([...options.onlyPaths]) : null
+
       const results: {
         score: number
         file: string
@@ -316,6 +320,9 @@ const make = Effect.gen(function* () {
             contextBefore?: string
             contextAfter?: string
           }
+
+          if (ignoreIg && ignoreIg.ignores(chunk.file)) continue
+          if (onlyIg && !onlyIg.ignores(chunk.file)) continue
 
           const startIdx = i * query.dims
           const chunkVector = vectors.slice(startIdx, startIdx + query.dims)

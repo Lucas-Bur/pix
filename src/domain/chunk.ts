@@ -5,4 +5,6 @@ export interface Chunk {
   readonly startLine: number
   readonly endLine: number
   readonly text: string
+  readonly contextBefore?: string
+  readonly contextAfter?: string
 }
