@@ -25,6 +25,10 @@ export const statusCommand = Command.make(
       yield* d.log(`Total lines: ${result.totalLines.toLocaleString()}`, "info")
       yield* d.log(`Index size: ${result.byteSize.toLocaleString()} bytes`, "info")
       yield* d.log(`Last indexed: ${lastIndexStr}`, "info")
+
+      if (result.validationErrors.length > 0) {
+        yield* d.log(`Warnings: ${result.validationErrors[0].message}`, "warn")
+      }
     }).pipe(
       Effect.catchTags({
         StoreError: reportError,

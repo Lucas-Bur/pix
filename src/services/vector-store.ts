@@ -6,7 +6,7 @@ import { ChunkSchema } from "../domain/chunk.js"
 import type { Chunk } from "../domain/chunk.js"
 import type { Embedding } from "../domain/embedding.js"
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
-import type { IndexStats, SearchOptions, SearchResult } from "../domain/ports.js"
+import type { IndexStats, SearchOptions, SearchResponse, SearchResult } from "../domain/ports.js"
 import { VectorStore } from "../domain/ports.js"
 import { isPlatformReason } from "../lib/platform-error.js"
 
@@ -272,7 +272,7 @@ const make = Effect.gen(function* () {
   const search = (
     query: Embedding,
     options?: SearchOptions,
-  ): Effect.Effect<readonly SearchResult[], StoreError | NoIndexError> =>
+  ): Effect.Effect<SearchResponse, StoreError | NoIndexError> =>
     Effect.gen(function* () {
       const chunksExists = yield* withReadError(fs.exists(CHUNKS_FILE), "check chunks file")
       const vectorsExists = yield* withReadError(fs.exists(VECTORS_FILE), "check vectors file")
@@ -333,25 +333,26 @@ const make = Effect.gen(function* () {
         })
       }
 
-      if (malformedLines > 0) {
-        yield* Effect.logWarning(
-          new ChunkValidationError({
-            message: `Skipped ${malformedLines} malformed chunk line(s) in chunks.jsonl`,
-            errors: [
-              {
-                path: "chunks.jsonl",
-                message: `${malformedLines} line(s) failed schema validation`,
-              },
-            ],
-          }),
-        )
-      }
+      const validationErrors =
+        malformedLines > 0
+          ? [
+              new ChunkValidationError({
+                message: `Skipped ${malformedLines} malformed chunk line(s) in chunks.jsonl`,
+                errors: [
+                  {
+                    path: "chunks.jsonl",
+                    message: `${malformedLines} line(s) failed schema validation`,
+                  },
+                ],
+              }),
+            ]
+          : []
 
       results.sort((a, b) => b.score - a.score)
       const topK = options?.topK
-      if (topK == null) return results
+      if (topK == null) return { results, validationErrors }
       const clamped = Math.max(0, Math.min(Math.floor(topK), results.length))
-      return results.slice(0, clamped)
+      return { results: results.slice(0, clamped), validationErrors }
     })
 
   const getStatus = (): Effect.Effect<
@@ -362,6 +363,7 @@ const make = Effect.gen(function* () {
       lastIndex: number
       totalLines: number
       byteSize: number
+      validationErrors: readonly ChunkValidationError[]
     },
     StoreError
   > =>
@@ -377,6 +379,7 @@ const make = Effect.gen(function* () {
           lastIndex: 0,
           totalLines: 0,
           byteSize: 0,
+          validationErrors: [],
         }
       }
 
@@ -392,19 +395,20 @@ const make = Effect.gen(function* () {
       const model = ""
       const { totalLines, malformedLines: lineMalformed } = countTotalLines(lines)
 
-      if (lineMalformed > 0) {
-        yield* Effect.logWarning(
-          new ChunkValidationError({
-            message: `Skipped ${lineMalformed} malformed chunk line(s) in chunks.jsonl`,
-            errors: [
-              {
-                path: "chunks.jsonl",
-                message: `${lineMalformed} line(s) failed schema validation`,
-              },
-            ],
-          }),
-        )
-      }
+      const validationErrors: readonly ChunkValidationError[] =
+        lineMalformed > 0
+          ? [
+              new ChunkValidationError({
+                message: `Skipped ${lineMalformed} malformed chunk line(s) in chunks.jsonl`,
+                errors: [
+                  {
+                    path: "chunks.jsonl",
+                    message: `${lineMalformed} line(s) failed schema validation`,
+                  },
+                ],
+              }),
+            ]
+          : []
 
       const vectorsStat = yield* withReadError(fs.stat(VECTORS_FILE), "stat vectors", VECTORS_FILE)
       const byteSize: number = "size" in vectorsStat ? Number(vectorsStat.size) : 0
@@ -413,7 +417,7 @@ const make = Effect.gen(function* () {
         d instanceof Date ? d.getTime() : 0,
       ).pipe(Option.getOrElse(() => 0))
 
-      return { chunks, files, model, lastIndex, totalLines, byteSize }
+      return { chunks, files, model, lastIndex, totalLines, byteSize, validationErrors }
     })
 
   const reset = (): Effect.Effect<

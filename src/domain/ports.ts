@@ -8,6 +8,7 @@ import type {
   ConfigMalformedError,
   ConfigNotFoundError,
   ConfigValidationError,
+  ChunkValidationError,
   DiskFullError,
   NoIndexError,
   StoreError,
@@ -157,6 +158,12 @@ export interface IndexStats {
   readonly byteSize: number
 }
 
+/** Result of a search operation, including any chunk line validation errors encountered. */
+export interface SearchResponse {
+  readonly results: readonly SearchResult[]
+  readonly validationErrors: readonly ChunkValidationError[]
+}
+
 export class VectorStore extends Context.Tag("VectorStore")<
   VectorStore,
   {
@@ -181,7 +188,7 @@ export class VectorStore extends Context.Tag("VectorStore")<
     readonly search: (
       query: Embedding,
       options?: SearchOptions,
-    ) => Effect.Effect<readonly SearchResult[], StoreError | NoIndexError>
+    ) => Effect.Effect<SearchResponse, StoreError | NoIndexError>
     readonly getStatus: () => Effect.Effect<
       {
         chunks: number
@@ -190,6 +197,7 @@ export class VectorStore extends Context.Tag("VectorStore")<
         lastIndex: number
         totalLines: number
         byteSize: number
+        validationErrors: readonly ChunkValidationError[]
       },
       StoreError
     >

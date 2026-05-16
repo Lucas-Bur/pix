@@ -90,6 +90,8 @@ test("pix query --json clamps --top above maximum to 100", () => {
         startLine: 1,
         endLine: 1,
         text: `content ${i}`,
+        contextBefore: null,
+        contextAfter: null,
         model: "test-model",
       }),
     ).join("\n"),

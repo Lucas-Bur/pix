@@ -84,7 +84,10 @@ export const makeFailingVectorStore = (
         ? failEffect
         : Effect.succeed({ chunks: 0, files: 0, totalLines: 0, byteSize: 0 }),
     storeAbort: () => (failingMethod === "storeAbort" ? failEffect : Effect.void),
-    search: () => (failingMethod === "search" ? failEffect : Effect.succeed([])),
+    search: () =>
+      failingMethod === "search"
+        ? failEffect
+        : Effect.succeed({ results: [], validationErrors: [] }),
     getStatus: () =>
       failingMethod === "getStatus"
         ? failEffect
@@ -95,6 +98,7 @@ export const makeFailingVectorStore = (
             lastIndex: 0,
             totalLines: 0,
             byteSize: 0,
+            validationErrors: [],
           }),
     reset: () =>
       failingMethod === "reset"

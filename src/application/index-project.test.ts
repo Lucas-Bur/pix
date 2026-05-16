@@ -98,7 +98,7 @@ test("IndexProject.index propagates errors from VectorStore", () =>
       storeBatch: () => Effect.fail(new StoreError({ message: "store failed" })),
       storeCommit: () => Effect.fail(new StoreError({ message: "store failed" })),
       storeAbort: () => Effect.void,
-      search: () => Effect.succeed([]),
+      search: () => Effect.succeed({ results: [], validationErrors: [] }),
       getStatus: () =>
         Effect.succeed({
           chunks: 0,
@@ -107,6 +107,7 @@ test("IndexProject.index propagates errors from VectorStore", () =>
           lastIndex: 0,
           totalLines: 0,
           byteSize: 0,
+          validationErrors: [],
         }),
       reset: () => Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),
     })
