@@ -16,8 +16,6 @@ import {
   updateProgressValue,
 } from "./interactive-state.js"
 
-export type { ProgressOptions, UpdateInteractivePayload } from "./interactive-state.js"
-
 /** Severity level for log messages */
 export type Severity = "info" | "success" | "warn" | "error"
 

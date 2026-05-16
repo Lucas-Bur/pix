@@ -83,23 +83,6 @@ export const computeDelta = (
   return 0
 }
 
-export const withInteractive = <A, E, R>(
-  activeRef: Ref.Ref<ActiveInteractive>,
-  acquire: Effect.Effect<ActiveInteractive>,
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> =>
-  Ref.get(activeRef).pipe(
-    Effect.flatMap((current) =>
-      current !== null
-        ? effect
-        : Effect.acquireUseRelease(
-            acquire.pipe(Effect.tap((h) => Ref.set(activeRef, h))),
-            () => effect,
-            (_, __) => Ref.set(activeRef, null),
-          ),
-    ),
-  )
-
 export const dismissSpinner = (activeRef: Ref.Ref<ActiveInteractive>): Effect.Effect<boolean> =>
   Ref.get(activeRef).pipe(
     Effect.flatMap((current) =>

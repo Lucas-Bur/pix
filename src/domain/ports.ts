@@ -32,6 +32,7 @@ export interface ScanResult {
 
 // === ConfigStore Port ===
 
+/** Port for reading/writing `.pix/config.json`. */
 export class ConfigStore extends Context.Tag("ConfigStore")<
   ConfigStore,
   {
@@ -43,6 +44,7 @@ export class ConfigStore extends Context.Tag("ConfigStore")<
 
 // === Scanner Port ===
 
+/** Port for discovering files to index. */
 export class Scanner extends Context.Tag("Scanner")<
   Scanner,
   {
@@ -60,6 +62,7 @@ export class Scanner extends Context.Tag("Scanner")<
 
 // === ContentExtractor Port ===
 
+/** Port for extracting text content from files. */
 export class ContentExtractor extends Context.Tag("ContentExtractor")<
   ContentExtractor,
   {
@@ -70,6 +73,7 @@ export class ContentExtractor extends Context.Tag("ContentExtractor")<
 
 // === Chunker Port ===
 
+/** Port for splitting source text into chunks for embedding. */
 export class Chunker extends Context.Tag("Chunker")<
   Chunker,
   {
@@ -83,6 +87,7 @@ export class Chunker extends Context.Tag("Chunker")<
 
 // === Embedder Port ===
 
+/** Port for creating vector embeddings from text. */
 export class Embedder extends Context.Tag("Embedder")<
   Embedder,
   {
@@ -156,6 +161,7 @@ export interface SearchResponse {
   readonly validationErrors: readonly ChunkValidationError[]
 }
 
+/** Port for persisting chunks and embeddings and querying the index. */
 export class VectorStore extends Context.Tag("VectorStore")<
   VectorStore,
   {
@@ -173,10 +179,12 @@ export class VectorStore extends Context.Tag("VectorStore")<
     readonly storeCommit: () => Effect.Effect<IndexStats, StoreError | DiskFullError>
     /** Abort staging and clean up temp files without committing. */
     readonly storeAbort: () => Effect.Effect<void, StoreError>
+    /** Search the index with an embedding, returning similar chunks. */
     readonly search: (
       query: Embedding,
       options?: SearchOptions,
     ) => Effect.Effect<SearchResponse, StoreError | NoIndexError>
+    /** Return index statistics: chunk/file counts, model, last index time, etc. */
     readonly getStatus: () => Effect.Effect<
       {
         chunks: number
@@ -189,12 +197,14 @@ export class VectorStore extends Context.Tag("VectorStore")<
       },
       StoreError
     >
+    /** Delete all index data (chunks + vectors) and return what was freed. */
     readonly reset: () => Effect.Effect<ResetResult, StoreError | DiskFullError>
   }
 >() {}
 
 // === Logger Port ===
 
+/** Port for emitting warnings from infrastructure code without depending on Display. */
 export class Logger extends Context.Tag("Logger")<
   Logger,
   {
