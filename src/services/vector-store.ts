@@ -5,13 +5,25 @@ import ignore from "ignore"
 import type { Chunk } from "../domain/chunk.js"
 import type { Embedding } from "../domain/embedding.js"
 import { DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
-import type { IndexStats, SearchOptions } from "../domain/ports.js"
+import type { IndexStats, SearchOptions, SearchResult } from "../domain/ports.js"
 import { VectorStore } from "../domain/ports.js"
 import { isPlatformReason } from "../lib/platform-error.js"
 
 const STORE_DIR = ".pix"
 const CHUNKS_FILE = `${STORE_DIR}/chunks.jsonl`
 const VECTORS_FILE = `${STORE_DIR}/vectors.bin`
+
+/** Serialize a Chunk to a JSON object for storage in chunks.jsonl. */
+const serializeChunk = (c: Chunk): Record<string, unknown> => ({
+  id: c.id,
+  idx: c.idx,
+  file: c.file,
+  startLine: c.startLine,
+  endLine: c.endLine,
+  text: c.text,
+  ...(c.contextBefore !== undefined && { contextBefore: c.contextBefore }),
+  ...(c.contextAfter !== undefined && { contextAfter: c.contextAfter }),
+})
 
 /**
  * FileSystem adapter for VectorStore port. Reads from chunks.jsonl and vectors.bin to provide index
@@ -159,19 +171,7 @@ const make = Effect.gen(function* () {
     embeddings: readonly Embedding[],
   ): Effect.Effect<void, StoreError | DiskFullError> =>
     Effect.gen(function* () {
-      const chunksLines = chunks.map((c) =>
-        JSON.stringify({
-          id: c.id,
-          idx: c.idx,
-          file: c.file,
-          startLine: c.startLine,
-          endLine: c.endLine,
-          text: c.text,
-          ...(c.contextBefore !== undefined && { contextBefore: c.contextBefore }),
-          ...(c.contextAfter !== undefined && { contextAfter: c.contextAfter }),
-        }),
-      )
-      const content = chunksLines.join("\n") + "\n"
+      const content = chunks.map((c) => JSON.stringify(serializeChunk(c))).join("\n") + "\n"
       yield* withStoreError(
         fs.writeFile(chunksTemp, Buffer.from(content), { flag: "a" }),
         "append chunks",
@@ -232,23 +232,8 @@ const make = Effect.gen(function* () {
       yield* ensureDirExists(STORE_DIR, ".pix directory")
 
       const chunksTemp = `${CHUNKS_FILE}.tmp`
-      const chunksLines = chunks.map((c) =>
-        JSON.stringify({
-          id: c.id,
-          idx: c.idx,
-          file: c.file,
-          startLine: c.startLine,
-          endLine: c.endLine,
-          text: c.text,
-          ...(c.contextBefore !== undefined && { contextBefore: c.contextBefore }),
-          ...(c.contextAfter !== undefined && { contextAfter: c.contextAfter }),
-        }),
-      )
-      yield* withStoreError(
-        fs.writeFileString(chunksTemp, chunksLines.join("\n")),
-        "write chunks",
-        chunksTemp,
-      )
+      const chunksJson = chunks.map((c) => JSON.stringify(serializeChunk(c))).join("\n")
+      yield* withStoreError(fs.writeFileString(chunksTemp, chunksJson), "write chunks", chunksTemp)
       yield* withStoreError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
 
       const vectorsTemp = `${VECTORS_FILE}.tmp`
@@ -261,18 +246,7 @@ const make = Effect.gen(function* () {
     query: Embedding,
     topK: number,
     options?: SearchOptions,
-  ): Effect.Effect<
-    readonly {
-      score: number
-      file: string
-      startLine: number
-      endLine: number
-      text: string
-      contextBefore?: string
-      contextAfter?: string
-    }[],
-    StoreError | NoIndexError
-  > =>
+  ): Effect.Effect<readonly SearchResult[], StoreError | NoIndexError> =>
     Effect.gen(function* () {
       const chunksExists = yield* withReadError(fs.exists(CHUNKS_FILE), "check chunks file")
       const vectorsExists = yield* withReadError(fs.exists(VECTORS_FILE), "check vectors file")
@@ -300,15 +274,7 @@ const make = Effect.gen(function* () {
       const ignoreIg = options?.ignorePaths?.length ? ignore().add([...options.ignorePaths]) : null
       const onlyIg = options?.onlyPaths?.length ? ignore().add([...options.onlyPaths]) : null
 
-      const results: {
-        score: number
-        file: string
-        startLine: number
-        endLine: number
-        text: string
-        contextBefore?: string
-        contextAfter?: string
-      }[] = []
+      const results: SearchResult[] = []
 
       for (let i = 0; i < chunkLines.length; i++) {
         try {
