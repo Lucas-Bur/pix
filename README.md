@@ -39,7 +39,12 @@ $ pix status --json
 Errors use the same structured format:
 
 ```json
-{ "error": true, "code": "CONFIG_MISSING", "message": "No .pix/config.json found" }
+{
+  "error": true,
+  "code": "CONFIG_NOT_FOUND",
+  "message": "No .pix/config.json found",
+  "cause": "..."
+}
 ```
 
 ## Architecture
@@ -48,7 +53,7 @@ pix follows hexagonal architecture (ports and adapters) with three layers:
 
 - **Domain** (`src/domain/`) — Pure types, entities, port declarations
 - **Application** (`src/application/`) — Use cases orchestrating business logic
-- **Infrastructure** (`src/services/`) — Concrete adapters (ONNX, filesystem, ffmpeg scanning)
+- **Infrastructure** (`src/services/`) — Concrete adapters (filesystem, ONNX models, gitignore-based scanning)
 
 See [CONTEXT.md](./CONTEXT.md) for architecture decisions and [docs/adr/](./docs/adr/) for decision records.
 

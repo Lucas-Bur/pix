@@ -21,10 +21,10 @@
 
 ## Build & Packaging
 
-### Q4: Why does `vp build` fail with "Cannot resolve entry module index.html"?
+### ~~Q4: Why does `vp build` fail with "Cannot resolve entry module index.html"?~~ Resolved
 
-- The `package.json` says `"build": "vp pack"` - correct for CLI tools?
-- Is `vp pack` the right command for CLI binaries?
+- The `package.json` says `"build": "vp pack"` — correct for CLI tools
+- `vp pack` works for CLI tools; `vp build` is for web apps with an `index.html`
 
 ### Q5: How to structure the CLI entry point?
 
@@ -33,11 +33,16 @@
 
 ## Code Quality
 
-### Q7: How to handle duplicate code in tests?
+### ~~Q7: How to handle duplicate code in tests?~~ Resolved
 
-- `cleanPixDir` is duplicated in `store.test.ts` and `init.test.ts`
-- Should we extract a shared test helper?
-- Where to put test utilities?
+Shared test utilities extracted to `tests/test-utils/`:
+
+- `testLayer.ts` — builds the full application layer against MemoryFileSystem
+- `silentDisplay.ts` — records Display calls for test assertions
+- `command.ts` — shared command test helpers
+- `memfs.ts` — MemoryFileSystem layer builder with fixture support
+- `fixtures.ts` — test fixture data
+- `merge.ts` — layer merge helpers
 
 ### Q8: How to handle fallow warnings?
 

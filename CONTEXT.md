@@ -142,7 +142,7 @@ pix follows hexagonal architecture with three DDD layers. See [ADR 0003](docs/ad
 
 ### Port
 
-A `Context.Tag` interface in `src/domain/ports.ts` declaring what the application needs — no implementation, no I/O. Examples: `ConfigStore`, `Scanner`, `Embedder`, `VectorStore`, `Chunker`.
+A `Context.Tag` interface in `src/domain/ports.ts` declaring what the application needs — no implementation, no I/O. Examples: `ConfigStore`, `Scanner`, `ContentExtractor`, `Chunker`, `Embedder`, `VectorStore`, `Logger`.
 
 ### Adapter
 

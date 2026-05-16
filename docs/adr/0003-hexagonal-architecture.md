@@ -34,8 +34,9 @@ Use cases implemented as `Effect.Service` classes. Each declares its dependencie
 - `IndexProject` — scan → chunk → embed → store pipeline
 - `QueryProject` — embed query → search store
 - `GetStatus` — read index statistics
+- `ResetIndex` — delete index files
 
-Use cases are testable with mock adapters; tests exist for all four.
+Use cases are testable with mock adapters; tests exist for all five.
 
 ### Infrastructure Layer (`src/services/`)
 
@@ -71,4 +72,3 @@ Wires everything in explicit layers:
 - **Positive**: All 25 tests pass; use cases are independently testable; adding new infrastructure providers is straightforward
 - **Positive**: Layer graph is explicit and centralized in `index.ts` — wiring is auditable in one place
 - **Negative**: More files and indirection than a flat service directory; ports must be kept in sync with adapters
-- **Deferred**: ResetIndex use case not yet implemented (tracked in separate issue)
