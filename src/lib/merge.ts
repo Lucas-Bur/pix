@@ -2,9 +2,12 @@
  * Deep-merge override objects. Arrays and primitives are replaced, plain objects are merged
  * recursively.
  */
-export const deepMerge = <T extends Record<string, unknown>>(base: T, overrides: Partial<T>): T => {
-  const result = { ...base }
-  for (const key of Object.keys(overrides) as Array<keyof T>) {
+export const deepMerge = <T extends Record<string, unknown>>(
+  base: T,
+  overrides: Record<string, unknown>,
+): T => {
+  const result: Record<string, unknown> = { ...base }
+  for (const key of Object.keys(overrides)) {
     const val = overrides[key]
     if (val !== undefined) {
       const baseVal = result[key]
@@ -16,14 +19,11 @@ export const deepMerge = <T extends Record<string, unknown>>(base: T, overrides:
         baseVal !== null &&
         !Array.isArray(baseVal)
       ) {
-        result[key] = deepMerge(
-          baseVal as Record<string, unknown>,
-          val as Record<string, unknown>,
-        ) as T[keyof T]
+        result[key] = deepMerge(baseVal as Record<string, unknown>, val as Record<string, unknown>)
       } else {
-        result[key] = val as T[keyof T]
+        result[key] = val
       }
     }
   }
-  return result
+  return result as T
 }
