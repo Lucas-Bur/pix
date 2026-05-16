@@ -5,23 +5,20 @@ import { expect } from "vite-plus/test"
 import type { DisplayEntry } from "../../src/display/Display.js"
 import { StoreError } from "../../src/domain/errors.js"
 import { VectorStore } from "../../src/domain/ports.js"
+import { makeChunkJson, makeConfigJson } from "./fixtures.js"
 
 export const indexFixtures: MemoryFileSystem.Contents = {
-  ".pix/config.json": JSON.stringify({
-    schema: "1",
-    embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
-  }),
+  ".pix/config.json": makeConfigJson(),
   ".pix/chunks.jsonl": [
-    JSON.stringify({
+    makeChunkJson({
       id: "a1",
       idx: 0,
       file: "/src/a.ts",
       startLine: 1,
       endLine: 2,
       text: "const x = 1\nconst y = 2",
-      model: "test-model",
     }),
-    JSON.stringify({
+    makeChunkJson({
       id: "b1",
       idx: 1,
       file: "/src/b.ts",

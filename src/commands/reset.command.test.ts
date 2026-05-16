@@ -3,6 +3,7 @@ import { Effect, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { assertCommandError, makeFailingVectorStore } from "../../tests/test-utils/command.js"
+import { makeChunkJson, makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { resetCommand } from "./reset.js"
@@ -10,23 +11,16 @@ import { resetCommand } from "./reset.js"
 const run = (args: string[]) => Command.run(resetCommand, { name: "pix", version: "0.0.0" })(args)
 
 const fixtures = {
-  ".pix/config.json": JSON.stringify({
-    schema: "1",
+  ".pix/config.json": makeConfigJson({
     embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
-    chunkLines: 60,
-    overlapLines: 10,
-    skipExtensions: [],
-    ignoredPaths: [],
   }),
-  ".pix/chunks.jsonl": JSON.stringify({
+  ".pix/chunks.jsonl": makeChunkJson({
     id: "a1",
     idx: 0,
     file: "/src/a.ts",
     startLine: 1,
     endLine: 1,
     text: "x",
-    contextBefore: null,
-    contextAfter: null,
   }),
   ".pix/vectors.bin": "binary-data",
 }

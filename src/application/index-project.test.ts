@@ -1,6 +1,7 @@
 import { Cause, Effect, Exit, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
+import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { StoreError } from "../domain/errors.js"
 import { ConfigStore } from "../domain/ports.js"
@@ -9,22 +10,9 @@ import { ScannerLive } from "../services/scanner.ts"
 import { IndexProject } from "./index-project.js"
 
 const makeConfig = (overrides: Record<string, unknown> = {}): string =>
-  JSON.stringify({
-    schema: "1",
-    model: "test-model",
-    dims: 384,
-    chunkLines: 60,
-    overlapLines: 10,
-    skipExtensions: [],
-    ignoredPaths: [],
-    embedder: {
-      model: "Xenova/all-MiniLM-L6-v2",
-      device: "auto",
-      dtype: "fp32",
-      batchSize: 16,
-    },
-    ...overrides,
-  })
+  makeConfigJson(
+    overrides as Record<string, unknown> & Partial<import("../domain/config.js").Config>,
+  )
 
 const sourceFile = `import { Effect } from "effect"
 // Line 2 - ${"padding ".repeat(50)}
