@@ -1,3 +1,4 @@
+import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
@@ -190,27 +191,39 @@ test("VectorStoreLive.store works when .pix directory already exists", () =>
 
 test("VectorStoreLive.search skips malformed chunk lines", () =>
   Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
     const store = yield* VectorStore
     const validChunk = makeChunk()
     const validEmbedding = makeEmbedding(0.1)
     yield* store.store([validChunk], [validEmbedding])
 
-    const { results: result } = yield* store.search({
+    const current = yield* fs.readFileString(".pix/chunks.jsonl").pipe(Effect.orDie)
+    yield* fs.writeFileString(".pix/chunks.jsonl", current + "{}\n").pipe(Effect.orDie)
+
+    const { results, validationErrors } = yield* store.search({
       vector: new Float32Array(384).fill(0.15),
       dims: 384,
     })
-    expect(result.length).toBe(1)
+    expect(results.length).toBe(1)
+    expect(validationErrors.length).toBe(1)
+    expect(validationErrors[0].message).toContain("malformed")
   }).pipe(Effect.provide(vsLayer), Effect.scoped))
 
 test("VectorStoreLive.getStatus handles chunks.jsonl with malformed lines", () =>
   Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
     const store = yield* VectorStore
     const chunks = [makeChunk(), makeChunk({ id: "a2", idx: 1, text: "line1\nline2" })]
     const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
     yield* store.store(chunks, embeddings)
 
+    const current = yield* fs.readFileString(".pix/chunks.jsonl").pipe(Effect.orDie)
+    yield* fs.writeFileString(".pix/chunks.jsonl", current + '{"bad}\n').pipe(Effect.orDie)
+
     const status = yield* store.getStatus()
     expect(status.chunks).toBe(2)
     expect(status.totalLines).toBe(3)
     expect(status.files).toBe(1)
+    expect(status.validationErrors.length).toBe(1)
+    expect(status.validationErrors[0].message).toContain("malformed")
   }).pipe(Effect.provide(vsLayer), Effect.scoped))
