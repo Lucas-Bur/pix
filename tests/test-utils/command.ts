@@ -56,7 +56,6 @@ export const assertCommandError = <E, R>(
   })
 
 type FailingMethod =
-  | "store"
   | "storeBegin"
   | "storeBatch"
   | "storeCommit"
@@ -73,7 +72,6 @@ export const makeFailingVectorStore = (
   const failEffect = Effect.fail(new StoreError({ message }))
 
   return Layer.succeed(VectorStore, {
-    store: () => (failingMethod === "store" ? failEffect : Effect.void),
     storeBegin: () => (failingMethod === "storeBegin" ? failEffect : Effect.void),
     storeBatch: () => (failingMethod === "storeBatch" ? failEffect : Effect.void),
     storeCommit: () =>

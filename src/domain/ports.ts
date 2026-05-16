@@ -1,8 +1,8 @@
 import { Effect, Context } from "effect"
 
 import type { Chunk } from "./chunk.js"
+import type { Embedding } from "./chunk.js"
 import type { Config } from "./config.js"
-import type { Embedding } from "./embedding.js"
 import type {
   ConfigError,
   ConfigMalformedError,
@@ -79,8 +79,6 @@ export class ContentExtractor extends Context.Tag("ContentExtractor")<
 export class Chunker extends Context.Tag("Chunker")<
   Chunker,
   {
-    /** Chunk a single file. Fails with ChunkerError if the file cannot be read. */
-    readonly chunkFile: (file: string) => Effect.Effect<readonly Chunk[], ChunkerError>
     /** Chunk raw text with a logical file path. Used by ContentExtractor after text extraction. */
     readonly chunkText: (
       text: string,
@@ -167,10 +165,6 @@ export interface SearchResponse {
 export class VectorStore extends Context.Tag("VectorStore")<
   VectorStore,
   {
-    readonly store: (
-      chunks: readonly Chunk[],
-      embeddings: readonly Embedding[],
-    ) => Effect.Effect<void, StoreError | DiskFullError>
     /** Initialize transactional staging: clean stale temp files and reset accumulators. */
     readonly storeBegin: () => Effect.Effect<void, StoreError | DiskFullError>
     /**

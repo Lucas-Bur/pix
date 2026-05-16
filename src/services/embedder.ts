@@ -2,7 +2,7 @@ import { env } from "@huggingface/transformers"
 import { Effect, Layer, Ref, Option } from "effect"
 
 import { Display } from "../display/Display.js"
-import type { Embedding } from "../domain/embedding.js"
+import type { Embedding } from "../domain/chunk.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
 import { MODEL_REGISTRY } from "../domain/models.js"
 import { ConfigStore, Embedder } from "../domain/ports.js"

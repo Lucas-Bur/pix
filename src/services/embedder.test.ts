@@ -3,7 +3,7 @@ import { expect, test } from "vite-plus/test"
 
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
-import type { Embedding } from "../domain/embedding.js"
+import type { Embedding } from "../domain/chunk.js"
 import { Embedder, OnnxEmbedderLive } from "./embedder.ts"
 
 const testLayer = Layer.provideMerge(

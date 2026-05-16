@@ -6,7 +6,7 @@ import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { GetStatus } from "../application/get-status.js"
 import type { Chunk } from "../domain/chunk.js"
-import type { Embedding } from "../domain/embedding.js"
+import type { Embedding } from "../domain/chunk.js"
 import { VectorStore } from "../domain/ports.js"
 import { VectorStoreLive } from "./vector-store.js"
 
@@ -56,7 +56,9 @@ test("VectorStoreLive.store writes chunks and vectors to index files", () =>
     const store = yield* VectorStore
     const chunks = [makeChunk()]
     const embeddings = [makeEmbedding()]
-    yield* store.store(chunks, embeddings)
+    yield* store.storeBegin()
+    yield* store.storeBatch(chunks, embeddings)
+    yield* store.storeCommit()
 
     const status = yield* store.getStatus()
     expect(status.chunks).toBe(1)
@@ -72,7 +74,9 @@ test("VectorStoreLive.search returns results after storing chunks", () =>
       makeChunk({ id: "a2", idx: 1, startLine: 3, endLine: 4, text: "world" }),
     ]
     const embeddings = [makeEmbedding(0.1), makeEmbedding(0.2)]
-    yield* store.store(chunks, embeddings)
+    yield* store.storeBegin()
+    yield* store.storeBatch(chunks, embeddings)
+    yield* store.storeCommit()
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
     const { results } = yield* store.search(query, { topK: 2 })
@@ -89,7 +93,9 @@ test("VectorStoreLive.search with ignorePaths excludes matching files", () =>
       makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
     ]
     const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
-    yield* store.store(chunks, embeddings)
+    yield* store.storeBegin()
+    yield* store.storeBatch(chunks, embeddings)
+    yield* store.storeCommit()
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
     const { results } = yield* store.search(query, { topK: 5, ignorePaths: ["**/*.test.ts"] })
@@ -105,7 +111,9 @@ test("VectorStoreLive.search with onlyPaths restricts to matching files", () =>
       makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
     ]
     const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
-    yield* store.store(chunks, embeddings)
+    yield* store.storeBegin()
+    yield* store.storeBatch(chunks, embeddings)
+    yield* store.storeCommit()
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
     const { results } = yield* store.search(query, { topK: 5, onlyPaths: ["src/services/**"] })
@@ -122,7 +130,9 @@ test("VectorStoreLive.search with both ignorePaths and onlyPaths applies both", 
       makeChunk({ id: "a3", idx: 2, file: "src/lib/bar.ts" }),
     ]
     const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1), makeEmbedding(0.1)]
-    yield* store.store(chunks, embeddings)
+    yield* store.storeBegin()
+    yield* store.storeBatch(chunks, embeddings)
+    yield* store.storeCommit()
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
     const { results } = yield* store.search(query, {
@@ -142,7 +152,9 @@ test("VectorStoreLive.search with no options returns all results", () =>
       makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
     ]
     const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
-    yield* store.store(chunks, embeddings)
+    yield* store.storeBegin()
+    yield* store.storeBatch(chunks, embeddings)
+    yield* store.storeCommit()
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
     const { results } = yield* store.search(query)
@@ -154,7 +166,9 @@ test("VectorStoreLive.search returns contextBefore and contextAfter when stored"
     const store = yield* VectorStore
     const chunks = [makeChunk({ contextBefore: "line before", contextAfter: "line after" })]
     const embeddings = [makeEmbedding(0.1)]
-    yield* store.store(chunks, embeddings)
+    yield* store.storeBegin()
+    yield* store.storeBatch(chunks, embeddings)
+    yield* store.storeCommit()
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
     const { results } = yield* store.search(query, { topK: 5 })
@@ -168,7 +182,9 @@ test("VectorStoreLive.reset deletes index files when they exist", () =>
     const store = yield* VectorStore
     const chunks = [makeChunk()]
     const embeddings = [makeEmbedding()]
-    yield* store.store(chunks, embeddings)
+    yield* store.storeBegin()
+    yield* store.storeBatch(chunks, embeddings)
+    yield* store.storeCommit()
 
     const result = yield* store.reset()
     expect(result.deletedChunks).toBe(true)
@@ -181,7 +197,9 @@ test("VectorStoreLive.store works when .pix directory already exists", () =>
     const store = yield* VectorStore
     const chunks = [makeChunk()]
     const embeddings = [makeEmbedding()]
-    yield* store.store(chunks, embeddings)
+    yield* store.storeBegin()
+    yield* store.storeBatch(chunks, embeddings)
+    yield* store.storeCommit()
     const status = yield* store.getStatus()
     expect(status.chunks).toBe(1)
   }).pipe(
@@ -195,7 +213,9 @@ test("VectorStoreLive.search skips malformed chunk lines", () =>
     const store = yield* VectorStore
     const validChunk = makeChunk()
     const validEmbedding = makeEmbedding(0.1)
-    yield* store.store([validChunk], [validEmbedding])
+    yield* store.storeBegin()
+    yield* store.storeBatch([validChunk], [validEmbedding])
+    yield* store.storeCommit()
 
     const current = yield* fs.readFileString(".pix/chunks.jsonl").pipe(Effect.orDie)
     yield* fs.writeFileString(".pix/chunks.jsonl", current + "{}\n").pipe(Effect.orDie)
@@ -215,7 +235,9 @@ test("VectorStoreLive.getStatus handles chunks.jsonl with malformed lines", () =
     const store = yield* VectorStore
     const chunks = [makeChunk(), makeChunk({ id: "a2", idx: 1, text: "line1\nline2" })]
     const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
-    yield* store.store(chunks, embeddings)
+    yield* store.storeBegin()
+    yield* store.storeBatch(chunks, embeddings)
+    yield* store.storeCommit()
 
     const current = yield* fs.readFileString(".pix/chunks.jsonl").pipe(Effect.orDie)
     yield* fs.writeFileString(".pix/chunks.jsonl", current + '{"bad}\n').pipe(Effect.orDie)
