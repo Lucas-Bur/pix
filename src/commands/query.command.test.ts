@@ -4,6 +4,7 @@ import type { MemoryFileSystem } from "effect-memfs"
 import { expect, test } from "vite-plus/test"
 
 import { assertCommandError, indexFixtures } from "../../tests/test-utils/command.js"
+import { makeChunkJson, makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { ModelLoadError } from "../domain/errors.js"
@@ -78,21 +79,17 @@ test("pix query --json clamps --top below minimum to 1", () => {
 
 test("pix query --json clamps --top above maximum to 100", () => {
   const largeFixtures: MemoryFileSystem.Contents = {
-    ".pix/config.json": JSON.stringify({
-      schema: "1",
+    ".pix/config.json": makeConfigJson({
       embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
     }),
     ".pix/chunks.jsonl": Array.from({ length: 150 }, (_, i) =>
-      JSON.stringify({
+      makeChunkJson({
         id: `chunk${i}`,
         idx: i,
         file: `/src/file${i}.ts`,
         startLine: 1,
         endLine: 1,
         text: `content ${i}`,
-        contextBefore: null,
-        contextAfter: null,
-        model: "test-model",
       }),
     ).join("\n"),
     ".pix/vectors.bin": "fake binary content",

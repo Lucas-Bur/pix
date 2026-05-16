@@ -3,6 +3,7 @@ import { Effect, Layer, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { assertCommandError } from "../../tests/test-utils/command.js"
+import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { Scanner } from "../domain/ports.js"
@@ -11,13 +12,8 @@ import { indexCommand } from "./index-cmd.js"
 const run = (args: string[]) => Command.run(indexCommand, { name: "pix", version: "0.0.0" })(args)
 
 const fixtures = {
-  ".pix/config.json": JSON.stringify({
-    schema: "1",
+  ".pix/config.json": makeConfigJson({
     embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
-    chunkLines: 60,
-    overlapLines: 10,
-    skipExtensions: [],
-    ignoredPaths: [],
   }),
   "src/a.ts": "export const a = 1",
 }

@@ -6,11 +6,6 @@ export interface ValidationEntry {
   readonly message: string
 }
 
-export interface SchemaDecodeError {
-  readonly message: string
-  readonly errors: ReadonlyArray<ValidationEntry>
-}
-
 export interface JsonSyntaxError {
   readonly _tag: "JsonSyntaxError"
   readonly message: string
