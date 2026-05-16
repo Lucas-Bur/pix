@@ -76,6 +76,87 @@ test("VectorStoreLive.search returns results after storing chunks", () =>
     expect(typeof results[0].score).toBe("number")
   }).pipe(Effect.provide(vsLayer), Effect.scoped))
 
+test("VectorStoreLive.search with ignorePaths excludes matching files", () =>
+  Effect.gen(function* () {
+    const store = yield* VectorStore
+    const chunks = [
+      makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
+      makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
+    ]
+    const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
+    yield* store.store(chunks, embeddings)
+
+    const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
+    const results = yield* store.search(query, 5, { ignorePaths: ["**/*.test.ts"] })
+    expect(results.length).toBe(1)
+    expect(results[0].file).toBe("src/services/foo.ts")
+  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+
+test("VectorStoreLive.search with onlyPaths restricts to matching files", () =>
+  Effect.gen(function* () {
+    const store = yield* VectorStore
+    const chunks = [
+      makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
+      makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
+    ]
+    const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
+    yield* store.store(chunks, embeddings)
+
+    const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
+    const results = yield* store.search(query, 5, { onlyPaths: ["src/services/**"] })
+    expect(results.length).toBe(1)
+    expect(results[0].file).toBe("src/services/foo.ts")
+  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+
+test("VectorStoreLive.search with both ignorePaths and onlyPaths applies both", () =>
+  Effect.gen(function* () {
+    const store = yield* VectorStore
+    const chunks = [
+      makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
+      makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
+      makeChunk({ id: "a3", idx: 2, file: "src/lib/bar.ts" }),
+    ]
+    const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1), makeEmbedding(0.1)]
+    yield* store.store(chunks, embeddings)
+
+    const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
+    const results = yield* store.search(query, 5, {
+      onlyPaths: ["src/services/**", "src/lib/**"],
+      ignorePaths: ["**/bar.ts"],
+    })
+    expect(results.length).toBe(1)
+    expect(results[0].file).toBe("src/services/foo.ts")
+  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+
+test("VectorStoreLive.search with no options returns all results", () =>
+  Effect.gen(function* () {
+    const store = yield* VectorStore
+    const chunks = [
+      makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
+      makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
+    ]
+    const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
+    yield* store.store(chunks, embeddings)
+
+    const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
+    const results = yield* store.search(query, 5)
+    expect(results.length).toBe(2)
+  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+
+test("VectorStoreLive.search returns contextBefore and contextAfter when stored", () =>
+  Effect.gen(function* () {
+    const store = yield* VectorStore
+    const chunks = [makeChunk({ contextBefore: "line before", contextAfter: "line after" })]
+    const embeddings = [makeEmbedding(0.1)]
+    yield* store.store(chunks, embeddings)
+
+    const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
+    const results = yield* store.search(query, 5)
+    expect(results.length).toBe(1)
+    expect(results[0].contextBefore).toBe("line before")
+    expect(results[0].contextAfter).toBe("line after")
+  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+
 test("VectorStoreLive.reset deletes index files when they exist", () =>
   Effect.gen(function* () {
     const store = yield* VectorStore

@@ -165,3 +165,41 @@ test("pix query without --json outputs formatted results", () => {
     expect(entries.some((e) => e._tag === "text")).toBe(true)
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
+
+test("pix query --json with --ignore-path excludes matching files", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
+    yield* run(["query", "--json", "--ignore-path", "**/*.ts", "test"])
+    const entries = yield* Ref.get(ref)
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json" && Array.isArray(jsonEntry.data)) {
+      const files = jsonEntry.data.map((r: { file: string }) => r.file)
+      expect(files.every((f: string) => !f.includes(".ts"))).toBe(true)
+    }
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+})
+
+test("pix query --json with --only-path restricts to matching files", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
+    yield* run(["query", "--json", "--only-path", "src/services/**", "test"])
+    const entries = yield* Ref.get(ref)
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json" && Array.isArray(jsonEntry.data)) {
+      const files = jsonEntry.data.map((r: { file: string }) => r.file)
+      expect(files.every((f: string) => f.startsWith("src/services/"))).toBe(true)
+    }
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+})
+
+test("pix query --json with multiple --ignore-path flags", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
+    yield* run(["query", "--json", "--ignore-path", "**/*.ts", "--ignore-path", "**/*.js", "test"])
+    const entries = yield* Ref.get(ref)
+    const jsonEntry = entries.find((e) => e._tag === "json")
+    expect(jsonEntry).toBeDefined()
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+})

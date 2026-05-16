@@ -106,6 +106,15 @@ export class Embedder extends Context.Tag("Embedder")<
 
 // === VectorStore Port ===
 
+/**
+ * Options for filtering search results by file path. Patterns use gitignore-style matching via the
+ * `ignore` package.
+ */
+export interface SearchOptions {
+  readonly ignorePaths?: readonly string[]
+  readonly onlyPaths?: readonly string[]
+}
+
 export interface SearchResult {
   readonly score: number
   readonly file: string
@@ -155,6 +164,7 @@ export class VectorStore extends Context.Tag("VectorStore")<
     readonly search: (
       query: Embedding,
       topK: number,
+      options?: SearchOptions,
     ) => Effect.Effect<readonly SearchResult[], StoreError | NoIndexError>
     readonly getStatus: () => Effect.Effect<
       {

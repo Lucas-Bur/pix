@@ -5,16 +5,11 @@ import type { Config } from "../domain/config.js"
 import { ConfigError } from "../domain/config.js"
 import { ConfigMalformedError, ConfigNotFoundError, DiskFullError } from "../domain/errors.js"
 import { ConfigStore } from "../domain/ports.js"
+import { isPlatformReason } from "../lib/platform-error.js"
 export { ConfigStore }
 
 const CONFIG_DIR = ".pix"
 const CONFIG_PATH = `${CONFIG_DIR}/config.json`
-
-const isPlatformReason = (cause: unknown, reason: string): boolean =>
-  typeof cause === "object" &&
-  cause !== null &&
-  "reason" in cause &&
-  String((cause as { reason: unknown }).reason) === reason
 
 const mapConfigWriteError = (
   cause: unknown,

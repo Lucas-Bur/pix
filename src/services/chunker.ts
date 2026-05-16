@@ -39,7 +39,21 @@ const buildChunks = (file: string, content: string, config: Config): Chunk[] => 
     if (text.length >= MIN_CHUNK_CHARS) {
       const id = crypto.createHash("sha1").update(`${file}:${startLine}`).digest("hex").slice(0, 12)
 
-      chunks.push({ id, idx, file, startLine, endLine, text })
+      const contextBeforeStart = Math.max(0, startLine - 1 - config.overlapLines)
+      const contextBefore = lines.slice(contextBeforeStart, startLine - 1).join("\n")
+      const contextAfterEnd = Math.min(lines.length, endLine + config.overlapLines)
+      const contextAfter = lines.slice(endLine, contextAfterEnd).join("\n")
+
+      chunks.push({
+        id,
+        idx,
+        file,
+        startLine,
+        endLine,
+        text,
+        contextBefore: contextBefore || undefined,
+        contextAfter: contextAfter || undefined,
+      })
       idx++
     }
 
