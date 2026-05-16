@@ -12,7 +12,7 @@ import {
 } from "../domain/errors.js"
 import { ConfigStore } from "../domain/ports.js"
 import { isPlatformReason } from "../lib/platform-error.js"
-import { decodeWithErrors } from "../lib/validation.js"
+import { decodeJsonWithErrors } from "../lib/validation.js"
 export { ConfigStore }
 
 const CONFIG_DIR = ".pix"
@@ -70,23 +70,20 @@ const make = Effect.gen(function* () {
           return new ConfigError({ message: "Failed to read config.json", cause })
         }),
       )
-      const parsed = yield* Effect.try({
-        try: () => JSON.parse(content),
-        catch: (error) =>
-          new ConfigMalformedError({
-            message: "Invalid JSON in config.json",
-            path: CONFIG_PATH,
-            cause: error,
-          }),
-      })
-      return yield* decodeWithErrors(ConfigSchema, parsed).pipe(
-        Effect.mapError(
-          (err) =>
-            new ConfigValidationError({
-              message: err.message,
-              errors: err.errors,
-            }),
-        ),
+      return yield* decodeJsonWithErrors(ConfigSchema, content).pipe(
+        Effect.mapError((err) => {
+          if (err._tag === "JsonSyntaxError") {
+            return new ConfigMalformedError({
+              message: "Invalid JSON in config.json",
+              path: CONFIG_PATH,
+              cause: err,
+            })
+          }
+          return new ConfigValidationError({
+            message: err.message,
+            errors: err.errors,
+          })
+        }),
       )
     })
 

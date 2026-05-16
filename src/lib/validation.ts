@@ -11,6 +11,20 @@ export interface SchemaDecodeError {
   readonly errors: ReadonlyArray<ValidationEntry>
 }
 
+export interface JsonSyntaxError {
+  readonly _tag: "JsonSyntaxError"
+  readonly message: string
+  readonly errors: ReadonlyArray<ValidationEntry>
+}
+
+export interface SchemaValidationError {
+  readonly _tag: "SchemaValidationError"
+  readonly message: string
+  readonly errors: ReadonlyArray<ValidationEntry>
+}
+
+export type JsonDecodeError = JsonSyntaxError | SchemaValidationError
+
 const mergeMessages = (messages: readonly string[]): string => {
   if (messages.length === 1) return messages[0]
   const uniq = [...new Set(messages)]
@@ -42,13 +56,21 @@ const formatSchemaErrors = (error: ParseResult.ParseError): ReadonlyArray<Valida
 const formatSchemaMessage = (error: ParseResult.ParseError): string =>
   ParseResult.TreeFormatter.formatErrorSync(error)
 
-export const decodeWithErrors = <A, R>(
-  schema: Schema.Schema<A, any, R>,
-  value: unknown,
-): Effect.Effect<A, SchemaDecodeError, R> =>
-  Schema.decodeUnknown(schema)(value).pipe(
-    Effect.mapError((error: ParseResult.ParseError) => ({
-      message: formatSchemaMessage(error),
-      errors: formatSchemaErrors(error),
-    })),
+const isJsonSyntaxError = (error: ParseResult.ParseError): boolean =>
+  error.issue._tag === "Transformation" && error.issue.kind === "Transformation"
+
+export const decodeJsonWithErrors = <A>(
+  schema: Schema.Schema<A, any, never>,
+  json: string,
+): Effect.Effect<A, JsonDecodeError> =>
+  Schema.decodeUnknown(Schema.parseJson(schema))(json).pipe(
+    Effect.mapError((error: ParseResult.ParseError) => {
+      const base = {
+        message: formatSchemaMessage(error),
+        errors: formatSchemaErrors(error),
+      }
+      return isJsonSyntaxError(error)
+        ? { ...base, _tag: "JsonSyntaxError" as const }
+        : { ...base, _tag: "SchemaValidationError" as const }
+    }),
   )
