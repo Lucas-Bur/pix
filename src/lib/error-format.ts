@@ -14,7 +14,6 @@ const errorCodes: Record<string, string> = {
   ChunkerError: "CHUNK_ERROR",
   ModelLoadError: "MODEL_LOAD_ERROR",
   InferenceError: "INFERENCE_ERROR",
-  ScanFailed: "SCAN_FAILED",
 }
 
 const messageFromError = (error: unknown): string => {

@@ -50,7 +50,6 @@ test("formatError maps new error tags correctly", () => {
   expect(JSON.parse(formatError({ _tag: "InferenceError", message: "infer" })).code).toBe(
     "INFERENCE_ERROR",
   )
-  expect(JSON.parse(formatError({ _tag: "ScanFailed", message: "scan" })).code).toBe("SCAN_FAILED")
 })
 
 test("formatError returns UNKNOWN for unrecognized _tag", () => {

@@ -1,6 +1,7 @@
 import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
 
+import { UnsupportedFormat } from "../domain/errors.js"
 import type { AllProcessorErrors } from "../domain/errors.js"
 import { ContentExtractor } from "../domain/ports.js"
 import { getExtension } from "../lib/extension.js"
@@ -15,11 +16,12 @@ const make = Effect.gen(function* () {
 
     const processor = processorMap[ext]
     if (!processor) {
-      return Effect.fail({
-        _tag: "UnsupportedFormat" as const,
-        message: `No processor for extension: ${ext}`,
-        extension: ext,
-      } as AllProcessorErrors)
+      return Effect.fail(
+        new UnsupportedFormat({
+          message: `No processor for extension: ${ext}`,
+          extension: ext,
+        }),
+      )
     }
     return processor(file).pipe(Effect.provideService(FileSystem.FileSystem, fs))
   }
