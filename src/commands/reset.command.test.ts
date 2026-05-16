@@ -2,7 +2,11 @@ import { Command } from "@effect/cli"
 import { Effect, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
-import { assertCommandError, makeFailingVectorStore } from "../../tests/test-utils/command.js"
+import {
+  assertCommandError,
+  expectJsonEntry,
+  makeFailingVectorStore,
+} from "../../tests/test-utils/command.js"
 import { makeChunkJson, makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
@@ -31,15 +35,13 @@ test("pix reset --json deletes index files and reports status", () => {
     yield* run(["reset", "--json"])
     const entries = yield* Ref.get(ref)
     expect(entries[0]._tag).toBe("spinner")
-    const jsonEntry = entries.find((e) => e._tag === "json")
-    expect(jsonEntry).toBeDefined()
-    if (jsonEntry?._tag === "json") {
-      const data = jsonEntry.data as Record<string, unknown>
-      expect(data.status).toBe("ok")
-      expect(data.deletedChunks).toBe(true)
-      expect(data.deletedVectors).toBe(true)
-      expect(data.freedBytes).toBeGreaterThan(0)
-    }
+    yield* expectJsonEntry(ref, (data) => {
+      const d = data as Record<string, unknown>
+      expect(d.status).toBe("ok")
+      expect(d.deletedChunks).toBe(true)
+      expect(d.deletedVectors).toBe(true)
+      expect(d.freedBytes).toBeGreaterThan(0)
+    })
   }).pipe(Effect.provide(testLayer({ contents: fixtures, displayLayer: layer })))
 })
 
@@ -49,15 +51,13 @@ test("pix reset --json on clean project reports nothing deleted", () => {
     yield* run(["reset", "--json"])
     const entries = yield* Ref.get(ref)
     expect(entries[0]._tag).toBe("spinner")
-    const jsonEntry = entries.find((e) => e._tag === "json")
-    expect(jsonEntry).toBeDefined()
-    if (jsonEntry?._tag === "json") {
-      const data = jsonEntry.data as Record<string, unknown>
-      expect(data.status).toBe("ok")
-      expect(data.deletedChunks).toBe(false)
-      expect(data.deletedVectors).toBe(false)
-      expect(data.freedBytes).toBe(0)
-    }
+    yield* expectJsonEntry(ref, (data) => {
+      const d = data as Record<string, unknown>
+      expect(d.status).toBe("ok")
+      expect(d.deletedChunks).toBe(false)
+      expect(d.deletedVectors).toBe(false)
+      expect(d.freedBytes).toBe(0)
+    })
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 

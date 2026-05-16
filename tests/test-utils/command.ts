@@ -3,12 +3,15 @@ import type { MemoryFileSystem } from "effect-memfs"
 import { expect } from "vite-plus/test"
 
 import type { DisplayEntry } from "../../src/display/Display.js"
-import { StoreError } from "../../src/domain/errors.js"
-import { VectorStore } from "../../src/domain/ports.js"
+import { DEFAULT_CONFIG } from "../../src/domain/config.js"
+import { ConfigError, ModelLoadError, StoreError } from "../../src/domain/errors.js"
+import { ConfigStore, Embedder, VectorStore } from "../../src/domain/ports.js"
 import { makeChunkJson, makeConfigJson } from "./fixtures.js"
 
 export const indexFixtures: MemoryFileSystem.Contents = {
-  ".pix/config.json": makeConfigJson(),
+  ".pix/config.json": makeConfigJson({
+    embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
+  }),
   ".pix/chunks.jsonl": [
     makeChunkJson({
       id: "a1",
@@ -99,5 +102,48 @@ export const makeFailingVectorStore = (
       failingMethod === "reset"
         ? failEffect
         : Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),
+  })
+}
+
+/** Find the JSON entry in SilentDisplay entries and pass its data to an assertion callback. */
+export const expectJsonEntry = <T>(
+  ref: Ref.Ref<ReadonlyArray<DisplayEntry>>,
+  assert: (data: unknown) => T,
+): Effect.Effect<T> =>
+  Ref.get(ref).pipe(
+    Effect.flatMap((entries) => {
+      const jsonEntry = [...entries].reverse().find((e) => e._tag === "json")
+      expect(jsonEntry).toBeDefined()
+      if (jsonEntry?._tag === "json") {
+        return Effect.succeed(assert(jsonEntry.data))
+      }
+      return Effect.die("No JSON entry found in display entries")
+    }),
+  )
+
+/** Create a ConfigStore layer where one method fails and all others succeed. */
+export const makeFailingConfigStore = (
+  method: "readConfig" | "writeConfig",
+  message = `${method} failed`,
+): Layer.Layer<ConfigStore> => {
+  const fail = Effect.fail(new ConfigError({ message }))
+  return Layer.succeed(ConfigStore, {
+    readConfig: () => (method === "readConfig" ? fail : Effect.succeed(DEFAULT_CONFIG)),
+    writeConfig: () => (method === "writeConfig" ? fail : Effect.void),
+    configExists: () => Effect.succeed(false),
+  })
+}
+
+/** Create an Embedder layer where one method fails and all others succeed. */
+export const makeFailingEmbedder = (
+  method: "embed" | "batch",
+  message = `${method} failed`,
+): Layer.Layer<Embedder> => {
+  const fail = Effect.fail(new ModelLoadError({ model: "test", message }))
+  return Layer.succeed(Embedder, {
+    embed: () =>
+      method === "embed" ? fail : Effect.succeed({ vector: new Float32Array(384), dims: 384 }),
+    batch: () => (method === "batch" ? fail : Effect.succeed([] as const)),
+    getFallbackInfo: () => Effect.succeed(undefined),
   })
 }

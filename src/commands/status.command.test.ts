@@ -4,6 +4,7 @@ import { expect, test } from "vite-plus/test"
 
 import {
   assertCommandError,
+  expectJsonEntry,
   indexFixtures,
   makeFailingVectorStore,
 } from "../../tests/test-utils/command.js"
@@ -34,15 +35,12 @@ test("pix status --json on empty project shows zero status", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["status", "--json"])
-    const entries = yield* Ref.get(ref)
-    const jsonEntry = entries.find((e) => e._tag === "json")
-    expect(jsonEntry).toBeDefined()
-    if (jsonEntry?._tag === "json") {
-      const data = jsonEntry.data as Record<string, unknown>
-      expect(data.chunks).toBe(0)
-      expect(data.files).toBe(0)
-      expect(data.totalLines).toBe(0)
-    }
+    yield* expectJsonEntry(ref, (data) => {
+      const d = data as Record<string, unknown>
+      expect(d.chunks).toBe(0)
+      expect(d.files).toBe(0)
+      expect(d.totalLines).toBe(0)
+    })
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
