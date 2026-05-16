@@ -43,14 +43,20 @@ const causeFromError = (error: unknown): string => {
 // TODO: there are more keys, that maybe need to be parsed. i think that we should go over each and every key in error object and try to parse it. if there is no function for that we display a message in log. a switch would be good for this exhaustive lookup
 // some keys that i found so far: stack, model, file, path
 
+export interface FormattedError {
+  readonly error: true
+  readonly code: string
+  readonly message: string
+  readonly cause: string
+}
+
 /** Format an error as spec-mandated JSON: `{ error: true, code: "...", message: "..." }`. */
-export const formatError = (error: unknown): string =>
-  JSON.stringify({
-    error: true,
-    code: codeFromError(error),
-    message: messageFromError(error),
-    cause: causeFromError(error),
-  })
+export const formatError = (error: unknown): FormattedError => ({
+  error: true,
+  code: codeFromError(error),
+  message: messageFromError(error),
+  cause: causeFromError(error),
+})
 
 import { Effect } from "effect"
 
@@ -61,6 +67,6 @@ export const reportError = <E>(error: E): Effect.Effect<never, E, Display> =>
   Effect.gen(function* () {
     const d = yield* Display
     yield* d.log(`${codeFromError(error)}: ${messageFromError(error)}`, "error")
-    yield* d.json(JSON.parse(formatError(error)))
+    yield* d.json(formatError(error))
     return yield* Effect.fail(error)
   })
