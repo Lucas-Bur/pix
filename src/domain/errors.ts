@@ -2,6 +2,7 @@ import { Data } from "effect"
 
 // === Config errors ===
 
+/** Generic config I/O failure (read, write, encode). */
 export class ConfigError extends Data.TaggedError("ConfigError")<{
   readonly message: string
   readonly cause?: unknown

@@ -7,6 +7,10 @@ const EmbedderConfigSchema = Schema.Struct({
   batchSize: Schema.Number,
 })
 
+/**
+ * Runtime schema for persisted project configuration. Defines the structure and validation rules
+ * for `.pix/config.json`.
+ */
 export const ConfigSchema = Schema.Struct({
   schema: Schema.Literal("1"),
   chunkLines: Schema.Number,
@@ -18,6 +22,7 @@ export const ConfigSchema = Schema.Struct({
   embedder: EmbedderConfigSchema,
 })
 
+/** Domain config type inferred from ConfigSchema. */
 export type Config = typeof ConfigSchema.Type
 
 export const DEFAULT_CONFIG: Config = {

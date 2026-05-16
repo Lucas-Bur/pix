@@ -33,6 +33,19 @@ const VECTORS_FILE = `${STORE_DIR}/vectors.bin`
 
 /** Pre-built Schema instance for chunk encode/decode. */
 const parseJsonChunk = Schema.parseJson(ChunkSchema)
+
+/** Build ChunkValidationError array from malformed line count, or [] if none. */
+const buildChunkValidationErrors = (malformedLines: number): readonly ChunkValidationError[] =>
+  malformedLines > 0
+    ? [
+        new ChunkValidationError({
+          message: `Skipped ${malformedLines} malformed chunk line(s) in chunks.jsonl`,
+          errors: [
+            { path: "chunks.jsonl", message: `${malformedLines} line(s) failed schema validation` },
+          ],
+        }),
+      ]
+    : []
 /**
  * FileSystem adapter for VectorStore port. Reads from chunks.jsonl and vectors.bin to provide index
  * statistics.
@@ -64,34 +77,36 @@ const make = Effect.gen(function* () {
    * Count total lines across all chunks in chunks.jsonl. Each line is a JSON object; the 'text'
    * field contains the source code.
    */
-  const countTotalLines = (lines: string[]): { totalLines: number; malformedLines: number } => {
+  /** Count files, total lines, and malformed lines in a single pass. */
+  const countChunkStats = (
+    lines: string[],
+  ): { files: Set<string>; totalLines: number; malformedLines: number } => {
+    const files = new Set<string>()
     let totalLines = 0
     let malformedLines = 0
     for (const line of lines) {
       const chunk = parseChunkLine(line)
       if (Option.isSome(chunk)) {
+        files.add(chunk.value.file)
         totalLines += chunk.value.text.split("\n").length
       } else {
         malformedLines++
       }
     }
-    return { totalLines, malformedLines }
+    return { files, totalLines, malformedLines }
   }
 
-  /** Count unique files across all chunks in chunks.jsonl. */
-  const countUniqueFiles = (lines: string[]): { files: Set<string>; malformedLines: number } => {
-    const files = new Set<string>()
-    let malformedLines = 0
-    for (const line of lines) {
-      const chunk = parseChunkLine(line)
-      if (Option.isSome(chunk)) {
-        files.add(chunk.value.file)
-      } else {
-        malformedLines++
+  /** Check that index files exist; fail with NoIndexError if either is missing. */
+  const requireIndex = (): Effect.Effect<void, StoreError | NoIndexError> =>
+    Effect.gen(function* () {
+      const chunksExists = yield* withReadError(fs.exists(CHUNKS_FILE), "check chunks file")
+      const vectorsExists = yield* withReadError(fs.exists(VECTORS_FILE), "check vectors file")
+      if (!chunksExists || !vectorsExists) {
+        return yield* new NoIndexError({
+          message: "No index found. Run pix index first.",
+        })
       }
-    }
-    return { files, malformedLines }
-  }
+    })
 
   const toStoreError =
     (operation: string, path?: string) =>
@@ -270,14 +285,7 @@ const make = Effect.gen(function* () {
     options?: SearchOptions,
   ): Effect.Effect<SearchResponse, StoreError | NoIndexError> =>
     Effect.gen(function* () {
-      const chunksExists = yield* withReadError(fs.exists(CHUNKS_FILE), "check chunks file")
-      const vectorsExists = yield* withReadError(fs.exists(VECTORS_FILE), "check vectors file")
-
-      if (!chunksExists || !vectorsExists) {
-        return yield* new NoIndexError({
-          message: "No index found. Run pix index first.",
-        })
-      }
+      yield* requireIndex()
 
       const chunksContent = yield* withReadError(
         fs.readFileString(CHUNKS_FILE),
@@ -329,20 +337,7 @@ const make = Effect.gen(function* () {
         })
       }
 
-      const validationErrors =
-        malformedLines > 0
-          ? [
-              new ChunkValidationError({
-                message: `Skipped ${malformedLines} malformed chunk line(s) in chunks.jsonl`,
-                errors: [
-                  {
-                    path: "chunks.jsonl",
-                    message: `${malformedLines} line(s) failed schema validation`,
-                  },
-                ],
-              }),
-            ]
-          : []
+      const validationErrors = buildChunkValidationErrors(malformedLines)
 
       results.sort((a, b) => b.score - a.score)
       const topK = options?.topK
@@ -385,26 +380,12 @@ const make = Effect.gen(function* () {
         CHUNKS_FILE,
       )
       const lines = content.split("\n").filter((l) => l.trim().length > 0)
-      const chunks = lines.length
-      const { files: uniqueFiles } = countUniqueFiles(lines)
+      const { files: uniqueFiles, totalLines, malformedLines } = countChunkStats(lines)
+      const chunks = lines.length - malformedLines
       const files = uniqueFiles.size
       const model = ""
-      const { totalLines, malformedLines: lineMalformed } = countTotalLines(lines)
 
-      const validationErrors: readonly ChunkValidationError[] =
-        lineMalformed > 0
-          ? [
-              new ChunkValidationError({
-                message: `Skipped ${lineMalformed} malformed chunk line(s) in chunks.jsonl`,
-                errors: [
-                  {
-                    path: "chunks.jsonl",
-                    message: `${lineMalformed} line(s) failed schema validation`,
-                  },
-                ],
-              }),
-            ]
-          : []
+      const validationErrors = buildChunkValidationErrors(malformedLines)
 
       const vectorsStat = yield* withReadError(fs.stat(VECTORS_FILE), "stat vectors", VECTORS_FILE)
       const byteSize: number = "size" in vectorsStat ? Number(vectorsStat.size) : 0

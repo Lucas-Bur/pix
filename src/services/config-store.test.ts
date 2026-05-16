@@ -67,58 +67,54 @@ test("ConfigStore.configExists returns true when config exists", () =>
 test("readConfig returns ConfigMalformedError for invalid JSON", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = yield* Effect.either(
-      store.readConfig().pipe(Effect.provide(makeLayer({ ".pix/config.json": "not json" }))),
-    )
+    const result = yield* Effect.either(store.readConfig())
     expect(result._tag).toBe("Left")
     if (result._tag === "Left") {
       expect(result.left._tag).toBe("ConfigMalformedError")
     }
-  }))
+  }).pipe(Effect.provide(makeLayer({ ".pix/config.json": "not json" }))))
 
 test("readConfig returns ConfigValidationError for missing required field", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = yield* Effect.either(
-      store.readConfig().pipe(
-        Effect.provide(
-          // Intentionally invalid: missing required embedder — tests ConfigValidationError path
-          makeLayer({ ".pix/config.json": JSON.stringify({ schema: "1", chunkLines: 60 }) }),
-        ),
-      ),
-    )
+    const result = yield* Effect.either(store.readConfig())
     expect(result._tag).toBe("Left")
     if (result._tag === "Left") {
       expect(result.left._tag).toBe("ConfigValidationError")
       expect(result.left.message).toContain("embedder")
     }
-  }))
+  }).pipe(
+    Effect.provide(
+      // Intentionally invalid: missing required embedder — tests ConfigValidationError path
+      makeLayer({ ".pix/config.json": JSON.stringify({ schema: "1", chunkLines: 60 }) }),
+    ),
+  ))
+
+const invalidConfig = {
+  ...DEFAULT_CONFIG,
+  embedder: { ...DEFAULT_CONFIG.embedder, device: "cuda!" },
+}
 
 test("readConfig returns ConfigValidationError for invalid enum value", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const config = { ...DEFAULT_CONFIG, embedder: { ...DEFAULT_CONFIG.embedder, device: "cuda!" } }
-    const result = yield* Effect.either(
-      store.readConfig().pipe(
-        Effect.provide(
-          // Intentionally invalid: device "cuda!" is not in the enum — tests ConfigValidationError path
-          makeLayer({ ".pix/config.json": JSON.stringify(config) }),
-        ),
-      ),
-    )
+    const result = yield* Effect.either(store.readConfig())
     expect(result._tag).toBe("Left")
     if (result._tag === "Left") {
       expect(result.left._tag).toBe("ConfigValidationError")
       expect(result.left.message).toContain("device")
     }
-  }))
+  }).pipe(
+    Effect.provide(
+      // Intentionally invalid: device "cuda!" is not in the enum — tests ConfigValidationError path
+      makeLayer({ ".pix/config.json": JSON.stringify(invalidConfig) }),
+    ),
+  ))
 
 test("readConfig passes through a valid config", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const config = yield* store
-      .readConfig()
-      .pipe(Effect.provide(makeLayer({ ".pix/config.json": makeConfigJson() })))
+    const config = yield* store.readConfig()
     expect(config.schema).toBe("1")
     expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
-  }))
+  }).pipe(Effect.provide(makeLayer({ ".pix/config.json": makeConfigJson() }))))
