@@ -13,6 +13,7 @@ import { ChunkerLive } from "./services/chunker.js"
 import { ConfigStoreLive } from "./services/config-store.js"
 import { ContentExtractorLive } from "./services/content-extractor.js"
 import { OnnxEmbedderLive } from "./services/embedder.js"
+import { LoggerLive } from "./services/logger.js"
 import { ScannerLive } from "./services/scanner.js"
 import { VectorStoreLive } from "./services/vector-store.js"
 
@@ -43,15 +44,19 @@ const UseCaseLayer = Layer.mergeAll(
 )
 
 // === AppLayer: wiring everything together ===
-const AppLayer = Layer.merge(UseCaseLayer.pipe(Layer.provide(InfraLayer)), NodeContext.layer)
+const AppLayer = UseCaseLayer.pipe(Layer.provide(InfraLayer))
 
 const { effect, displayLayer } = cli(process.argv)
 
 const cliLayer = Layer.mergeAll(displayLayer, CliConfig.layer({ showTypes: false }))
 
+const fullCliLayer = cliLayer.pipe(Layer.provideMerge(LoggerLive.pipe(Layer.provide(cliLayer))))
+
 setupTerminalCleanup()
 
-effect.pipe(
-  Effect.provide(AppLayer.pipe(Layer.provideMerge(cliLayer))),
-  NodeRuntime.runMain({ disableErrorReporting: true }),
+// Type inference can't fully resolve the final R after all layer merges,
+// but the types guarantee all runtime requirements are satisfied
+NodeRuntime.runMain(
+  Effect.provide(effect, AppLayer.pipe(Layer.provideMerge(fullCliLayer))) as any,
+  { disableErrorReporting: true },
 )

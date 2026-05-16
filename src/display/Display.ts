@@ -3,59 +3,23 @@ import { styleText } from "node:util"
 import * as clack from "@clack/prompts"
 import { Context, Data, Effect, Layer, Ref, Exit } from "effect"
 
+import {
+  type ActiveInteractive,
+  type ProgressOptions,
+  type UpdateInteractivePayload,
+  clearActive,
+  computeDelta,
+  dismissSpinner,
+  getActive,
+  payloadText,
+  setActive,
+  updateProgressValue,
+} from "./interactive-state.js"
+
+export type { ProgressOptions, UpdateInteractivePayload } from "./interactive-state.js"
+
 /** Severity level for log messages */
 export type Severity = "info" | "success" | "warn" | "error"
-
-/** Options for the progress bar method */
-type ProgressOptions = {
-  readonly message: string
-  readonly max: number
-  readonly style?: "light" | "heavy" | "block"
-  readonly size?: number
-  readonly indicator?: "dots" | "timer"
-}
-
-/** Payload for d.updateInteractive() — plain string updates text only, object adds position control */
-type UpdateInteractivePayload =
-  | string
-  | {
-      readonly message: string
-      readonly advanceBy?: never
-      readonly setTo?: never
-      readonly setToPercent?: never
-    }
-  | {
-      readonly message: string
-      readonly advanceBy: number
-      readonly setTo?: never
-      readonly setToPercent?: never
-    }
-  | {
-      readonly message: string
-      readonly setToPercent: number
-      readonly advanceBy?: never
-      readonly setTo?: never
-    }
-  | {
-      readonly message: string
-      readonly setTo: number
-      readonly advanceBy?: never
-      readonly setToPercent?: never
-    }
-  | {
-      readonly message: string
-      readonly setToPercent: number
-      readonly advanceBy?: never
-      readonly setTo?: never
-      readonly setMax?: never
-    }
-  | {
-      readonly message: string
-      readonly setMax: number
-      readonly setTo: number
-      readonly advanceBy?: never
-      readonly setToPercent?: never
-    }
 
 /** Union of all display entries recorded by SilentDisplay for test assertions */
 export type DisplayEntry = Data.TaggedEnum<{
@@ -122,68 +86,9 @@ const terminalStyle = {
   dim: (message: string): string => styleText("dim", message),
 }
 
-/**
- * Active interactive element. @clack supports only one interactive line at a time (spinner or
- * progress bar). State is tracked immutably inside a Ref scoped to the layer lifecycle.
- */
-type ActiveInteractive =
+type ClackHandle =
   | { readonly type: "spinner"; readonly handle: ReturnType<typeof clack.spinner> }
-  | {
-      readonly type: "progress"
-      readonly handle: ReturnType<typeof clack.progress>
-      readonly value: number
-      readonly max: number
-    }
-  | null
-
-/** Extract the message text from an UpdateInteractivePayload */
-const payloadText = (p: UpdateInteractivePayload): string => (typeof p === "string" ? p : p.message)
-
-/**
- * Compute the delta for a progress bar from the payload + current state. Returns 0 if there is no
- * numeric payload or if the active element is a spinner.
- */
-const computeDelta = (
-  p: UpdateInteractivePayload,
-  state: { readonly value: number; readonly max: number },
-): number => {
-  if (typeof p === "string") return 0
-  if ("advanceBy" in p && p.advanceBy !== undefined) {
-    return Math.max(-state.value, p.advanceBy)
-  }
-  if ("setTo" in p && p.setTo !== undefined) {
-    const target = Math.max(0, Math.min(state.max, p.setTo))
-    return target - state.value
-  }
-  if ("setToPercent" in p && p.setToPercent !== undefined) {
-    const target = Math.floor((state.max * p.setToPercent) / 100)
-    return Math.max(-state.value, Math.min(state.max - state.value, target - state.value))
-  }
-  return 0
-}
-
-/**
- * Extracts the "guarded interactive" pattern: skip if already active, otherwise
- * acquire-use-release.
- */
-const withInteractive = <H, A, E, R>(
-  activeRef: Ref.Ref<ActiveInteractive>,
-  acquire: Effect.Effect<H>,
-  setActive: (h: H) => ActiveInteractive,
-  release: (h: H, exit: { readonly _tag: "Success" | "Failure" }) => Effect.Effect<void>,
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> =>
-  Ref.get(activeRef).pipe(
-    Effect.flatMap((current) =>
-      current !== null
-        ? effect
-        : Effect.acquireUseRelease(
-            acquire.pipe(Effect.tap((h) => Ref.set(activeRef, setActive(h)))),
-            () => effect,
-            (h, exit) => Ref.set(activeRef, null).pipe(Effect.andThen(release(h, exit))),
-          ),
-    ),
-  )
+  | { readonly type: "progress"; readonly handle: ReturnType<typeof clack.progress> }
 
 /** Display implementation using @clack/prompts for interactive terminal output */
 export const ClackDisplay = {
@@ -191,6 +96,7 @@ export const ClackDisplay = {
     Display,
     Effect.gen(function* () {
       const activeRef = yield* Ref.make<ActiveInteractive>(null)
+      const handleRef = yield* Ref.make<ClackHandle | null>(null)
       const lastSpinnerMsg = yield* Ref.make<string>("")
 
       return {
@@ -209,35 +115,36 @@ export const ClackDisplay = {
           message: string,
           effect: Effect.Effect<A, E, R>,
         ): Effect.Effect<A, E, R> =>
-          withInteractive(
-            activeRef,
-            Effect.sync(() => {
-              const s = clack.spinner()
-              s.start(message)
-              return s
-            }).pipe(Effect.tap(() => Ref.set(lastSpinnerMsg, message))),
-            (s) => ({ type: "spinner", handle: s }),
-            (s, exit) =>
-              lastSpinnerMsg.pipe(
-                Effect.flatMap((lastMsg) =>
-                  Effect.sync(() =>
-                    s.stop(exit._tag === "Success" && lastMsg ? lastMsg : `${message} (failed)`),
-                  ),
-                ),
-              ),
-            effect,
-          ),
+          Effect.gen(function* () {
+            const current = yield* getActive(activeRef)
+            if (current !== null) return yield* effect
+            const s = clack.spinner()
+            s.start(message)
+            yield* setActive(activeRef, { type: "spinner" })
+            yield* Ref.set(handleRef, { type: "spinner", handle: s } as ClackHandle)
+            yield* Ref.set(lastSpinnerMsg, message)
+            const exit = yield* Effect.exit(effect)
+            const lastMsg = yield* Ref.get(lastSpinnerMsg)
+            s.stop(exit._tag === "Success" && lastMsg ? lastMsg : `${message} (failed)`)
+            yield* Ref.set(handleRef, null)
+            yield* clearActive(activeRef)
+            if (Exit.isSuccess(exit)) return exit.value
+            return yield* Effect.failCause(exit.cause)
+          }),
 
         progress: <A, E, R>(
           opts: ProgressOptions,
           effect: Effect.Effect<A, E, R>,
         ): Effect.Effect<A, E, R> =>
           Effect.gen(function* () {
-            const current = yield* Ref.get(activeRef)
-            if (current && current.type === "spinner") {
-              const msg = yield* Ref.get(lastSpinnerMsg)
-              current.handle.stop(msg || opts.message)
-              yield* Ref.set(activeRef, null)
+            const wasSpinner = yield* dismissSpinner(activeRef)
+            if (wasSpinner) {
+              const h = yield* Ref.get(handleRef)
+              if (h && h.type === "spinner") {
+                const msg = yield* Ref.get(lastSpinnerMsg)
+                h.handle.stop(msg || opts.message)
+                yield* Ref.set(handleRef, null)
+              }
             }
             const bar = clack.progress({
               max: opts.max,
@@ -246,14 +153,11 @@ export const ClackDisplay = {
               indicator: opts.indicator ?? "dots",
             })
             bar.start(opts.message)
-            yield* Ref.set(activeRef, {
-              type: "progress",
-              handle: bar,
-              value: 0,
-              max: opts.max,
-            })
+            yield* setActive(activeRef, { type: "progress", value: 0, max: opts.max })
+            yield* Ref.set(handleRef, { type: "progress", handle: bar })
             const exit = yield* Effect.exit(effect)
-            yield* Ref.set(activeRef, null)
+            yield* clearActive(activeRef)
+            yield* Ref.set(handleRef, null)
             if (Exit.isSuccess(exit)) {
               bar.stop(opts.message)
               return exit.value
@@ -263,30 +167,24 @@ export const ClackDisplay = {
           }),
 
         updateInteractive: (payload) =>
-          Ref.get(activeRef).pipe(
-            Effect.flatMap((active) => {
-              if (!active) return Effect.void
-              if (active.type === "spinner") {
-                const msg = payloadText(payload)
-                return Effect.sync(() => active.handle.message(msg)).pipe(
-                  Effect.andThen(Ref.set(lastSpinnerMsg, msg)),
-                )
-              }
+          Effect.gen(function* () {
+            const active = yield* getActive(activeRef)
+            if (!active) return
+            const h = yield* Ref.get(handleRef)
+            if (!h) return
+            if (active.type === "spinner" && h.type === "spinner") {
+              const msg = payloadText(payload)
+              h.handle.message(msg)
+              yield* Ref.set(lastSpinnerMsg, msg)
+              return
+            }
+            if (active.type === "progress" && h.type === "progress") {
               const delta = computeDelta(payload, { value: active.value, max: active.max })
               const newValue = Math.max(0, Math.min(active.max, active.value + delta))
-              return Effect.sync(() => {
-                active.handle.advance(delta, payloadText(payload))
-              }).pipe(
-                Effect.andThen(
-                  Ref.update(activeRef, (current) =>
-                    current && current.type === "progress"
-                      ? { ...current, value: newValue }
-                      : current,
-                  ),
-                ),
-              )
-            }),
-          ),
+              h.handle.advance(delta, payloadText(payload))
+              yield* updateProgressValue(activeRef, newValue)
+            }
+          }),
 
         json: () => Effect.void,
       }
