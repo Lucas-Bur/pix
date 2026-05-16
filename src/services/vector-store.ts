@@ -5,7 +5,7 @@ import ignore from "ignore"
 import { ChunkSchema } from "../domain/chunk.js"
 import type { Chunk } from "../domain/chunk.js"
 import type { Embedding } from "../domain/embedding.js"
-import { DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
+import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
 import type { IndexStats, SearchOptions, SearchResult } from "../domain/ports.js"
 import { VectorStore } from "../domain/ports.js"
 import { isPlatformReason } from "../lib/platform-error.js"
@@ -78,25 +78,33 @@ const make = Effect.gen(function* () {
    * Count total lines across all chunks in chunks.jsonl. Each line is a JSON object; the 'text'
    * field contains the source code.
    */
-  const countTotalLines = (lines: string[]): number =>
-    lines.reduce((sum, line) => {
+  const countTotalLines = (lines: string[]): { totalLines: number; malformedLines: number } => {
+    let totalLines = 0
+    let malformedLines = 0
+    for (const line of lines) {
       const chunk = parseChunkLine(line)
       if (Option.isSome(chunk)) {
-        return sum + chunk.value.text.split("\n").length
+        totalLines += chunk.value.text.split("\n").length
+      } else {
+        malformedLines++
       }
-      return sum
-    }, 0)
+    }
+    return { totalLines, malformedLines }
+  }
 
   /** Count unique files across all chunks in chunks.jsonl. */
-  const countUniqueFiles = (lines: string[]): Set<string> => {
+  const countUniqueFiles = (lines: string[]): { files: Set<string>; malformedLines: number } => {
     const files = new Set<string>()
+    let malformedLines = 0
     for (const line of lines) {
       const chunk = parseChunkLine(line)
       if (Option.isSome(chunk)) {
         files.add(chunk.value.file)
+      } else {
+        malformedLines++
       }
     }
-    return files
+    return { files, malformedLines }
   }
 
   const toStoreError =
@@ -297,10 +305,14 @@ const make = Effect.gen(function* () {
       const onlyIg = options?.onlyPaths?.length ? ignore().add([...options.onlyPaths]) : null
 
       const results: SearchResult[] = []
+      let malformedLines = 0
 
       for (let i = 0; i < chunkLines.length; i++) {
         const parsed = parseChunkLine(chunkLines[i])
-        if (Option.isNone(parsed)) continue
+        if (Option.isNone(parsed)) {
+          malformedLines++
+          continue
+        }
 
         const chunk = parsed.value
         if (ignoreIg && ignoreIg.ignores(chunk.file)) continue
@@ -319,6 +331,20 @@ const make = Effect.gen(function* () {
           contextBefore: chunk.contextBefore,
           contextAfter: chunk.contextAfter,
         })
+      }
+
+      if (malformedLines > 0) {
+        yield* Effect.logWarning(
+          new ChunkValidationError({
+            message: `Skipped ${malformedLines} malformed chunk line(s) in chunks.jsonl`,
+            errors: [
+              {
+                path: "chunks.jsonl",
+                message: `${malformedLines} line(s) failed schema validation`,
+              },
+            ],
+          }),
+        )
       }
 
       results.sort((a, b) => b.score - a.score)
@@ -361,10 +387,24 @@ const make = Effect.gen(function* () {
       )
       const lines = content.split("\n").filter((l) => l.trim().length > 0)
       const chunks = lines.length
-      const uniqueFiles = countUniqueFiles(lines)
+      const { files: uniqueFiles } = countUniqueFiles(lines)
       const files = uniqueFiles.size
       const model = ""
-      const totalLines = countTotalLines(lines)
+      const { totalLines, malformedLines: lineMalformed } = countTotalLines(lines)
+
+      if (lineMalformed > 0) {
+        yield* Effect.logWarning(
+          new ChunkValidationError({
+            message: `Skipped ${lineMalformed} malformed chunk line(s) in chunks.jsonl`,
+            errors: [
+              {
+                path: "chunks.jsonl",
+                message: `${lineMalformed} line(s) failed schema validation`,
+              },
+            ],
+          }),
+        )
+      }
 
       const vectorsStat = yield* withReadError(fs.stat(VECTORS_FILE), "stat vectors", VECTORS_FILE)
       const byteSize: number = "size" in vectorsStat ? Number(vectorsStat.size) : 0
