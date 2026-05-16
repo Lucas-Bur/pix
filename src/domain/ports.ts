@@ -4,18 +4,15 @@ import type { Chunk } from "./chunk.js"
 import type { Embedding } from "./chunk.js"
 import type { Config } from "./config.js"
 import type {
-  ConfigError,
-  ConfigMalformedError,
-  ConfigNotFoundError,
-  ConfigValidationError,
+  AllConfigErrors,
   ChunkValidationError,
+  ConfigError,
   DiskFullError,
   NoIndexError,
   StoreError,
   ChunkerError,
   ModelLoadError,
   InferenceError,
-  ScanFailed,
   AllProcessorErrors,
 } from "./errors.js"
 
@@ -38,10 +35,7 @@ export interface ScanResult {
 export class ConfigStore extends Context.Tag("ConfigStore")<
   ConfigStore,
   {
-    readonly readConfig: () => Effect.Effect<
-      Config,
-      ConfigError | ConfigNotFoundError | ConfigMalformedError | ConfigValidationError
-    >
+    readonly readConfig: () => Effect.Effect<Config, AllConfigErrors>
     readonly writeConfig: (config: Config) => Effect.Effect<void, ConfigError | DiskFullError>
     readonly configExists: () => Effect.Effect<boolean>
   }
@@ -55,12 +49,12 @@ export class Scanner extends Context.Tag("Scanner")<
     /**
      * Scan project files, applying .gitignore rules (unless ignoreGitignore is true), ignoredPaths
      * patterns, and .git/info/exclude. Returns all discovered files. Per-entry skips are reported
-     * in ScanResult.skipped. Fatal errors surface as ScanFailed.
+     * in ScanResult.skipped. Fatal errors are caught and logged as skipped entries.
      */
     readonly scanFiles: (
       ignoredPaths: readonly string[],
       ignoreGitignore?: boolean,
-    ) => Effect.Effect<ScanResult, ScanFailed>
+    ) => Effect.Effect<ScanResult, never>
   }
 >() {}
 

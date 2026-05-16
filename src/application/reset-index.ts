@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 
-import type { AllStoreErrors } from "../domain/errors.js"
+import type { DiskFullError, StoreError } from "../domain/errors.js"
 import { VectorStore } from "../domain/ports.js"
 import type { ResetResult } from "../domain/ports.js"
 
@@ -10,7 +10,7 @@ export class ResetIndex extends Effect.Service<ResetIndex>()("ResetIndex", {
   effect: Effect.gen(function* () {
     const store = yield* VectorStore
 
-    const reset = (): Effect.Effect<ResetResult, AllStoreErrors> => store.reset()
+    const reset = (): Effect.Effect<ResetResult, StoreError | DiskFullError> => store.reset()
 
     return { reset }
   }),

@@ -5,15 +5,7 @@ import { Display } from "../display/Display.js"
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
 import type { Config } from "../domain/config.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
-import type {
-  AllConfigErrors,
-  AllEmbedderErrors,
-  AllProcessorErrors,
-  ChunkerError,
-  DiskFullError,
-  ScanFailed,
-  StoreError,
-} from "../domain/errors.js"
+import type { IndexError, AllProcessorErrors, ChunkerError } from "../domain/errors.js"
 import {
   ConfigStore,
   Scanner,
@@ -146,18 +138,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
     const d = yield* Display
     const extractor = yield* ContentExtractor
 
-    const index = (
-      opts: IndexOptions = {},
-    ): Effect.Effect<
-      IndexResult,
-      | AllConfigErrors
-      | ScanFailed
-      | ChunkerError
-      | AllEmbedderErrors
-      | AllProcessorErrors
-      | StoreError
-      | DiskFullError
-    > =>
+    const index = (opts: IndexOptions = {}): Effect.Effect<IndexResult, IndexError> =>
       Effect.gen(function* () {
         const start = Date.now()
 
@@ -195,14 +176,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         }
 
         if (knownFiles.length === 0) {
-          const collected = yield* Ref.get(skipped)
-          yield* displaySkippedNote(d, collected)
-
-          return {
-            success: true as const,
-            status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0, validationErrors: [] },
-            durationMs: Date.now() - start,
-          }
+          return yield* emptyIndexResult(d, skipped, start)
         }
 
         yield* d.updateInteractive(`Processing ${knownFiles.length} files...`)
@@ -216,13 +190,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
         )
 
         if (totalChunks === 0) {
-          const collected = yield* Ref.get(skipped)
-          yield* displaySkippedNote(d, collected)
-          return {
-            success: true as const,
-            status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0, validationErrors: [] },
-            durationMs: Date.now() - start,
-          }
+          return yield* emptyIndexResult(d, skipped, start)
         }
 
         yield* vectorStore.storeBegin()
@@ -323,6 +291,21 @@ const buildSkippedLines = (
 
   return lines
 }
+
+const emptyIndexResult = (
+  d: typeof Display.Service,
+  skipped: Ref.Ref<readonly SkippedEntry[]>,
+  start: number,
+): Effect.Effect<IndexResult> =>
+  Effect.gen(function* () {
+    const collected = yield* Ref.get(skipped)
+    yield* displaySkippedNote(d, collected)
+    return {
+      success: true as const,
+      status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0, validationErrors: [] },
+      durationMs: Date.now() - start,
+    }
+  })
 
 const displaySkippedNote = (
   d: typeof Display.Service,

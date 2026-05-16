@@ -74,15 +74,6 @@ export class InferenceError extends Data.TaggedError("InferenceError")<{
   readonly cause?: unknown
 }> {}
 
-/**
- * Fatal scan failure — gitignore loading failed entirely. Non-fatal per-entry skips are reported
- * via ScanResult.skipped.
- */
-export class ScanFailed extends Data.TaggedError("ScanFailed")<{
-  readonly message: string
-  readonly cause?: unknown
-}> {}
-
 // === Chunk validation error ===
 
 /** A chunk line in chunks.jsonl failed schema validation. */
@@ -127,3 +118,12 @@ export class ExtractionFailed extends Data.TaggedError("ExtractionFailed")<{
 
 /** All content extraction error types. */
 export type AllProcessorErrors = UnsupportedFormat | ExtractionFailed
+
+/** All errors that can arise during indexing. */
+export type IndexError =
+  | AllConfigErrors
+  | ChunkerError
+  | AllEmbedderErrors
+  | AllProcessorErrors
+  | StoreError
+  | DiskFullError

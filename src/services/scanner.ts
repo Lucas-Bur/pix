@@ -2,7 +2,6 @@ import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
 import ignore from "ignore"
 
-import { ScanFailed } from "../domain/errors.js"
 import type { ScanResult, SkippedEntry } from "../domain/ports.js"
 import { Scanner } from "../domain/ports.js"
 
@@ -195,23 +194,13 @@ const make = Effect.gen(function* () {
   const scanFiles = (
     ignoredPaths: readonly string[],
     ignoreGitignore?: boolean,
-  ): Effect.Effect<ScanResult, ScanFailed> =>
+  ): Effect.Effect<ScanResult, never> =>
     Effect.gen(function* () {
       const cwd = process.cwd()
 
-      const { ig, skipped: ignoreSkipped } = yield* (
-        ignoreGitignore
-          ? loadGitignoreRules(ignoredPaths)
-          : loadGitignoreRulesWithFiles(ignoredPaths, cwd)
-      ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ScanFailed({
-              message: `Failed to load ignore rules: ${String(cause)}`,
-              cause,
-            }),
-        ),
-      )
+      const { ig, skipped: ignoreSkipped } = yield* ignoreGitignore
+        ? loadGitignoreRules(ignoredPaths)
+        : loadGitignoreRulesWithFiles(ignoredPaths, cwd)
 
       const { files, skipped: walkSkipped } = yield* walk(cwd, ig, cwd)
 

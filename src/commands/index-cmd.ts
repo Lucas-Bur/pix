@@ -40,11 +40,6 @@ const buildIndexOptions = (args: {
   ignorePaths: ReadonlyArray<string>
   ignoreGitignore: boolean
 }): IndexOptions => {
-  if (Option.isSome(args.batchSize) && args.batchSize.value <= 0)
-    throw new Error(`--batch-size must be positive, got ${args.batchSize.value}`)
-  if (Option.isSome(args.chunkConcurrency) && args.chunkConcurrency.value <= 0)
-    throw new Error(`--chunk-concurrency must be positive, got ${args.chunkConcurrency.value}`)
-
   const cliSkipExtensions = splitCsv(args.skipExtensions)
   const cliIgnorePaths = [
     ...args.ignorePath.map((s) => s.trim()).filter((s) => s.length > 0),
@@ -52,8 +47,10 @@ const buildIndexOptions = (args: {
   ]
 
   return {
-    batchSize: Option.getOrUndefined(args.batchSize),
-    chunkConcurrency: Option.getOrUndefined(args.chunkConcurrency),
+    batchSize: Option.isSome(args.batchSize) ? Math.max(1, args.batchSize.value) : undefined,
+    chunkConcurrency: Option.isSome(args.chunkConcurrency)
+      ? Math.max(1, args.chunkConcurrency.value)
+      : undefined,
     skipExtensions: cliSkipExtensions.length > 0 ? cliSkipExtensions : undefined,
     ignorePaths: cliIgnorePaths.length > 0 ? cliIgnorePaths : undefined,
     ignoreGitignore: args.ignoreGitignore || undefined,
@@ -113,6 +110,19 @@ export const indexCommand = Command.make(
         yield* d.log("--force is currently not implemented and only a placeholder.", "warn")
       if (verbose)
         yield* d.log("--verbose is currently not implemented and only a placeholder.", "warn")
+
+      if (Option.isSome(batchSize) && batchSize.value <= 0) {
+        yield* d.log(
+          `--batch-size must be positive, got ${batchSize.value}. Clamping to 1.`,
+          "warn",
+        )
+      }
+      if (Option.isSome(chunkConcurrency) && chunkConcurrency.value <= 0) {
+        yield* d.log(
+          `--chunk-concurrency must be positive, got ${chunkConcurrency.value}. Clamping to 1.`,
+          "warn",
+        )
+      }
 
       const options = buildIndexOptions({
         batchSize,
