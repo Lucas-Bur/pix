@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.12.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.11.0...pix-v0.12.0) (2026-05-16)
+
+
+### Features
+
+* implement issues 79, 80, 89, 90, 91 ([3b341d4](https://github.com/Lucas-Bur/pix/commit/3b341d408f7eead9efc7f9cf4c4f564b79860e34))
+
+
+### Bug Fixes
+
+* address code review findings ([2556bff](https://github.com/Lucas-Bur/pix/commit/2556bff434065a31d2944d6bd9939fbc8cb2802c))
+* address CodeRabbit review - boundary types, topK validation, test coverage ([d2c694f](https://github.com/Lucas-Bur/pix/commit/d2c694f85eecb15c63f5b2c5755802c42c69ae3b))
+* vector-store search complexity, Float32Array bounds, context normalization ([da5f0db](https://github.com/Lucas-Bur/pix/commit/da5f0dbc536342b069f8192eb4bb3ac6a903d205))
+
 ## [0.11.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.10.0...pix-v0.11.0) (2026-05-15)
 
 
