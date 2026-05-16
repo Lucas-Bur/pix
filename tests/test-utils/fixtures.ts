@@ -5,6 +5,7 @@ import type { Chunk } from "../../src/domain/chunk.js"
 import { ConfigSchema } from "../../src/domain/config.js"
 import type { Config } from "../../src/domain/config.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
+import { deepMerge } from "../../src/lib/merge.js"
 
 const DEFAULT_CHUNK: Chunk = {
   id: "test-id",
@@ -18,7 +19,7 @@ const DEFAULT_CHUNK: Chunk = {
 }
 
 export const makeConfigJson = (overrides?: Partial<Config>): string =>
-  JSON.stringify(Schema.decodeUnknownSync(ConfigSchema)({ ...DEFAULT_CONFIG, ...overrides }))
+  JSON.stringify(Schema.decodeUnknownSync(ConfigSchema)(deepMerge(DEFAULT_CONFIG, overrides ?? {})))
 
 export const makeChunkJson = (overrides?: Partial<Chunk>): string =>
-  JSON.stringify(Schema.decodeUnknownSync(ChunkSchema)({ ...DEFAULT_CHUNK, ...overrides }))
+  JSON.stringify(Schema.decodeUnknownSync(ChunkSchema)(deepMerge(DEFAULT_CHUNK, overrides ?? {})))

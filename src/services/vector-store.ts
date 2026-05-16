@@ -31,21 +31,8 @@ const STORE_DIR = ".pix"
 const CHUNKS_FILE = `${STORE_DIR}/chunks.jsonl`
 const VECTORS_FILE = `${STORE_DIR}/vectors.bin`
 
-/**
- * Serialize a Chunk to a JSON object for storage in chunks.jsonl. Always includes context fields
- * for schema consistency.
- */
-const serializeChunk = (c: Chunk): Record<string, unknown> => ({
-  id: c.id,
-  idx: c.idx,
-  file: c.file,
-  startLine: c.startLine,
-  endLine: c.endLine,
-  text: c.text,
-  contextBefore: c.contextBefore,
-  contextAfter: c.contextAfter,
-})
-
+/** Pre-built Schema instance for chunk encode/decode. */
+const parseJsonChunk = Schema.parseJson(ChunkSchema)
 /**
  * FileSystem adapter for VectorStore port. Reads from chunks.jsonl and vectors.bin to provide index
  * statistics.
@@ -197,7 +184,12 @@ const make = Effect.gen(function* () {
     embeddings: readonly Embedding[],
   ): Effect.Effect<void, StoreError | DiskFullError> =>
     Effect.gen(function* () {
-      const content = chunks.map((c) => JSON.stringify(serializeChunk(c))).join("\n") + "\n"
+      const lines = yield* Effect.forEach(chunks, (c) =>
+        Schema.encode(parseJsonChunk)(c).pipe(
+          Effect.mapError((e) => new StoreError({ message: "Failed to encode chunk", cause: e })),
+        ),
+      )
+      const content = lines.join("\n") + "\n"
       yield* withStoreError(
         fs.writeFile(chunksTemp, Buffer.from(content), { flag: "a" }),
         "append chunks",
@@ -258,7 +250,12 @@ const make = Effect.gen(function* () {
       yield* ensureDirExists(STORE_DIR, ".pix directory")
 
       const chunksTemp = `${CHUNKS_FILE}.tmp`
-      const chunksJson = chunks.map((c) => JSON.stringify(serializeChunk(c))).join("\n")
+      const lines = yield* Effect.forEach(chunks, (c) =>
+        Schema.encode(parseJsonChunk)(c).pipe(
+          Effect.mapError((e) => new StoreError({ message: "Failed to encode chunk", cause: e })),
+        ),
+      )
+      const chunksJson = lines.join("\n")
       yield* withStoreError(fs.writeFileString(chunksTemp, chunksJson), "write chunks", chunksTemp)
       yield* withStoreError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
 
