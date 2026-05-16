@@ -13,12 +13,11 @@ export class QueryProject extends Effect.Service<QueryProject>()("QueryProject",
 
     const queryProject = (
       queryText: string,
-      topK: number,
       options?: SearchOptions,
     ): Effect.Effect<readonly SearchResult[], AllEmbedderErrors | AllStoreErrors | NoIndexError> =>
       embedder
         .embed(queryText)
-        .pipe(Effect.flatMap((embedding) => store.search(embedding, topK, options)))
+        .pipe(Effect.flatMap((embedding) => store.search(embedding, options)))
 
     return { queryProject }
   }),

@@ -70,7 +70,7 @@ test("VectorStoreLive.search returns results after storing chunks", () =>
     yield* store.store(chunks, embeddings)
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
-    const results = yield* store.search(query, 2)
+    const results = yield* store.search(query, { topK: 2 })
     expect(results.length).toBe(2)
     expect(results[0].file).toBe("/test.ts")
     expect(typeof results[0].score).toBe("number")
@@ -87,7 +87,7 @@ test("VectorStoreLive.search with ignorePaths excludes matching files", () =>
     yield* store.store(chunks, embeddings)
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
-    const results = yield* store.search(query, 5, { ignorePaths: ["**/*.test.ts"] })
+    const results = yield* store.search(query, { topK: 5, ignorePaths: ["**/*.test.ts"] })
     expect(results.length).toBe(1)
     expect(results[0].file).toBe("src/services/foo.ts")
   }).pipe(Effect.provide(vsLayer), Effect.scoped))
@@ -103,7 +103,7 @@ test("VectorStoreLive.search with onlyPaths restricts to matching files", () =>
     yield* store.store(chunks, embeddings)
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
-    const results = yield* store.search(query, 5, { onlyPaths: ["src/services/**"] })
+    const results = yield* store.search(query, { topK: 5, onlyPaths: ["src/services/**"] })
     expect(results.length).toBe(1)
     expect(results[0].file).toBe("src/services/foo.ts")
   }).pipe(Effect.provide(vsLayer), Effect.scoped))
@@ -120,7 +120,8 @@ test("VectorStoreLive.search with both ignorePaths and onlyPaths applies both", 
     yield* store.store(chunks, embeddings)
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
-    const results = yield* store.search(query, 5, {
+    const results = yield* store.search(query, {
+      topK: 5,
       onlyPaths: ["src/services/**", "src/lib/**"],
       ignorePaths: ["**/bar.ts"],
     })
@@ -139,7 +140,7 @@ test("VectorStoreLive.search with no options returns all results", () =>
     yield* store.store(chunks, embeddings)
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
-    const results = yield* store.search(query, 5)
+    const results = yield* store.search(query, { topK: 5 })
     expect(results.length).toBe(2)
   }).pipe(Effect.provide(vsLayer), Effect.scoped))
 
@@ -151,7 +152,7 @@ test("VectorStoreLive.search returns contextBefore and contextAfter when stored"
     yield* store.store(chunks, embeddings)
 
     const query = { vector: new Float32Array(384).fill(0.15), dims: 384 }
-    const results = yield* store.search(query, 5)
+    const results = yield* store.search(query, { topK: 5 })
     expect(results.length).toBe(1)
     expect(results[0].contextBefore).toBe("line before")
     expect(results[0].contextAfter).toBe("line after")

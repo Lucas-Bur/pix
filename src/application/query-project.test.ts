@@ -6,6 +6,6 @@ import { QueryProject } from "./query-project.js"
 
 test("QueryProject.queryProject returns empty array when no index exists", () =>
   Effect.gen(function* () {
-    const result = yield* QueryProject.queryProject("test", 5)
+    const result = yield* QueryProject.queryProject("test", { topK: 5 })
     expect(result).toEqual([])
   }).pipe(Effect.provide(testLayer({})), Effect.scoped))

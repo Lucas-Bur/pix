@@ -106,12 +106,13 @@ export class Embedder extends Context.Tag("Embedder")<
 
 // === VectorStore Port ===
 
-/**
- * Options for filtering search results by file path. Patterns use gitignore-style matching via the
- * `ignore` package.
- */
+/** Options for searching the vector store. */
 export interface SearchOptions {
+  /** Maximum number of results to return. Default: no limit. */
+  readonly topK?: number
+  /** Gitignore-style patterns. Files matching any pattern are excluded from results. */
   readonly ignorePaths?: readonly string[]
+  /** Gitignore-style patterns. Only files matching at least one pattern are included. */
   readonly onlyPaths?: readonly string[]
 }
 
@@ -125,7 +126,7 @@ export interface SearchResult {
   readonly startLine: number
   /** 1-based end line (inclusive) of the chunk in the source file. */
   readonly endLine: number
-  /** The chunk's source text (may be truncated when --max-tokens is used). */
+  /** The chunk's source text (may be truncated when --max-characters is used). */
   readonly text: string
   /** Lines immediately preceding the chunk, populated when context lines > 0. */
   readonly contextBefore?: string
@@ -171,7 +172,6 @@ export class VectorStore extends Context.Tag("VectorStore")<
     readonly storeAbort: () => Effect.Effect<void, StoreError>
     readonly search: (
       query: Embedding,
-      topK: number,
       options?: SearchOptions,
     ) => Effect.Effect<readonly SearchResult[], StoreError | NoIndexError>
     readonly getStatus: () => Effect.Effect<

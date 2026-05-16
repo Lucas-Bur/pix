@@ -8,58 +8,38 @@ export const formatBytes = (bytes: number): string => {
   return `${(bytes / 1024 ** i).toFixed(1)} ${units[i]}`
 }
 
-/**
- * Estimate token count using a ~4 chars-per-token heuristic. Suitable for LLM context budget
- * calculations.
- */
-export const countTokens = (text: string): number =>
-  text.length === 0 ? 0 : Math.max(1, Math.ceil(text.length / 4))
-
-/** Truncate text to fit within a token budget, appending ` [...]` if truncated. */
-export const truncateToTokens = (
-  text: string,
-  maxTokens: number,
-): { text: string; truncated: boolean } => {
-  if (maxTokens <= 0) return { text: "", truncated: true }
-  const currentTokens = countTokens(text)
-  if (currentTokens <= maxTokens) return { text, truncated: false }
-
-  const indicator = " [...]"
-  const indicatorTokens = countTokens(indicator)
-  const targetChars = Math.max(0, maxTokens - indicatorTokens) * 4
-  const truncated = text.slice(0, targetChars)
-  return { text: `${truncated}${indicator}`, truncated: true }
-}
-
-/** Format a SearchResult as a single string for token budget calculation. */
-const formatResultForTokens = (r: SearchResult): string =>
+/** Format a SearchResult as a single string for character budget calculation. */
+const formatResultForChars = (r: SearchResult): string =>
   `${r.file}:${r.startLine}-${r.endLine}\n${r.text}${r.contextBefore ? `\n${r.contextBefore}` : ""}${r.contextAfter ? `\n${r.contextAfter}` : ""}`
 
 /**
- * Apply a token budget to search results. Returns results in score order capped by the budget. The
- * last result may be truncated to fit the remaining budget.
+ * Apply a character budget to search results. Returns results in score order capped by the budget.
+ * The last result may be truncated to fit the remaining budget. Character count includes file path,
+ * line numbers, chunk text, and context lines.
  */
-export const applyTokenBudget = (
+export const applyCharBudget = (
   results: readonly SearchResult[],
-  maxTokens?: number,
+  maxChars?: number,
 ): { results: readonly SearchResult[] } => {
-  if (!maxTokens || maxTokens <= 0) return { results }
+  if (!maxChars || maxChars <= 0) return { results }
 
   const budgeted: SearchResult[] = []
-  let remaining = maxTokens
+  let remaining = maxChars
 
   for (const result of results) {
-    const formatted = formatResultForTokens(result)
-    const tokens = countTokens(formatted)
+    const formatted = formatResultForChars(result)
+    const chars = formatted.length
 
-    if (tokens <= remaining) {
+    if (chars <= remaining) {
       budgeted.push(result)
-      remaining -= tokens
+      remaining -= chars
     } else {
-      const truncated = truncateToTokens(result.text, remaining)
+      const indicator = " [...]"
+      const targetLen = Math.max(0, remaining - indicator.length)
+      const truncated = result.text.slice(0, targetLen)
       budgeted.push({
         ...result,
-        text: truncated.text,
+        text: `${truncated}${indicator}`,
         contextBefore: undefined,
         contextAfter: undefined,
       })
