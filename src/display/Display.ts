@@ -158,7 +158,7 @@ export const ClackDisplay = {
             const s = clack.spinner()
             s.start(message)
             yield* setActive(activeRef, { type: "spinner" })
-            yield* Ref.set(handleRef, { type: "spinner", handle: s } as ClackHandle)
+            yield* Ref.set(handleRef, { type: "spinner", handle: s } satisfies ClackHandle)
             yield* Ref.set(lastSpinnerMsg, message)
             const exit = yield* Effect.exit(effect)
             const lastMsg = yield* Ref.get(lastSpinnerMsg)

@@ -42,7 +42,7 @@ export const makeChunk = (overrides?: Partial<Chunk>): Chunk => {
     contextBefore: null,
     contextAfter: null,
   }
-  return { ...base, ...overrides } as Chunk
+  return { ...base, ...overrides }
 }
 
 export const makeEmbedding = (fill: number = 0.1): Embedding => ({

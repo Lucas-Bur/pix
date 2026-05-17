@@ -13,7 +13,7 @@ const make = Effect.gen(function* () {
     mkReason: (error: unknown) => string,
   ): Effect.Effect<{ content: string; skipped: SkippedEntry | null }, never> =>
     fs.readFileString(path).pipe(
-      Effect.map((content) => ({ content, skipped: null as SkippedEntry | null })),
+      Effect.map((content) => ({ content, skipped: null })),
       Effect.catchAll((error) =>
         Effect.succeed({
           content: "",
@@ -26,7 +26,7 @@ const make = Effect.gen(function* () {
     dir: string,
   ): Effect.Effect<{ entries: string[]; skipped: SkippedEntry | null }, never> =>
     fs.readDirectory(dir).pipe(
-      Effect.map((entries) => ({ entries, skipped: null as SkippedEntry | null })),
+      Effect.map((entries) => ({ entries, skipped: null })),
       Effect.catchAll((error) =>
         Effect.succeed({
           entries: [] as string[],
@@ -40,7 +40,7 @@ const make = Effect.gen(function* () {
 
   const statWithSkip = (fullPath: string) =>
     fs.stat(fullPath).pipe(
-      Effect.map((info) => ({ info, skipped: null as SkippedEntry | null })),
+      Effect.map((info) => ({ info, skipped: null })),
       Effect.catchAll((error) =>
         Effect.succeed({
           info: null,
