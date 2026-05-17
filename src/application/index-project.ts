@@ -3,7 +3,6 @@ import * as Chunk from "effect/Chunk"
 
 import { Display } from "../display/Display.js"
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
-import type { Config } from "../domain/config.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type { IndexError, AllProcessorErrors, ChunkerError } from "../domain/errors.js"
 import {
@@ -15,6 +14,7 @@ import {
   ContentExtractor,
   type SkippedEntry,
 } from "../domain/ports.js"
+import { mergeConfig } from "../lib/config-merge.js"
 import { getExtension, getFileExtension, getFilename } from "../lib/extension.js"
 import { buildProcessorMap } from "../services/processors/index.js"
 import type { StatusResult } from "./get-status.js"
@@ -36,26 +36,6 @@ export interface IndexOptions {
   readonly ignorePaths?: readonly string[]
   readonly ignoreGitignore?: boolean
 }
-
-interface EffectiveConfig {
-  readonly batchSize: number
-  readonly concurrency: number
-  readonly skipExtensions: readonly string[]
-  readonly ignoredPaths: readonly string[]
-  readonly ignoreGitignore: boolean
-}
-
-const deriveEffectiveConfig = (opts: IndexOptions, config: Config): EffectiveConfig => ({
-  batchSize: opts.batchSize ?? config.embedder.batchSize ?? 16,
-  concurrency: Math.max(1, opts.chunkConcurrency ?? config.chunkConcurrency ?? 8),
-  skipExtensions: opts.skipExtensions
-    ? [...config.skipExtensions, ...opts.skipExtensions]
-    : config.skipExtensions,
-  ignoredPaths: opts.ignorePaths
-    ? [...(config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths), ...opts.ignorePaths]
-    : (config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths),
-  ignoreGitignore: opts.ignoreGitignore ?? config.ignoreGitignore ?? false,
-})
 
 interface FileClassification {
   readonly knownFiles: string[]
@@ -147,7 +127,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           yield* configStore.writeConfig(DEFAULT_CONFIG)
         }
         const config = yield* configStore.readConfig()
-        const eff = deriveEffectiveConfig(opts, config)
+        const eff = mergeConfig(opts, config)
 
         const processorMap = buildProcessorMap(eff.skipExtensions)
 

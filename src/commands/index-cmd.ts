@@ -47,9 +47,9 @@ const buildIndexOptions = (args: {
   ]
 
   return {
-    batchSize: Option.isSome(args.batchSize) ? Math.max(1, args.batchSize.value) : undefined,
+    batchSize: Option.isSome(args.batchSize) ? args.batchSize.value : undefined,
     chunkConcurrency: Option.isSome(args.chunkConcurrency)
-      ? Math.max(1, args.chunkConcurrency.value)
+      ? args.chunkConcurrency.value
       : undefined,
     skipExtensions: cliSkipExtensions.length > 0 ? cliSkipExtensions : undefined,
     ignorePaths: cliIgnorePaths.length > 0 ? cliIgnorePaths : undefined,
@@ -83,8 +83,6 @@ const emitIndexResult = (
 export const indexCommand = Command.make(
   "index",
   {
-    force: Options.boolean("force").pipe(Options.withDefault(false)),
-    verbose: Options.boolean("verbose").pipe(Options.withDefault(false)),
     json: Options.boolean("json").pipe(Options.withDefault(false)),
     batchSize: batchSizeOption,
     chunkConcurrency: chunkConcurrencyOption,
@@ -93,36 +91,9 @@ export const indexCommand = Command.make(
     ignorePaths: ignorePathsOption,
     ignoreGitignore: ignoreGitignoreOption,
   },
-  ({
-    force,
-    verbose,
-    batchSize,
-    chunkConcurrency,
-    skipExtensions,
-    ignorePath,
-    ignorePaths,
-    ignoreGitignore,
-  }) =>
+  ({ batchSize, chunkConcurrency, skipExtensions, ignorePath, ignorePaths, ignoreGitignore }) =>
     Effect.gen(function* () {
       const d = yield* Display
-
-      if (force)
-        yield* d.log("--force is currently not implemented and only a placeholder.", "warn")
-      if (verbose)
-        yield* d.log("--verbose is currently not implemented and only a placeholder.", "warn")
-
-      if (Option.isSome(batchSize) && batchSize.value <= 0) {
-        yield* d.log(
-          `--batch-size must be positive, got ${batchSize.value}. Clamping to 1.`,
-          "warn",
-        )
-      }
-      if (Option.isSome(chunkConcurrency) && chunkConcurrency.value <= 0) {
-        yield* d.log(
-          `--chunk-concurrency must be positive, got ${chunkConcurrency.value}. Clamping to 1.`,
-          "warn",
-        )
-      }
 
       const options = buildIndexOptions({
         batchSize,
