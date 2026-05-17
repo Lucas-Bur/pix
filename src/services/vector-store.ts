@@ -120,17 +120,15 @@ const make = Effect.gen(function* () {
       return parsed
     })
 
-  /** Read and parse chunks.jsonl and vectors.bin, with dtype validation from index-meta.json. */
-  const loadIndex = (): Effect.Effect<
-    { chunkLines: string[]; vectors: Float32Array },
-    StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
+  /** Load index meta, read config, and validate dtype compatibility. */
+  const loadAndValidateMeta = (): Effect.Effect<
+    { dims: number; dtype: EmbeddingDtype },
+    StoreError | NoIndexError | DtypeMismatchError
   > =>
     Effect.gen(function* () {
       yield* ensureIndexExists()
-
       const indexMeta = yield* readIndexMeta()
       const storedDtype = indexMeta?.dtype ?? "fp32"
-
       const config = yield* configStore
         .readConfig()
         .pipe(
@@ -146,7 +144,18 @@ const make = Effect.gen(function* () {
           configDtype,
         })
       }
+      return { dims: indexMeta?.dims ?? 384, dtype: configDtype }
+    })
 
+  /** Read chunks.jsonl and vectors.bin, decode vectors. */
+  const loadChunksAndVectors = (
+    dims: number,
+    dtype: EmbeddingDtype,
+  ): Effect.Effect<
+    { chunkLines: string[]; vectors: Float32Array },
+    StoreError | VectorDecodeError
+  > =>
+    Effect.gen(function* () {
       const chunksContent = yield* withReadError(
         fs.readFileString(CHUNKS_FILE),
         "read chunks",
@@ -158,13 +167,19 @@ const make = Effect.gen(function* () {
         "read vectors",
         VECTORS_FILE,
       )
-
-      const codec = getVectorCodec(configDtype)
-      const count = chunkLines.length
-      const dims = indexMeta?.dims ?? 384
-      const vectors = yield* codec.decode(vectorsBuffer, dims, count)
-
+      const codec = getVectorCodec(dtype)
+      const vectors = yield* codec.decode(vectorsBuffer, dims, chunkLines.length)
       return { chunkLines, vectors }
+    })
+
+  /** Read and parse chunks.jsonl and vectors.bin, with dtype validation from index-meta.json. */
+  const loadIndex = (): Effect.Effect<
+    { chunkLines: string[]; vectors: Float32Array },
+    StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
+  > =>
+    Effect.gen(function* () {
+      const { dims, dtype } = yield* loadAndValidateMeta()
+      return yield* loadChunksAndVectors(dims, dtype)
     })
 
   /** Pure cosine similarity scoring loop. Returns results and malformed line count. */
@@ -400,19 +415,19 @@ const make = Effect.gen(function* () {
       )
       const lines = content.split("\n").filter((l) => l.trim().length > 0)
       const { files: uniqueFiles, totalLines, malformedLines } = yield* countChunkStats(lines)
-      const chunks = lines.length - malformedLines
-      const files = uniqueFiles.size
-
       const indexMeta = yield* readIndexMeta()
-      const model = indexMeta?.model ?? ""
-      const lastIndex = indexMeta?.lastIndex ?? 0
-
-      const validationErrors = buildChunkValidationErrors(malformedLines)
 
       const vectorsStat = yield* withReadError(fs.stat(VECTORS_FILE), "stat vectors", VECTORS_FILE)
-      const byteSize: number = "size" in vectorsStat ? Number(vectorsStat.size) : 0
 
-      return { chunks, files, model, lastIndex, totalLines, byteSize, validationErrors }
+      return {
+        chunks: lines.length - malformedLines,
+        files: uniqueFiles.size,
+        model: indexMeta?.model ?? "",
+        lastIndex: indexMeta?.lastIndex ?? 0,
+        totalLines,
+        byteSize: "size" in vectorsStat ? Number(vectorsStat.size) : 0,
+        validationErrors: buildChunkValidationErrors(malformedLines),
+      }
     })
 
   const reset = (): Effect.Effect<
