@@ -17,8 +17,18 @@ export const ChunkSchema = Schema.Struct({
 /** Domain chunk type inferred from ChunkSchema. */
 export type Chunk = typeof ChunkSchema.Type
 
+/**
+ * Numeric vector representation of a text chunk, produced by the Embedder and consumed by
+ * VectorStore.
+ */
 export interface Embedding {
+  /** Dense vector values — contiguous Float32Array for SIMD-eligible arithmetic (see ADR-0008). */
   readonly vector: Float32Array
+  /**
+   * Dimensionality of the vector (length of `vector`). Must match the index dims for cosine
+   * scoring.
+   */
   readonly dims: number
+  /** Storage precision used for this embedding (e.g. "fp32"). */
   readonly dtype: EmbeddingDtype
 }
