@@ -1,4 +1,5 @@
 import type { SearchResult } from "../domain/ports.js"
+import { formatResultMetadata } from "./search-output.js"
 
 /** Format byte count as human-readable string (e.g. "1.5 MB") */
 export const formatBytes = (bytes: number): string => {
@@ -24,7 +25,7 @@ export const applyCharBudget = (
 
   for (const result of results) {
     const indicator = " [...]"
-    const metadata = `${result.file}:${result.startLine}-${result.endLine}\n`
+    const metadata = `${formatResultMetadata(result)}\n`
     const formatted = `${metadata}${result.text}${result.contextBefore ? `\n${result.contextBefore}` : ""}${result.contextAfter ? `\n${result.contextAfter}` : ""}`
     const chars = formatted.length
 

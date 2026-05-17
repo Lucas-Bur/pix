@@ -54,6 +54,16 @@ const formatSchemaMessage = (error: ParseResult.ParseError): string =>
 const isJsonSyntaxError = (error: ParseResult.ParseError): boolean =>
   error.issue._tag === "Transformation" && error.issue.kind === "Transformation"
 
+export const clampTopK = (
+  value: number,
+  min: number,
+  max: number,
+): { value: number; clamped: boolean } => {
+  if (value < min) return { value: min, clamped: true }
+  if (value > max) return { value: max, clamped: true }
+  return { value, clamped: false }
+}
+
 export const decodeJsonWithErrors = <A>(
   schema: Schema.Schema<A, any, never>,
   json: string,
