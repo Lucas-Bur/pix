@@ -8,7 +8,7 @@ import type { Embedding } from "../domain/chunk.js"
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
 import type { IndexStats, SearchOptions, SearchResponse, SearchResult } from "../domain/ports.js"
 import { VectorStore } from "../domain/ports.js"
-import { isPlatformReason } from "../lib/platform-error.js"
+import { ensureDirExists, withFsError, withReadError } from "../lib/fs-error.js"
 
 const parseChunkLine = (line: string): Effect.Effect<Option.Option<Chunk>> =>
   Schema.decodeUnknown(parseJsonChunk)(line).pipe(Effect.option)
@@ -104,59 +104,6 @@ const make = Effect.gen(function* () {
       }
     })
 
-  const toStoreError =
-    (operation: string, path?: string) =>
-    (cause: unknown): StoreError | DiskFullError => {
-      if (isPlatformReason(cause, "BadResource")) {
-        return new DiskFullError({
-          message: `Disk full during ${operation}`,
-          path,
-          cause,
-        })
-      }
-      return new StoreError({
-        message: `Failed to ${operation}`,
-        path,
-        cause,
-      })
-    }
-
-  const toReadError =
-    (operation: string, path?: string) =>
-    (cause: unknown): StoreError =>
-      new StoreError({
-        message: `Failed to ${operation}`,
-        path,
-        cause,
-      })
-
-  /** Wrap any fs Effect so failures become StoreError | DiskFullError. */
-  const withStoreError = <A>(
-    op: Effect.Effect<A, unknown>,
-    operation: string,
-    path?: string,
-  ): Effect.Effect<A, StoreError | DiskFullError> =>
-    op.pipe(Effect.mapError(toStoreError(operation, path)))
-
-  /** Wrap any fs Effect so failures become StoreError (read-only). */
-  const withReadError = <A>(
-    op: Effect.Effect<A, unknown>,
-    operation: string,
-    path?: string,
-  ): Effect.Effect<A, StoreError> => op.pipe(Effect.mapError(toReadError(operation, path)))
-
-  /** Ensure a directory exists, creating it recursively if absent. */
-  const ensureDirExists = (
-    dir: string,
-    description = dir,
-  ): Effect.Effect<void, StoreError | DiskFullError> =>
-    Effect.gen(function* () {
-      const exists = yield* withStoreError(fs.exists(dir), `check ${description}`)
-      if (!exists) {
-        yield* withStoreError(fs.makeDirectory(dir, { recursive: true }), `create ${description}`)
-      }
-    })
-
   /**
    * Remove a file if it exists, accumulating freed bytes. Returns the number of freed bytes (0 if
    * the file was absent).
@@ -166,27 +113,27 @@ const make = Effect.gen(function* () {
     description: string,
   ): Effect.Effect<{ freed: number; deleted: boolean }, StoreError | DiskFullError> =>
     Effect.gen(function* () {
-      const exists = yield* withStoreError(fs.exists(file), `check ${description}`)
+      const exists = yield* withFsError(fs.exists(file), `check ${description}`)
       if (!exists) return { freed: 0, deleted: false }
-      const stat = yield* withStoreError(fs.stat(file), `stat ${description}`, file)
+      const stat = yield* withFsError(fs.stat(file), `stat ${description}`, file)
       const freed = stat && "size" in stat ? Number(stat.size) : 0
-      yield* withStoreError(fs.remove(file), `delete ${description}`, file)
+      yield* withFsError(fs.remove(file), `delete ${description}`, file)
       return { freed, deleted: true }
     })
 
   const storeBegin = (): Effect.Effect<void, StoreError | DiskFullError> =>
     Effect.gen(function* () {
-      yield* ensureDirExists(STORE_DIR, ".pix directory")
+      yield* ensureDirExists(fs, STORE_DIR, ".pix directory")
       yield* Ref.set(seenFiles, new Set())
       yield* Ref.set(statsAccumulator, { chunks: 0, files: 0, totalLines: 0, byteSize: 0 })
 
-      const chunksExists = yield* withStoreError(fs.exists(chunksTemp), "check chunks temp")
+      const chunksExists = yield* withFsError(fs.exists(chunksTemp), "check chunks temp")
       if (chunksExists) {
-        yield* withStoreError(fs.remove(chunksTemp), "clean stale chunks temp", chunksTemp)
+        yield* withFsError(fs.remove(chunksTemp), "clean stale chunks temp", chunksTemp)
       }
-      const vectorsExists = yield* withStoreError(fs.exists(vectorsTemp), "check vectors temp")
+      const vectorsExists = yield* withFsError(fs.exists(vectorsTemp), "check vectors temp")
       if (vectorsExists) {
-        yield* withStoreError(fs.remove(vectorsTemp), "clean stale vectors temp", vectorsTemp)
+        yield* withFsError(fs.remove(vectorsTemp), "clean stale vectors temp", vectorsTemp)
       }
     })
 
@@ -201,14 +148,14 @@ const make = Effect.gen(function* () {
         ),
       )
       const content = lines.join("\n") + "\n"
-      yield* withStoreError(
+      yield* withFsError(
         fs.writeFile(chunksTemp, Buffer.from(content), { flag: "a" }),
         "append chunks",
         chunksTemp,
       )
 
       const buffer = serializeVectors(embeddings)
-      yield* withStoreError(
+      yield* withFsError(
         fs.writeFile(vectorsTemp, buffer, { flag: "a" }),
         "append vectors",
         vectorsTemp,
@@ -232,8 +179,8 @@ const make = Effect.gen(function* () {
 
   const storeCommit = (): Effect.Effect<IndexStats, StoreError | DiskFullError> =>
     Effect.gen(function* () {
-      yield* withStoreError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
-      yield* withStoreError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
+      yield* withFsError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
+      yield* withFsError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
       const stats = yield* Ref.get(statsAccumulator)
       const files = yield* Ref.get(seenFiles)
       yield* Ref.set(seenFiles, new Set())
