@@ -1,9 +1,6 @@
 import ignore from "ignore"
 
-/** Interface for path filtering during search or scan. */
-export interface PathFilter {
-  ignores(path: string): boolean
-}
+type PathFilter = { ignores(path: string): boolean }
 
 /** Create a filter from gitignore-style patterns. Returns null if patterns is empty. */
 export const makeIgnoreFilter = (patterns: readonly string[]): PathFilter | null =>
@@ -21,7 +18,7 @@ export const makeOnlyFilter = (patterns: readonly string[]): PathFilter | null =
   patterns.length > 0
     ? {
         ignores: (p) =>
-          !ignore()
+          ignore()
             .add([...patterns])
             .ignores(p),
       }
