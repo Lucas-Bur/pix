@@ -15,10 +15,10 @@ export const ConfigSchema = Schema.Struct({
   schema: Schema.Literal("1"),
   chunkLines: Schema.Number,
   overlapLines: Schema.Number,
-  chunkConcurrency: Schema.optionalWith(Schema.Number, { exact: true }),
+  chunkConcurrency: Schema.Number,
   skipExtensions: Schema.Array(Schema.String),
   ignoredPaths: Schema.Array(Schema.String),
-  ignoreGitignore: Schema.optionalWith(Schema.Boolean, { exact: true }),
+  ignoreGitignore: Schema.Boolean,
   embedder: EmbedderConfigSchema,
 })
 
@@ -46,6 +46,7 @@ export const DEFAULT_CONFIG: Config = {
     ".vite-hooks",
     ".fallow",
   ],
+  ignoreGitignore: false,
   embedder: {
     model: "Xenova/all-MiniLM-L6-v2",
     device: "auto",

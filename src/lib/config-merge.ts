@@ -11,19 +11,14 @@ export interface EffectiveConfig {
   readonly ignoreGitignore: boolean
 }
 
-export const mergeConfig = (opts: IndexOptions, config: Config): EffectiveConfig => {
-  const concurrency = (opts.chunkConcurrency ??
-    config.chunkConcurrency ??
-    DEFAULT_CONFIG.chunkConcurrency) as number
-  return {
-    batchSize: opts.batchSize ?? config.embedder.batchSize ?? DEFAULT_CONFIG.embedder.batchSize,
-    concurrency: clampPositive(concurrency),
-    skipExtensions: opts.skipExtensions
-      ? [...config.skipExtensions, ...opts.skipExtensions]
-      : config.skipExtensions,
-    ignoredPaths: opts.ignorePaths
-      ? [...(config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths), ...opts.ignorePaths]
-      : (config.ignoredPaths ?? DEFAULT_CONFIG.ignoredPaths),
-    ignoreGitignore: opts.ignoreGitignore ?? config.ignoreGitignore ?? false,
-  }
-}
+export const mergeConfig = (opts: IndexOptions, config: Config): EffectiveConfig => ({
+  batchSize: opts.batchSize ?? config.embedder.batchSize ?? DEFAULT_CONFIG.embedder.batchSize,
+  concurrency: clampPositive(opts.chunkConcurrency ?? config.chunkConcurrency),
+  skipExtensions: opts.skipExtensions
+    ? [...config.skipExtensions, ...opts.skipExtensions]
+    : config.skipExtensions,
+  ignoredPaths: opts.ignorePaths
+    ? [...config.ignoredPaths, ...opts.ignorePaths]
+    : config.ignoredPaths,
+  ignoreGitignore: opts.ignoreGitignore ?? config.ignoreGitignore,
+})
