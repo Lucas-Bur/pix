@@ -1,9 +1,11 @@
 import { Schema } from "effect"
 
+import { EmbeddingDtypeSchema } from "./dtype.js"
+
 const EmbedderConfigSchema = Schema.Struct({
   model: Schema.String,
   device: Schema.Literal("auto", "cpu", "cuda", "dml", "coreml"),
-  dtype: Schema.Literal("fp32", "fp16", "q8"),
+  dtype: EmbeddingDtypeSchema,
   batchSize: Schema.Number,
 })
 

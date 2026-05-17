@@ -138,11 +138,11 @@ const make = Effect.gen(function* () {
             (cause) => new StoreError({ message: "Failed to read config for search", cause }),
           ),
         )
-      const configDtype = config.embedder.dtype as EmbeddingDtype
+      const configDtype = config.embedder.dtype
       if (storedDtype !== configDtype) {
         return yield* new DtypeMismatchError({
           message: `Index was built with dtype "${storedDtype}" but config expects "${configDtype}". Re-index to fix.`,
-          storedDtype: storedDtype as EmbeddingDtype,
+          storedDtype,
           configDtype,
         })
       }
@@ -178,7 +178,7 @@ const make = Effect.gen(function* () {
     for (let i = 0; i < chunkLines.length; i++) {
       let chunk: Chunk
       try {
-        chunk = Schema.decodeUnknownSync(parseJsonChunk)(chunkLines[i]) as Chunk
+        chunk = Schema.decodeUnknownSync(parseJsonChunk)(chunkLines[i])
       } catch {
         malformedLines++
         continue
