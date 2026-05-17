@@ -1,21 +1,43 @@
+import { Effect } from "effect"
+
 import type { Embedding } from "../domain/chunk.js"
+import { StoreError } from "../domain/errors.js"
 
-/** Compute dot-product similarity between a chunk vector and the query embedding. */
-export const computeDotProduct = (chunkVector: Float32Array, query: Embedding): number => {
+/**
+ * Compute cosine similarity between a chunk vector and a query vector. Returns 0 when either norm
+ * is 0.
+ */
+export const computeCosineSimilarity = (
+  chunkVector: Float32Array,
+  query: Float32Array,
+  dims: number,
+): number => {
   let dot = 0
-  for (let j = 0; j < query.dims; j++) {
-    dot += chunkVector[j] * query.vector[j]
+  let normA = 0
+  let normB = 0
+  for (let j = 0; j < dims; j++) {
+    dot += chunkVector[j] * query[j]
+    normA += chunkVector[j] * chunkVector[j]
+    normB += query[j] * query[j]
   }
-  return dot
+  const denom = Math.sqrt(normA) * Math.sqrt(normB)
+  if (denom === 0) return 0
+  return dot / denom
 }
 
-/** Serialize embeddings to a Buffer for writing to vectors.bin. */
-export const serializeVectors = (embeddings: readonly Embedding[]): Buffer => {
-  const dims = embeddings[0]?.dims ?? 384
-  const totalFloats = embeddings.length * dims
-  const vectorsArray = new Float32Array(totalFloats)
-  for (let i = 0; i < embeddings.length; i++) {
-    vectorsArray.set(embeddings[i].vector, i * dims)
-  }
-  return Buffer.from(vectorsArray.buffer)
-}
+/** Serialize embeddings to a Buffer for writing to vectors.bin. Fails if embeddings array is empty. */
+export const serializeVectors = (
+  embeddings: readonly Embedding[],
+): Effect.Effect<Buffer, StoreError> =>
+  Effect.gen(function* () {
+    if (embeddings.length === 0) {
+      return yield* new StoreError({ message: "Cannot serialize empty embeddings batch" })
+    }
+    const dims = embeddings[0].dims
+    const totalFloats = embeddings.length * dims
+    const vectorsArray = new Float32Array(totalFloats)
+    for (let i = 0; i < embeddings.length; i++) {
+      vectorsArray.set(embeddings[i].vector, i * dims)
+    }
+    return Buffer.from(vectorsArray.buffer)
+  })

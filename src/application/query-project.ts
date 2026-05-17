@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 
+import type { DtypeMismatchError } from "../domain/dtype.js"
 import type { AllEmbedderErrors, AllStoreErrors, NoIndexError } from "../domain/errors.js"
 import { Embedder, VectorStore } from "../domain/ports.js"
 import type { SearchOptions, SearchResponse } from "../domain/ports.js"
@@ -14,7 +15,10 @@ export class QueryProject extends Effect.Service<QueryProject>()("QueryProject",
     const queryProject = (
       queryText: string,
       options?: SearchOptions,
-    ): Effect.Effect<SearchResponse, AllEmbedderErrors | AllStoreErrors | NoIndexError> =>
+    ): Effect.Effect<
+      SearchResponse,
+      AllEmbedderErrors | AllStoreErrors | NoIndexError | DtypeMismatchError
+    > =>
       embedder
         .embed(queryText)
         .pipe(Effect.flatMap((embedding) => store.search(embedding, options)))

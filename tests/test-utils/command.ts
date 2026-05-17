@@ -164,7 +164,9 @@ export const makeFailingEmbedder = (
   const fail = Effect.fail(new ModelLoadError({ model: "test", message }))
   return Layer.succeed(Embedder, {
     embed: () =>
-      method === "embed" ? fail : Effect.succeed({ vector: new Float32Array(384), dims: 384 }),
+      method === "embed"
+        ? fail
+        : Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
     batch: () => (method === "batch" ? fail : Effect.succeed([] as const)),
     getFallbackInfo: () => Effect.succeed(undefined),
   })

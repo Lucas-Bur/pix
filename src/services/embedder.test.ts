@@ -11,19 +11,14 @@ const testLayer = Layer.provideMerge(
   memoryFsLayer({ ".pix/config.json": makeConfigJson() }),
 )
 
-test("OnnxEmbedder.embed returns normalized Embedding with correct dims", () =>
+test("OnnxEmbedder.embed returns Embedding with correct dims and dtype", () =>
   Effect.gen(function* () {
     const embedder = yield* Embedder
 
     const result1: Embedding = yield* embedder.embed("hello world")
     expect(result1.dims).toBe(384)
     expect(result1.vector.length).toBe(384)
-
-    let sumSq = 0
-    for (let i = 0; i < result1.vector.length; i++) {
-      sumSq += result1.vector[i] * result1.vector[i]
-    }
-    expect(Math.sqrt(sumSq)).toBeCloseTo(1, 5)
+    expect(result1.dtype).toBe("fp32")
 
     const result2 = yield* embedder.embed("goodbye world")
     let diff = 0
@@ -38,6 +33,6 @@ test("OnnxEmbedder.batch returns embeddings for all texts", () =>
     const embedder = yield* Embedder
     const results = yield* embedder.batch(["hello", "world"])
     expect(results.length).toBe(2)
-    expect(results[0].dims).toBe(384)
+    expect(results[0].dtype).toBe("fp32")
     expect(results[1].dims).toBe(384)
   }).pipe(Effect.provide(testLayer), Effect.scoped))
