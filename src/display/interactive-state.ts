@@ -1,55 +1,6 @@
 import { Effect, Ref } from "effect"
 
-/** Options for the progress bar method */
-export type ProgressOptions = {
-  readonly message: string
-  readonly max: number
-  readonly style?: "light" | "heavy" | "block"
-  readonly size?: number
-  readonly indicator?: "dots" | "timer"
-}
-
-/** Payload for d.updateInteractive() — plain string updates text only, object adds position control */
-export type UpdateInteractivePayload =
-  | string
-  | {
-      readonly message: string
-      readonly advanceBy?: never
-      readonly setTo?: never
-      readonly setToPercent?: never
-    }
-  | {
-      readonly message: string
-      readonly advanceBy: number
-      readonly setTo?: never
-      readonly setToPercent?: never
-    }
-  | {
-      readonly message: string
-      readonly setToPercent: number
-      readonly advanceBy?: never
-      readonly setTo?: never
-    }
-  | {
-      readonly message: string
-      readonly setTo: number
-      readonly advanceBy?: never
-      readonly setToPercent?: never
-    }
-  | {
-      readonly message: string
-      readonly setToPercent: number
-      readonly advanceBy?: never
-      readonly setTo?: never
-      readonly setMax?: never
-    }
-  | {
-      readonly message: string
-      readonly setMax: number
-      readonly setTo: number
-      readonly advanceBy?: never
-      readonly setToPercent?: never
-    }
+import { type DisplayUpdatePayload } from "../domain/ports.js"
 
 export type ActiveInteractive =
   | { readonly type: "spinner" }
@@ -57,7 +8,7 @@ export type ActiveInteractive =
   | null
 
 /** Extract the message text from an UpdateInteractivePayload */
-export const payloadText = (p: UpdateInteractivePayload): string =>
+export const payloadText = (p: DisplayUpdatePayload): string =>
   typeof p === "string" ? p : p.message
 
 /**
@@ -65,7 +16,7 @@ export const payloadText = (p: UpdateInteractivePayload): string =>
  * numeric payload or if the active element is a spinner.
  */
 export const computeDelta = (
-  p: UpdateInteractivePayload,
+  p: DisplayUpdatePayload,
   state: { readonly value: number; readonly max: number },
 ): number => {
   if (typeof p === "string") return 0

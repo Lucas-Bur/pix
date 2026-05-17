@@ -4,7 +4,7 @@ import { Effect, Layer, Ref, Option } from "effect"
 import type { Embedding } from "../domain/chunk.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
 import { MODEL_REGISTRY } from "../domain/models.js"
-import { ConfigStore, Embedder, Logger } from "../domain/ports.js"
+import { ConfigStore, Display, Embedder } from "../domain/ports.js"
 import { ConfigStoreLive } from "./config-store.js"
 export { Embedder }
 
@@ -89,14 +89,14 @@ const createExtractor = (opts: EmbedderConfig) =>
 const createExtractorWithFallback = (
   opts: EmbedderConfig,
   fallbackRef: Ref.Ref<Option.Option<FallbackInfo>>,
-  warn: (message: string) => Effect.Effect<void>,
+  d: typeof Display.Service,
 ) => {
   if (opts.device === "cpu") return createExtractor(opts)
 
   return createExtractor(opts).pipe(
     Effect.catchAll((originalError) =>
       Effect.gen(function* () {
-        yield* warn(`GPU (${opts.device}) failed, falling back to CPU...`)
+        yield* d.log(`GPU (${opts.device}) failed, falling back to CPU...`, "warn")
         yield* Ref.set(
           fallbackRef,
           Option.some({
@@ -116,12 +116,10 @@ const createExtractorWithFallback = (
 
 const make = Effect.gen(function* () {
   const configStore = yield* ConfigStore
-  const logger = yield* Logger
+  const d = yield* Display
   const cfg = yield* resolveEmbedderConfig(configStore)
   const fallbackRef = yield* Ref.make<Option.Option<FallbackInfo>>(Option.none())
-  const getExtractor = yield* Effect.cached(
-    createExtractorWithFallback(cfg, fallbackRef, logger.warn),
-  )
+  const getExtractor = yield* Effect.cached(createExtractorWithFallback(cfg, fallbackRef, d))
 
   const embed = (text: string) =>
     Effect.gen(function* () {

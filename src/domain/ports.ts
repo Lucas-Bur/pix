@@ -202,12 +202,66 @@ export class VectorStore extends Context.Tag("VectorStore")<
   }
 >() {}
 
-// === Logger Port ===
+// === Display Port ===
 
-/** Port for emitting warnings from infrastructure code without depending on Display. */
-export class Logger extends Context.Tag("Logger")<
-  Logger,
-  {
-    readonly warn: (message: string) => Effect.Effect<void>
-  }
->() {}
+/** Severity level for log messages */
+export type DisplaySeverity = "info" | "success" | "warn" | "error"
+
+/** Options for the progress bar method */
+export type DisplayProgressOptions = {
+  readonly message: string
+  readonly max: number
+  readonly style?: "light" | "heavy" | "block"
+  readonly size?: number
+  readonly indicator?: "dots" | "timer"
+}
+
+/** Payload for updateInteractive — plain string updates text, object adds position control */
+export type DisplayUpdatePayload =
+  | string
+  | {
+      readonly message: string
+      readonly advanceBy?: never
+      readonly setTo?: never
+      readonly setToPercent?: never
+    }
+  | {
+      readonly message: string
+      readonly advanceBy: number
+      readonly setTo?: never
+      readonly setToPercent?: never
+    }
+  | {
+      readonly message: string
+      readonly setToPercent: number
+      readonly advanceBy?: never
+      readonly setTo?: never
+    }
+  | {
+      readonly message: string
+      readonly setTo: number
+      readonly advanceBy?: never
+      readonly setToPercent?: never
+    }
+
+/** Display service — abstracts CLI output behind structured methods */
+export interface DisplayService {
+  readonly intro: (title: string) => Effect.Effect<void>
+  readonly outro: (message: string) => Effect.Effect<void>
+  readonly log: (message: string, severity: DisplaySeverity) => Effect.Effect<void>
+  readonly note: (content: string, title?: string) => Effect.Effect<void>
+  readonly text: (message: string) => Effect.Effect<void>
+  readonly spinner: <A, E, R>(
+    message: string,
+    effect: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E, R>
+  readonly progress: <A, E, R>(
+    opts: DisplayProgressOptions,
+    effect: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E, R>
+  readonly updateInteractive: (payload: DisplayUpdatePayload) => Effect.Effect<void>
+  readonly json: (data: unknown) => Effect.Effect<void>
+}
+
+/** Port for all CLI output — human interactive, JSON, and file audit trail. */
+export class Display extends Context.Tag("Display")<Display, DisplayService>() {}

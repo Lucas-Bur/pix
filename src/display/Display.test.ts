@@ -1,7 +1,9 @@
-import { Effect, Ref } from "effect"
+import { FileSystem } from "@effect/platform"
+import { Effect, Layer, Ref } from "effect"
+import { MemoryFileSystem } from "effect-memfs"
 import { describe, expect, it } from "vite-plus/test"
 
-import { Display, type DisplayEntry, SilentDisplay } from "./Display.js"
+import { Display, type DisplayEntry, JsonDisplay, SilentDisplay } from "./Display.js"
 
 const setup = () => {
   const ref = Ref.unsafeMake<ReadonlyArray<DisplayEntry>>([])
@@ -194,4 +196,93 @@ describe("SilentDisplay", () => {
       ])
     }).pipe(Effect.provide(layer))
   })
+})
+
+describe("JsonDisplay file logging", () => {
+  const memFsContents: MemoryFileSystem.Contents = {}
+
+  const jsonDisplayLayer = Layer.mergeAll(
+    JsonDisplay.layer,
+    MemoryFileSystem.layerWith(memFsContents),
+  )
+
+  it("writes log entry to .pix/logs/events.jsonl", () =>
+    Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.log("test message", "info")
+
+      const fs = yield* FileSystem.FileSystem
+      const exists = yield* fs.exists(".pix/logs/events.jsonl")
+      expect(exists).toBe(true)
+
+      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
+      const entry = JSON.parse(content.trim())
+      expect(entry).toMatchObject({
+        severity: "info",
+        message: "test message",
+      })
+      expect(entry.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    }).pipe(Effect.provide(jsonDisplayLayer)))
+
+  it("creates log directory if missing", () =>
+    Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.intro("pix")
+
+      const fs = yield* FileSystem.FileSystem
+      const dirExists = yield* fs.exists(".pix/logs")
+      expect(dirExists).toBe(true)
+    }).pipe(Effect.provide(jsonDisplayLayer)))
+
+  it("appends multiple entries as newline-delimited JSON", () =>
+    Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.log("first", "info")
+      yield* d.log("second", "warn")
+      yield* d.outro("done")
+
+      const fs = yield* FileSystem.FileSystem
+      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
+      const lines = content.trim().split("\n")
+      expect(lines).toHaveLength(3)
+
+      const entries = lines.map((l) => JSON.parse(l))
+      expect(entries[0]).toMatchObject({ severity: "info", message: "first" })
+      expect(entries[1]).toMatchObject({ severity: "warn", message: "second" })
+      expect(entries[2]).toMatchObject({ type: "outro", message: "done" })
+    }).pipe(Effect.provide(jsonDisplayLayer)))
+
+  it("records spinner start/stop entries", () =>
+    Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.spinner("Indexing...", Effect.void)
+
+      const fs = yield* FileSystem.FileSystem
+      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
+      const lines = content.trim().split("\n")
+      expect(lines).toHaveLength(2)
+
+      const entries = lines.map((l) => JSON.parse(l))
+      expect(entries[0]).toMatchObject({ type: "spinner-start", message: "Indexing..." })
+      expect(entries[1]).toMatchObject({ type: "spinner-stop" })
+    }).pipe(Effect.provide(jsonDisplayLayer)))
+
+  it("records progress start/stop entries", () =>
+    Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.progress({ message: "Embedding...", max: 10 }, Effect.void)
+
+      const fs = yield* FileSystem.FileSystem
+      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
+      const lines = content.trim().split("\n")
+      expect(lines).toHaveLength(2)
+
+      const entries = lines.map((l) => JSON.parse(l))
+      expect(entries[0]).toMatchObject({
+        type: "progress-start",
+        message: "Embedding...",
+        max: 10,
+      })
+      expect(entries[1]).toMatchObject({ type: "progress-stop" })
+    }).pipe(Effect.provide(jsonDisplayLayer)))
 })
