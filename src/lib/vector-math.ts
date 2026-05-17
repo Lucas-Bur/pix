@@ -37,6 +37,14 @@ export const serializeVectors = (
       return yield* new StoreError({ message: "Cannot serialize empty embeddings batch" })
     }
     const dims = embeddings[0].dims
+    for (let i = 0; i < embeddings.length; i++) {
+      const e = embeddings[i]
+      if (e.dims !== dims || e.vector.length !== dims) {
+        return yield* new StoreError({
+          message: `Inconsistent embedding shape at [${i}]: expected dims=${dims}, got dims=${e.dims} length=${e.vector.length}`,
+        })
+      }
+    }
     const totalFloats = embeddings.length * dims
     const vectorsArray = new Float32Array(totalFloats)
     for (let i = 0; i < embeddings.length; i++) {

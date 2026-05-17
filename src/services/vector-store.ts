@@ -287,7 +287,7 @@ const make = Effect.gen(function* () {
       yield* Ref.set(batchMetaRef, { dims, dtype: embeddings[0].dtype })
 
       const batchLines = chunks.reduce((sum, c) => sum + (c.endLine - c.startLine + 1), 0)
-      const batchBytes = embeddings.length * dims * 4
+      const batchBytes = buffer.byteLength
 
       yield* Ref.update(seenFiles, (prev) => {
         for (const c of chunks) prev.add(c.file)

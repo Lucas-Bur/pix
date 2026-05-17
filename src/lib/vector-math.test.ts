@@ -55,4 +55,18 @@ describe("serializeVectors", () => {
       const buffer = yield* serializeVectors(embeddings)
       expect(buffer.byteLength).toBe(12)
     }).pipe(Effect.runPromise))
+
+  it("fails when embedding dims are inconsistent", () =>
+    Effect.gen(function* () {
+      const embeddings = [makeEmbedding([1, 2, 3], 3), makeEmbedding([4, 5], 2)]
+      const result = yield* Effect.either(serializeVectors(embeddings))
+      expect(result._tag).toBe("Left")
+    }).pipe(Effect.runPromise))
+
+  it("fails when vector length does not match dims", () =>
+    Effect.gen(function* () {
+      const embeddings = [makeEmbedding([1, 2, 3], 3), makeEmbedding([4, 5, 6], 2)]
+      const result = yield* Effect.either(serializeVectors(embeddings))
+      expect(result._tag).toBe("Left")
+    }).pipe(Effect.runPromise))
 })
