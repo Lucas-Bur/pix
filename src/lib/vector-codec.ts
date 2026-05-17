@@ -12,9 +12,9 @@ import {
 /**
  * Translates between binary vector storage and the internal working representation.
  *
- * Uses `Float32Array` for all arithmetic — contiguous memory, SIMD-eligible, native ML format.
- * The domain type `Embedding.vector` is `number[]` (provider-agnostic), but the codec bridges
- * to `Float32Array` for performance. See ADR-0008.
+ * Uses `Float32Array` for all arithmetic — contiguous memory, SIMD-eligible, native ML format. The
+ * domain type `Embedding.vector` is `number[]` (provider-agnostic), but the codec bridges to
+ * `Float32Array` for performance. See ADR-0008.
  */
 export interface VectorCodec {
   readonly decode: (

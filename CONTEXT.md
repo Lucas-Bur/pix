@@ -16,8 +16,8 @@ Schema version: "1".
 
 ### Embedder
 
-Component that turns text into vectors. MVP uses ONNX runtime with `Xenova/all-MiniLM-L6-v2` (22 MB, 384 dims, q8 quantized, CPU).
-Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable).
+Component that turns text into vectors. Uses ONNX runtime with configurable dtype (`fp32` | `fp16` | `q8` | `q4`). Default model: `Xenova/all-MiniLM-L6-v2` (384 dims).
+Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable). Produces `Embedding` values with `dtype` field matching the configured quantization.
 
 ### Scanner
 
@@ -25,8 +25,9 @@ Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, ap
 
 ### Store
 
-Reads/writes the `.pix/` directory: `config.json`, `chunks.jsonl`, `vectors.bin`.
-`vectors.bin` = flat `Float32Array`, row-major, `n × 384` floats.
+Reads/writes the `.pix/` directory: `config.json`, `chunks.jsonl`, `vectors.bin`, `index-meta.json`.
+`vectors.bin` = flat typed array, row-major, `n × dims` elements, encoded per `dtype` (`fp32` | `fp16` | `q8` | `q4`).
+`index-meta.json` = index metadata: schema version, dtype, dims, model ID, last index timestamp.
 
 ### MVP Scope
 
@@ -142,7 +143,7 @@ pix follows hexagonal architecture with three DDD layers. See [ADR 0003](docs/ad
 
 ### Port
 
-A `Context.Tag` interface in `src/domain/ports.ts` declaring what the application needs — no implementation, no I/O. Examples: `ConfigStore`, `Scanner`, `ContentExtractor`, `Chunker`, `Embedder`, `VectorStore`, `Logger`.
+A `Context.Tag` interface in `src/domain/ports.ts` declaring what the application needs — no implementation, no I/O. Examples: `ConfigStore`, `Scanner`, `ContentExtractor`, `Chunker`, `Embedder`, `VectorStore`, `Display`.
 
 ### Adapter
 
@@ -150,7 +151,7 @@ A concrete implementation of a port, living in `src/services/`. Each adapter is 
 
 ### Domain Layer (`src/domain/`)
 
-Pure TypeScript types — no Effect, no I/O. Entities (`Config`, `Chunk`), value objects (`Embedding`), error types (`ConfigError`), and port declarations.
+Pure TypeScript types — no Effect, no I/O. Entities (`Config`, `Chunk`), value objects (`Embedding` with `dtype: EmbeddingDtype`), error types (`ConfigError`), and port declarations.
 
 ### Application Layer (`src/application/`)
 
