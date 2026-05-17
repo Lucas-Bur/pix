@@ -194,12 +194,8 @@ describe("SilentDisplay", () => {
 })
 
 describe("JsonDisplay file logging", () => {
-  const memFsContents: MemoryFileSystem.Contents = {}
-
-  const jsonDisplayLayer = Layer.mergeAll(
-    JsonDisplay.layer,
-    MemoryFileSystem.layerWith(memFsContents),
-  )
+  const makeJsonDisplayLayer = () =>
+    JsonDisplay.layer.pipe(Layer.provide(MemoryFileSystem.layerWith({})))
 
   it("writes log entry to .pix/logs/events.jsonl", () =>
     Effect.gen(function* () {
@@ -217,7 +213,7 @@ describe("JsonDisplay file logging", () => {
         message: "test message",
       })
       expect(entry.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/)
-    }).pipe(Effect.provide(jsonDisplayLayer)))
+    }).pipe(Effect.provide(makeJsonDisplayLayer())))
 
   it("creates log directory if missing", () =>
     Effect.gen(function* () {
@@ -227,7 +223,7 @@ describe("JsonDisplay file logging", () => {
       const fs = yield* FileSystem.FileSystem
       const dirExists = yield* fs.exists(".pix/logs")
       expect(dirExists).toBe(true)
-    }).pipe(Effect.provide(jsonDisplayLayer)))
+    }).pipe(Effect.provide(makeJsonDisplayLayer())))
 
   it("appends multiple entries as newline-delimited JSON", () =>
     Effect.gen(function* () {
@@ -245,7 +241,7 @@ describe("JsonDisplay file logging", () => {
       expect(entries[0]).toMatchObject({ severity: "info", message: "first" })
       expect(entries[1]).toMatchObject({ severity: "warn", message: "second" })
       expect(entries[2]).toMatchObject({ type: "outro", message: "done" })
-    }).pipe(Effect.provide(jsonDisplayLayer)))
+    }).pipe(Effect.provide(makeJsonDisplayLayer())))
 
   it("records spinner start/stop entries", () =>
     Effect.gen(function* () {
@@ -260,7 +256,7 @@ describe("JsonDisplay file logging", () => {
       const entries = lines.map((l) => JSON.parse(l))
       expect(entries[0]).toMatchObject({ type: "spinner-start", message: "Indexing..." })
       expect(entries[1]).toMatchObject({ type: "spinner-stop" })
-    }).pipe(Effect.provide(jsonDisplayLayer)))
+    }).pipe(Effect.provide(makeJsonDisplayLayer())))
 
   it("records progress start/stop entries", () =>
     Effect.gen(function* () {
@@ -279,5 +275,5 @@ describe("JsonDisplay file logging", () => {
         max: 10,
       })
       expect(entries[1]).toMatchObject({ type: "progress-stop" })
-    }).pipe(Effect.provide(jsonDisplayLayer)))
+    }).pipe(Effect.provide(makeJsonDisplayLayer())))
 })

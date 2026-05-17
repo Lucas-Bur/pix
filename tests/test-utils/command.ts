@@ -5,6 +5,7 @@ import { expect } from "vite-plus/test"
 
 import type { DisplayEntry } from "../../src/display/Display.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
+import type { EmbeddingDtype } from "../../src/domain/dtype.js"
 import { ConfigError, ModelLoadError, StoreError } from "../../src/domain/errors.js"
 import type { DisplaySeverity } from "../../src/domain/ports.js"
 import { ConfigStore, Embedder, VectorStore } from "../../src/domain/ports.js"
@@ -162,12 +163,18 @@ export const makeFailingEmbedder = (
   message = `${method} failed`,
 ): Layer.Layer<Embedder> => {
   const fail = Effect.fail(new ModelLoadError({ model: "test", message }))
+  const fp32Dtype: EmbeddingDtype = "fp32"
   return Layer.succeed(Embedder, {
     embed: () =>
       method === "embed"
         ? fail
-        : Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
-    batch: () => (method === "batch" ? fail : Effect.succeed([] as const)),
+        : Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: fp32Dtype }),
+    batch: (items) =>
+      method === "batch"
+        ? fail
+        : Effect.succeed(
+            items.map(() => ({ vector: new Float32Array(384), dims: 384, dtype: fp32Dtype })),
+          ),
     getFallbackInfo: () => Effect.succeed(undefined),
   })
 }
