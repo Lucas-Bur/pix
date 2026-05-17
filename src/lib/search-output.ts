@@ -16,7 +16,7 @@ export const formatResultMetadata = (result: SearchResult): string =>
   `${result.file}:${result.startLine}-${result.endLine}`
 
 /** Build optional content fields for a single JSON output entry. */
-export const buildContentFields = (
+const buildContentFields = (
   r: SearchResult,
   ctxLines: number,
   noContent: boolean,
