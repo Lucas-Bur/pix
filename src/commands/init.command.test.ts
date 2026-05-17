@@ -1,14 +1,17 @@
-import { Command } from "@effect/cli"
 import { Effect, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
-import { assertCommandError, makeFailingConfigStore } from "../../tests/test-utils/command.js"
+import {
+  assertCommandError,
+  makeFailingConfigStore,
+  runCommand,
+} from "../../tests/test-utils/command.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import type { DisplayEntry } from "../display/Display.js"
 import { initCommand } from "./init.js"
 
-const run = (args: string[]) => Command.run(initCommand, { name: "pix", version: "0.0.0" })(args)
+const run = runCommand(initCommand)
 
 const assertInitDisplayEntries = (ref: Ref.Ref<ReadonlyArray<DisplayEntry>>) =>
   Effect.gen(function* () {

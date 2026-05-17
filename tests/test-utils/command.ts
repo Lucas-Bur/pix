@@ -1,3 +1,4 @@
+import { Command } from "@effect/cli"
 import { Effect, Exit, Layer, Ref } from "effect"
 import type { MemoryFileSystem } from "effect-memfs"
 import { expect } from "vite-plus/test"
@@ -5,13 +6,34 @@ import { expect } from "vite-plus/test"
 import type { DisplayEntry } from "../../src/display/Display.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
 import { ConfigError, ModelLoadError, StoreError } from "../../src/domain/errors.js"
+import type { DisplaySeverity } from "../../src/domain/ports.js"
 import { ConfigStore, Embedder, VectorStore } from "../../src/domain/ports.js"
-import { makeChunkJson, makeConfigJson } from "./fixtures.js"
+import { makeChunkJson, TEST_CONFIG_JSON } from "./fixtures.js"
+
+export const runCommand =
+  <Name extends string, R, E, Opts>(command: Command.Command<Name, R, E, Opts>) =>
+  (args: string[]) =>
+    Command.run(command, { name: "pix", version: "0.0.0" })(args)
+
+export const expectLogEntry = (
+  ref: Ref.Ref<ReadonlyArray<DisplayEntry>>,
+  opts: { severity: DisplaySeverity; messageIncludes: string },
+): Effect.Effect<void> =>
+  Ref.get(ref).pipe(
+    Effect.flatMap((entries) => {
+      const found = entries.some(
+        (e) =>
+          e._tag === "log" &&
+          e.severity === opts.severity &&
+          e.message.includes(opts.messageIncludes),
+      )
+      expect(found).toBe(true)
+      return Effect.void
+    }),
+  )
 
 export const indexFixtures: MemoryFileSystem.Contents = {
-  ".pix/config.json": makeConfigJson({
-    embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
-  }),
+  ".pix/config.json": TEST_CONFIG_JSON,
   ".pix/chunks.jsonl": [
     makeChunkJson({
       id: "a1",

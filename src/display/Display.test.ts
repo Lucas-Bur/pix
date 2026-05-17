@@ -3,17 +3,12 @@ import { Effect, Layer, Ref } from "effect"
 import { MemoryFileSystem } from "effect-memfs"
 import { describe, expect, it } from "vite-plus/test"
 
-import { Display, type DisplayEntry, JsonDisplay, SilentDisplay } from "./Display.js"
-
-const setup = () => {
-  const ref = Ref.unsafeMake<ReadonlyArray<DisplayEntry>>([])
-  const layer = SilentDisplay.layer(ref)
-  return { ref, layer } as const
-}
+import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
+import { Display, JsonDisplay } from "./Display.js"
 
 describe("SilentDisplay", () => {
   it("records log messages with severity", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.log("Syncing files...", "info")
@@ -23,7 +18,7 @@ describe("SilentDisplay", () => {
   })
 
   it("records json data entries", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.json({ chunks: 42, files: 3 })
@@ -33,7 +28,7 @@ describe("SilentDisplay", () => {
   })
 
   it("spinner passes through effect result", () => {
-    const { layer } = setup()
+    const { layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       const result = yield* d.spinner("Loading...", Effect.succeed("hello"))
@@ -42,7 +37,7 @@ describe("SilentDisplay", () => {
   })
 
   it("spinner passes through effect failure", () => {
-    const { layer } = setup()
+    const { layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       const exit = yield* d.spinner("Failing...", Effect.fail("boom")).pipe(Effect.exit)
@@ -51,7 +46,7 @@ describe("SilentDisplay", () => {
   })
 
   it("captures multiple log calls in order", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.log("Starting...", "info")
@@ -67,7 +62,7 @@ describe("SilentDisplay", () => {
   })
 
   it("records intro entries", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.intro("pix")
@@ -77,7 +72,7 @@ describe("SilentDisplay", () => {
   })
 
   it("records outro entries", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.outro("Done!")
@@ -87,7 +82,7 @@ describe("SilentDisplay", () => {
   })
 
   it("records note entries with optional title", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.note("Add .pix to .gitignore", "Reminder")
@@ -99,7 +94,7 @@ describe("SilentDisplay", () => {
   })
 
   it("records updateInteractive entries", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.updateInteractive("Scanned 12 files")
@@ -109,7 +104,7 @@ describe("SilentDisplay", () => {
   })
 
   it("records updateInteractive with advanceBy", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.updateInteractive({ message: "Embedding...", advanceBy: 5 })
@@ -121,7 +116,7 @@ describe("SilentDisplay", () => {
   })
 
   it("records updateInteractive with setTo", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.updateInteractive({ message: "Done", setTo: 47 })
@@ -131,7 +126,7 @@ describe("SilentDisplay", () => {
   })
 
   it("records updateInteractive with setToPercent", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.updateInteractive({ message: "Halfway", setToPercent: 50 })
@@ -141,7 +136,7 @@ describe("SilentDisplay", () => {
   })
 
   it("progress bar passes through effect result", () => {
-    const { layer } = setup()
+    const { layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       const result = yield* d.progress({ message: "Embedding...", max: 47 }, Effect.succeed(42))
@@ -150,7 +145,7 @@ describe("SilentDisplay", () => {
   })
 
   it("progress bar records options", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.progress({ message: "Embedding...", max: 47 }, Effect.void)
@@ -160,7 +155,7 @@ describe("SilentDisplay", () => {
   })
 
   it("records text entries", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.text("src/foo.ts:1-10 (score: 0.950)")
@@ -170,7 +165,7 @@ describe("SilentDisplay", () => {
   })
 
   it("captures all entry types in order", () => {
-    const { ref, layer } = setup()
+    const { ref, layer } = silentDisplay()
     return Effect.gen(function* () {
       const d = yield* Display
       yield* d.intro("pix")
