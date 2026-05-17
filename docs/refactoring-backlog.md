@@ -144,11 +144,15 @@ Copy-paste duplication that will drift when someone changes one and forgets the 
 
 ---
 
-## Step 6a: Dtype Tracking Infrastructure
+## Step 6a: Dtype Tracking Infrastructure + Cosine Similarity
 
-**Files:** `src/domain/`, `src/services/`, `src/application/`, `.pix/` directory structure
+**Files:** `src/domain/`, `src/services/`, `src/application/`, `src/lib/`, `.pix/` directory structure
 
 **Reason:** Currently the embedder always produces `Float32Array` vectors, but the config schema already supports `dtype: "fp32" | "fp16" | "q8" | "q4"`. Nothing tracks what dtype was used during indexing. Nothing prevents querying a q8 index with a fp32 embedding (garbage results). Before we can make `Embedding` dtype-aware, we need infrastructure to track and validate dtype across the system.
+
+Additionally, search uses dot product which **silently assumes L2-normalized vectors**. This is a fragile assumption — if we switch models or skip normalization, results are wrong without any error. The robust solution: **always compute cosine similarity at query time**. This works correctly for any dtype (fp32, fp16, q8, q4), normalized or not. With cosine similarity in place, we can **remove the L2 normalization step from the embedder** — it's no longer needed.
+
+Also, `serializeVectors` in `vector-math.ts` uses `?? 384` as a silent default when `embeddings[0]` is undefined. This masks bugs. It should be an `Effect.fail()` with a proper error.
 
 **Design decisions (already made):**
 
@@ -156,6 +160,7 @@ Copy-paste duplication that will drift when someone changes one and forgets the 
 - **vectors.bin** stays pure binary — no header, no magic bytes. Just the raw bytes.
 - **Config:** `config.embedder.dtype` tracks the **selected** dtype for the embedder to work in.
 - **Validation:** `config.embedder.dtype` must match `index-meta.json.dtype`. If mismatch → `DtypeMismatchError`.
+- **Similarity:** Cosine similarity at query time (not dot product). Remove L2 normalization from embedder.
 - **Green field:** No migration needed. New project, new index format.
 
 **Changes:**
@@ -169,13 +174,18 @@ Copy-paste duplication that will drift when someone changes one and forgets the 
   - 4 adapters: `Fp32Decoder`, `Fp16Decoder`, `Q8Decoder`, `Q4Decoder`
   - `Q4Decoder` requires bit-unpacking (4 bits per value, 2 values per byte) — no native typed array exists
   - Factory: `getVectorDecoder(dtype: EmbeddingDtype): VectorDecoder`
+- Update `src/lib/vector-math.ts`:
+  - Rename `computeDotProduct` → `computeCosineSimilarity(chunkVector, query)` — computes `(A · B) / (||A|| × ||B||)`
+  - Update `serializeVectors` to be an `Effect` that fails with `StoreError` if `embeddings.length === 0` (no silent `?? 384` default)
 - Update `VectorStore`:
   - `storeCommit()` writes `index-meta.json` alongside `chunks.jsonl` and `vectors.bin`
   - `storeAbort()` and `reset()` clean up `index-meta.json`
   - `search()` reads `index-meta.json` first, validates dtype matches config, then reads `vectors.bin` with correct decoder
+  - Uses `computeCosineSimilarity` instead of dot product
 - Update `Embedder`:
   - `embed()` and `batch()` produce vectors in the dtype specified by config
   - Return `Embedding` with dtype field: `{ vector: number[], dims: number, dtype: EmbeddingDtype }`
+  - **Remove L2 normalization step** — no longer needed since cosine similarity handles any magnitude
 - Update `Embedding` type in `src/domain/chunk.ts`:
   - Change `vector: Float32Array` → `vector: number[]` (dtype-agnostic)
   - Add `dtype: EmbeddingDtype` field
@@ -284,7 +294,7 @@ Copy-paste duplication that will drift when someone changes one and forgets the 
 | ~~1~~ | ~~Removed~~ | Inconsistent pattern — keep all use cases in application/ |                                                                                                                                                                                                                 |
 | 2     | Done        | -18 LOC net, 9 files                                      | Extracted runCommand, expectLogEntry, TEST_CONFIG_JSON, makeChunk, makeEmbedding. Deleted setup() and emptyScannerLayer duplicates. 141 tests pass.                                                             |
 | 3     | Done        | +1 new file, 3 modified                                   | Extracted FsErrorMapper (withFsError, withReadError, ensureDirExists, withConfigError). Deleted safeExists (dead). makeJsonHandler shared by ClackDisplay/JsonDisplay. 8 tests for fs-error.ts. 149 tests pass. |
-| 4     | Pending     | VectorStore search deepening                              | ensureIndexExists, PathFilter, vector-math, split search                                                                                                                                                        |
+| 4     | Done        | +2 new files, 1 modified                                  | Extracted PathFilter (path-filter.ts), vector-math (vector-math.ts), checkIndexExists/ensureIndexExists, split search into loadIndex/scoreChunks/applyFilters/rankAndSlice. 149 tests pass.                     |
 | 5     | Pending     | Query formatting extraction                               | search-output.ts, shared formatResultMetadata                                                                                                                                                                   |
 | 6a    | Pending     | Dtype tracking infrastructure                             | index-meta.json, VectorDecoder, Embedding dtype-aware                                                                                                                                                           |
 | 6     | Pending     | Domain layer cleanup                                      | Move models.ts, DisplayUpdatePayload, CONTEXT.md updates                                                                                                                                                        |
