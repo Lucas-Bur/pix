@@ -6,6 +6,9 @@ import { StoreError } from "../domain/errors.js"
 /**
  * Compute cosine similarity between a chunk vector and a query vector. Returns 0 when either norm
  * is 0.
+ *
+ * Operates on `Float32Array` for SIMD performance — contiguous memory, native ML format.
+ * See ADR-0008 for the rationale behind this design choice.
  */
 export const computeCosineSimilarity = (
   chunkVector: Float32Array,
