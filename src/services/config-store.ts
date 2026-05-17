@@ -11,27 +11,13 @@ import {
   DiskFullError,
 } from "../domain/errors.js"
 import { ConfigStore } from "../domain/ports.js"
+import { withConfigError } from "../lib/fs-error.js"
 import { isPlatformReason } from "../lib/platform-error.js"
 import { decodeJsonWithErrors } from "../lib/validation.js"
 export { ConfigStore }
 
 const CONFIG_DIR = ".pix"
 const CONFIG_PATH = `${CONFIG_DIR}/config.json`
-
-const mapConfigWriteError = (
-  cause: unknown,
-  path: string,
-  action: string,
-): ConfigError | DiskFullError => {
-  if (isPlatformReason(cause, "BadResource")) {
-    return new DiskFullError({
-      message: `Disk full: could not ${action}`,
-      path,
-      cause,
-    })
-  }
-  return new ConfigError({ message: `Failed to ${action}`, cause })
-}
 
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
@@ -42,18 +28,16 @@ const make = Effect.gen(function* () {
       const configJson = yield* Schema.encode(encodeJson)(config).pipe(
         Effect.mapError((e) => new ConfigError({ message: "Failed to encode config", cause: e })),
       )
-      yield* fs
-        .makeDirectory(CONFIG_DIR, { recursive: true })
-        .pipe(
-          Effect.mapError((cause) =>
-            mapConfigWriteError(cause, CONFIG_DIR, "create .pix directory"),
-          ),
-        )
-      yield* fs
-        .writeFileString(CONFIG_PATH, configJson)
-        .pipe(
-          Effect.mapError((cause) => mapConfigWriteError(cause, CONFIG_PATH, "write config.json")),
-        )
+      yield* withConfigError(
+        fs.makeDirectory(CONFIG_DIR, { recursive: true }),
+        "create .pix directory",
+        CONFIG_DIR,
+      )
+      yield* withConfigError(
+        fs.writeFileString(CONFIG_PATH, configJson),
+        "write config.json",
+        CONFIG_PATH,
+      )
     })
 
   const readConfig = (): Effect.Effect<

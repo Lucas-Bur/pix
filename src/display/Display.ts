@@ -23,6 +23,14 @@ import {
   updateProgressValue,
 } from "./interactive-state.js"
 
+/** Create a shared json handler for Display implementations. */
+const makeJsonHandler =
+  (fs: typeof FileSystem.FileSystem.Service): DisplayService["json"] =>
+  (data) =>
+    appendLogEntry(fs, { type: "json" }).pipe(
+      Effect.andThen(Effect.sync(() => process.stdout.write(`${JSON.stringify(data)}\n`))),
+    )
+
 /** Union of all display entries recorded by SilentDisplay for test assertions */
 export type DisplayEntry = Data.TaggedEnum<{
   readonly intro: { readonly title: string }
@@ -222,10 +230,7 @@ export const ClackDisplay = {
             }
           }),
 
-        json: (data) =>
-          appendLogEntry(fs, { type: "json" }).pipe(
-            Effect.andThen(Effect.sync(() => process.stdout.write(`${JSON.stringify(data)}\n`))),
-          ),
+        json: makeJsonHandler(fs),
       } satisfies DisplayService
     }),
   ),
@@ -272,10 +277,7 @@ export const JsonDisplay = {
             type: "update",
             message: typeof payload === "string" ? payload : payload.message,
           }),
-        json: (data) =>
-          appendLogEntry(fs, { type: "json" }).pipe(
-            Effect.andThen(Effect.sync(() => process.stdout.write(`${JSON.stringify(data)}\n`))),
-          ),
+        json: makeJsonHandler(fs),
       } satisfies DisplayService
     }),
   ),
