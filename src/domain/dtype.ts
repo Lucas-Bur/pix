@@ -25,3 +25,7 @@ export class VectorEncodeError extends Data.TaggedError("VectorEncodeError")<{
   readonly message: string
   readonly dtype: EmbeddingDtype
 }> {}
+
+export class UnknownEmbeddingDtypeError extends Data.TaggedError("UnknownEmbeddingDtypeError")<{
+  readonly message: string
+}> {}
