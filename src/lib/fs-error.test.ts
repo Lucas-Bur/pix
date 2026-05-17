@@ -8,17 +8,26 @@ import { ensureDirExists, withFsError, withReadError, withConfigError } from "./
 const memFsLayer = (contents?: MemoryFileSystem.Contents) =>
   MemoryFileSystem.layerWith(contents ?? {})
 
+const expectErrorResult = <A extends { _tag: string; message: string; path?: string }>(
+  result: { _tag: "Left"; left: A } | { _tag: "Right"; right: unknown },
+  assertions: (err: A) => void,
+) => {
+  expect(result._tag).toBe("Left")
+  if (result._tag === "Left") {
+    assertions(result.left)
+  }
+}
+
 test("withFsError maps BadResource to DiskFullError", () =>
   Effect.gen(function* () {
     const result = yield* Effect.either(
       withFsError(Effect.fail({ reason: "BadResource", message: "disk full" }), "write", "/test"),
     )
-    expect(result._tag).toBe("Left")
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("DiskFullError")
-      expect(result.left.message).toContain("Disk full during write")
-      expect(result.left.path).toBe("/test")
-    }
+    expectErrorResult(result, (err) => {
+      expect(err._tag).toBe("DiskFullError")
+      expect(err.message).toContain("Disk full during write")
+      expect(err.path).toBe("/test")
+    })
   }).pipe(Effect.provide(memFsLayer())))
 
 test("withFsError maps other errors to StoreError", () =>
@@ -26,12 +35,11 @@ test("withFsError maps other errors to StoreError", () =>
     const result = yield* Effect.either(
       withFsError(Effect.fail({ reason: "Unknown", message: "oops" }), "read", "/test"),
     )
-    expect(result._tag).toBe("Left")
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("StoreError")
-      expect(result.left.message).toBe("Failed to read")
-      expect(result.left.path).toBe("/test")
-    }
+    expectErrorResult(result, (err) => {
+      expect(err._tag).toBe("StoreError")
+      expect(err.message).toBe("Failed to read")
+      expect(err.path).toBe("/test")
+    })
   }).pipe(Effect.provide(memFsLayer())))
 
 test("withFsError passes through success", () =>
@@ -45,11 +53,10 @@ test("withReadError always maps to StoreError", () =>
     const result = yield* Effect.either(
       withReadError(Effect.fail({ reason: "BadResource" }), "read", "/data"),
     )
-    expect(result._tag).toBe("Left")
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("StoreError")
-      expect(result.left.message).toBe("Failed to read")
-    }
+    expectErrorResult(result, (err) => {
+      expect(err._tag).toBe("StoreError")
+      expect(err.message).toBe("Failed to read")
+    })
   }).pipe(Effect.provide(memFsLayer())))
 
 test("withConfigError maps BadResource to DiskFullError", () =>
@@ -57,11 +64,10 @@ test("withConfigError maps BadResource to DiskFullError", () =>
     const result = yield* Effect.either(
       withConfigError(Effect.fail({ reason: "BadResource" }), "write config", "/config"),
     )
-    expect(result._tag).toBe("Left")
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("DiskFullError")
-      expect(result.left.message).toContain("Disk full: could not write config")
-    }
+    expectErrorResult(result, (err) => {
+      expect(err._tag).toBe("DiskFullError")
+      expect(err.message).toContain("Disk full: could not write config")
+    })
   }).pipe(Effect.provide(memFsLayer())))
 
 test("withConfigError maps other errors to ConfigError", () =>
@@ -69,11 +75,10 @@ test("withConfigError maps other errors to ConfigError", () =>
     const result = yield* Effect.either(
       withConfigError(Effect.fail({ reason: "NotFound" }), "read config"),
     )
-    expect(result._tag).toBe("Left")
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("ConfigError")
-      expect(result.left.message).toBe("Failed to read config")
-    }
+    expectErrorResult(result, (err) => {
+      expect(err._tag).toBe("ConfigError")
+      expect(err.message).toBe("Failed to read config")
+    })
   }).pipe(Effect.provide(memFsLayer())))
 
 test("ensureDirExists creates directory when absent", () =>
