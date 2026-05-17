@@ -1,6 +1,5 @@
 import { FileSystem } from "@effect/platform"
 import { Effect, Layer, Option, Ref, Schema } from "effect"
-import ignore from "ignore"
 
 import { ChunkSchema } from "../domain/chunk.js"
 import type { Chunk } from "../domain/chunk.js"
@@ -9,18 +8,11 @@ import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from ".
 import type { IndexStats, SearchOptions, SearchResponse, SearchResult } from "../domain/ports.js"
 import { VectorStore } from "../domain/ports.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/fs-error.js"
+import { makeIgnoreFilter, makeOnlyFilter } from "../lib/path-filter.js"
+import { computeDotProduct, serializeVectors } from "../lib/vector-math.js"
 
 const parseChunkLine = (line: string): Effect.Effect<Option.Option<Chunk>> =>
   Schema.decodeUnknown(parseJsonChunk)(line).pipe(Effect.option)
-
-/** Compute dot-product similarity between a chunk vector and the query embedding. */
-const computeDotProduct = (chunkVector: Float32Array, query: Embedding): number => {
-  let dot = 0
-  for (let j = 0; j < query.dims; j++) {
-    dot += chunkVector[j] * query.vector[j]
-  }
-  return dot
-}
 
 const STORE_DIR = ".pix"
 const CHUNKS_FILE = `${STORE_DIR}/chunks.jsonl`
@@ -58,16 +50,6 @@ const make = Effect.gen(function* () {
     byteSize: 0,
   })
 
-  const serializeVectors = (embeddings: readonly Embedding[]): Buffer => {
-    const dims = embeddings[0]?.dims ?? 384
-    const totalFloats = embeddings.length * dims
-    const vectorsArray = new Float32Array(totalFloats)
-    for (let i = 0; i < embeddings.length; i++) {
-      vectorsArray.set(embeddings[i].vector, i * dims)
-    }
-    return Buffer.from(vectorsArray.buffer)
-  }
-
   /**
    * Count total lines across all chunks in chunks.jsonl. Each line is a JSON object; the 'text'
    * field contains the source code.
@@ -92,17 +74,109 @@ const make = Effect.gen(function* () {
       return { files, totalLines, malformedLines }
     })
 
-  /** Check that index files exist; fail with NoIndexError if either is missing. */
-  const requireIndex = (): Effect.Effect<void, StoreError | NoIndexError> =>
+  /** Check if index files exist. Returns true if both chunks.jsonl and vectors.bin exist. */
+  const checkIndexExists = (): Effect.Effect<boolean, StoreError> =>
     Effect.gen(function* () {
       const chunksExists = yield* withReadError(fs.exists(CHUNKS_FILE), "check chunks file")
       const vectorsExists = yield* withReadError(fs.exists(VECTORS_FILE), "check vectors file")
-      if (!chunksExists || !vectorsExists) {
+      return chunksExists && vectorsExists
+    })
+
+  /** Check that index files exist; fail with NoIndexError if either is missing. */
+  const ensureIndexExists = (): Effect.Effect<void, StoreError | NoIndexError> =>
+    Effect.gen(function* () {
+      const exists = yield* checkIndexExists()
+      if (!exists) {
         return yield* new NoIndexError({
           message: "No index found. Run pix index first.",
         })
       }
     })
+
+  /** Read and parse chunks.jsonl and vectors.bin. */
+  const loadIndex = (): Effect.Effect<
+    { chunkLines: string[]; vectors: Float32Array },
+    StoreError | NoIndexError
+  > =>
+    Effect.gen(function* () {
+      yield* ensureIndexExists()
+      const chunksContent = yield* withReadError(
+        fs.readFileString(CHUNKS_FILE),
+        "read chunks",
+        CHUNKS_FILE,
+      )
+      const chunkLines = chunksContent.split("\n").filter((l) => l.trim().length > 0)
+      const vectorsBuffer = yield* withReadError(
+        fs.readFile(VECTORS_FILE),
+        "read vectors",
+        VECTORS_FILE,
+      )
+      const vectors = new Float32Array(
+        vectorsBuffer.buffer,
+        vectorsBuffer.byteOffset,
+        vectorsBuffer.byteLength / Float32Array.BYTES_PER_ELEMENT,
+      )
+      return { chunkLines, vectors }
+    })
+
+  /** Pure dot-product scoring loop. Returns results and malformed line count. */
+  const scoreChunks = (
+    chunkLines: string[],
+    vectors: Float32Array,
+    query: Embedding,
+  ): { results: SearchResult[]; malformedLines: number } => {
+    const results: SearchResult[] = []
+    let malformedLines = 0
+    for (let i = 0; i < chunkLines.length; i++) {
+      let chunk: Chunk
+      try {
+        chunk = Schema.decodeUnknownSync(parseJsonChunk)(chunkLines[i]) as Chunk
+      } catch {
+        malformedLines++
+        continue
+      }
+      const startIdx = i * query.dims
+      const chunkVector = vectors.slice(startIdx, startIdx + query.dims)
+      const score = computeDotProduct(chunkVector, query)
+      results.push({
+        score,
+        file: chunk.file,
+        startLine: chunk.startLine,
+        endLine: chunk.endLine,
+        text: chunk.text,
+        contextBefore: chunk.contextBefore,
+        contextAfter: chunk.contextAfter,
+      })
+    }
+    return { results, malformedLines }
+  }
+
+  /** Apply ignore/only path filters to results. */
+  const applyFilters = (
+    results: SearchResult[],
+    ignoreFilter: ReturnType<typeof makeIgnoreFilter>,
+    onlyFilter: ReturnType<typeof makeOnlyFilter>,
+  ): SearchResult[] => {
+    if (!ignoreFilter && !onlyFilter) return results
+    return results.filter((r) => {
+      if (ignoreFilter && ignoreFilter.ignores(r.file)) return false
+      if (onlyFilter && !onlyFilter.ignores(r.file)) return false
+      return true
+    })
+  }
+
+  /** Sort by score descending, take topK, return validation errors. */
+  const rankAndSlice = (
+    results: SearchResult[],
+    malformedLines: number,
+    topK?: number,
+  ): { results: SearchResult[]; validationErrors: readonly ChunkValidationError[] } => {
+    const validationErrors = buildChunkValidationErrors(malformedLines)
+    results.sort((a, b) => b.score - a.score)
+    if (topK == null) return { results, validationErrors }
+    const clamped = Math.max(0, Math.min(Math.floor(topK), results.length))
+    return { results: results.slice(0, clamped), validationErrors }
+  }
 
   /**
    * Remove a file if it exists, accumulating freed bytes. Returns the number of freed bytes (0 if
@@ -205,65 +279,12 @@ const make = Effect.gen(function* () {
     options?: SearchOptions,
   ): Effect.Effect<SearchResponse, StoreError | NoIndexError> =>
     Effect.gen(function* () {
-      yield* requireIndex()
-
-      const chunksContent = yield* withReadError(
-        fs.readFileString(CHUNKS_FILE),
-        "read chunks",
-        CHUNKS_FILE,
-      )
-      const chunkLines = chunksContent.split("\n").filter((l) => l.trim().length > 0)
-
-      const vectorsBuffer = yield* withReadError(
-        fs.readFile(VECTORS_FILE),
-        "read vectors",
-        VECTORS_FILE,
-      )
-      const vectors = new Float32Array(
-        vectorsBuffer.buffer,
-        vectorsBuffer.byteOffset,
-        vectorsBuffer.byteLength / Float32Array.BYTES_PER_ELEMENT,
-      )
-
-      const ignoreIg = options?.ignorePaths?.length ? ignore().add([...options.ignorePaths]) : null
-      const onlyIg = options?.onlyPaths?.length ? ignore().add([...options.onlyPaths]) : null
-
-      const results: SearchResult[] = []
-      let malformedLines = 0
-
-      for (let i = 0; i < chunkLines.length; i++) {
-        const parsed = yield* parseChunkLine(chunkLines[i])
-        if (Option.isNone(parsed)) {
-          malformedLines++
-          continue
-        }
-
-        const chunk = parsed.value
-        if (ignoreIg && ignoreIg.ignores(chunk.file)) continue
-        if (onlyIg && !onlyIg.ignores(chunk.file)) continue
-
-        const startIdx = i * query.dims
-        const chunkVector = vectors.slice(startIdx, startIdx + query.dims)
-        const score = computeDotProduct(chunkVector, query)
-
-        results.push({
-          score,
-          file: chunk.file,
-          startLine: chunk.startLine,
-          endLine: chunk.endLine,
-          text: chunk.text,
-          contextBefore: chunk.contextBefore,
-          contextAfter: chunk.contextAfter,
-        })
-      }
-
-      const validationErrors = buildChunkValidationErrors(malformedLines)
-
-      results.sort((a, b) => b.score - a.score)
-      const topK = options?.topK
-      if (topK == null) return { results, validationErrors }
-      const clamped = Math.max(0, Math.min(Math.floor(topK), results.length))
-      return { results: results.slice(0, clamped), validationErrors }
+      const { chunkLines, vectors } = yield* loadIndex()
+      const ignoreFilter = makeIgnoreFilter(options?.ignorePaths ?? [])
+      const onlyFilter = makeOnlyFilter(options?.onlyPaths ?? [])
+      const { results, malformedLines } = scoreChunks(chunkLines, vectors, query)
+      const filtered = applyFilters(results, ignoreFilter, onlyFilter)
+      return rankAndSlice(filtered, malformedLines, options?.topK)
     })
 
   const getStatus = (): Effect.Effect<
@@ -279,10 +300,8 @@ const make = Effect.gen(function* () {
     StoreError
   > =>
     Effect.gen(function* () {
-      const chunksExists = yield* withReadError(fs.exists(CHUNKS_FILE), "check chunks file")
-      const vectorsExists = yield* withReadError(fs.exists(VECTORS_FILE), "check vectors file")
-
-      if (!chunksExists || !vectorsExists) {
+      const exists = yield* checkIndexExists()
+      if (!exists) {
         return {
           chunks: 0,
           files: 0,
