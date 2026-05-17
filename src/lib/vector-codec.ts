@@ -9,7 +9,7 @@ import {
   VectorEncodeError,
 } from "../domain/dtype.js"
 
-export interface VectorDecoder {
+export interface VectorCodec {
   readonly decode: (
     buffer: Uint8Array,
     dims: number,
@@ -18,7 +18,7 @@ export interface VectorDecoder {
   readonly encode: (vector: Float32Array) => Effect.Effect<Buffer, VectorEncodeError>
 }
 
-const fp32decoder: VectorDecoder = {
+const fp32decoder: VectorCodec = {
   decode: (buffer, _dims, _count) =>
     Effect.succeed(
       new Float32Array(
@@ -30,24 +30,24 @@ const fp32decoder: VectorDecoder = {
   encode: (vector) => Effect.succeed(Buffer.from(vector.buffer)),
 }
 
-const notImplemented = (dtype: EmbeddingDtype): VectorDecoder => ({
+const notImplemented = (dtype: EmbeddingDtype): VectorCodec => ({
   decode: () =>
     Effect.fail(
       new VectorDecodeError({
-        message: `VectorDecoder.${dtype} decode not implemented`,
+        message: `VectorCodec.${dtype} decode not implemented`,
         dtype,
       }),
     ),
   encode: () =>
     Effect.fail(
       new VectorEncodeError({
-        message: `VectorDecoder.${dtype} encode not implemented`,
+        message: `VectorCodec.${dtype} encode not implemented`,
         dtype,
       }),
     ),
 })
 
-export const getVectorDecoder = (dtype: EmbeddingDtype): VectorDecoder => {
+export const getVectorCodec = (dtype: EmbeddingDtype): VectorCodec => {
   switch (dtype) {
     case "fp32":
       return fp32decoder
