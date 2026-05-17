@@ -15,3 +15,13 @@ export class DtypeMismatchError extends Data.TaggedError("DtypeMismatchError")<{
   readonly storedDtype: EmbeddingDtype
   readonly configDtype: EmbeddingDtype
 }> {}
+
+export class VectorDecodeError extends Data.TaggedError("VectorDecodeError")<{
+  readonly message: string
+  readonly dtype: EmbeddingDtype
+}> {}
+
+export class VectorEncodeError extends Data.TaggedError("VectorEncodeError")<{
+  readonly message: string
+  readonly dtype: EmbeddingDtype
+}> {}

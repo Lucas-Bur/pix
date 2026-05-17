@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 
-import type { DtypeMismatchError } from "../domain/dtype.js"
+import type { DtypeMismatchError, VectorDecodeError } from "../domain/dtype.js"
 import type { AllEmbedderErrors, AllStoreErrors, NoIndexError } from "../domain/errors.js"
 import { Embedder, VectorStore } from "../domain/ports.js"
 import type { SearchOptions, SearchResponse } from "../domain/ports.js"
@@ -17,7 +17,7 @@ export class QueryProject extends Effect.Service<QueryProject>()("QueryProject",
       options?: SearchOptions,
     ): Effect.Effect<
       SearchResponse,
-      AllEmbedderErrors | AllStoreErrors | NoIndexError | DtypeMismatchError
+      AllEmbedderErrors | AllStoreErrors | NoIndexError | DtypeMismatchError | VectorDecodeError
     > =>
       embedder
         .embed(queryText)

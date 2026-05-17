@@ -1,29 +1,46 @@
 import { Buffer } from "node:buffer"
 
+import { Effect } from "effect"
+
 import type { EmbeddingDtype } from "../domain/dtype.js"
+import { VectorDecodeError, VectorEncodeError } from "../domain/dtype.js"
 
 export interface VectorDecoder {
-  readonly decode: (buffer: Uint8Array, dims: number, count: number) => Float32Array
-  readonly encode: (vector: Float32Array) => Buffer
+  readonly decode: (
+    buffer: Uint8Array,
+    dims: number,
+    count: number,
+  ) => Effect.Effect<Float32Array, VectorDecodeError>
+  readonly encode: (vector: Float32Array) => Effect.Effect<Buffer, VectorEncodeError>
 }
 
 const fp32decoder: VectorDecoder = {
   decode: (buffer, _dims, _count) =>
-    new Float32Array(
-      buffer.buffer,
-      buffer.byteOffset,
-      buffer.byteLength / Float32Array.BYTES_PER_ELEMENT,
+    Effect.succeed(
+      new Float32Array(
+        buffer.buffer,
+        buffer.byteOffset,
+        buffer.byteLength / Float32Array.BYTES_PER_ELEMENT,
+      ),
     ),
-  encode: (vector) => Buffer.from(vector.buffer),
+  encode: (vector) => Effect.succeed(Buffer.from(vector.buffer)),
 }
 
-const notImplemented = (dtype: string): VectorDecoder => ({
-  decode: () => {
-    throw new Error(`VectorDecoder.${dtype} decode not implemented`)
-  },
-  encode: () => {
-    throw new Error(`VectorDecoder.${dtype} encode not implemented`)
-  },
+const notImplemented = (dtype: EmbeddingDtype): VectorDecoder => ({
+  decode: () =>
+    Effect.fail(
+      new VectorDecodeError({
+        message: `VectorDecoder.${dtype} decode not implemented`,
+        dtype,
+      }),
+    ),
+  encode: () =>
+    Effect.fail(
+      new VectorEncodeError({
+        message: `VectorDecoder.${dtype} encode not implemented`,
+        dtype,
+      }),
+    ),
 })
 
 export const getVectorDecoder = (dtype: EmbeddingDtype): VectorDecoder => {
@@ -34,5 +51,24 @@ export const getVectorDecoder = (dtype: EmbeddingDtype): VectorDecoder => {
     case "q8":
     case "q4":
       return notImplemented(dtype)
+    default: {
+      const _exhaustive: never = dtype
+      return {
+        decode: () =>
+          Effect.fail(
+            new VectorDecodeError({
+              message: `Unknown dtype: ${String(_exhaustive)}`,
+              dtype: "fp32",
+            }),
+          ),
+        encode: () =>
+          Effect.fail(
+            new VectorEncodeError({
+              message: `Unknown dtype: ${String(_exhaustive)}`,
+              dtype: "fp32",
+            }),
+          ),
+      }
+    }
   }
 }
