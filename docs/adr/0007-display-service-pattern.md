@@ -24,6 +24,10 @@ Output separation: ClackDisplay's `json()` is a no-op; JsonDisplay's interactive
 
 Infrastructure code uses a `Logger` domain port (with `warn` method) to avoid depending on Display directly.
 
+## Rationale
+
+The three-implementation approach was chosen to make every CLI output path testable: test assertions assert against `SilentDisplay`'s `DisplayEntry` tagged union rather than parsing stdout. Separating interactive (Clack) from machine-readable (Json) output through the same `Display` port means every command supports both modes without `if (json)` branching. The trade-off is increased maintenance surface — three implementations must be kept in sync as new output methods are added — but this is offset by the elimination of untested console.log paths.
+
 ## Consequences
 
 - Tests assert on structured DisplayEntry tagged enums instead of parsing stdout
