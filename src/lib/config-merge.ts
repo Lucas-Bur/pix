@@ -12,7 +12,9 @@ export interface EffectiveConfig {
 }
 
 export const mergeConfig = (opts: IndexOptions, config: Config): EffectiveConfig => ({
-  batchSize: opts.batchSize ?? config.embedder.batchSize ?? DEFAULT_CONFIG.embedder.batchSize,
+  batchSize: clampPositive(
+    opts.batchSize ?? config.embedder.batchSize ?? DEFAULT_CONFIG.embedder.batchSize,
+  ),
   concurrency: clampPositive(opts.chunkConcurrency ?? config.chunkConcurrency),
   skipExtensions: opts.skipExtensions
     ? [...config.skipExtensions, ...opts.skipExtensions]
