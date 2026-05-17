@@ -4,12 +4,16 @@ import { Effect, Layer, Option, Ref, Schema } from "effect"
 import { ChunkSchema } from "../domain/chunk.js"
 import type { Chunk } from "../domain/chunk.js"
 import type { Embedding } from "../domain/chunk.js"
+import type { EmbeddingDtype, IndexMeta } from "../domain/dtype.js"
+import { DtypeMismatchError } from "../domain/dtype.js"
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
+import { ConfigStore, VectorStore } from "../domain/ports.js"
 import type { IndexStats, SearchOptions, SearchResponse, SearchResult } from "../domain/ports.js"
-import { VectorStore } from "../domain/ports.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/fs-error.js"
 import { makeIgnoreFilter, makeOnlyFilter } from "../lib/path-filter.js"
-import { computeDotProduct, serializeVectors } from "../lib/vector-math.js"
+import { getVectorDecoder } from "../lib/vector-decoder.js"
+import { computeCosineSimilarity, serializeVectors } from "../lib/vector-math.js"
+import { ConfigStoreLive } from "./config-store.js"
 
 const parseChunkLine = (line: string): Effect.Effect<Option.Option<Chunk>> =>
   Schema.decodeUnknown(parseJsonChunk)(line).pipe(Effect.option)
@@ -17,6 +21,7 @@ const parseChunkLine = (line: string): Effect.Effect<Option.Option<Chunk>> =>
 const STORE_DIR = ".pix"
 const CHUNKS_FILE = `${STORE_DIR}/chunks.jsonl`
 const VECTORS_FILE = `${STORE_DIR}/vectors.bin`
+const META_FILE = `${STORE_DIR}/index-meta.json`
 
 /** Pre-built Schema instance for chunk encode/decode. */
 const parseJsonChunk = Schema.parseJson(ChunkSchema)
@@ -39,15 +44,21 @@ const buildChunkValidationErrors = (malformedLines: number): readonly ChunkValid
  */
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
+  const configStore = yield* ConfigStore
 
   const chunksTemp = `${CHUNKS_FILE}.tmp`
   const vectorsTemp = `${VECTORS_FILE}.tmp`
+  const metaTemp = `${META_FILE}.tmp`
   const seenFiles = yield* Ref.make<Set<string>>(new Set())
   const statsAccumulator = yield* Ref.make<IndexStats>({
     chunks: 0,
     files: 0,
     totalLines: 0,
     byteSize: 0,
+  })
+  const batchMetaRef = yield* Ref.make<{ dims: number; dtype: EmbeddingDtype }>({
+    dims: 384,
+    dtype: "fp32",
   })
 
   /**
@@ -93,13 +104,50 @@ const make = Effect.gen(function* () {
       }
     })
 
-  /** Read and parse chunks.jsonl and vectors.bin. */
+  /** Read index-meta.json. Falls back to fp32 defaults if meta file does not exist. */
+  const readIndexMeta = (): Effect.Effect<IndexMeta | null, StoreError> =>
+    Effect.gen(function* () {
+      const exists = yield* withReadError(fs.exists(META_FILE), "check index meta")
+      if (!exists) return null
+      const content = yield* withReadError(
+        fs.readFileString(META_FILE),
+        "read index meta",
+        META_FILE,
+      )
+      try {
+        return JSON.parse(content) as IndexMeta
+      } catch {
+        return null
+      }
+    })
+
+  /** Read and parse chunks.jsonl and vectors.bin, with dtype validation from index-meta.json. */
   const loadIndex = (): Effect.Effect<
     { chunkLines: string[]; vectors: Float32Array },
-    StoreError | NoIndexError
+    StoreError | NoIndexError | DtypeMismatchError
   > =>
     Effect.gen(function* () {
       yield* ensureIndexExists()
+
+      const indexMeta = yield* readIndexMeta()
+      const storedDtype = indexMeta?.dtype ?? "fp32"
+
+      const config = yield* configStore
+        .readConfig()
+        .pipe(
+          Effect.mapError(
+            (cause) => new StoreError({ message: "Failed to read config for search", cause }),
+          ),
+        )
+      const configDtype = config.embedder.dtype as EmbeddingDtype
+      if (storedDtype !== configDtype) {
+        return yield* new DtypeMismatchError({
+          message: `Index was built with dtype "${storedDtype}" but config expects "${configDtype}". Re-index to fix.`,
+          storedDtype: storedDtype as EmbeddingDtype,
+          configDtype,
+        })
+      }
+
       const chunksContent = yield* withReadError(
         fs.readFileString(CHUNKS_FILE),
         "read chunks",
@@ -111,15 +159,16 @@ const make = Effect.gen(function* () {
         "read vectors",
         VECTORS_FILE,
       )
-      const vectors = new Float32Array(
-        vectorsBuffer.buffer,
-        vectorsBuffer.byteOffset,
-        vectorsBuffer.byteLength / Float32Array.BYTES_PER_ELEMENT,
-      )
+
+      const decoder = getVectorDecoder(configDtype)
+      const count = chunkLines.length
+      const dims = indexMeta?.dims ?? 384
+      const vectors = decoder.decode(vectorsBuffer, dims, count)
+
       return { chunkLines, vectors }
     })
 
-  /** Pure dot-product scoring loop. Returns results and malformed line count. */
+  /** Pure cosine similarity scoring loop. Returns results and malformed line count. */
   const scoreChunks = (
     chunkLines: string[],
     vectors: Float32Array,
@@ -137,7 +186,7 @@ const make = Effect.gen(function* () {
       }
       const startIdx = i * query.dims
       const chunkVector = vectors.slice(startIdx, startIdx + query.dims)
-      const score = computeDotProduct(chunkVector, query)
+      const score = computeCosineSimilarity(chunkVector, query.vector, query.dims)
       results.push({
         score,
         file: chunk.file,
@@ -228,14 +277,16 @@ const make = Effect.gen(function* () {
         chunksTemp,
       )
 
-      const buffer = serializeVectors(embeddings)
+      const buffer = yield* serializeVectors(embeddings)
       yield* withFsError(
         fs.writeFile(vectorsTemp, buffer, { flag: "a" }),
         "append vectors",
         vectorsTemp,
       )
 
-      const dims = embeddings[0]?.dims ?? 384
+      const dims = embeddings[0].dims
+      yield* Ref.set(batchMetaRef, { dims, dtype: embeddings[0].dtype })
+
       const batchLines = chunks.reduce((sum, c) => sum + (c.endLine - c.startLine + 1), 0)
       const batchBytes = embeddings.length * dims * 4
 
@@ -255,6 +306,29 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* withFsError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
       yield* withFsError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
+
+      const config = yield* configStore
+        .readConfig()
+        .pipe(
+          Effect.mapError(
+            (cause) => new StoreError({ message: "Failed to read config for index commit", cause }),
+          ),
+        )
+      const { dims, dtype } = yield* Ref.get(batchMetaRef)
+      const indexMeta: IndexMeta = {
+        schemaVersion: "1",
+        dtype,
+        dims,
+        model: config.embedder.model,
+        lastIndex: Date.now(),
+      }
+      yield* withFsError(
+        fs.writeFile(metaTemp, Buffer.from(JSON.stringify(indexMeta))),
+        "write index meta",
+        metaTemp,
+      )
+      yield* withFsError(fs.rename(metaTemp, META_FILE), "commit index meta", META_FILE)
+
       const stats = yield* Ref.get(statsAccumulator)
       const files = yield* Ref.get(seenFiles)
       yield* Ref.set(seenFiles, new Set())
@@ -272,12 +346,16 @@ const make = Effect.gen(function* () {
       if (vectorsExists) {
         yield* withReadError(fs.remove(vectorsTemp), "abort vectors temp", vectorsTemp)
       }
+      const metaTempExists = yield* withReadError(fs.exists(metaTemp), "check index meta temp")
+      if (metaTempExists) {
+        yield* withReadError(fs.remove(metaTemp), "abort index meta temp", metaTemp)
+      }
     })
 
   const search = (
     query: Embedding,
     options?: SearchOptions,
-  ): Effect.Effect<SearchResponse, StoreError | NoIndexError> =>
+  ): Effect.Effect<SearchResponse, StoreError | NoIndexError | DtypeMismatchError> =>
     Effect.gen(function* () {
       const { chunkLines, vectors } = yield* loadIndex()
       const ignoreFilter = makeIgnoreFilter(options?.ignorePaths ?? [])
@@ -322,16 +400,15 @@ const make = Effect.gen(function* () {
       const { files: uniqueFiles, totalLines, malformedLines } = yield* countChunkStats(lines)
       const chunks = lines.length - malformedLines
       const files = uniqueFiles.size
-      const model = ""
+
+      const indexMeta = yield* readIndexMeta()
+      const model = indexMeta?.model ?? ""
+      const lastIndex = indexMeta?.lastIndex ?? 0
 
       const validationErrors = buildChunkValidationErrors(malformedLines)
 
       const vectorsStat = yield* withReadError(fs.stat(VECTORS_FILE), "stat vectors", VECTORS_FILE)
       const byteSize: number = "size" in vectorsStat ? Number(vectorsStat.size) : 0
-
-      const lastIndex = Option.map(vectorsStat?.mtime ?? Option.none(), (d) =>
-        d instanceof Date ? d.getTime() : 0,
-      ).pipe(Option.getOrElse(() => 0))
 
       return { chunks, files, model, lastIndex, totalLines, byteSize, validationErrors }
     })
@@ -343,11 +420,12 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const chunks = yield* removeIfExists(CHUNKS_FILE, "chunks")
       const vectors = yield* removeIfExists(VECTORS_FILE, "vectors")
+      const meta = yield* removeIfExists(META_FILE, "index meta")
 
       return {
         deletedChunks: chunks.deleted,
         deletedVectors: vectors.deleted,
-        freedBytes: chunks.freed + vectors.freed,
+        freedBytes: chunks.freed + vectors.freed + meta.freed,
       }
     })
 
@@ -362,4 +440,4 @@ const make = Effect.gen(function* () {
   } as const
 })
 
-export const VectorStoreLive = Layer.effect(VectorStore, make)
+export const VectorStoreLive = Layer.provideMerge(Layer.effect(VectorStore, make), ConfigStoreLive)

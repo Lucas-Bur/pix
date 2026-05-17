@@ -12,20 +12,6 @@ const CACHE_DIR = ".pix/cache"
 
 env.cacheDir = CACHE_DIR
 
-const normalize = (arr: Float32Array): Float32Array => {
-  let norm = 0
-  for (let i = 0; i < arr.length; i++) {
-    norm += arr[i] * arr[i]
-  }
-  norm = Math.sqrt(norm)
-  if (norm === 0) return arr
-  const result = new Float32Array(arr.length)
-  for (let i = 0; i < arr.length; i++) {
-    result[i] = arr[i] / norm
-  }
-  return result
-}
-
 interface EmbedderConfig {
   readonly model: string
   readonly device: "auto" | "cpu" | "cuda" | "dml" | "coreml"
@@ -132,7 +118,7 @@ const make = Effect.gen(function* () {
         ),
       )
       const data = tensor.data as Float32Array
-      return { vector: normalize(data), dims: cfg.dims }
+      return { vector: data, dims: cfg.dims, dtype: cfg.dtype }
     })
 
   const batch = (texts: readonly string[]) =>
@@ -150,7 +136,11 @@ const make = Effect.gen(function* () {
       const results: Embedding[] = []
       for (let j = 0; j < n; j++) {
         const offset = j * cfg.dims
-        results.push({ vector: normalize(data.slice(offset, offset + cfg.dims)), dims: cfg.dims })
+        results.push({
+          vector: data.slice(offset, offset + cfg.dims),
+          dims: cfg.dims,
+          dtype: cfg.dtype,
+        })
       }
       return results
     })

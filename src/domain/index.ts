@@ -1,4 +1,5 @@
 export * from "./config.ts"
 export * from "./chunk.ts"
+export * from "./dtype.ts"
 export * from "./errors.ts"
 export * from "./ports.ts"

@@ -48,4 +48,5 @@ export const makeChunk = (overrides?: Partial<Chunk>): Chunk => {
 export const makeEmbedding = (fill: number = 0.1): Embedding => ({
   vector: new Float32Array(384).fill(fill),
   dims: 384,
+  dtype: "fp32" as const,
 })

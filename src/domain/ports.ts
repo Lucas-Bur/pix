@@ -3,6 +3,7 @@ import { Context, Effect } from "effect"
 import type { Chunk } from "./chunk.js"
 import type { Embedding } from "./chunk.js"
 import type { Config } from "./config.js"
+import type { DtypeMismatchError } from "./dtype.js"
 import type {
   AllConfigErrors,
   ChunkValidationError,
@@ -183,7 +184,7 @@ export class VectorStore extends Context.Tag("VectorStore")<
     readonly search: (
       query: Embedding,
       options?: SearchOptions,
-    ) => Effect.Effect<SearchResponse, StoreError | NoIndexError>
+    ) => Effect.Effect<SearchResponse, StoreError | NoIndexError | DtypeMismatchError>
     /** Return index statistics: chunk/file counts, model, last index time, etc. */
     readonly getStatus: () => Effect.Effect<
       {
