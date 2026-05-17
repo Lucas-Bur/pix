@@ -2,6 +2,7 @@ import { env } from "@huggingface/transformers"
 import { Effect, Layer, Ref, Option } from "effect"
 
 import type { Embedding } from "../domain/chunk.js"
+import type { EmbeddingDtype } from "../domain/dtype.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
 import { ConfigStore, Display, Embedder } from "../domain/ports.js"
 import { ConfigStoreLive } from "./config-store.js"
@@ -15,7 +16,7 @@ env.cacheDir = CACHE_DIR
 interface EmbedderConfig {
   readonly model: string
   readonly device: "auto" | "cpu" | "cuda" | "dml" | "coreml"
-  readonly dtype: "fp32" | "fp16" | "q8"
+  readonly dtype: EmbeddingDtype
   readonly dims: number
 }
 
