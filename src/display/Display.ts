@@ -10,6 +10,7 @@ import {
   type DisplayService,
   type DisplaySeverity,
   type DisplayProgressOptions as ProgressOptions,
+  type DisplayUpdatePayload,
 } from "../domain/ports.js"
 import { isPlatformReason } from "../lib/platform-error.js"
 import {
@@ -212,28 +213,16 @@ export const ClackDisplay = {
 
         updateInteractive: (payload) =>
           Effect.gen(function* () {
-            yield* appendLogEntry(fs, {
-              type: "update",
-              message: payloadText(payload),
-              advanceBy: typeof payload === "string" ? undefined : payload.advanceBy,
-              setTo: typeof payload === "string" ? undefined : payload.setTo,
-              setToPercent: typeof payload === "string" ? undefined : payload.setToPercent,
-            })
+            yield* appendLogEntry(fs, updatePayloadLog(payload))
             const active = yield* getActive(activeRef)
             if (!active) return
             const h = yield* Ref.get(handleRef)
             if (!h) return
             if (active.type === "spinner" && h.type === "spinner") {
-              const msg = payloadText(payload)
-              h.handle.message(msg)
-              yield* Ref.set(lastSpinnerMsg, msg)
-              return
+              return yield* updateSpinnerMessage(payload, h, lastSpinnerMsg)
             }
             if (active.type === "progress" && h.type === "progress") {
-              const delta = computeDelta(payload, { value: active.value, max: active.max })
-              const newValue = Math.max(0, Math.min(active.max, active.value + delta))
-              h.handle.advance(delta, payloadText(payload))
-              yield* updateProgressValue(activeRef, newValue)
+              return yield* updateProgressBar(payload, active, h, activeRef)
             }
           }),
 
@@ -242,6 +231,38 @@ export const ClackDisplay = {
     }),
   ),
 }
+
+const updatePayloadLog = (payload: DisplayUpdatePayload): Record<string, unknown> => ({
+  type: "update",
+  message: payloadText(payload),
+  advanceBy: typeof payload === "string" ? undefined : payload.advanceBy,
+  setTo: typeof payload === "string" ? undefined : payload.setTo,
+  setToPercent: typeof payload === "string" ? undefined : payload.setToPercent,
+})
+
+const updateSpinnerMessage = (
+  payload: DisplayUpdatePayload,
+  h: ClackHandle & { readonly type: "spinner" },
+  lastSpinnerMsg: Ref.Ref<string>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const msg = payloadText(payload)
+    h.handle.message(msg)
+    yield* Ref.set(lastSpinnerMsg, msg)
+  })
+
+const updateProgressBar = (
+  payload: DisplayUpdatePayload,
+  active: ActiveInteractive & { readonly type: "progress" },
+  h: ClackHandle & { readonly type: "progress" },
+  activeRef: Ref.Ref<ActiveInteractive>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const delta = computeDelta(payload, { value: active.value, max: active.max })
+    const newValue = Math.max(0, Math.min(active.max, active.value + delta))
+    h.handle.advance(delta, payloadText(payload))
+    yield* updateProgressValue(activeRef, newValue)
+  })
 
 /** Display implementation for --json mode — no-ops interactive methods, writes JSON to stdout */
 export const JsonDisplay = {
