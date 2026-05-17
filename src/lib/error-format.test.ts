@@ -5,7 +5,7 @@ import { formatError } from "./error-format.js"
 test("formatError handles string errors", () => {
   const result = formatError("something broke")
   expect(result.error).toBe(true)
-  expect(result.code).toBe("UNKNOWN")
+  expect(result.code).toBe("STRING_ERROR")
   expect(result.message).toBe("something broke")
 })
 
@@ -77,4 +77,52 @@ test("formatError coerces non-string _tag to string", () => {
   expect(result.error).toBe(true)
   expect(result.code).toBe("UNKNOWN")
   expect(result.message).toBe("not found")
+})
+
+test("formatError maps DisplayLogError to DISPLAY_LOG_ERROR", () => {
+  const result = formatError({ _tag: "DisplayLogError", message: "log failed" })
+  expect(result.code).toBe("DISPLAY_LOG_ERROR")
+})
+
+test("formatError maps UnsupportedFormat to UNSUPPORTED_FORMAT", () => {
+  const result = formatError({ _tag: "UnsupportedFormat", message: "bad format" })
+  expect(result.code).toBe("UNSUPPORTED_FORMAT")
+})
+
+test("formatError maps ExtractionFailed to EXTRACTION_FAILED", () => {
+  const result = formatError({ _tag: "ExtractionFailed", message: "extract failed" })
+  expect(result.code).toBe("EXTRACTION_FAILED")
+})
+
+test("formatError extracts model context field", () => {
+  const result = formatError({ _tag: "InferenceError", message: "failed", model: "llama-3" })
+  expect(result.code).toBe("INFERENCE_ERROR")
+  expect((result as unknown as Record<string, unknown>).model).toBe("llama-3")
+})
+
+test("formatError extracts file context field", () => {
+  const result = formatError({ _tag: "StoreError", message: "read failed", file: "data.bin" })
+  expect((result as unknown as Record<string, unknown>).file).toBe("data.bin")
+})
+
+test("formatError extracts path context field", () => {
+  const result = formatError({ _tag: "ConfigNotFoundError", message: "missing", path: "/pix.toml" })
+  expect((result as unknown as Record<string, unknown>).path).toBe("/pix.toml")
+})
+
+test("formatError extracts stack context field", () => {
+  const result = formatError({ _tag: "StoreError", message: "crash", stack: "at line 42" })
+  expect((result as unknown as Record<string, unknown>).stack).toBe("at line 42")
+})
+
+test("formatError extracts multiple context fields", () => {
+  const result = formatError({
+    _tag: "InferenceError",
+    message: "failed",
+    model: "llama-3",
+    file: "vectors.bin",
+  })
+  const r = result as unknown as Record<string, unknown>
+  expect(r.model).toBe("llama-3")
+  expect(r.file).toBe("vectors.bin")
 })

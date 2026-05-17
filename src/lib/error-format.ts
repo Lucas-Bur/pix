@@ -14,34 +14,10 @@ const errorCodes: Record<string, string> = {
   ChunkerError: "CHUNK_ERROR",
   ModelLoadError: "MODEL_LOAD_ERROR",
   InferenceError: "INFERENCE_ERROR",
+  DisplayLogError: "DISPLAY_LOG_ERROR",
+  UnsupportedFormat: "UNSUPPORTED_FORMAT",
+  ExtractionFailed: "EXTRACTION_FAILED",
 }
-
-const messageFromError = (error: unknown): string => {
-  if (typeof error === "string") return error
-  if (error && typeof error === "object" && "message" in error) {
-    return String((error as { message: unknown }).message)
-  }
-  return "Unknown error"
-}
-
-const codeFromError = (error: unknown): string => {
-  if (error && typeof error === "object" && "_tag" in error) {
-    const tag = String((error as { _tag: unknown })._tag)
-    return errorCodes[tag] ?? "UNKNOWN"
-  }
-  return "UNKNOWN"
-}
-
-const causeFromError = (error: unknown): string => {
-  if (typeof error === "string") return error
-  if (error && typeof error === "object" && "cause" in error) {
-    return String((error as { cause: unknown }).cause)
-  }
-  return "Unknown cause"
-}
-
-// TODO: there are more keys, that maybe need to be parsed. i think that we should go over each and every key in error object and try to parse it. if there is no function for that we display a message in log. a switch would be good for this exhaustive lookup
-// some keys that i found so far: stack, model, file, path
 
 export interface FormattedError {
   readonly error: true
@@ -50,13 +26,37 @@ export interface FormattedError {
   readonly cause: string
 }
 
-/** Format an error as spec-mandated JSON: `{ error: true, code: "...", message: "..." }`. */
-export const formatError = (error: unknown): FormattedError => ({
-  error: true,
-  code: codeFromError(error),
-  message: messageFromError(error),
-  cause: causeFromError(error),
-})
+/**
+ * Format an error as spec-mandated JSON: `{ error: true, code, message, cause }` with context
+ * fields.
+ */
+export const formatError = (error: unknown): FormattedError => {
+  if (typeof error === "string") {
+    return { error: true, code: "STRING_ERROR", message: error, cause: "Unknown cause" }
+  }
+  if (!error || typeof error !== "object") {
+    return { error: true, code: "UNKNOWN", message: "Unknown error", cause: "Unknown cause" }
+  }
+
+  const err = error as Record<string, unknown>
+  const tag = typeof err._tag === "string" ? err._tag : "UNKNOWN"
+  const message = typeof err.message === "string" ? err.message : "Unknown error"
+  const cause = typeof err.cause === "string" ? err.cause : "Unknown cause"
+
+  const context: Record<string, unknown> = {}
+  if (typeof err.model === "string") context.model = err.model
+  if (typeof err.file === "string") context.file = err.file
+  if (typeof err.path === "string") context.path = err.path
+  if (typeof err.stack === "string") context.stack = err.stack
+
+  return {
+    error: true,
+    code: errorCodes[tag] ?? "UNKNOWN",
+    message,
+    cause,
+    ...context,
+  }
+}
 
 import { Effect } from "effect"
 
@@ -66,7 +66,8 @@ import { Display } from "../display/Display.js"
 export const reportError = <E>(error: E): Effect.Effect<never, E, Display> =>
   Effect.gen(function* () {
     const d = yield* Display
-    yield* d.log(`${codeFromError(error)}: ${messageFromError(error)}`, "error")
-    yield* d.json(formatError(error))
+    const formatted = formatError(error)
+    yield* d.log(`${formatted.code}: ${formatted.message}`, "error")
+    yield* d.json(formatted)
     return yield* Effect.fail(error)
   })
