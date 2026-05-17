@@ -12,6 +12,24 @@ import { VectorStoreLive } from "./vector-store.js"
 
 const vsLayer = Layer.provideMerge(VectorStoreLive, memoryFsLayer({}))
 
+const defaultQuery: Embedding = {
+  vector: new Float32Array(384).fill(0.15),
+  dims: 384,
+  dtype: "fp32",
+}
+
+const storeFixture = (
+  chunks: ReturnType<typeof makeChunk>[],
+  embeddings: ReturnType<typeof makeEmbedding>[],
+) =>
+  Effect.gen(function* () {
+    const store = yield* VectorStore
+    yield* store.storeBegin()
+    yield* store.storeBatch(chunks, embeddings)
+    yield* store.storeCommit()
+    return store
+  })
+
 test("FileSystemVectorStore.getStatus returns 0 when no index exists", () =>
   Effect.gen(function* () {
     const result = yield* GetStatus.getStatus()
@@ -34,13 +52,7 @@ test("VectorStoreLive.reset returns 0/0/false when no index exists", () =>
 
 test("VectorStoreLive.store writes chunks and vectors to index files", () =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
-    const chunks = [makeChunk()]
-    const embeddings = [makeEmbedding()]
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
-
+    const store = yield* storeFixture([makeChunk()], [makeEmbedding()])
     const status = yield* store.getStatus()
     expect(status.chunks).toBe(1)
     expect(status.files).toBe(1)
@@ -49,18 +61,11 @@ test("VectorStoreLive.store writes chunks and vectors to index files", () =>
 
 test("VectorStoreLive.search returns results after storing chunks", () =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
-    const chunks = [
-      makeChunk(),
-      makeChunk({ id: "a2", idx: 1, startLine: 3, endLine: 4, text: "world" }),
-    ]
-    const embeddings = [makeEmbedding(0.1), makeEmbedding(0.2)]
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
-
-    const query: Embedding = { vector: new Float32Array(384).fill(0.15), dims: 384, dtype: "fp32" }
-    const { results } = yield* store.search(query, { topK: 2 })
+    const store = yield* storeFixture(
+      [makeChunk(), makeChunk({ id: "a2", idx: 1, startLine: 3, endLine: 4, text: "world" })],
+      [makeEmbedding(0.1), makeEmbedding(0.2)],
+    )
+    const { results } = yield* store.search(defaultQuery, { topK: 2 })
     expect(results.length).toBe(2)
     expect(results[0].file).toBe("/test.ts")
     expect(typeof results[0].score).toBe("number")
@@ -68,55 +73,49 @@ test("VectorStoreLive.search returns results after storing chunks", () =>
 
 test("VectorStoreLive.search with ignorePaths excludes matching files", () =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
-    const chunks = [
-      makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
-      makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
-    ]
-    const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
-
-    const query: Embedding = { vector: new Float32Array(384).fill(0.15), dims: 384, dtype: "fp32" }
-    const { results } = yield* store.search(query, { topK: 5, ignorePaths: ["**/*.test.ts"] })
+    const store = yield* storeFixture(
+      [
+        makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
+        makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
+      ],
+      [makeEmbedding(0.1), makeEmbedding(0.1)],
+    )
+    const { results } = yield* store.search(defaultQuery, {
+      topK: 5,
+      ignorePaths: ["**/*.test.ts"],
+    })
     expect(results.length).toBe(1)
     expect(results[0].file).toBe("src/services/foo.ts")
   }).pipe(Effect.provide(vsLayer), Effect.scoped))
 
 test("VectorStoreLive.search with onlyPaths restricts to matching files", () =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
-    const chunks = [
-      makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
-      makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
-    ]
-    const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
-
-    const query: Embedding = { vector: new Float32Array(384).fill(0.15), dims: 384, dtype: "fp32" }
-    const { results } = yield* store.search(query, { topK: 5, onlyPaths: ["src/services/**"] })
+    const store = yield* storeFixture(
+      [
+        makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
+        makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
+      ],
+      [makeEmbedding(0.1), makeEmbedding(0.1)],
+    )
+    const { results } = yield* store.search(defaultQuery, {
+      topK: 5,
+      onlyPaths: ["src/services/**"],
+    })
     expect(results.length).toBe(1)
     expect(results[0].file).toBe("src/services/foo.ts")
   }).pipe(Effect.provide(vsLayer), Effect.scoped))
 
 test("VectorStoreLive.search with both ignorePaths and onlyPaths applies both", () =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
-    const chunks = [
-      makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
-      makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
-      makeChunk({ id: "a3", idx: 2, file: "src/lib/bar.ts" }),
-    ]
-    const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1), makeEmbedding(0.1)]
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
-
-    const query: Embedding = { vector: new Float32Array(384).fill(0.15), dims: 384, dtype: "fp32" }
-    const { results } = yield* store.search(query, {
+    const store = yield* storeFixture(
+      [
+        makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
+        makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
+        makeChunk({ id: "a3", idx: 2, file: "src/lib/bar.ts" }),
+      ],
+      [makeEmbedding(0.1), makeEmbedding(0.1), makeEmbedding(0.1)],
+    )
+    const { results } = yield* store.search(defaultQuery, {
       topK: 5,
       onlyPaths: ["src/services/**", "src/lib/**"],
       ignorePaths: ["**/bar.ts"],
@@ -127,32 +126,24 @@ test("VectorStoreLive.search with both ignorePaths and onlyPaths applies both", 
 
 test("VectorStoreLive.search with no options returns all results", () =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
-    const chunks = [
-      makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
-      makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
-    ]
-    const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
-
-    const query: Embedding = { vector: new Float32Array(384).fill(0.15), dims: 384, dtype: "fp32" }
-    const { results } = yield* store.search(query)
+    const store = yield* storeFixture(
+      [
+        makeChunk({ id: "a1", idx: 0, file: "src/services/foo.ts" }),
+        makeChunk({ id: "a2", idx: 1, file: "src/test/foo.test.ts" }),
+      ],
+      [makeEmbedding(0.1), makeEmbedding(0.1)],
+    )
+    const { results } = yield* store.search(defaultQuery)
     expect(results.length).toBe(2)
   }).pipe(Effect.provide(vsLayer), Effect.scoped))
 
 test("VectorStoreLive.search returns contextBefore and contextAfter when stored", () =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
-    const chunks = [makeChunk({ contextBefore: "line before", contextAfter: "line after" })]
-    const embeddings = [makeEmbedding(0.1)]
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
-
-    const query: Embedding = { vector: new Float32Array(384).fill(0.15), dims: 384, dtype: "fp32" }
-    const { results } = yield* store.search(query, { topK: 5 })
+    const store = yield* storeFixture(
+      [makeChunk({ contextBefore: "line before", contextAfter: "line after" })],
+      [makeEmbedding(0.1)],
+    )
+    const { results } = yield* store.search(defaultQuery, { topK: 5 })
     expect(results.length).toBe(1)
     expect(results[0].contextBefore).toBe("line before")
     expect(results[0].contextAfter).toBe("line after")
@@ -160,13 +151,8 @@ test("VectorStoreLive.search returns contextBefore and contextAfter when stored"
 
 test("VectorStoreLive.reset deletes index files when they exist", () =>
   Effect.gen(function* () {
+    yield* storeFixture([makeChunk()], [makeEmbedding()])
     const store = yield* VectorStore
-    const chunks = [makeChunk()]
-    const embeddings = [makeEmbedding()]
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
-
     const result = yield* store.reset()
     expect(result.deletedChunks).toBe(true)
     expect(result.deletedVectors).toBe(true)
@@ -175,12 +161,7 @@ test("VectorStoreLive.reset deletes index files when they exist", () =>
 
 test("VectorStoreLive.store works when .pix directory already exists", () =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
-    const chunks = [makeChunk()]
-    const embeddings = [makeEmbedding()]
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
+    const store = yield* storeFixture([makeChunk()], [makeEmbedding()])
     const status = yield* store.getStatus()
     expect(status.chunks).toBe(1)
   }).pipe(
@@ -191,21 +172,12 @@ test("VectorStoreLive.store works when .pix directory already exists", () =>
 test("VectorStoreLive.search skips malformed chunk lines", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const store = yield* VectorStore
-    const validChunk = makeChunk()
-    const validEmbedding = makeEmbedding(0.1)
-    yield* store.storeBegin()
-    yield* store.storeBatch([validChunk], [validEmbedding])
-    yield* store.storeCommit()
+    const store = yield* storeFixture([makeChunk()], [makeEmbedding(0.1)])
 
     const current = yield* fs.readFileString(".pix/chunks.jsonl").pipe(Effect.orDie)
     yield* fs.writeFileString(".pix/chunks.jsonl", current + "{}\n").pipe(Effect.orDie)
 
-    const { results, validationErrors } = yield* store.search({
-      vector: new Float32Array(384).fill(0.15),
-      dims: 384,
-      dtype: "fp32" as const,
-    })
+    const { results, validationErrors } = yield* store.search(defaultQuery)
     expect(results.length).toBe(1)
     expect(validationErrors.length).toBe(1)
     expect(validationErrors[0].message).toContain("malformed")
@@ -214,12 +186,10 @@ test("VectorStoreLive.search skips malformed chunk lines", () =>
 test("VectorStoreLive.getStatus handles chunks.jsonl with malformed lines", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const store = yield* VectorStore
-    const chunks = [makeChunk(), makeChunk({ id: "a2", idx: 1, text: "line1\nline2" })]
-    const embeddings = [makeEmbedding(0.1), makeEmbedding(0.1)]
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
+    const store = yield* storeFixture(
+      [makeChunk(), makeChunk({ id: "a2", idx: 1, text: "line1\nline2" })],
+      [makeEmbedding(0.1), makeEmbedding(0.1)],
+    )
 
     const current = yield* fs.readFileString(".pix/chunks.jsonl").pipe(Effect.orDie)
     yield* fs.writeFileString(".pix/chunks.jsonl", current + '{"bad}\n').pipe(Effect.orDie)
