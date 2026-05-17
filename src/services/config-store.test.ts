@@ -2,6 +2,14 @@ import { Effect, Layer } from "effect"
 import { MemoryFileSystem } from "effect-memfs"
 import { expect, test } from "vite-plus/test"
 
+const expectLeft = <A>(
+  result: { _tag: "Left"; left: A } | { _tag: "Right"; right: unknown },
+): A => {
+  expect(result._tag).toBe("Left")
+  if (result._tag === "Right") throw new Error("Expected Left")
+  return result.left
+}
+
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { DEFAULT_CONFIG } from "../domain/config.ts"
@@ -41,12 +49,9 @@ test("ConfigStore.writeConfig creates .pix/config.json with defaults", () =>
 test("ConfigStore.readConfig returns ConfigError when config doesn't exist", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = yield* Effect.either(store.readConfig())
-    expect(result._tag).toBe("Left")
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("ConfigError")
-      expect(result.left.message).toBe("Failed to read config.json")
-    }
+    const result = expectLeft(yield* Effect.either(store.readConfig()))
+    expect(result._tag).toBe("ConfigError")
+    expect(result.message).toBe("Failed to read config.json")
   }).pipe(Effect.provide(makeLayer())))
 
 test("ConfigStore.configExists returns false when no config", () =>
@@ -67,25 +72,18 @@ test("ConfigStore.configExists returns true when config exists", () =>
 test("readConfig returns ConfigMalformedError for invalid JSON", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = yield* Effect.either(store.readConfig())
-    expect(result._tag).toBe("Left")
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("ConfigMalformedError")
-    }
+    const result = expectLeft(yield* Effect.either(store.readConfig()))
+    expect(result._tag).toBe("ConfigMalformedError")
   }).pipe(Effect.provide(makeLayer({ ".pix/config.json": "not json" }))))
 
 test("readConfig returns ConfigValidationError for missing required field", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = yield* Effect.either(store.readConfig())
-    expect(result._tag).toBe("Left")
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("ConfigValidationError")
-      expect(result.left.message).toContain("embedder")
-    }
+    const result = expectLeft(yield* Effect.either(store.readConfig()))
+    expect(result._tag).toBe("ConfigValidationError")
+    expect(result.message).toContain("embedder")
   }).pipe(
     Effect.provide(
-      // Intentionally invalid: missing required embedder — tests ConfigValidationError path
       makeLayer({ ".pix/config.json": JSON.stringify({ schema: "1", chunkLines: 60 }) }),
     ),
   ))
@@ -98,12 +96,9 @@ const invalidConfig = {
 test("readConfig returns ConfigValidationError for invalid enum value", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = yield* Effect.either(store.readConfig())
-    expect(result._tag).toBe("Left")
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("ConfigValidationError")
-      expect(result.left.message).toContain("device")
-    }
+    const result = expectLeft(yield* Effect.either(store.readConfig()))
+    expect(result._tag).toBe("ConfigValidationError")
+    expect(result.message).toContain("device")
   }).pipe(
     Effect.provide(
       // Intentionally invalid: device "cuda!" is not in the enum — tests ConfigValidationError path
