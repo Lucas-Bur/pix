@@ -54,6 +54,9 @@ const formatSchemaMessage = (error: ParseResult.ParseError): string =>
 const isJsonSyntaxError = (error: ParseResult.ParseError): boolean =>
   error.issue._tag === "Transformation" && error.issue.kind === "Transformation"
 
+/** Clamp a number to be at least `min`. Returns the clamped value. */
+export const clampPositive = (value: number, min = 1): number => Math.max(min, value)
+
 export const clampTopK = (
   value: number,
   min: number,

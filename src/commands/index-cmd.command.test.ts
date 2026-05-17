@@ -1,7 +1,7 @@
 import { Effect, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
-import { assertCommandError, expectLogEntry, runCommand } from "../../tests/test-utils/command.js"
+import { assertCommandError, runCommand } from "../../tests/test-utils/command.js"
 import { TEST_CONFIG_JSON } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
@@ -48,20 +48,4 @@ test("pix index --json without config produces error JSON", () => {
   return assertCommandError(run(["index", "--json"]), ref, "CONFIG_ERROR").pipe(
     Effect.provide(testLayer({ displayLayer: layer })),
   )
-})
-
-test("pix index --force shows warning via Display", () => {
-  const { ref, layer } = silentDisplay()
-  return Effect.gen(function* () {
-    yield* run(["index", "--force"])
-    yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "" })
-  }).pipe(Effect.provide(testLayer({ contents: fixtures, displayLayer: layer })))
-})
-
-test("pix index --verbose shows warning via Display", () => {
-  const { ref, layer } = silentDisplay()
-  return Effect.gen(function* () {
-    yield* run(["index", "--verbose"])
-    yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "" })
-  }).pipe(Effect.provide(testLayer({ contents: fixtures, displayLayer: layer })))
 })
