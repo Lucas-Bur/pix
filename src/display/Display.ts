@@ -212,6 +212,13 @@ export const ClackDisplay = {
 
         updateInteractive: (payload) =>
           Effect.gen(function* () {
+            yield* appendLogEntry(fs, {
+              type: "update",
+              message: payloadText(payload),
+              advanceBy: typeof payload === "string" ? undefined : payload.advanceBy,
+              setTo: typeof payload === "string" ? undefined : payload.setTo,
+              setToPercent: typeof payload === "string" ? undefined : payload.setToPercent,
+            })
             const active = yield* getActive(activeRef)
             if (!active) return
             const h = yield* Ref.get(handleRef)
@@ -254,9 +261,10 @@ export const JsonDisplay = {
         ): Effect.Effect<A, E, R> =>
           Effect.gen(function* () {
             yield* appendLogEntry(fs, { type: "spinner-start", message: _message })
-            const result = yield* effect
+            const exit = yield* Effect.exit(effect)
             yield* appendLogEntry(fs, { type: "spinner-stop" })
-            return result
+            if (Exit.isSuccess(exit)) return exit.value
+            return yield* Effect.failCause(exit.cause)
           }),
         progress: <A, E, R>(
           opts: ProgressOptions,
@@ -268,9 +276,10 @@ export const JsonDisplay = {
               message: opts.message,
               max: opts.max,
             })
-            const result = yield* effect
+            const exit = yield* Effect.exit(effect)
             yield* appendLogEntry(fs, { type: "progress-stop" })
-            return result
+            if (Exit.isSuccess(exit)) return exit.value
+            return yield* Effect.failCause(exit.cause)
           }),
         updateInteractive: (payload) =>
           appendLogEntry(fs, {
