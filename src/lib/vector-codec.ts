@@ -26,14 +26,19 @@ export interface VectorCodec {
 }
 
 const fp32decoder: VectorCodec = {
-  decode: (buffer, _dims, _count) =>
-    Effect.succeed(
-      new Float32Array(
-        buffer.buffer,
-        buffer.byteOffset,
-        buffer.byteLength / Float32Array.BYTES_PER_ELEMENT,
-      ),
-    ),
+  decode: (buffer, dims, count) =>
+    Effect.gen(function* () {
+      const expectedBytes = dims * count * Float32Array.BYTES_PER_ELEMENT
+      if (buffer.byteLength !== expectedBytes) {
+        return yield* Effect.fail(
+          new VectorDecodeError({
+            message: `Invalid vector buffer length: expected ${expectedBytes}, got ${buffer.byteLength}`,
+            dtype: "fp32",
+          }),
+        )
+      }
+      return new Float32Array(buffer.buffer, buffer.byteOffset, dims * count)
+    }),
   encode: (vector) => Effect.succeed(Buffer.from(vector.buffer)),
 }
 
