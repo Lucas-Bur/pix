@@ -3,7 +3,11 @@ import { Buffer } from "node:buffer"
 import { Effect } from "effect"
 
 import type { EmbeddingDtype } from "../domain/dtype.js"
-import { UnknownEmbeddingDtypeError, VectorDecodeError, VectorEncodeError } from "../domain/dtype.js"
+import {
+  UnknownEmbeddingDtypeError,
+  VectorDecodeError,
+  VectorEncodeError,
+} from "../domain/dtype.js"
 
 export interface VectorDecoder {
   readonly decode: (
@@ -57,8 +61,8 @@ export const getVectorDecoder = (dtype: EmbeddingDtype): VectorDecoder => {
         message: `Unknown EmbeddingDtype: ${String(_exhaustive)}`,
       })
       return {
-        decode: () => Effect.fail(err),
-        encode: () => Effect.fail(err),
+        decode: () => Effect.die(err),
+        encode: () => Effect.die(err),
       }
     }
   }
