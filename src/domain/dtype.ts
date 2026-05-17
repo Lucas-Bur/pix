@@ -6,14 +6,6 @@ export const EmbeddingDtypeSchema = Schema.Literal("fp32", "fp16", "q8", "q4")
 /** Domain type inferred from EmbeddingDtypeSchema. */
 export type EmbeddingDtype = typeof EmbeddingDtypeSchema.Type
 
-/** Readonly array of all valid dtype values, derived from schema. */
-export const EMBEDDING_DTYPES = [
-  "fp32",
-  "fp16",
-  "q8",
-  "q4",
-] as const satisfies readonly EmbeddingDtype[]
-
 /** Runtime schema for index metadata persisted to .pix/index-meta.json. */
 export const IndexMetaSchema = Schema.Struct({
   schemaVersion: Schema.String,

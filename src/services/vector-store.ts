@@ -152,7 +152,7 @@ const make = Effect.gen(function* () {
     dims: number,
     dtype: EmbeddingDtype,
   ): Effect.Effect<
-    { chunkLines: string[]; vectors: Float32Array },
+    { chunkLines: string[]; vectors: Float32Array; dims: number },
     StoreError | VectorDecodeError
   > =>
     Effect.gen(function* () {
@@ -169,12 +169,12 @@ const make = Effect.gen(function* () {
       )
       const codec = getVectorCodec(dtype)
       const vectors = yield* codec.decode(vectorsBuffer, dims, chunkLines.length)
-      return { chunkLines, vectors }
+      return { chunkLines, vectors, dims }
     })
 
   /** Read and parse chunks.jsonl and vectors.bin, with dtype validation from index-meta.json. */
   const loadIndex = (): Effect.Effect<
-    { chunkLines: string[]; vectors: Float32Array },
+    { chunkLines: string[]; vectors: Float32Array; dims: number },
     StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
   > =>
     Effect.gen(function* () {
@@ -374,7 +374,12 @@ const make = Effect.gen(function* () {
     StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
   > =>
     Effect.gen(function* () {
-      const { chunkLines, vectors } = yield* loadIndex()
+      const { chunkLines, vectors, dims: indexDims } = yield* loadIndex()
+      if (query.dims !== indexDims) {
+        return yield* new StoreError({
+          message: `Query dims (${query.dims}) do not match index dims (${indexDims}). Re-index to fix.`,
+        })
+      }
       const ignoreFilter = makeIgnoreFilter(options?.ignorePaths ?? [])
       const onlyFilter = makeOnlyFilter(options?.onlyPaths ?? [])
       const { results, malformedLines } = scoreChunks(chunkLines, vectors, query)
