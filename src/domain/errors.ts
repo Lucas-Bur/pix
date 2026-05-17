@@ -127,3 +127,12 @@ export type IndexError =
   | AllProcessorErrors
   | StoreError
   | DiskFullError
+
+// === Display log errors ===
+
+/** Structured file logging failed (write, mkdir, permission). */
+export class DisplayLogError extends Data.TaggedError("DisplayLogError")<{
+  readonly message: string
+  readonly path?: string
+  readonly cause?: unknown
+}> {}
