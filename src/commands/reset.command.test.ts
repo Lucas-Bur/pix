@@ -1,4 +1,3 @@
-import { Command } from "@effect/cli"
 import { Effect, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
@@ -6,18 +5,17 @@ import {
   assertCommandError,
   expectJsonEntry,
   makeFailingVectorStore,
+  runCommand,
 } from "../../tests/test-utils/command.js"
-import { makeChunkJson, makeConfigJson } from "../../tests/test-utils/fixtures.js"
+import { makeChunkJson, TEST_CONFIG_JSON } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { resetCommand } from "./reset.js"
 
-const run = (args: string[]) => Command.run(resetCommand, { name: "pix", version: "0.0.0" })(args)
+const run = runCommand(resetCommand)
 
 const fixtures = {
-  ".pix/config.json": makeConfigJson({
-    embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
-  }),
+  ".pix/config.json": TEST_CONFIG_JSON,
   ".pix/chunks.jsonl": makeChunkJson({
     id: "a1",
     idx: 0,

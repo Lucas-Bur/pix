@@ -2,34 +2,14 @@ import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
+import { makeChunk, makeEmbedding } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { GetStatus } from "../application/get-status.js"
-import type { Chunk } from "../domain/chunk.js"
-import type { Embedding } from "../domain/chunk.js"
 import { VectorStore } from "../domain/ports.js"
 import { VectorStoreLive } from "./vector-store.js"
 
 const vsLayer = Layer.provideMerge(VectorStoreLive, memoryFsLayer({}))
-
-const makeChunk = (overrides?: Partial<Chunk>): Chunk => {
-  const base: Chunk = {
-    id: "a1",
-    idx: 0,
-    file: "/test.ts",
-    startLine: 1,
-    endLine: 2,
-    text: "hello",
-    contextBefore: null,
-    contextAfter: null,
-  }
-  return { ...base, ...overrides } as Chunk
-}
-
-const makeEmbedding = (fill: number = 0.1): Embedding => ({
-  vector: new Float32Array(384).fill(fill),
-  dims: 384,
-})
 
 test("FileSystemVectorStore.getStatus returns 0 when no index exists", () =>
   Effect.gen(function* () {

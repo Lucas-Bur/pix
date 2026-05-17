@@ -1,4 +1,3 @@
-import { Command } from "@effect/cli"
 import { Effect, Ref } from "effect"
 import type { MemoryFileSystem } from "effect-memfs"
 import { expect, test } from "vite-plus/test"
@@ -6,15 +5,17 @@ import { expect, test } from "vite-plus/test"
 import {
   assertCommandError,
   expectJsonEntry,
+  expectLogEntry,
   indexFixtures,
   makeFailingEmbedder,
+  runCommand,
 } from "../../tests/test-utils/command.js"
-import { makeChunkJson, makeConfigJson } from "../../tests/test-utils/fixtures.js"
+import { makeChunkJson, TEST_CONFIG_JSON } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { queryCommand } from "./query.js"
 
-const run = (args: string[]) => Command.run(queryCommand, { name: "pix", version: "0.0.0" })(args)
+const run = runCommand(queryCommand)
 
 test("pix query --json outputs search results", () => {
   const { ref, layer } = silentDisplay()
@@ -57,12 +58,7 @@ test("pix query --json clamps --top below minimum to 1", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--top", "0", "test"])
-    const entries = yield* Ref.get(ref)
-    expect(
-      entries.some(
-        (e) => e._tag === "log" && e.severity === "warn" && e.message.includes("clamped"),
-      ),
-    ).toBe(true)
+    yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
     yield* expectJsonEntry(ref, (data) => {
       if (Array.isArray(data)) {
         expect(data.length).toBeLessThanOrEqual(1)
@@ -73,9 +69,7 @@ test("pix query --json clamps --top below minimum to 1", () => {
 
 test("pix query --json clamps --top above maximum to 100", () => {
   const largeFixtures: MemoryFileSystem.Contents = {
-    ".pix/config.json": makeConfigJson({
-      embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
-    }),
+    ".pix/config.json": TEST_CONFIG_JSON,
     ".pix/chunks.jsonl": Array.from({ length: 150 }, (_, i) =>
       makeChunkJson({
         id: `chunk${i}`,
@@ -91,12 +85,7 @@ test("pix query --json clamps --top above maximum to 100", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--top", "200", "test"])
-    const entries = yield* Ref.get(ref)
-    expect(
-      entries.some(
-        (e) => e._tag === "log" && e.severity === "warn" && e.message.includes("clamped"),
-      ),
-    ).toBe(true)
+    yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
     yield* expectJsonEntry(ref, (data) => {
       if (Array.isArray(data)) {
         expect(data.length).toBeLessThanOrEqual(100)

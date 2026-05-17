@@ -1,4 +1,3 @@
-import { Command } from "@effect/cli"
 import { Effect, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
@@ -7,12 +6,13 @@ import {
   expectJsonEntry,
   indexFixtures,
   makeFailingVectorStore,
+  runCommand,
 } from "../../tests/test-utils/command.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { statusCommand } from "./status.js"
 
-const run = (args: string[]) => Command.run(statusCommand, { name: "pix", version: "0.0.0" })(args)
+const run = runCommand(statusCommand)
 
 test("pix status --json outputs correct status from index files", () => {
   const { ref, layer } = silentDisplay()
