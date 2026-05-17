@@ -3,9 +3,9 @@ import { Effect, Layer, Ref, Option } from "effect"
 
 import type { Embedding } from "../domain/chunk.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
-import { MODEL_REGISTRY } from "../domain/models.js"
 import { ConfigStore, Display, Embedder } from "../domain/ports.js"
 import { ConfigStoreLive } from "./config-store.js"
+import { MODEL_REGISTRY } from "./models.js"
 export { Embedder }
 
 const CACHE_DIR = ".pix/cache"
