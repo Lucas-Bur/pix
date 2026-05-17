@@ -5,7 +5,7 @@ import { ChunkSchema } from "../domain/chunk.js"
 import type { Chunk } from "../domain/chunk.js"
 import type { Embedding } from "../domain/chunk.js"
 import type { EmbeddingDtype, IndexMeta } from "../domain/dtype.js"
-import { DtypeMismatchError } from "../domain/dtype.js"
+import { DtypeMismatchError, VectorDecodeError } from "../domain/dtype.js"
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
 import { ConfigStore, VectorStore } from "../domain/ports.js"
 import type { IndexStats, SearchOptions, SearchResponse, SearchResult } from "../domain/ports.js"
@@ -124,7 +124,7 @@ const make = Effect.gen(function* () {
   /** Read and parse chunks.jsonl and vectors.bin, with dtype validation from index-meta.json. */
   const loadIndex = (): Effect.Effect<
     { chunkLines: string[]; vectors: Float32Array },
-    StoreError | NoIndexError | DtypeMismatchError
+    StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
   > =>
     Effect.gen(function* () {
       yield* ensureIndexExists()
@@ -163,7 +163,7 @@ const make = Effect.gen(function* () {
       const decoder = getVectorDecoder(configDtype)
       const count = chunkLines.length
       const dims = indexMeta?.dims ?? 384
-      const vectors = decoder.decode(vectorsBuffer, dims, count)
+      const vectors = yield* decoder.decode(vectorsBuffer, dims, count)
 
       return { chunkLines, vectors }
     })
@@ -355,7 +355,10 @@ const make = Effect.gen(function* () {
   const search = (
     query: Embedding,
     options?: SearchOptions,
-  ): Effect.Effect<SearchResponse, StoreError | NoIndexError | DtypeMismatchError> =>
+  ): Effect.Effect<
+    SearchResponse,
+    StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
+  > =>
     Effect.gen(function* () {
       const { chunkLines, vectors } = yield* loadIndex()
       const ignoreFilter = makeIgnoreFilter(options?.ignorePaths ?? [])
