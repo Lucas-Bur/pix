@@ -34,6 +34,7 @@ test("pix query with --top flag clamps to valid range", () => {
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--top", "3", "search term"])
     yield* expectJsonEntry(ref, (data) => {
+      expect(Array.isArray(data)).toBe(true)
       if (Array.isArray(data)) {
         expect(data.length).toBeLessThanOrEqual(3)
       }
@@ -60,6 +61,7 @@ test("pix query --json clamps --top below minimum to 1", () => {
     yield* run(["query", "--json", "--top", "0", "test"])
     yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
     yield* expectJsonEntry(ref, (data) => {
+      expect(Array.isArray(data)).toBe(true)
       if (Array.isArray(data)) {
         expect(data.length).toBeLessThanOrEqual(1)
       }
@@ -87,6 +89,7 @@ test("pix query --json clamps --top above maximum to 100", () => {
     yield* run(["query", "--json", "--top", "200", "test"])
     yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
     yield* expectJsonEntry(ref, (data) => {
+      expect(Array.isArray(data)).toBe(true)
       if (Array.isArray(data)) {
         expect(data.length).toBeLessThanOrEqual(100)
       }
@@ -99,8 +102,9 @@ test("pix query --json with --context-lines includes context fields", () => {
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--context-lines", "2", "test"])
     yield* expectJsonEntry(ref, (data) => {
+      expect(Array.isArray(data)).toBe(true)
       if (Array.isArray(data) && data.length > 0) {
-        const first = data[0] as Record<string, unknown>
+        const [first] = data
         expect(first).toHaveProperty("score")
         expect(first).toHaveProperty("file")
         expect(first).toHaveProperty("startLine")
@@ -152,9 +156,12 @@ test("pix query --json with --ignore-path excludes matching files", () => {
     const entries = yield* Ref.get(ref)
     const jsonEntry = entries.find((e) => e._tag === "json")
     expect(jsonEntry).toBeDefined()
-    if (jsonEntry?._tag === "json" && Array.isArray(jsonEntry.data)) {
-      const files = jsonEntry.data.map((r: { file: string }) => r.file)
-      expect(files.every((f: string) => !f.endsWith(".ts"))).toBe(true)
+    if (jsonEntry?._tag === "json") {
+      expect(Array.isArray(jsonEntry.data)).toBe(true)
+      if (Array.isArray(jsonEntry.data)) {
+        const files = jsonEntry.data.map((r: { file: string }) => r.file)
+        expect(files.every((f: string) => !f.endsWith(".ts"))).toBe(true)
+      }
     }
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
@@ -166,9 +173,12 @@ test("pix query --json with --only-path restricts to matching files", () => {
     const entries = yield* Ref.get(ref)
     const jsonEntry = entries.find((e) => e._tag === "json")
     expect(jsonEntry).toBeDefined()
-    if (jsonEntry?._tag === "json" && Array.isArray(jsonEntry.data)) {
-      const files = jsonEntry.data.map((r: { file: string }) => r.file)
-      expect(files.every((f: string) => f.startsWith("src/services/"))).toBe(true)
+    if (jsonEntry?._tag === "json") {
+      expect(Array.isArray(jsonEntry.data)).toBe(true)
+      if (Array.isArray(jsonEntry.data)) {
+        const files = jsonEntry.data.map((r: { file: string }) => r.file)
+        expect(files.every((f: string) => f.startsWith("src/services/"))).toBe(true)
+      }
     }
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
@@ -180,9 +190,12 @@ test("pix query --json with multiple --ignore-path flags", () => {
     const entries = yield* Ref.get(ref)
     const jsonEntry = entries.find((e) => e._tag === "json")
     expect(jsonEntry).toBeDefined()
-    if (jsonEntry?._tag === "json" && Array.isArray(jsonEntry.data)) {
-      const files = jsonEntry.data.map((r: { file: string }) => r.file)
-      expect(files.every((f: string) => !f.endsWith(".ts") && !f.endsWith(".js"))).toBe(true)
+    if (jsonEntry?._tag === "json") {
+      expect(Array.isArray(jsonEntry.data)).toBe(true)
+      if (Array.isArray(jsonEntry.data)) {
+        const files = jsonEntry.data.map((r: { file: string }) => r.file)
+        expect(files.every((f: string) => !f.endsWith(".ts") && !f.endsWith(".js"))).toBe(true)
+      }
     }
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
