@@ -11,7 +11,7 @@ import { ConfigStore, VectorStore } from "../domain/ports.js"
 import type { IndexStats, SearchOptions, SearchResponse, SearchResult } from "../domain/ports.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/fs-error.js"
 import { makeIgnoreFilter, makeOnlyFilter } from "../lib/path-filter.js"
-import { getVectorDecoder } from "../lib/vector-decoder.js"
+import { getVectorCodec } from "../lib/vector-codec.js"
 import { computeCosineSimilarity, serializeVectors } from "../lib/vector-math.js"
 import { ConfigStoreLive } from "./config-store.js"
 
@@ -160,10 +160,10 @@ const make = Effect.gen(function* () {
         VECTORS_FILE,
       )
 
-      const decoder = getVectorDecoder(configDtype)
+      const codec = getVectorCodec(configDtype)
       const count = chunkLines.length
       const dims = indexMeta?.dims ?? 384
-      const vectors = yield* decoder.decode(vectorsBuffer, dims, count)
+      const vectors = yield* codec.decode(vectorsBuffer, dims, count)
 
       return { chunkLines, vectors }
     })
