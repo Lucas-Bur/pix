@@ -5,7 +5,7 @@ import { ChunkSchema } from "../domain/chunk.js"
 import type { Chunk } from "../domain/chunk.js"
 import type { Embedding } from "../domain/chunk.js"
 import type { EmbeddingDtype, IndexMeta } from "../domain/dtype.js"
-import { DtypeMismatchError, VectorDecodeError } from "../domain/dtype.js"
+import { DtypeMismatchError, IndexMetaSchema, VectorDecodeError } from "../domain/dtype.js"
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
 import { ConfigStore, VectorStore } from "../domain/ports.js"
 import type { IndexStats, SearchOptions, SearchResponse, SearchResult } from "../domain/ports.js"
@@ -114,11 +114,10 @@ const make = Effect.gen(function* () {
         "read index meta",
         META_FILE,
       )
-      try {
-        return JSON.parse(content) as IndexMeta
-      } catch {
-        return null
-      }
+      const parsed = yield* Schema.decodeUnknown(Schema.parseJson(IndexMetaSchema))(content).pipe(
+        Effect.catchAll(() => Effect.succeed(null)),
+      )
+      return parsed
     })
 
   /** Read and parse chunks.jsonl and vectors.bin, with dtype validation from index-meta.json. */

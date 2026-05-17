@@ -1,14 +1,17 @@
-import { Data } from "effect"
+import { Data, Schema } from "effect"
 
 export type EmbeddingDtype = "fp32" | "fp16" | "q8" | "q4"
 
-export interface IndexMeta {
-  readonly schemaVersion: string
-  readonly dtype: EmbeddingDtype
-  readonly dims: number
-  readonly model: string
-  readonly lastIndex: number
-}
+export const IndexMetaSchema = Schema.Struct({
+  schemaVersion: Schema.String,
+  dtype: Schema.Literal("fp32", "fp16", "q8", "q4"),
+  dims: Schema.Number,
+  model: Schema.String,
+  lastIndex: Schema.Number,
+})
+
+/** Domain type inferred from IndexMetaSchema. */
+export type IndexMeta = typeof IndexMetaSchema.Type
 
 export class DtypeMismatchError extends Data.TaggedError("DtypeMismatchError")<{
   readonly message: string
