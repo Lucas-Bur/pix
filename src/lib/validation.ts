@@ -62,6 +62,7 @@ export const clampTopK = (
   min: number,
   max: number,
 ): { value: number; clamped: boolean } => {
+  if (!Number.isFinite(value)) return { value: min, clamped: true }
   if (value < min) return { value: min, clamped: true }
   if (value > max) return { value: max, clamped: true }
   return { value, clamped: false }

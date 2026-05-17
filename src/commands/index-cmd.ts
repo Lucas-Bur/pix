@@ -46,11 +46,16 @@ const buildIndexOptions = (args: {
     ...splitCsv(args.ignorePaths),
   ]
 
-  return {
-    batchSize: Option.isSome(args.batchSize) ? args.batchSize.value : undefined,
-    chunkConcurrency: Option.isSome(args.chunkConcurrency)
+  const batchSize =
+    Option.isSome(args.batchSize) && args.batchSize.value > 0 ? args.batchSize.value : undefined
+  const chunkConcurrency =
+    Option.isSome(args.chunkConcurrency) && args.chunkConcurrency.value > 0
       ? args.chunkConcurrency.value
-      : undefined,
+      : undefined
+
+  return {
+    batchSize,
+    chunkConcurrency,
     skipExtensions: cliSkipExtensions.length > 0 ? cliSkipExtensions : undefined,
     ignorePaths: cliIgnorePaths.length > 0 ? cliIgnorePaths : undefined,
     ignoreGitignore: args.ignoreGitignore || undefined,

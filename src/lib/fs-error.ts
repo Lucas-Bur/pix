@@ -42,7 +42,7 @@ export const ensureDirExists = (
   description = dir,
 ): Effect.Effect<void, DiskFullError | StoreError> =>
   Effect.gen(function* () {
-    const exists = yield* withFsError(fs.exists(dir), `check ${description}`)
+    const exists = yield* withReadError(fs.exists(dir), `check ${description}`)
     if (!exists) {
       yield* withFsError(fs.makeDirectory(dir, { recursive: true }), `create ${description}`)
     }
