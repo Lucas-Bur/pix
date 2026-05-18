@@ -211,7 +211,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
             Effect.matchEffect({
               onSuccess: () => indexStore.storeCommit(),
               onFailure: (err) =>
-                indexStore.storeAbort().pipe(Effect.flatMap(() => Effect.fail(err))),
+                indexStore.storeAbort().pipe(Effect.ignore, Effect.andThen(Effect.fail(err))),
             }),
           ),
         )
