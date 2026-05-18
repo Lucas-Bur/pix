@@ -110,6 +110,21 @@ const appendLogEntry = (
     )
   }).pipe(Effect.catchAll((err) => Effect.logError(err).pipe(Effect.as(void 0))))
 
+/** Wrap an effect with start/stop log entries, propagating success or failure */
+const withLoggedEffect = <A, E, R>(
+  fs: typeof FileSystem.FileSystem.Service,
+  effect: Effect.Effect<A, E, R>,
+  startEntry: Record<string, unknown>,
+  stopEntry: Record<string, unknown>,
+): Effect.Effect<A, E, R> =>
+  Effect.gen(function* () {
+    yield* appendLogEntry(fs, startEntry)
+    const exit = yield* Effect.exit(effect)
+    yield* appendLogEntry(fs, stopEntry)
+    if (Exit.isSuccess(exit)) return exit.value
+    return yield* Effect.failCause(exit.cause)
+  })
+
 /** Display implementation using @clack/prompts for interactive terminal output */
 export const ClackDisplay = {
   layer: Layer.effect(
@@ -277,31 +292,25 @@ export const JsonDisplay = {
         note: (content, title) => appendLogEntry(fs, { type: "note", content, title }),
         text: (message) => appendLogEntry(fs, { type: "text", message }),
         spinner: <A, E, R>(
-          _message: string,
+          message: string,
           effect: Effect.Effect<A, E, R>,
         ): Effect.Effect<A, E, R> =>
-          Effect.gen(function* () {
-            yield* appendLogEntry(fs, { type: "spinner-start", message: _message })
-            const exit = yield* Effect.exit(effect)
-            yield* appendLogEntry(fs, { type: "spinner-stop" })
-            if (Exit.isSuccess(exit)) return exit.value
-            return yield* Effect.failCause(exit.cause)
-          }),
+          withLoggedEffect(
+            fs,
+            effect,
+            { type: "spinner-start", message },
+            { type: "spinner-stop" },
+          ),
         progress: <A, E, R>(
           opts: ProgressOptions,
           effect: Effect.Effect<A, E, R>,
         ): Effect.Effect<A, E, R> =>
-          Effect.gen(function* () {
-            yield* appendLogEntry(fs, {
-              type: "progress-start",
-              message: opts.message,
-              max: opts.max,
-            })
-            const exit = yield* Effect.exit(effect)
-            yield* appendLogEntry(fs, { type: "progress-stop" })
-            if (Exit.isSuccess(exit)) return exit.value
-            return yield* Effect.failCause(exit.cause)
-          }),
+          withLoggedEffect(
+            fs,
+            effect,
+            { type: "progress-start", message: opts.message, max: opts.max },
+            { type: "progress-stop" },
+          ),
         updateInteractive: (payload) =>
           appendLogEntry(fs, {
             type: "update",
