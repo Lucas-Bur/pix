@@ -66,6 +66,20 @@ describe("fp32 codec", () => {
       expect(buf).toBeInstanceOf(Buffer)
       expect(buf.byteLength).toBe(12)
     }).pipe(Effect.runPromise))
+
+  it("encodes only the view bytes of a sliced Float32Array", () =>
+    Effect.gen(function* () {
+      const codec = getVectorCodec("fp32")
+      const full = new Float32Array([1, 2, 3, 4, 5])
+      const slice = full.subarray(1, 4)
+      expect(slice.byteLength).toBe(12)
+      const buf = yield* codec.encode(slice)
+      expect(buf.byteLength).toBe(12)
+      expect(buf[0]).toBe(0)
+      expect(buf[1]).toBe(0)
+      expect(buf[2]).toBe(0)
+      expect(buf[3]).toBe(64)
+    }).pipe(Effect.runPromise))
 })
 
 describe("unsupported dtypes", () => {
