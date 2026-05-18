@@ -17,11 +17,11 @@ import type {
   SearchResponse,
   SearchResult,
 } from "../domain/ports.js"
-import { buildBm25Index } from "../lib/bm25.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/fs-error.js"
-import { makeIgnoreFilter, makeOnlyFilter } from "../lib/path-filter.js"
+import { filterResults } from "../lib/result-filter.js"
 import { getVectorCodec } from "../lib/vector-codec.js"
 import { computeCosineSimilarity, serializeVectors } from "../lib/vector-math.js"
+import { buildAndStoreBm25, loadBm25 } from "./bm25-store.js"
 import { ConfigStoreLive } from "./config-store.js"
 
 const parseChunkLine = (line: string): Effect.Effect<Option.Option<Chunk>> =>
@@ -231,16 +231,8 @@ const make = Effect.gen(function* () {
   /** Apply ignore/only path filters to results. */
   const applyFilters = (
     results: SearchResult[],
-    ignoreFilter: ReturnType<typeof makeIgnoreFilter>,
-    onlyFilter: ReturnType<typeof makeOnlyFilter>,
-  ): SearchResult[] => {
-    if (!ignoreFilter && !onlyFilter) return results
-    return results.filter((r) => {
-      if (ignoreFilter && ignoreFilter.ignores(r.file)) return false
-      if (onlyFilter && !onlyFilter.ignores(r.file)) return false
-      return true
-    })
-  }
+    options: SearchOptions | undefined,
+  ): SearchResult[] => filterResults(results, options)
 
   /** Sort by score descending, take topK, return validation errors. */
   const rankAndSlice = (
@@ -358,22 +350,7 @@ const make = Effect.gen(function* () {
         "read chunks for bm25",
         chunksTemp,
       )
-      const chunkLines = chunksContent.split("\n").filter((l) => l.trim().length > 0)
-      const texts: { index: number; text: string }[] = []
-      for (let i = 0; i < chunkLines.length; i++) {
-        try {
-          const chunk = Schema.decodeUnknownSync(parseJsonChunk)(chunkLines[i])
-          texts.push({ index: i, text: chunk.text })
-        } catch {
-          // skip malformed lines — bm25 ignores them
-        }
-      }
-      const bm25Index = buildBm25Index(texts)
-      yield* withFsError(
-        fs.writeFile(bm25Temp, Buffer.from(JSON.stringify(bm25Index))),
-        "write bm25 index",
-        bm25Temp,
-      )
+      yield* buildAndStoreBm25(fs, chunksContent, bm25Temp)
 
       yield* withFsError(fs.rename(metaTemp, META_FILE), "commit index meta", META_FILE)
       yield* withFsError(fs.rename(bm25Temp, BM25_FILE), "commit bm25 index", BM25_FILE)
@@ -419,11 +396,6 @@ const make = Effect.gen(function* () {
           }),
         )
 
-  const buildFilters = (options: SearchOptions | undefined) => ({
-    ignore: makeIgnoreFilter(options?.ignorePaths ?? []),
-    only: makeOnlyFilter(options?.onlyPaths ?? []),
-  })
-
   const search = (
     query: Embedding,
     options?: SearchOptions,
@@ -434,9 +406,8 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const { chunkLines, vectors, dims: indexDims } = yield* loadIndex()
       yield* validateQueryDims(query.dims, indexDims)
-      const { ignore: ignoreFilter, only: onlyFilter } = buildFilters(options)
       const { results, malformedLines } = scoreChunks(chunkLines, vectors, query)
-      const filtered = applyFilters(results, ignoreFilter, onlyFilter)
+      const filtered = applyFilters(results, options)
       return rankAndSlice(filtered, malformedLines, options?.topK)
     })
 
@@ -470,27 +441,7 @@ const make = Effect.gen(function* () {
     return { entries, malformedLines }
   }
 
-  const loadBm25Index = (): Effect.Effect<Bm25Index, StoreError> =>
-    Effect.gen(function* () {
-      const exists = yield* withReadError(fs.exists(BM25_FILE), "check bm25 index")
-      if (!exists) {
-        return yield* new StoreError({
-          message: "Missing bm25.json — index may be corrupted. Run pix reset and re-index.",
-        })
-      }
-      const content = yield* withReadError(
-        fs.readFileString(BM25_FILE),
-        "read bm25 index",
-        BM25_FILE,
-      )
-      try {
-        return JSON.parse(content) as Bm25Index
-      } catch {
-        return yield* new StoreError({
-          message: "Corrupted bm25.json — index may be damaged. Run pix reset and re-index.",
-        })
-      }
-    })
+  const loadBm25Index = (): Effect.Effect<Bm25Index, StoreError> => loadBm25(fs, BM25_FILE)
 
   const loadSearchData = (): Effect.Effect<
     SearchData,

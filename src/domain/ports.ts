@@ -121,6 +121,11 @@ export interface RankedChunk {
   readonly score: number
 }
 
+/** A scorer ranks all chunks against a query, returning a ranked list. */
+export interface Scorer {
+  readonly rank: (entries: readonly ChunkEntry[]) => RankedChunk[]
+}
+
 /** Raw chunk data loaded from the index for passing to scorers at query time. */
 export interface ChunkEntry {
   readonly index: number

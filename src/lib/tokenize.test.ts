@@ -11,12 +11,12 @@ describe("tokenize", () => {
     expect(tokenize("hello,world")).toEqual(["hello", "world"])
   })
 
-  it("preserves underscores", () => {
-    expect(tokenize("handle_request")).toEqual(["handle_request"])
+  it("splits underscores", () => {
+    expect(tokenize("handle_request")).toEqual(["handle", "request"])
   })
 
   it("lowercases all tokens", () => {
-    expect(tokenize("HandleRequest")).toEqual(["handlerequest"])
+    expect(tokenize("HandleRequest")).toEqual(["handle", "request"])
   })
 
   it("filters empty tokens", () => {
@@ -25,5 +25,21 @@ describe("tokenize", () => {
 
   it("returns empty array for empty string", () => {
     expect(tokenize("")).toEqual([])
+  })
+
+  it("splits camelCase", () => {
+    expect(tokenize("handleRequest")).toEqual(["handle", "request"])
+  })
+
+  it("splits PascalCase", () => {
+    expect(tokenize("MyClass")).toEqual(["my", "class"])
+  })
+
+  it("splits multi-word camelCase", () => {
+    expect(tokenize("getUserName")).toEqual(["get", "user", "name"])
+  })
+
+  it("splits snake_case", () => {
+    expect(tokenize("handle_request")).toEqual(["handle", "request"])
   })
 })

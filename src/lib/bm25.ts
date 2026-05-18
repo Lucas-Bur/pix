@@ -1,4 +1,4 @@
-import type { Bm25Index, RankedChunk } from "../domain/ports.js"
+import type { Bm25Index, RankedChunk, Scorer } from "../domain/ports.js"
 import { tokenize } from "./tokenize.js"
 
 const K1 = 1.5
@@ -79,3 +79,7 @@ export const rankBm25 = (queryText: string, index: Bm25Index): RankedChunk[] => 
   results.sort((a, b) => b.score - a.score)
   return results
 }
+
+export const bm25Scorer = (queryText: string, index: Bm25Index): Scorer => ({
+  rank: () => rankBm25(queryText, index),
+})

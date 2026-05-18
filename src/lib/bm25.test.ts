@@ -10,8 +10,8 @@ describe("bm25", () => {
       const index = buildBm25Index(
         makeTexts("function handleRequest req", "function handleResponse res", "const x = 1"),
       )
-      expect(index.chunkLengths).toEqual([3, 3, 3])
-      expect(index.avgChunkLength).toBeCloseTo(3, 1)
+      expect(index.chunkLengths).toEqual([4, 4, 3])
+      expect(index.avgChunkLength).toBeCloseTo(3.67, 1)
       expect(index.docFreqs["function"]).toBe(2)
       expect(index.docFreqs["const"]).toBe(1)
       expect(index.chunkTfs["function"]).toHaveLength(2)
