@@ -89,7 +89,7 @@ Generated from CodeRabbit reviews on PR #111 (`feat: structured file logging + D
 
 ---
 
-## Phase 4: Precompute Filter Matsrchers
+## Phase 4: Precompute Filter Matchers
 
 ### 4.1 `src/lib/path-filter.ts` — Precompute matcher once per filter
 
