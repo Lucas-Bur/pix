@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 
-import type { Embedding } from "../domain/chunk.js"
-import { StoreError } from "../domain/errors.js"
+import type { Embedding } from "../../domain/chunk.js"
+import { StoreError } from "../../domain/errors.js"
 
 /**
  * Compute cosine similarity between a chunk vector and a query vector. Returns 0 when either norm

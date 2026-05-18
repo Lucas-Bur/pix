@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { describe, expect, it } from "vite-plus/test"
 
-import type { Embedding } from "../domain/chunk.js"
+import type { Embedding } from "../../domain/chunk.js"
 import { computeCosineSimilarity, serializeVectors } from "./vector-math.js"
 
 const makeEmbedding = (vector: number[], dims?: number): Embedding => ({

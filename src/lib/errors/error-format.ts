@@ -60,7 +60,7 @@ export const formatError = (error: unknown): FormattedError => {
 
 import { Effect } from "effect"
 
-import { Display } from "../display/Display.js"
+import { Display } from "../../display/Display.js"
 
 /** Log the error to Display in human + agent format, then re-fail to preserve non-zero exit code. */
 export const reportError = <E>(error: E): Effect.Effect<never, E, Display> =>

@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect"
 import * as ParseResult from "effect/ParseResult"
 
-import { ChunkValidationError } from "../domain/errors.js"
+import { ChunkValidationError } from "../../domain/errors.js"
 
 export interface ValidationEntry {
   readonly path: string

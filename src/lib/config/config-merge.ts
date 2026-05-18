@@ -1,6 +1,6 @@
-import type { IndexOptions } from "../application/index-project.js"
-import type { Config } from "../domain/config.js"
-import { DEFAULT_CONFIG } from "../domain/config.js"
+import type { Config } from "../../domain/config.js"
+import { DEFAULT_CONFIG } from "../../domain/config.js"
+import type { IndexOptions } from "../../domain/ports.js"
 import { clampPositive } from "./validation.js"
 
 export interface EffectiveConfig {

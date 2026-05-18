@@ -17,6 +17,17 @@ import type {
   AllProcessorErrors,
 } from "./errors.js"
 
+// === Index options ===
+
+/** Options for the index operation, typically from CLI flags. */
+export interface IndexOptions {
+  readonly batchSize?: number
+  readonly chunkConcurrency?: number
+  readonly skipExtensions?: readonly string[]
+  readonly ignorePaths?: readonly string[]
+  readonly ignoreGitignore?: boolean
+}
+
 // === Scan result types ===
 
 /** A file or directory that was skipped during scanning and why. */

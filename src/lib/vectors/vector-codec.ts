@@ -2,12 +2,12 @@ import { Buffer } from "node:buffer"
 
 import { Effect } from "effect"
 
-import type { EmbeddingDtype } from "../domain/dtype.js"
+import type { EmbeddingDtype } from "../../domain/dtype.js"
 import {
   UnknownEmbeddingDtypeError,
   VectorDecodeError,
   VectorEncodeError,
-} from "../domain/dtype.js"
+} from "../../domain/dtype.js"
 
 /**
  * Translates between binary vector storage and the internal working representation.

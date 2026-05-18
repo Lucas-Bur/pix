@@ -4,8 +4,8 @@ import { Effect, Layer } from "effect"
 import { UnsupportedFormat } from "../domain/errors.js"
 import type { AllProcessorErrors } from "../domain/errors.js"
 import { ContentExtractor } from "../domain/ports.js"
-import { getExtension } from "../lib/extension.js"
-import { buildProcessorMap } from "./processors/index.js"
+import { getExtension } from "../lib/config/extension.js"
+import { buildProcessorMap } from "../lib/config/processors.js"
 
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem

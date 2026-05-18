@@ -3,8 +3,8 @@ import { Clock, Effect } from "effect"
 
 import { ResetIndex } from "../application/reset-index.js"
 import { Display } from "../display/Display.js"
-import { reportError } from "../lib/error-format.js"
-import { formatBytes } from "../lib/format.js"
+import { reportError } from "../lib/errors/error-format.js"
+import { formatBytes } from "../lib/formatting/format.js"
 
 /** CLI command: pix reset [--json] */
 export const resetCommand = Command.make(

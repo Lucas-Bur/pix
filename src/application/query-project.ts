@@ -10,12 +10,28 @@ import type {
   SearchResponse,
   SearchResult,
 } from "../domain/ports.js"
-import { rankBm25 } from "../lib/bm25.js"
-import { rankDense } from "../lib/dense.js"
-import { routeQuery } from "../lib/query-router.js"
-import { filterResults } from "../lib/result-filter.js"
-import { rrfFuse } from "../lib/rrf.js"
-import { buildChunkValidationErrors } from "../lib/validation.js"
+import { buildChunkValidationErrors } from "../lib/config/validation.js"
+import { filterResults } from "../lib/filtering/result-filter.js"
+import { rankBm25 } from "../lib/retrieval/bm25.js"
+import { rankDense } from "../lib/retrieval/dense.js"
+import { rrfFuse } from "../lib/retrieval/rrf.js"
+
+const tokenize = (text: string): string[] =>
+  text
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 0)
+
+const SHORT_QUERY_MAX = 2
+const LONG_QUERY_MIN = 8
+
+const routeQuery = (queryText: string): { bm25: number; dense: number } => {
+  const count = tokenize(queryText).length
+  if (count <= SHORT_QUERY_MAX) return { bm25: 1.5, dense: 0.5 }
+  if (count >= LONG_QUERY_MIN) return { bm25: 0.5, dense: 1.5 }
+  return { bm25: 1.0, dense: 1.0 }
+}
 
 const fuseResults = (
   lexical: readonly RankedChunk[],

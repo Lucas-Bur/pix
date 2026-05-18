@@ -1,4 +1,4 @@
-import type { RankedChunk } from "../domain/ports.js"
+import type { RankedChunk } from "../../domain/ports.js"
 
 const K = 60
 
