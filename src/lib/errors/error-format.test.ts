@@ -2,11 +2,20 @@ import { expect, test } from "vite-plus/test"
 
 import { formatError } from "./error-format.js"
 
+const expectError = (
+  result: ReturnType<typeof formatError>,
+  expected: { code: string; message?: string },
+) => {
+  expect(result.error).toBe(true)
+  expect(result.code).toBe(expected.code)
+  if (expected.message !== undefined) {
+    expect(result.message).toBe(expected.message)
+  }
+}
+
 test("formatError handles string errors", () => {
   const result = formatError("something broke")
-  expect(result.error).toBe(true)
-  expect(result.code).toBe("STRING_ERROR")
-  expect(result.message).toBe("something broke")
+  expectError(result, { code: "STRING_ERROR", message: "something broke" })
 })
 
 test("formatError handles object with message property", () => {
@@ -17,16 +26,12 @@ test("formatError handles object with message property", () => {
 
 test("formatError handles null / unknown error", () => {
   const result = formatError(null)
-  expect(result.error).toBe(true)
-  expect(result.code).toBe("UNKNOWN")
-  expect(result.message).toBe("Unknown error")
+  expectError(result, { code: "UNKNOWN", message: "Unknown error" })
 })
 
 test("formatError maps ConfigError _tag to CONFIG_ERROR code", () => {
   const result = formatError({ _tag: "ConfigError", message: "config missing" })
-  expect(result.error).toBe(true)
-  expect(result.code).toBe("CONFIG_ERROR")
-  expect(result.message).toBe("config missing")
+  expectError(result, { code: "CONFIG_ERROR", message: "config missing" })
 })
 
 test("formatError maps new error tags correctly", () => {
@@ -46,37 +51,27 @@ test("formatError maps new error tags correctly", () => {
 
 test("formatError returns UNKNOWN for unrecognized _tag", () => {
   const result = formatError({ _tag: "SomeWeirdError", message: "odd" })
-  expect(result.error).toBe(true)
-  expect(result.code).toBe("UNKNOWN")
-  expect(result.message).toBe("odd")
+  expectError(result, { code: "UNKNOWN", message: "odd" })
 })
 
 test("formatError returns code UNKNOWN when no _tag present", () => {
   const result = formatError({ name: "Error" })
-  expect(result.error).toBe(true)
-  expect(result.code).toBe("UNKNOWN")
-  expect(result.message).toBe("Unknown error")
+  expectError(result, { code: "UNKNOWN", message: "Unknown error" })
 })
 
 test("formatError handles undefined", () => {
   const result = formatError(undefined)
-  expect(result.error).toBe(true)
-  expect(result.code).toBe("UNKNOWN")
-  expect(result.message).toBe("Unknown error")
+  expectError(result, { code: "UNKNOWN", message: "Unknown error" })
 })
 
 test("formatError handles empty object", () => {
   const result = formatError({})
-  expect(result.error).toBe(true)
-  expect(result.code).toBe("UNKNOWN")
-  expect(result.message).toBe("Unknown error")
+  expectError(result, { code: "UNKNOWN", message: "Unknown error" })
 })
 
 test("formatError coerces non-string _tag to string", () => {
   const result = formatError({ _tag: 404, message: "not found" })
-  expect(result.error).toBe(true)
-  expect(result.code).toBe("UNKNOWN")
-  expect(result.message).toBe("not found")
+  expectError(result, { code: "UNKNOWN", message: "not found" })
 })
 
 test("formatError maps DisplayLogError to DISPLAY_LOG_ERROR", () => {
@@ -106,7 +101,11 @@ test("formatError extracts file context field", () => {
 })
 
 test("formatError extracts path context field", () => {
-  const result = formatError({ _tag: "ConfigNotFoundError", message: "missing", path: "/pix.toml" })
+  const result = formatError({
+    _tag: "ConfigNotFoundError",
+    message: "missing",
+    path: "/pix.toml",
+  })
   expect((result as unknown as Record<string, unknown>).path).toBe("/pix.toml")
 })
 

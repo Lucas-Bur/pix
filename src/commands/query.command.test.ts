@@ -17,29 +17,39 @@ import { queryCommand } from "./query.js"
 
 const run = runCommand(queryCommand)
 
-test("pix query --json outputs search results", () => {
+const runQuery = (args: string[], contents: MemoryFileSystem.Contents = indexFixtures) => {
   const { ref, layer } = silentDisplay()
+  return {
+    ref,
+    effect: run(["query", ...args]).pipe(
+      Effect.provide(testLayer({ contents, displayLayer: layer })),
+    ),
+  }
+}
+
+test("pix query --json outputs search results", () => {
+  const { ref, effect } = runQuery(["--json", "test query"])
   return Effect.gen(function* () {
-    yield* run(["query", "--json", "test query"])
+    yield* effect
     const entries = yield* Ref.get(ref)
     expect(entries[0]._tag).toBe("spinner")
     yield* expectJsonEntry(ref, (data) => {
       expect(Array.isArray(data)).toBe(true)
     })
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+  })
 })
 
 test("pix query with --top flag clamps to valid range", () => {
-  const { ref, layer } = silentDisplay()
+  const { ref, effect } = runQuery(["--json", "--top", "3", "search term"])
   return Effect.gen(function* () {
-    yield* run(["query", "--json", "--top", "3", "search term"])
+    yield* effect
     yield* expectJsonEntry(ref, (data) => {
       expect(Array.isArray(data)).toBe(true)
       if (Array.isArray(data)) {
         expect(data.length).toBeLessThanOrEqual(3)
       }
     })
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+  })
 })
 
 test("pix query --json with failing embedder produces error JSON", () => {
@@ -56,9 +66,9 @@ test("pix query --json with failing embedder produces error JSON", () => {
 })
 
 test("pix query --json clamps --top below minimum to 1", () => {
-  const { ref, layer } = silentDisplay()
+  const { ref, effect } = runQuery(["--json", "--top", "0", "test"])
   return Effect.gen(function* () {
-    yield* run(["query", "--json", "--top", "0", "test"])
+    yield* effect
     yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
     yield* expectJsonEntry(ref, (data) => {
       expect(Array.isArray(data)).toBe(true)
@@ -66,7 +76,7 @@ test("pix query --json clamps --top below minimum to 1", () => {
         expect(data.length).toBeLessThanOrEqual(1)
       }
     })
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+  })
 })
 
 test("pix query --json clamps --top above maximum to 100", () => {
@@ -84,9 +94,9 @@ test("pix query --json clamps --top above maximum to 100", () => {
     ).join("\n"),
     ".pix/vectors.bin": "fake binary content",
   }
-  const { ref, layer } = silentDisplay()
+  const { ref, effect } = runQuery(["--json", "--top", "200", "test"], largeFixtures)
   return Effect.gen(function* () {
-    yield* run(["query", "--json", "--top", "200", "test"])
+    yield* effect
     yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
     yield* expectJsonEntry(ref, (data) => {
       expect(Array.isArray(data)).toBe(true)
@@ -94,13 +104,13 @@ test("pix query --json clamps --top above maximum to 100", () => {
         expect(data.length).toBeLessThanOrEqual(100)
       }
     })
-  }).pipe(Effect.provide(testLayer({ contents: largeFixtures, displayLayer: layer })))
+  })
 })
 
 test("pix query --json with --context-lines includes context fields", () => {
-  const { ref, layer } = silentDisplay()
+  const { ref, effect } = runQuery(["--json", "--context-lines", "2", "test"])
   return Effect.gen(function* () {
-    yield* run(["query", "--json", "--context-lines", "2", "test"])
+    yield* effect
     yield* expectJsonEntry(ref, (data) => {
       expect(Array.isArray(data)).toBe(true)
       if (Array.isArray(data) && data.length > 0) {
@@ -112,47 +122,47 @@ test("pix query --json with --context-lines includes context fields", () => {
         expect(first).toHaveProperty("text")
       }
     })
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+  })
 })
 
 test("pix query --json on empty index returns empty array", () => {
-  const { ref, layer } = silentDisplay()
+  const { ref, effect } = runQuery(["--json", "no results"], {})
   return Effect.gen(function* () {
-    yield* run(["query", "--json", "no results"])
+    yield* effect
     const entries = yield* Ref.get(ref)
     expect(entries.some((e) => e._tag === "spinner")).toBe(true)
     yield* expectJsonEntry(ref, (data) => {
       expect(data).toEqual([])
     })
-  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+  })
 })
 
 test("pix query without --json on empty index shows warning", () => {
-  const { ref, layer } = silentDisplay()
+  const { ref, effect } = runQuery(["nothing"], {})
   return Effect.gen(function* () {
-    yield* run(["query", "nothing"])
+    yield* effect
     const entries = yield* Ref.get(ref)
     expect(entries.some((e) => e._tag === "spinner")).toBe(true)
     expect(entries.some((e) => e._tag === "json")).toBe(true)
     expect(entries.some((e) => e._tag === "log" && e.severity === "warn")).toBe(true)
-  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+  })
 })
 
 test("pix query without --json outputs formatted results", () => {
-  const { ref, layer } = silentDisplay()
+  const { ref, effect } = runQuery(["test"])
   return Effect.gen(function* () {
-    yield* run(["query", "test"])
+    yield* effect
     const entries = yield* Ref.get(ref)
     expect(entries.some((e) => e._tag === "spinner")).toBe(true)
     expect(entries.some((e) => e._tag === "json")).toBe(true)
     expect(entries.some((e) => e._tag === "text")).toBe(true)
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+  })
 })
 
-test("pix query --json with --ignore-path excludes matching files", () => {
-  const { ref, layer } = silentDisplay()
+const assertQueryFilesFiltered = (args: string[], predicate: (file: string) => boolean) => {
+  const { ref, effect } = runQuery(["--json", ...args])
   return Effect.gen(function* () {
-    yield* run(["query", "--json", "--ignore-path", "**/*.ts", "test"])
+    yield* effect
     const entries = yield* Ref.get(ref)
     const jsonEntry = entries.find((e) => e._tag === "json")
     expect(jsonEntry).toBeDefined()
@@ -160,42 +170,22 @@ test("pix query --json with --ignore-path excludes matching files", () => {
       expect(Array.isArray(jsonEntry.data)).toBe(true)
       if (Array.isArray(jsonEntry.data)) {
         const files = jsonEntry.data.map((r: { file: string }) => r.file)
-        expect(files.every((f: string) => !f.endsWith(".ts"))).toBe(true)
+        expect(files.every(predicate)).toBe(true)
       }
     }
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
-})
+  })
+}
 
-test("pix query --json with --only-path restricts to matching files", () => {
-  const { ref, layer } = silentDisplay()
-  return Effect.gen(function* () {
-    yield* run(["query", "--json", "--only-path", "src/services/**", "test"])
-    const entries = yield* Ref.get(ref)
-    const jsonEntry = entries.find((e) => e._tag === "json")
-    expect(jsonEntry).toBeDefined()
-    if (jsonEntry?._tag === "json") {
-      expect(Array.isArray(jsonEntry.data)).toBe(true)
-      if (Array.isArray(jsonEntry.data)) {
-        const files = jsonEntry.data.map((r: { file: string }) => r.file)
-        expect(files.every((f: string) => f.startsWith("src/services/"))).toBe(true)
-      }
-    }
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
-})
+test("pix query --json with --ignore-path excludes matching files", () =>
+  assertQueryFilesFiltered(["--ignore-path", "**/*.ts", "test"], (f) => !f.endsWith(".ts")))
 
-test("pix query --json with multiple --ignore-path flags", () => {
-  const { ref, layer } = silentDisplay()
-  return Effect.gen(function* () {
-    yield* run(["query", "--json", "--ignore-path", "**/*.ts", "--ignore-path", "**/*.js", "test"])
-    const entries = yield* Ref.get(ref)
-    const jsonEntry = entries.find((e) => e._tag === "json")
-    expect(jsonEntry).toBeDefined()
-    if (jsonEntry?._tag === "json") {
-      expect(Array.isArray(jsonEntry.data)).toBe(true)
-      if (Array.isArray(jsonEntry.data)) {
-        const files = jsonEntry.data.map((r: { file: string }) => r.file)
-        expect(files.every((f: string) => !f.endsWith(".ts") && !f.endsWith(".js"))).toBe(true)
-      }
-    }
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
-})
+test("pix query --json with --only-path restricts to matching files", () =>
+  assertQueryFilesFiltered(["--only-path", "src/services/**", "test"], (f) =>
+    f.startsWith("src/services/"),
+  ))
+
+test("pix query --json with multiple --ignore-path flags", () =>
+  assertQueryFilesFiltered(
+    ["--ignore-path", "**/*.ts", "--ignore-path", "**/*.js", "test"],
+    (f) => !f.endsWith(".ts") && !f.endsWith(".js"),
+  ))

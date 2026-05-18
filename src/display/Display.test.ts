@@ -198,22 +198,27 @@ describe("JsonDisplay file logging", () => {
   const makeJsonDisplayLayer = () =>
     JsonDisplay.layer.pipe(Layer.provide(MemoryFileSystem.layerWith({})))
 
+  const readLogEntries = () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
+      return content
+        .trim()
+        .split("\n")
+        .map((l) => JSON.parse(l))
+    })
+
   it("writes log entry to .pix/logs/events.jsonl", () =>
     Effect.gen(function* () {
       const d = yield* Display
       yield* d.log("test message", "info")
 
-      const fs = yield* FileSystem.FileSystem
-      const exists = yield* fs.exists(".pix/logs/events.jsonl")
-      expect(exists).toBe(true)
-
-      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
-      const entry = JSON.parse(content.trim())
-      expect(entry).toMatchObject({
+      const entries = yield* readLogEntries()
+      expect(entries[0]).toMatchObject({
         severity: "info",
         message: "test message",
       })
-      expect(entry.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+      expect(entries[0].timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/)
     }).pipe(Effect.provide(makeJsonDisplayLayer())))
 
   it("creates log directory if missing", () =>
@@ -233,12 +238,8 @@ describe("JsonDisplay file logging", () => {
       yield* d.log("second", "warn")
       yield* d.outro("done")
 
-      const fs = yield* FileSystem.FileSystem
-      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
-      const lines = content.trim().split("\n")
-      expect(lines).toHaveLength(3)
-
-      const entries = lines.map((l) => JSON.parse(l))
+      const entries = yield* readLogEntries()
+      expect(entries).toHaveLength(3)
       expect(entries[0]).toMatchObject({ severity: "info", message: "first" })
       expect(entries[1]).toMatchObject({ severity: "warn", message: "second" })
       expect(entries[2]).toMatchObject({ type: "outro", message: "done" })
@@ -249,12 +250,8 @@ describe("JsonDisplay file logging", () => {
       const d = yield* Display
       yield* d.spinner("Indexing...", Effect.void)
 
-      const fs = yield* FileSystem.FileSystem
-      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
-      const lines = content.trim().split("\n")
-      expect(lines).toHaveLength(2)
-
-      const entries = lines.map((l) => JSON.parse(l))
+      const entries = yield* readLogEntries()
+      expect(entries).toHaveLength(2)
       expect(entries[0]).toMatchObject({ type: "spinner-start", message: "Indexing..." })
       expect(entries[1]).toMatchObject({ type: "spinner-stop" })
     }).pipe(Effect.provide(makeJsonDisplayLayer())))
@@ -264,12 +261,8 @@ describe("JsonDisplay file logging", () => {
       const d = yield* Display
       yield* d.progress({ message: "Embedding...", max: 10 }, Effect.void)
 
-      const fs = yield* FileSystem.FileSystem
-      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
-      const lines = content.trim().split("\n")
-      expect(lines).toHaveLength(2)
-
-      const entries = lines.map((l) => JSON.parse(l))
+      const entries = yield* readLogEntries()
+      expect(entries).toHaveLength(2)
       expect(entries[0]).toMatchObject({
         type: "progress-start",
         message: "Embedding...",
@@ -283,10 +276,8 @@ describe("JsonDisplay file logging", () => {
       const d = yield* Display
       yield* d.updateInteractive("Just a message")
 
-      const fs = yield* FileSystem.FileSystem
-      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
-      const entry = JSON.parse(content.trim())
-      expect(entry).toMatchObject({ type: "update", message: "Just a message" })
+      const entries = yield* readLogEntries()
+      expect(entries[0]).toMatchObject({ type: "update", message: "Just a message" })
     }).pipe(Effect.provide(makeJsonDisplayLayer())))
 
   it("records updateInteractive for advanceBy payload", () =>
@@ -294,10 +285,8 @@ describe("JsonDisplay file logging", () => {
       const d = yield* Display
       yield* d.updateInteractive({ message: "Advancing", advanceBy: 5 })
 
-      const fs = yield* FileSystem.FileSystem
-      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
-      const entry = JSON.parse(content.trim())
-      expect(entry).toMatchObject({ type: "update", message: "Advancing", advanceBy: 5 })
+      const entries = yield* readLogEntries()
+      expect(entries[0]).toMatchObject({ type: "update", message: "Advancing", advanceBy: 5 })
     }).pipe(Effect.provide(makeJsonDisplayLayer())))
 
   it("records updateInteractive for setTo payload", () =>
@@ -305,10 +294,8 @@ describe("JsonDisplay file logging", () => {
       const d = yield* Display
       yield* d.updateInteractive({ message: "Setting", setTo: 42 })
 
-      const fs = yield* FileSystem.FileSystem
-      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
-      const entry = JSON.parse(content.trim())
-      expect(entry).toMatchObject({ type: "update", message: "Setting", setTo: 42 })
+      const entries = yield* readLogEntries()
+      expect(entries[0]).toMatchObject({ type: "update", message: "Setting", setTo: 42 })
     }).pipe(Effect.provide(makeJsonDisplayLayer())))
 
   it("records updateInteractive for setToPercent payload", () =>
@@ -316,9 +303,11 @@ describe("JsonDisplay file logging", () => {
       const d = yield* Display
       yield* d.updateInteractive({ message: "Percent", setToPercent: 0.75 })
 
-      const fs = yield* FileSystem.FileSystem
-      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
-      const entry = JSON.parse(content.trim())
-      expect(entry).toMatchObject({ type: "update", message: "Percent", setToPercent: 0.75 })
+      const entries = yield* readLogEntries()
+      expect(entries[0]).toMatchObject({
+        type: "update",
+        message: "Percent",
+        setToPercent: 0.75,
+      })
     }).pipe(Effect.provide(makeJsonDisplayLayer())))
 })

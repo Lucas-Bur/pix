@@ -9,7 +9,7 @@ export const formatBytes = (bytes: number): string => {
 }
 
 /** Format a result's file location as metadata string */
-export const formatResultMetadata = (result: SearchResult): string =>
+const formatResultMetadata = (result: SearchResult): string =>
   `${result.file}:${result.startLine}-${result.endLine}`
 
 /** Format a single result for human-readable output */

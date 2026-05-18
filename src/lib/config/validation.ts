@@ -11,12 +11,12 @@ export interface ValidationEntry {
   readonly message: string
 }
 
-export class JsonSyntaxError extends Data.TaggedError("JsonSyntaxError")<{
+class JsonSyntaxError extends Data.TaggedError("JsonSyntaxError")<{
   readonly message: string
   readonly errors: ReadonlyArray<ValidationEntry>
 }> {}
 
-export class SchemaValidationError extends Data.TaggedError("SchemaValidationError")<{
+class SchemaValidationError extends Data.TaggedError("SchemaValidationError")<{
   readonly message: string
   readonly errors: ReadonlyArray<ValidationEntry>
 }> {}
@@ -58,7 +58,7 @@ const isJsonSyntaxError = (error: ParseResult.ParseError): boolean =>
   error.issue._tag === "Transformation" && error.issue.kind === "Transformation"
 
 /** Clamp a number to be at least `min`. Returns the clamped value. */
-export const clampPositive = (value: number, min = 1): number => Math.max(min, value)
+const clampPositive = (value: number, min = 1): number => Math.max(min, value)
 
 export const clampTopK = (
   value: number,
