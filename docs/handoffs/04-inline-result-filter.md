@@ -9,17 +9,20 @@ The only caller is `src/application/query-project.ts`.
 ## What to Do
 
 1. **Move** the entire content of `result-filter.ts` into `query-project.ts` as a private function (but keep it **exported** so it remains independently testable):
+
    ```typescript
    export const filterResults = (
      results: readonly SearchResult[],
      options: SearchOptions | undefined,
    ): SearchResult[] => {
-     const ignoreFilter = options?.ignorePaths && options.ignorePaths.length > 0
-       ? ignore().add([...options.ignorePaths])
-       : null
-     const onlyFilter = options?.onlyPaths && options.onlyPaths.length > 0
-       ? ignore().add([...options.onlyPaths])
-       : null
+     const ignoreFilter =
+       options?.ignorePaths && options.ignorePaths.length > 0
+         ? ignore().add([...options.ignorePaths])
+         : null
+     const onlyFilter =
+       options?.onlyPaths && options.onlyPaths.length > 0
+         ? ignore().add([...options.onlyPaths])
+         : null
      if (!ignoreFilter && !onlyFilter) return [...results]
      return results.filter((r) => {
        if (ignoreFilter && ignoreFilter.ignores(r.file)) return false
