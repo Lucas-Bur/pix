@@ -321,9 +321,6 @@ const make = Effect.gen(function* () {
 
   const storeCommit = (): Effect.Effect<IndexStats, StoreError | DiskFullError> =>
     Effect.gen(function* () {
-      yield* withFsError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
-      yield* withFsError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
-
       const config = yield* configStore
         .readConfig()
         .pipe(
@@ -345,6 +342,9 @@ const make = Effect.gen(function* () {
         metaTemp,
       )
       yield* withFsError(fs.rename(metaTemp, META_FILE), "commit index meta", META_FILE)
+
+      yield* withFsError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
+      yield* withFsError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
 
       const stats = yield* Ref.get(statsAccumulator)
       const files = yield* Ref.get(seenFiles)
