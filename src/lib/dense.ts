@@ -1,4 +1,4 @@
-import type { RankedChunk } from "../domain/ports.js"
+import type { RankedChunk, Scorer } from "../domain/ports.js"
 import { computeCosineSimilarity } from "./vector-math.js"
 
 export interface DenseEntry {
@@ -23,3 +23,10 @@ export const rankDense = (
   results.sort((a, b) => b.score - a.score)
   return results
 }
+
+export const denseScorer = (queryEmbedding: Float32Array): Scorer => ({
+  rank: (entries) => {
+    const denseEntries = entries.map((e) => ({ index: e.index, vector: e.vector }))
+    return rankDense(queryEmbedding, denseEntries)
+  },
+})
