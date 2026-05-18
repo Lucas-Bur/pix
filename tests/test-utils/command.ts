@@ -85,7 +85,6 @@ type FailingMethod =
   | "storeBatch"
   | "storeCommit"
   | "storeAbort"
-  | "search"
   | "loadSearchData"
   | "getStatus"
   | "reset"
@@ -105,16 +104,13 @@ export const makeFailingVectorStore = (
         ? failEffect
         : Effect.succeed({ chunks: 0, files: 0, totalLines: 0, byteSize: 0 }),
     storeAbort: () => (failingMethod === "storeAbort" ? failEffect : Effect.void),
-    search: () =>
-      failingMethod === "search"
-        ? failEffect
-        : Effect.succeed({ results: [], validationErrors: [] }),
     loadSearchData: () =>
       failingMethod === "loadSearchData"
         ? failEffect
         : Effect.succeed({
             entries: [],
             bm25Index: { avgChunkLength: 0, chunkLengths: [], docFreqs: {}, chunkTfs: {} },
+            malformedLines: 0,
           }),
     getStatus: () =>
       failingMethod === "getStatus"

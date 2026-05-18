@@ -2,15 +2,10 @@ import type { RankedChunk } from "../domain/ports.js"
 
 const K = 60
 
-export interface RrfResult {
-  readonly chunkIndex: number
-  readonly score: number
-}
-
 export const rrfFuse = (
   rankedLists: readonly (readonly RankedChunk[])[],
   weights: readonly number[],
-): RrfResult[] => {
+): RankedChunk[] => {
   const scoreMap = new Map<number, number>()
 
   for (let p = 0; p < rankedLists.length; p++) {
@@ -23,7 +18,7 @@ export const rrfFuse = (
     }
   }
 
-  const results: RrfResult[] = []
+  const results: RankedChunk[] = []
   for (const [chunkIndex, score] of scoreMap) {
     results.push({ chunkIndex, score })
   }

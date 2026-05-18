@@ -1,4 +1,4 @@
-import type { FileSystem } from "@effect/platform"
+import { FileSystem } from "@effect/platform"
 import { Effect, Schema } from "effect"
 
 import { ChunkSchema } from "../domain/chunk.js"
@@ -10,11 +10,11 @@ import { withFsError, withReadError } from "../lib/fs-error.js"
 const parseJsonChunk = Schema.parseJson(ChunkSchema)
 
 export const buildAndStoreBm25 = (
-  fs: FileSystem.FileSystem,
   chunksContent: string,
   bm25Path: string,
-): Effect.Effect<void, StoreError | DiskFullError> =>
+): Effect.Effect<void, StoreError | DiskFullError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
     const chunkLines = chunksContent.split("\n").filter((l) => l.trim().length > 0)
     const texts: { index: number; text: string }[] = []
     for (let i = 0; i < chunkLines.length; i++) {
@@ -34,10 +34,10 @@ export const buildAndStoreBm25 = (
   })
 
 export const loadBm25 = (
-  fs: FileSystem.FileSystem,
   bm25Path: string,
-): Effect.Effect<Bm25Index, StoreError> =>
+): Effect.Effect<Bm25Index, StoreError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
     const exists = yield* withReadError(fs.exists(bm25Path), "check bm25 index")
     if (!exists) {
       return yield* new StoreError({

@@ -26,10 +26,10 @@ const nonZeroEmbedder = Layer.succeed(Embedder, {
 
 const hybridLayer = testLayer({ embedderLayer: nonZeroEmbedder })
 
-test("QueryProject.queryProject returns empty array when no index exists", () =>
+test("QueryProject.queryProject returns empty results when no index exists", () =>
   Effect.gen(function* () {
     const result = yield* QueryProject.queryProject("test", { topK: 5 })
-    expect(result).toEqual([])
+    expect(result).toEqual({ results: [], validationErrors: [] })
   }).pipe(Effect.provide(testLayer({})), Effect.scoped))
 
 const indexFixture = (

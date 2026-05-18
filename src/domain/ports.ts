@@ -121,11 +121,6 @@ export interface RankedChunk {
   readonly score: number
 }
 
-/** A scorer ranks all chunks against a query, returning a ranked list. */
-export interface Scorer {
-  readonly rank: (entries: readonly ChunkEntry[]) => RankedChunk[]
-}
-
 /** Raw chunk data loaded from the index for passing to scorers at query time. */
 export interface ChunkEntry {
   readonly index: number
@@ -142,6 +137,7 @@ export interface ChunkEntry {
 export interface SearchData {
   readonly entries: readonly ChunkEntry[]
   readonly bm25Index: Bm25Index
+  readonly malformedLines: number
 }
 
 /** Options for searching the vector store. All fields are optional — omitted = use default. */
@@ -217,14 +213,6 @@ export class VectorStore extends Context.Tag("VectorStore")<
     readonly storeCommit: () => Effect.Effect<IndexStats, StoreError | DiskFullError>
     /** Abort staging and clean up temp files without committing. */
     readonly storeAbort: () => Effect.Effect<void, StoreError>
-    /** Search the index with an embedding, returning similar chunks. */
-    readonly search: (
-      query: Embedding,
-      options?: SearchOptions,
-    ) => Effect.Effect<
-      SearchResponse,
-      StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
-    >
     /** Load all index data needed for hybrid search (chunks + vectors + BM25 stats). */
     readonly loadSearchData: () => Effect.Effect<
       SearchData,

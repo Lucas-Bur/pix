@@ -2,25 +2,16 @@ import { FileSystem } from "@effect/platform"
 import { Effect, Layer, Option, Ref, Schema } from "effect"
 
 import { ChunkSchema } from "../domain/chunk.js"
-import type { Chunk } from "../domain/chunk.js"
-import type { Embedding } from "../domain/chunk.js"
+import type { Chunk, Embedding } from "../domain/chunk.js"
 import type { EmbeddingDtype, IndexMeta } from "../domain/dtype.js"
 import { DtypeMismatchError, IndexMetaSchema, VectorDecodeError } from "../domain/dtype.js"
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
 import { ConfigStore, VectorStore } from "../domain/ports.js"
-import type {
-  Bm25Index,
-  ChunkEntry,
-  IndexStats,
-  SearchData,
-  SearchOptions,
-  SearchResponse,
-  SearchResult,
-} from "../domain/ports.js"
+import type { Bm25Index, ChunkEntry, IndexStats, SearchData } from "../domain/ports.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/fs-error.js"
-import { filterResults } from "../lib/result-filter.js"
+import { buildChunkValidationErrors } from "../lib/validation.js"
 import { getVectorCodec } from "../lib/vector-codec.js"
-import { computeCosineSimilarity, serializeVectors } from "../lib/vector-math.js"
+import { serializeVectors } from "../lib/vector-math.js"
 import { buildAndStoreBm25, loadBm25 } from "./bm25-store.js"
 import { ConfigStoreLive } from "./config-store.js"
 
@@ -35,19 +26,6 @@ const BM25_FILE = `${STORE_DIR}/bm25.json`
 
 /** Pre-built Schema instance for chunk encode/decode. */
 const parseJsonChunk = Schema.parseJson(ChunkSchema)
-
-/** Build ChunkValidationError array from malformed line count, or [] if none. */
-const buildChunkValidationErrors = (malformedLines: number): readonly ChunkValidationError[] =>
-  malformedLines > 0
-    ? [
-        new ChunkValidationError({
-          message: `Skipped ${malformedLines} malformed chunk line(s) in chunks.jsonl`,
-          errors: [
-            { path: "chunks.jsonl", message: `${malformedLines} line(s) failed schema validation` },
-          ],
-        }),
-      ]
-    : []
 /**
  * FileSystem adapter for VectorStore port. Reads from chunks.jsonl and vectors.bin to provide index
  * statistics.
@@ -196,57 +174,6 @@ const make = Effect.gen(function* () {
       return yield* loadChunksAndVectors(dims, dtype)
     })
 
-  /** Pure cosine similarity scoring loop. Returns results and malformed line count. */
-  const scoreChunks = (
-    chunkLines: string[],
-    vectors: Float32Array,
-    query: Embedding,
-  ): { results: SearchResult[]; malformedLines: number } => {
-    const results: SearchResult[] = []
-    let malformedLines = 0
-    for (let i = 0; i < chunkLines.length; i++) {
-      let chunk: Chunk
-      try {
-        chunk = Schema.decodeUnknownSync(parseJsonChunk)(chunkLines[i])
-      } catch {
-        malformedLines++
-        continue
-      }
-      const startIdx = i * query.dims
-      const chunkVector = vectors.slice(startIdx, startIdx + query.dims)
-      const score = computeCosineSimilarity(chunkVector, query.vector, query.dims)
-      results.push({
-        score,
-        file: chunk.file,
-        startLine: chunk.startLine,
-        endLine: chunk.endLine,
-        text: chunk.text,
-        contextBefore: chunk.contextBefore,
-        contextAfter: chunk.contextAfter,
-      })
-    }
-    return { results, malformedLines }
-  }
-
-  /** Apply ignore/only path filters to results. */
-  const applyFilters = (
-    results: SearchResult[],
-    options: SearchOptions | undefined,
-  ): SearchResult[] => filterResults(results, options)
-
-  /** Sort by score descending, take topK, return validation errors. */
-  const rankAndSlice = (
-    results: SearchResult[],
-    malformedLines: number,
-    topK?: number,
-  ): { results: SearchResult[]; validationErrors: readonly ChunkValidationError[] } => {
-    const validationErrors = buildChunkValidationErrors(malformedLines)
-    results.sort((a, b) => b.score - a.score)
-    if (topK == null) return { results, validationErrors }
-    const clamped = Math.max(0, Math.min(Math.floor(topK), results.length))
-    return { results: results.slice(0, clamped), validationErrors }
-  }
-
   /**
    * Remove a file if it exists, accumulating freed bytes. Returns the number of freed bytes (0 if
    * the file was absent).
@@ -350,7 +277,9 @@ const make = Effect.gen(function* () {
         "read chunks for bm25",
         chunksTemp,
       )
-      yield* buildAndStoreBm25(fs, chunksContent, bm25Temp)
+      yield* buildAndStoreBm25(chunksContent, bm25Temp).pipe(
+        Effect.provideService(FileSystem.FileSystem, fs),
+      )
 
       yield* withFsError(fs.rename(metaTemp, META_FILE), "commit index meta", META_FILE)
       yield* withFsError(fs.rename(bm25Temp, BM25_FILE), "commit bm25 index", BM25_FILE)
@@ -384,33 +313,6 @@ const make = Effect.gen(function* () {
       }
     })
 
-  const validateQueryDims = (
-    queryDims: number,
-    indexDims: number,
-  ): Effect.Effect<void, StoreError> =>
-    queryDims === indexDims
-      ? Effect.void
-      : Effect.fail(
-          new StoreError({
-            message: `Query dims (${queryDims}) do not match index dims (${indexDims}). Re-index to fix.`,
-          }),
-        )
-
-  const search = (
-    query: Embedding,
-    options?: SearchOptions,
-  ): Effect.Effect<
-    SearchResponse,
-    StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
-  > =>
-    Effect.gen(function* () {
-      const { chunkLines, vectors, dims: indexDims } = yield* loadIndex()
-      yield* validateQueryDims(query.dims, indexDims)
-      const { results, malformedLines } = scoreChunks(chunkLines, vectors, query)
-      const filtered = applyFilters(results, options)
-      return rankAndSlice(filtered, malformedLines, options?.topK)
-    })
-
   const parseChunkEntries = (
     chunkLines: string[],
     vectors: Float32Array,
@@ -441,7 +343,8 @@ const make = Effect.gen(function* () {
     return { entries, malformedLines }
   }
 
-  const loadBm25Index = (): Effect.Effect<Bm25Index, StoreError> => loadBm25(fs, BM25_FILE)
+  const loadBm25Index = (): Effect.Effect<Bm25Index, StoreError> =>
+    loadBm25(BM25_FILE).pipe(Effect.provideService(FileSystem.FileSystem, fs))
 
   const loadSearchData = (): Effect.Effect<
     SearchData,
@@ -449,9 +352,9 @@ const make = Effect.gen(function* () {
   > =>
     Effect.gen(function* () {
       const { chunkLines, vectors, dims } = yield* loadIndex()
-      const { entries } = parseChunkEntries(chunkLines, vectors, dims)
+      const { entries, malformedLines } = parseChunkEntries(chunkLines, vectors, dims)
       const bm25Index = yield* loadBm25Index()
-      return { entries, bm25Index }
+      return { entries, bm25Index, malformedLines }
     })
 
   const emptyStatus = {
@@ -539,7 +442,6 @@ const make = Effect.gen(function* () {
     storeBatch,
     storeCommit,
     storeAbort,
-    search,
     loadSearchData,
     getStatus,
     reset,
