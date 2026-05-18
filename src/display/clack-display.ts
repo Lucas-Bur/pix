@@ -63,6 +63,54 @@ const updateProgressBar = (
     yield* updateProgressValue(activeRef, newValue)
   })
 
+const dismissSpinnerAndStop = (
+  fs: FileSystem.FileSystem,
+  activeRef: Ref.Ref<ActiveInteractive>,
+  handleRef: Ref.Ref<ClackHandle | null>,
+  lastSpinnerMsg: Ref.Ref<string>,
+  fallbackMsg: string,
+): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    const wasSpinner = yield* dismissSpinner(activeRef)
+    if (!wasSpinner) return false
+    const h = yield* Ref.get(handleRef)
+    if (h && h.type === "spinner") {
+      const msg = yield* Ref.get(lastSpinnerMsg)
+      h.handle.stop(msg || fallbackMsg)
+      yield* Ref.set(handleRef, null)
+    }
+    return true
+  })
+
+const runWithProgressBar = <A, E, R>(
+  fs: FileSystem.FileSystem,
+  opts: ProgressOptions,
+  effect: Effect.Effect<A, E, R>,
+  activeRef: Ref.Ref<ActiveInteractive>,
+  handleRef: Ref.Ref<ClackHandle | null>,
+): Effect.Effect<A, E, R> =>
+  Effect.gen(function* () {
+    const bar = clack.progress({
+      max: opts.max,
+      style: opts.style ?? "heavy",
+      size: opts.size ?? 40,
+      indicator: opts.indicator ?? "dots",
+    })
+    bar.start(opts.message)
+    yield* setActive(activeRef, { type: "progress", value: 0, max: opts.max })
+    yield* Ref.set(handleRef, { type: "progress", handle: bar })
+    const exit = yield* Effect.exit(effect)
+    yield* clearActive(activeRef)
+    yield* Ref.set(handleRef, null)
+    yield* appendLogEntry(fs, { type: "progress-stop" })
+    if (Exit.isSuccess(exit)) {
+      bar.stop(opts.message)
+      return exit.value
+    }
+    bar.error(opts.message)
+    return yield* Effect.failCause(exit.cause)
+  })
+
 export const ClackDisplay = {
   layer: Layer.effect(
     Display,
@@ -71,6 +119,9 @@ export const ClackDisplay = {
       const activeRef = yield* Ref.make<ActiveInteractive>(null)
       const handleRef = yield* Ref.make<ClackHandle | null>(null)
       const lastSpinnerMsg = yield* Ref.make<string>("")
+
+      const dismissSpinnerToProgress = (msg: string) =>
+        dismissSpinnerAndStop(fs, activeRef, handleRef, lastSpinnerMsg, msg)
 
       return {
         intro: (title) =>
@@ -133,34 +184,8 @@ export const ClackDisplay = {
               message: opts.message,
               max: opts.max,
             })
-            const wasSpinner = yield* dismissSpinner(activeRef)
-            if (wasSpinner) {
-              const h = yield* Ref.get(handleRef)
-              if (h && h.type === "spinner") {
-                const msg = yield* Ref.get(lastSpinnerMsg)
-                h.handle.stop(msg || opts.message)
-                yield* Ref.set(handleRef, null)
-              }
-            }
-            const bar = clack.progress({
-              max: opts.max,
-              style: opts.style ?? "heavy",
-              size: opts.size ?? 40,
-              indicator: opts.indicator ?? "dots",
-            })
-            bar.start(opts.message)
-            yield* setActive(activeRef, { type: "progress", value: 0, max: opts.max })
-            yield* Ref.set(handleRef, { type: "progress", handle: bar })
-            const exit = yield* Effect.exit(effect)
-            yield* clearActive(activeRef)
-            yield* Ref.set(handleRef, null)
-            yield* appendLogEntry(fs, { type: "progress-stop" })
-            if (Exit.isSuccess(exit)) {
-              bar.stop(opts.message)
-              return exit.value
-            }
-            bar.error(opts.message)
-            return yield* Effect.failCause(exit.cause)
+            yield* dismissSpinnerToProgress(opts.message)
+            return yield* runWithProgressBar(fs, opts, effect, activeRef, handleRef)
           }),
 
         updateInteractive: (payload) =>

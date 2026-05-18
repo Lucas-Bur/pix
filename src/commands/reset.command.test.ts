@@ -27,10 +27,20 @@ const fixtures = {
   ".pix/vectors.bin": "binary-data",
 }
 
-test("pix reset --json deletes index files and reports status", () => {
+const runReset = (args: string[], contents: Record<string, string> = fixtures) => {
   const { ref, layer } = silentDisplay()
+  return {
+    ref,
+    effect: run(["reset", ...args]).pipe(
+      Effect.provide(testLayer({ contents, displayLayer: layer })),
+    ),
+  }
+}
+
+test("pix reset --json deletes index files and reports status", () => {
+  const { ref, effect } = runReset(["--json"])
   return Effect.gen(function* () {
-    yield* run(["reset", "--json"])
+    yield* effect
     const entries = yield* Ref.get(ref)
     expect(entries[0]._tag).toBe("spinner")
     yield* expectJsonEntry(ref, (data) => {
@@ -40,13 +50,13 @@ test("pix reset --json deletes index files and reports status", () => {
       expect(d.deletedVectors).toBe(true)
       expect(d.freedBytes).toBeGreaterThan(0)
     })
-  }).pipe(Effect.provide(testLayer({ contents: fixtures, displayLayer: layer })))
+  })
 })
 
 test("pix reset --json on clean project reports nothing deleted", () => {
-  const { ref, layer } = silentDisplay()
+  const { ref, effect } = runReset(["--json"], {})
   return Effect.gen(function* () {
-    yield* run(["reset", "--json"])
+    yield* effect
     const entries = yield* Ref.get(ref)
     expect(entries[0]._tag).toBe("spinner")
     yield* expectJsonEntry(ref, (data) => {
@@ -56,30 +66,23 @@ test("pix reset --json on clean project reports nothing deleted", () => {
       expect(d.deletedVectors).toBe(false)
       expect(d.freedBytes).toBe(0)
     })
-  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+  })
 })
 
-test("pix reset without --json logs status entries via Display", () => {
-  const { ref, layer } = silentDisplay()
+const assertResetLogs = (contents: Record<string, string> = fixtures) => {
+  const { ref, effect } = runReset([], contents)
   return Effect.gen(function* () {
-    yield* run(["reset"])
+    yield* effect
     const entries = yield* Ref.get(ref)
     expect(entries.some((e) => e._tag === "spinner")).toBe(true)
     expect(entries.some((e) => e._tag === "json")).toBe(true)
     expect(entries.some((e) => e._tag === "log")).toBe(true)
-  }).pipe(Effect.provide(testLayer({ contents: fixtures, displayLayer: layer })))
-})
+  })
+}
 
-test("pix reset without --json on clean project shows info", () => {
-  const { ref, layer } = silentDisplay()
-  return Effect.gen(function* () {
-    yield* run(["reset"])
-    const entries = yield* Ref.get(ref)
-    expect(entries.some((e) => e._tag === "spinner")).toBe(true)
-    expect(entries.some((e) => e._tag === "json")).toBe(true)
-    expect(entries.some((e) => e._tag === "log")).toBe(true)
-  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
-})
+test("pix reset without --json logs status entries via Display", () => assertResetLogs())
+
+test("pix reset without --json on clean project shows info", () => assertResetLogs({}))
 
 test("pix reset --json with failing IndexStore produces error JSON", () => {
   const { ref, layer } = silentDisplay()
