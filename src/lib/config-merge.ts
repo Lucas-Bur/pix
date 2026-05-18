@@ -11,16 +11,18 @@ export interface EffectiveConfig {
   readonly ignoreGitignore: boolean
 }
 
-export const mergeConfig = (opts: IndexOptions, config: Config): EffectiveConfig => ({
-  batchSize: clampPositive(
+export const mergeConfig = (opts: IndexOptions, config: Config): EffectiveConfig => {
+  const batchSize = clampPositive(
     opts.batchSize ?? config.embedder.batchSize ?? DEFAULT_CONFIG.embedder.batchSize,
-  ),
-  concurrency: clampPositive(opts.chunkConcurrency ?? config.chunkConcurrency),
-  skipExtensions: opts.skipExtensions
+  )
+  const concurrency = clampPositive(opts.chunkConcurrency ?? config.chunkConcurrency)
+  const skipExtensions = opts.skipExtensions
     ? [...config.skipExtensions, ...opts.skipExtensions]
-    : config.skipExtensions,
-  ignoredPaths: opts.ignorePaths
+    : config.skipExtensions
+  const ignoredPaths = opts.ignorePaths
     ? [...config.ignoredPaths, ...opts.ignorePaths]
-    : config.ignoredPaths,
-  ignoreGitignore: opts.ignoreGitignore ?? config.ignoreGitignore,
-})
+    : config.ignoredPaths
+  const ignoreGitignore = opts.ignoreGitignore ?? config.ignoreGitignore
+
+  return { batchSize, concurrency, skipExtensions, ignoredPaths, ignoreGitignore }
+}
