@@ -23,7 +23,7 @@ Pure TypeScript — no Effect, no I/O, no infrastructure dependencies. Contains:
 
 - **Entities**: `Config`, `Chunk` — structured data with identity
 - **Value objects**: `Embedding` — identified by value, immutable
-- **Ports**: `Context.Tag` interfaces defining what the application needs: `ConfigStore`, `Scanner`, `Chunker`, `Embedder`, `VectorStore`
+- **Ports**: `Context.Tag` interfaces defining what the application needs: `ConfigStore`, `Scanner`, `Chunker`, `Embedder`, `IndexStore`
 - **Error types**: `ConfigError` — typed error for the domain
 
 ### Application Layer (`src/application/`)
@@ -46,7 +46,7 @@ Concrete adapters implementing the domain ports:
 - `ScannerLive` — `fast-glob` + `.gitignore`-aware scanning
 - `ChunkerLive` — splits source files into Chunks
 - `OnnxEmbedderLive` — ONNX runtime with `Xenova/all-MiniLM-L6-v2`
-- `VectorStoreLive` — flat `chunks.jsonl` + `vectors.bin`
+- `IndexStoreLive` — flat `chunks.jsonl` + `vectors.bin` + `bm25.json`
 
 Each adapter is an `Effect.Layer` providing its corresponding port tag.
 
@@ -62,7 +62,7 @@ Wires everything in explicit layers:
 ## Rationale
 
 - **Effect-native**: `Context.Tag` + `Layer` are first-class DI primitives — no external DI library needed
-- **Testability**: Application use cases can be tested by providing mock layers (e.g., in-memory VectorStore) without ONNX or filesystem
+- **Testability**: Application use cases can be tested by providing mock layers (e.g., in-memory IndexStore) without ONNX or filesystem
 - **Separation of concerns**: Domain has zero Effect imports; Application has infrastructure imports only through port tags
 - **Reversible**: Each port can be swapped independently — e.g., replacing ONNX with OpenAI embeddings means only swapping one adapter
 - **CLI independence**: Commands depend only on application layer use cases, not on services directly

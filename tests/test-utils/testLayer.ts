@@ -9,18 +9,18 @@ import { InitProject } from "../../src/application/init-project.js"
 import { QueryProject } from "../../src/application/query-project.js"
 import { ResetIndex } from "../../src/application/reset-index.js"
 import { Display } from "../../src/display/Display.js"
-import { ConfigStore, Embedder, Scanner, VectorStore } from "../../src/domain/ports.js"
+import { ConfigStore, Embedder, IndexStore, Scanner } from "../../src/domain/ports.js"
 import { ChunkerLive } from "../../src/services/chunker.js"
 import { ConfigStoreLive } from "../../src/services/config-store.js"
 import { ContentExtractorLive } from "../../src/services/content-extractor.js"
-import { VectorStoreLive } from "../../src/services/vector-store.js"
+import { IndexStoreLive } from "../../src/services/index-store.js"
 
 export interface TestLayerOptions {
   readonly contents?: MemoryFileSystem.Contents
   readonly scannerLayer?: Layer.Layer<Scanner, never, FileSystem.FileSystem>
   readonly embedderLayer?: Layer.Layer<Embedder, never, FileSystem.FileSystem>
   readonly configStoreLayer?: Layer.Layer<ConfigStore, never, FileSystem.FileSystem>
-  readonly vectorStoreLayer?: Layer.Layer<VectorStore, never, FileSystem.FileSystem>
+  readonly indexStoreLayer?: Layer.Layer<IndexStore, never, FileSystem.FileSystem>
   readonly displayLayer?: Layer.Layer<Display>
   readonly cleanStore?: boolean
 }
@@ -49,7 +49,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     scannerLayer,
     embedderLayer,
     configStoreLayer,
-    vectorStoreLayer,
+    indexStoreLayer,
     displayLayer,
     cleanStore,
   } = opts
@@ -60,7 +60,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     configStoreLayer ?? ConfigStoreLive,
     scannerLayer ?? defaultScannerLayer,
     embedderLayer ?? defaultEmbedderLayer,
-    vectorStoreLayer ?? VectorStoreLive,
+    indexStoreLayer ?? IndexStoreLive,
     ContentExtractorLive,
   )
 

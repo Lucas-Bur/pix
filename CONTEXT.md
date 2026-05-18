@@ -35,11 +35,12 @@ Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable). Produ
 
 Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, applies `.gitignore` rules via the `ignore` package, and returns all files. Extension-based filtering is handled downstream by the ContentExtractor processor map. Configurable `ignoredPaths` patterns (gitignore-style) merged with `.gitignore` and `.git/info/exclude`. Always ignores: `.pix`, `node_modules`, `.git`, `dist`, `build`, `.next`.
 
-### Store
+### IndexStore
 
-Reads/writes the `.pix/` directory: `config.json`, `chunks.jsonl`, `vectors.bin`, `index-meta.json`.
+Reads/writes the `.pix/` directory: `config.json`, `chunks.jsonl`, `vectors.bin`, `index-meta.json`, `bm25.json`.
 `vectors.bin` = flat typed array, row-major, `n × dims` elements, encoded per `dtype` (`fp32` | `fp16` | `q8` | `q4`).
 `index-meta.json` = index metadata: schema version, dtype, dims, model ID, last index timestamp.
+BM25 index built at index time, survives Phase 3 text removal.
 
 ### MVP Scope
 
@@ -175,11 +176,11 @@ pix follows hexagonal architecture with three DDD layers. See [ADR 0003](docs/ad
 
 ### Port
 
-A `Context.Tag` interface in `src/domain/ports.ts` declaring what the application needs — no implementation, no I/O. Examples: `ConfigStore`, `Scanner`, `ContentExtractor`, `Chunker`, `Embedder`, `VectorStore`, `Display`.
+A `Context.Tag` interface in `src/domain/ports.ts` declaring what the application needs — no implementation, no I/O. Examples: `ConfigStore`, `Scanner`, `ContentExtractor`, `Chunker`, `Embedder`, `IndexStore`, `Display`.
 
 ### Adapter
 
-A concrete implementation of a port, living in `src/services/`. Each adapter is an `Effect.Layer`. Example: `OnnxEmbedderLive` provides `Embedder`; `VectorStoreLive` provides `VectorStore`.
+A concrete implementation of a port, living in `src/services/`. Each adapter is an `Effect.Layer`. Example: `OnnxEmbedderLive` provides `Embedder`; `IndexStoreLive` provides `IndexStore`.
 
 ### Domain Layer (`src/domain/`)
 

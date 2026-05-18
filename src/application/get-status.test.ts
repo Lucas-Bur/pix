@@ -6,7 +6,7 @@ import { makeChunkJson } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { GetStatus } from "./get-status.js"
 
-test("GetStatus.getStatus returns status from VectorStore with config model", () =>
+test("GetStatus.getStatus returns status from IndexStore with config model", () =>
   Effect.gen(function* () {
     const result = yield* GetStatus.getStatus()
     expect(result.chunks).toBe(2)
@@ -15,7 +15,7 @@ test("GetStatus.getStatus returns status from VectorStore with config model", ()
     expect(result.totalLines).toBe(3)
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures })), Effect.scoped))
 
-test("GetStatus.getStatus falls back to VectorStore model when config read fails", () =>
+test("GetStatus.getStatus falls back to IndexStore model when config read fails", () =>
   Effect.gen(function* () {
     const result = yield* GetStatus.getStatus()
     expect(result.model).toBe("")

@@ -7,7 +7,7 @@ import type { DisplayEntry } from "../../src/display/Display.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
 import { ConfigError, ModelLoadError, StoreError } from "../../src/domain/errors.js"
 import type { DisplaySeverity } from "../../src/domain/ports.js"
-import { ConfigStore, Embedder, VectorStore } from "../../src/domain/ports.js"
+import { ConfigStore, Embedder, IndexStore } from "../../src/domain/ports.js"
 import { makeChunkJson, TEST_CONFIG_JSON } from "./fixtures.js"
 
 export const runCommand =
@@ -89,14 +89,14 @@ type FailingMethod =
   | "getStatus"
   | "reset"
 
-/** Create a VectorStore layer where one method fails and all others succeed. */
-export const makeFailingVectorStore = (
+/** Create an IndexStore layer where one method fails and all others succeed. */
+export const makeFailingIndexStore = (
   failingMethod: FailingMethod,
   message = `${failingMethod} failed`,
-): Layer.Layer<VectorStore> => {
+): Layer.Layer<IndexStore> => {
   const failEffect = Effect.fail(new StoreError({ message }))
 
-  return Layer.succeed(VectorStore, {
+  return Layer.succeed(IndexStore, {
     storeBegin: () => (failingMethod === "storeBegin" ? failEffect : Effect.void),
     storeBatch: () => (failingMethod === "storeBatch" ? failEffect : Effect.void),
     storeCommit: () =>

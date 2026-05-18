@@ -6,13 +6,13 @@ import type { Chunk, Embedding } from "../domain/chunk.js"
 import type { EmbeddingDtype, IndexMeta } from "../domain/dtype.js"
 import { DtypeMismatchError, IndexMetaSchema, VectorDecodeError } from "../domain/dtype.js"
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
-import { ConfigStore, VectorStore } from "../domain/ports.js"
+import { ConfigStore, IndexStore } from "../domain/ports.js"
 import type { Bm25Index, ChunkEntry, IndexStats, SearchData } from "../domain/ports.js"
+import { buildBm25Index } from "../lib/bm25.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/fs-error.js"
 import { buildChunkValidationErrors } from "../lib/validation.js"
 import { getVectorCodec } from "../lib/vector-codec.js"
 import { serializeVectors } from "../lib/vector-math.js"
-import { buildAndStoreBm25, loadBm25 } from "./bm25-store.js"
 import { ConfigStoreLive } from "./config-store.js"
 
 const parseChunkLine = (line: string): Effect.Effect<Option.Option<Chunk>> =>
@@ -26,9 +26,55 @@ const BM25_FILE = `${STORE_DIR}/bm25.json`
 
 /** Pre-built Schema instance for chunk encode/decode. */
 const parseJsonChunk = Schema.parseJson(ChunkSchema)
+
+const buildAndStoreBm25 = (
+  fs: FileSystem.FileSystem,
+  chunksContent: string,
+  bm25Path: string,
+): Effect.Effect<void, StoreError | DiskFullError> =>
+  Effect.gen(function* () {
+    const chunkLines = chunksContent.split("\n").filter((l) => l.trim().length > 0)
+    const texts: { index: number; text: string }[] = []
+    for (let i = 0; i < chunkLines.length; i++) {
+      try {
+        const chunk = Schema.decodeUnknownSync(parseJsonChunk)(chunkLines[i])
+        texts.push({ index: i, text: chunk.text })
+      } catch {
+        // skip malformed lines — bm25 ignores them
+      }
+    }
+    const bm25Index = buildBm25Index(texts)
+    yield* withFsError(
+      fs.writeFile(bm25Path, Buffer.from(JSON.stringify(bm25Index))),
+      "write bm25 index",
+      bm25Path,
+    )
+  })
+
+const loadBm25 = (
+  fs: FileSystem.FileSystem,
+  bm25Path: string,
+): Effect.Effect<Bm25Index, StoreError> =>
+  Effect.gen(function* () {
+    const exists = yield* withReadError(fs.exists(bm25Path), "check bm25 index")
+    if (!exists) {
+      return yield* new StoreError({
+        message: `Missing ${bm25Path} — index may be corrupted. Run pix reset and re-index.`,
+      })
+    }
+    const content = yield* withReadError(fs.readFileString(bm25Path), "read bm25 index", bm25Path)
+    try {
+      return JSON.parse(content) as Bm25Index
+    } catch {
+      return yield* new StoreError({
+        message: `Corrupted ${bm25Path} — index may be damaged. Run pix reset and re-index.`,
+      })
+    }
+  })
+
 /**
- * FileSystem adapter for VectorStore port. Reads from chunks.jsonl and vectors.bin to provide index
- * statistics.
+ * FileSystem adapter for IndexStore port. Manages the full index lifecycle: chunks.jsonl,
+ * vectors.bin, index-meta.json, and bm25.json.
  */
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
@@ -50,10 +96,6 @@ const make = Effect.gen(function* () {
     dtype: "fp32",
   })
 
-  /**
-   * Count total lines across all chunks in chunks.jsonl. Each line is a JSON object; the 'text'
-   * field contains the source code.
-   */
   /** Count files, total lines, and malformed lines in a single pass. */
   const countChunkStats = (
     lines: string[],
@@ -277,9 +319,7 @@ const make = Effect.gen(function* () {
         "read chunks for bm25",
         chunksTemp,
       )
-      yield* buildAndStoreBm25(chunksContent, bm25Temp).pipe(
-        Effect.provideService(FileSystem.FileSystem, fs),
-      )
+      yield* buildAndStoreBm25(fs, chunksContent, bm25Temp)
 
       yield* withFsError(fs.rename(metaTemp, META_FILE), "commit index meta", META_FILE)
       yield* withFsError(fs.rename(bm25Temp, BM25_FILE), "commit bm25 index", BM25_FILE)
@@ -343,8 +383,7 @@ const make = Effect.gen(function* () {
     return { entries, malformedLines }
   }
 
-  const loadBm25Index = (): Effect.Effect<Bm25Index, StoreError> =>
-    loadBm25(BM25_FILE).pipe(Effect.provideService(FileSystem.FileSystem, fs))
+  const loadBm25Index = (): Effect.Effect<Bm25Index, StoreError> => loadBm25(fs, BM25_FILE)
 
   const loadSearchData = (): Effect.Effect<
     SearchData,
@@ -448,4 +487,4 @@ const make = Effect.gen(function* () {
   } as const
 })
 
-export const VectorStoreLive = Layer.provideMerge(Layer.effect(VectorStore, make), ConfigStoreLive)
+export const IndexStoreLive = Layer.provideMerge(Layer.effect(IndexStore, make), ConfigStoreLive)

@@ -3,7 +3,7 @@ import { expect, test } from "vite-plus/test"
 
 import { makeChunk, makeEmbedding } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
-import { Embedder, VectorStore } from "../domain/ports.js"
+import { Embedder, IndexStore } from "../domain/ports.js"
 import { QueryProject } from "./query-project.js"
 
 const nonZeroEmbedder = Layer.succeed(Embedder, {
@@ -37,7 +37,7 @@ const indexFixture = (
   embeddings: Array<ReturnType<typeof makeEmbedding>>,
 ) =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
+    const store = yield* IndexStore
     yield* store.storeBegin()
     yield* store.storeBatch(chunks, embeddings)
     yield* store.storeCommit()

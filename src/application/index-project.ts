@@ -10,7 +10,7 @@ import {
   Scanner,
   Chunker,
   Embedder,
-  VectorStore,
+  IndexStore,
   ContentExtractor,
   type SkippedEntry,
 } from "../domain/ports.js"
@@ -19,7 +19,7 @@ import { getExtension, getFileExtension, getFilename } from "../lib/extension.js
 import { buildProcessorMap } from "../services/processors/index.js"
 import type { StatusResult } from "./get-status.js"
 
-interface IndexResult {
+export interface IndexResult {
   readonly success: true
   readonly status: Omit<StatusResult, "model" | "lastIndex">
   readonly durationMs: number
@@ -114,7 +114,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
     const scanner = yield* Scanner
     const chunker = yield* Chunker
     const embedder = yield* Embedder
-    const vectorStore = yield* VectorStore
+    const indexStore = yield* IndexStore
     const d = yield* Display
     const extractor = yield* ContentExtractor
 
@@ -173,7 +173,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           return yield* emptyIndexResult(d, skipped, start)
         }
 
-        yield* vectorStore.storeBegin()
+        yield* indexStore.storeBegin()
 
         const embeddedRef = yield* Ref.make(0)
 
@@ -186,7 +186,7 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
                 const batch = Chunk.toArray(batchChunk)
                 const texts = batch.map((c: DomainChunk) => c.text)
                 const embeddings = yield* embedder.batch(texts)
-                yield* vectorStore.storeBatch(batch, embeddings)
+                yield* indexStore.storeBatch(batch, embeddings)
                 const count = yield* Ref.updateAndGet(embeddedRef, (n) => n + batch.length)
                 yield* d.updateInteractive({
                   message: `Embedding ${count} of ${totalChunks} chunks`,
@@ -196,9 +196,9 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
             ),
             Stream.runDrain,
             Effect.matchEffect({
-              onSuccess: () => vectorStore.storeCommit(),
+              onSuccess: () => indexStore.storeCommit(),
               onFailure: (err) =>
-                vectorStore.storeAbort().pipe(Effect.flatMap(() => Effect.fail(err))),
+                indexStore.storeAbort().pipe(Effect.flatMap(() => Effect.fail(err))),
             }),
           ),
         )

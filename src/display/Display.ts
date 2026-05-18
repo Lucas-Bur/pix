@@ -241,7 +241,7 @@ export const ClackDisplay = {
             }
           }),
 
-        json: makeJsonHandler(fs),
+        json: () => appendLogEntry(fs, { type: "json" }),
       } satisfies DisplayService
     }),
   ),

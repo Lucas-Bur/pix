@@ -19,7 +19,7 @@ export type Chunk = typeof ChunkSchema.Type
 
 /**
  * Numeric vector representation of a text chunk, produced by the Embedder and consumed by
- * VectorStore.
+ * IndexStore.
  */
 export interface Embedding {
   /** Dense vector values — contiguous Float32Array for SIMD-eligible arithmetic (see ADR-0008). */

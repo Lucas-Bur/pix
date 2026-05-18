@@ -2,7 +2,7 @@ import { Effect } from "effect"
 
 import type { DtypeMismatchError, VectorDecodeError } from "../domain/dtype.js"
 import type { AllEmbedderErrors, AllStoreErrors, NoIndexError } from "../domain/errors.js"
-import { Embedder, VectorStore } from "../domain/ports.js"
+import { Embedder, IndexStore } from "../domain/ports.js"
 import type {
   ChunkEntry,
   RankedChunk,
@@ -45,7 +45,7 @@ export class QueryProject extends Effect.Service<QueryProject>()("QueryProject",
   accessors: true,
   effect: Effect.gen(function* () {
     const embedder = yield* Embedder
-    const store = yield* VectorStore
+    const store = yield* IndexStore
 
     const queryProject = (
       queryText: string,
