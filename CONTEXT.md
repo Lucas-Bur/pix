@@ -48,7 +48,7 @@ init, index, query, status, reset. No incremental indexing, no cloud providers, 
 
 ### Query Routing
 
-Token-count heuristic adjusting scorer weights before RRF fusion. Short queries (1-2 tokens) boost BM25 weight; long queries (8+ tokens) boost semantic weight. Default: equal weights. Lives in `src/lib/query-router.ts`.
+Token-count heuristic adjusting scorer weights before RRF fusion. Short queries (1-2 tokens) boost BM25 weight; long queries (8+ tokens) boost semantic weight. Default: equal weights. Inlined in `src/application/query-project.ts`.
 
 ### RankedChunk
 
@@ -56,7 +56,7 @@ Scorer output — ranks all chunks against a query. Shape: `{ chunkIndex: number
 
 ### RRF (Reciprocal Rank Fusion)
 
-Fuses N ranked lists by rank position: `Σ weight * 1 / (k + rank_in_path)`. Raw scores are discarded — only rank position matters. k=60 (standard, configurable later). Pure function in `src/lib/rrf.ts`.
+Fuses N ranked lists by rank position: `Σ weight * 1 / (k + rank_in_path)`. Raw scores are discarded — only rank position matters. k=60 (standard, configurable later). Pure function in `src/lib/retrieval/rrf.ts`.
 
 ### Scorer
 
@@ -85,7 +85,7 @@ Tests a single use case (`src/application/*.ts`) through `testLayer()` with real
 
 ### Display Service
 
-`Context.Tag("Display")` in `src/display/Display.ts`. Abstracts all CLI output behind structured methods. Commands and services use `yield* Display` — never `Console.log` or `Effect.logInfo` directly.
+`Context.Tag("Display")` in `src/domain/ports.ts`. Abstracts all CLI output behind structured methods. Commands and services use `yield* Display` — never `Console.log` or `Effect.logInfo` directly. Implementations in `src/display/`: `clack-display.ts`, `json-display.ts`, `silent-display.ts`. Entry types in `entries.ts`.
 
 Methods:
 
@@ -223,7 +223,7 @@ All commands support `--json` for agent-ready structured output on stdout. Singl
 
 ### Display service with JSON mode switching
 
-CLI output goes through a `Display` context tag (`src/display/Display.ts`). Two production implementations selectable by `--json`: `ClackDisplay` (interactive, uses `@clack/prompts` for spinners, styled status, frames) and `JsonDisplay` (machine-readable, no-ops interactive methods, writes JSON to stdout). A third implementation (`SilentDisplay`) records calls to a `Ref<DisplayEntry[]>` for test assertions.
+CLI output goes through a `Display` context tag (`src/domain/ports.ts`). Two production implementations selectable by `--json`: `ClackDisplay` (`src/display/clack-display.ts`, interactive, uses `@clack/prompts` for spinners, styled status, frames) and `JsonDisplay` (`src/display/json-display.ts`, machine-readable, no-ops interactive methods, writes JSON to stdout). A third implementation (`SilentDisplay`, `src/display/silent-display.ts`) records calls to a `Ref<DisplayEntry[]>` for test assertions. Entry types defined in `src/display/entries.ts`.
 
 **Output separation**: `ClackDisplay.json` is a no-op — structured output never appears in human mode. `JsonDisplay` no-ops all interactive methods. Each Display handles its own surface. Commands call all methods unconditionally; no `if (!json)` branching. Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent) — ClackDisplay renders the log, JsonDisplay emits the JSON.
 
@@ -277,7 +277,7 @@ with ports-as-tags and adapters-as-layers. See [ADR 0003](docs/adr/0003-hexagona
 
 ### ContentExtractor
 
-Domain-level lookup table mapping file extensions to processing functions (`ContentExtractor`). Each processor is an `Effect<string, ProcessorError, FileSystem>` that extracts text from a file. Default processors: identity (code/text files read as-is), skip (binary/unsupported formats fail with `UnsupportedFormat`), transform (future: PDF extraction, Whisper transcription, etc.). Config allows users to add extensions to `skipExtensions` to opt out. Unknown extensions are skipped and reported at end of scan. Lives in `src/services/processors/`.
+Domain-level lookup table mapping file extensions to processing functions (`ContentExtractor`). Each processor is an `Effect<string, ProcessorError, FileSystem>` that extracts text from a file. Default processors: identity (code/text files read as-is), skip (binary/unsupported formats fail with `UnsupportedFormat`), transform (future: PDF extraction, Whisper transcription, etc.). Config allows users to add extensions to `skipExtensions` to opt out. Unknown extensions are skipped and reported at end of scan. Lives in `src/lib/config/processors.ts`.
 
 ### ProcessorError
 
