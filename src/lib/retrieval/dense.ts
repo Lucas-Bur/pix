@@ -1,5 +1,5 @@
 import type { RankedChunk } from "../../domain/ports.js"
-import { computeCosineSimilarity } from "../vectors/vector-math.js"
+import { computeCosineSimilarity } from "../vectors/cosine.js"
 
 export const rankDense = (
   queryEmbedding: Float32Array,

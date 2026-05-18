@@ -4,7 +4,7 @@ import { Clock, Effect } from "effect"
 import { ResetIndex } from "../application/reset-index.js"
 import { Display } from "../domain/ports.js"
 import { reportError } from "../lib/errors/error-format.js"
-import { formatBytes } from "../lib/formatting/format.js"
+import { formatBytes } from "../lib/formatting/search-output.js"
 
 /** CLI command: pix reset [--json] */
 export const resetCommand = Command.make(

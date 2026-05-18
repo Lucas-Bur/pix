@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 
-import { computeCosineSimilarity } from "./vector-math.js"
+import { computeCosineSimilarity } from "./cosine.js"
 
 describe("computeCosineSimilarity", () => {
   it("computes cosine similarity of two vectors", () => {
