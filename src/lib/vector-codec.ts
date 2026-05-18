@@ -39,7 +39,8 @@ const fp32decoder: VectorCodec = {
       }
       return new Float32Array(buffer.buffer, buffer.byteOffset, dims * count)
     }),
-  encode: (vector) => Effect.succeed(Buffer.from(vector.buffer)),
+  encode: (vector) =>
+    Effect.succeed(Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength)),
 }
 
 const notImplemented = (dtype: EmbeddingDtype): VectorCodec => ({
