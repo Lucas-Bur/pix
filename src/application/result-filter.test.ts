@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 
-import type { SearchResult } from "../../domain/ports.js"
-import { filterResults } from "./result-filter.js"
+import type { SearchResult } from "../domain/ports.js"
+import { filterResults } from "./query-project.js"
 
 const makeResult = (file: string): SearchResult => ({
   score: 1,

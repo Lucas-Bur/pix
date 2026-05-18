@@ -1,4 +1,5 @@
 import { Effect } from "effect"
+import ignore from "ignore"
 
 import type { DtypeMismatchError, VectorDecodeError } from "../domain/dtype.js"
 import type { AllEmbedderErrors, AllStoreErrors, NoIndexError } from "../domain/errors.js"
@@ -11,11 +12,37 @@ import type {
   SearchResult,
 } from "../domain/ports.js"
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
-import { filterResults } from "../lib/filtering/result-filter.js"
 import { rankBm25 } from "../lib/retrieval/bm25.js"
 import { rankDense } from "../lib/retrieval/dense.js"
 import { rrfFuse } from "../lib/retrieval/rrf.js"
 import { tokenize } from "../lib/retrieval/tokenize.js"
+
+type PathFilter = { ignores(path: string): boolean }
+
+const buildIgnoreFilter = (patterns: readonly string[]): PathFilter => {
+  const ig = ignore().add([...patterns])
+  return { ignores: (p: string) => ig.ignores(p) }
+}
+
+const makeIgnoreFilter = (patterns: readonly string[]): PathFilter | null =>
+  patterns.length > 0 ? buildIgnoreFilter(patterns) : null
+
+const makeOnlyFilter = (patterns: readonly string[]): PathFilter | null =>
+  patterns.length > 0 ? buildIgnoreFilter(patterns) : null
+
+export const filterResults = (
+  results: readonly SearchResult[],
+  options: SearchOptions | undefined,
+): SearchResult[] => {
+  const ignoreFilter = makeIgnoreFilter(options?.ignorePaths ?? [])
+  const onlyFilter = makeOnlyFilter(options?.onlyPaths ?? [])
+  if (!ignoreFilter && !onlyFilter) return [...results]
+  return results.filter((r) => {
+    if (ignoreFilter && ignoreFilter.ignores(r.file)) return false
+    if (onlyFilter && !onlyFilter.ignores(r.file)) return false
+    return true
+  })
+}
 
 const SHORT_QUERY_MAX = 2
 const LONG_QUERY_MIN = 8
