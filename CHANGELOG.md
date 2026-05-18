@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.14.0...pix-v0.15.0) (2026-05-18)
+
+
+### Features
+
+* hybrid search with BM25 + RRF fusion ([4614928](https://github.com/Lucas-Bur/pix/commit/461492871cee9baec47641556fa824dc10ae40a8))
+
+
+### Bug Fixes
+
+* address CodeRabbit review comments ([d764463](https://github.com/Lucas-Bur/pix/commit/d7644639621320399015e943fcedbdb5604a5907))
+* preserve original error if storeAbort fails in index-project ([48fa0f0](https://github.com/Lucas-Bur/pix/commit/48fa0f079aabc43126508fd04426e7376720b029))
+
 ## [0.14.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.13.0...pix-v0.14.0) (2026-05-18)
 
 
