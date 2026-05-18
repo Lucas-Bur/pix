@@ -3,7 +3,7 @@ import { Effect, Option } from "effect"
 
 import { IndexProject } from "../application/index-project.js"
 import type { IndexResult } from "../application/index-project.js"
-import { Display } from "../display/Display.js"
+import { Display } from "../domain/ports.js"
 import type { IndexOptions } from "../domain/ports.js"
 import { reportError } from "../lib/errors/error-format.js"
 

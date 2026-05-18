@@ -1,5 +1,6 @@
 import { expect, test } from "vite-plus/test"
 
+import type { SearchResult } from "../../domain/ports.js"
 import { applyCharBudget, formatBytes } from "./format.js"
 
 test("formatBytes returns 0 B for zero", () => {
@@ -75,7 +76,7 @@ test("applyCharBudget truncates when budget is exceeded", () => {
 })
 
 test("applyCharBudget preserves contextBefore and contextAfter when within budget", () => {
-  const results: import("../../domain/ports.js").SearchResult[] = [
+  const results: SearchResult[] = [
     {
       score: 1,
       file: "a.ts",
@@ -92,7 +93,7 @@ test("applyCharBudget preserves contextBefore and contextAfter when within budge
 })
 
 test("applyCharBudget strips context when truncating", () => {
-  const results: import("../../domain/ports.js").SearchResult[] = [
+  const results: SearchResult[] = [
     {
       score: 1,
       file: "a.ts",

@@ -8,7 +8,7 @@ import {
 } from "../../tests/test-utils/command.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
-import type { DisplayEntry } from "../display/Display.js"
+import type { DisplayEntry } from "../display/entries.js"
 import { initCommand } from "./init.js"
 
 const run = runCommand(initCommand)

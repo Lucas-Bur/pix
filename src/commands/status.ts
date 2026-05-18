@@ -2,7 +2,7 @@ import { Command, Options } from "@effect/cli"
 import { Effect } from "effect"
 
 import { GetStatus } from "../application/get-status.js"
-import { Display } from "../display/Display.js"
+import { Display } from "../domain/ports.js"
 import { reportError } from "../lib/errors/error-format.js"
 
 /** CLI command: pix status [--json] */
