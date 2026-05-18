@@ -6,7 +6,7 @@ import { DEFAULT_CONFIG } from "../../domain/config.js"
 import { ChunkValidationError } from "../../domain/errors.js"
 import type { IndexOptions } from "../../domain/ports.js"
 
-export interface ValidationEntry {
+interface ValidationEntry {
   readonly path: string
   readonly message: string
 }
