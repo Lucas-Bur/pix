@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.14.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.13.0...pix-v0.14.0) (2026-05-18)
+
+
+### Features
+
+* add dtype tracking infrastructure — index-meta.json, VectorDecoder, cosine similarity ([cbb79a8](https://github.com/Lucas-Bur/pix/commit/cbb79a82d50c18f7dbaa1290a16e6d69b755b2a7))
+* add structured file logging to Display service ([7212ca5](https://github.com/Lucas-Bur/pix/commit/7212ca52ae6ecd9f36314e049d950afb92229d54))
+* vector codec length validation, shape checks, codec tests ([2a3edce](https://github.com/Lucas-Bur/pix/commit/2a3edceb65333a4dc844883117ad377f0f3c4ebe))
+
+
+### Bug Fixes
+
+* align JsonDisplay log shapes with ClackDisplay and add contract tests ([4b45bfa](https://github.com/Lucas-Bur/pix/commit/4b45bfab25a75e20613934aa365ae9ceac64b6bb))
+* balance spinner start/stop logs by moving start log after nested guard ([39d7cbc](https://github.com/Lucas-Bur/pix/commit/39d7cbc5ac37c66c3273682c0cfee21ad015e969))
+* correctness — NaN clamp guard, fs.exists error mapping, batchSize clamping ([ff314fb](https://github.com/Lucas-Bur/pix/commit/ff314fbfb440e504d7c4e1267bf193746cc1629f))
+* encode only Float32Array view bytes using Buffer.from offset/length ([378f4fd](https://github.com/Lucas-Bur/pix/commit/378f4fde581142bedc7916ea49f703e5508c262d))
+* fail fast on missing/corrupted index-meta.json instead of silent fallback ([b4c560e](https://github.com/Lucas-Bur/pix/commit/b4c560eb181461c95e465cfff5ec1a26a328c93a))
+* log updateInteractive in ClackDisplay, stop events on failure in JsonDisplay ([50d790b](https://github.com/Lucas-Bur/pix/commit/50d790bada9f98ee01b6cbdd53138532e5f3d945))
+* make buildContentFields private to eliminate dead export ([08925d7](https://github.com/Lucas-Bur/pix/commit/08925d724403ac708f9770ffcbf8e56209fff773))
+* reorder storeCommit to write metadata before data files ([53f39fc](https://github.com/Lucas-Bur/pix/commit/53f39fcd8fcf8192a22e737d393a4d8a70f7421f))
+* restore manually-verified dtypes in MODEL_REGISTRY ([171dec7](https://github.com/Lucas-Bur/pix/commit/171dec70f9374df8f67f3de283d68e9ca45b079b))
+* test robustness — isolate FS per test, harden JSON assertions, realistic embedder stub ([d33860e](https://github.com/Lucas-Bur/pix/commit/d33860e1e178f4cbbf25cd07fc7c488d2bdef713))
+* use Effect.die for unreachable dtype path instead of Effect.fail ([e6061a8](https://github.com/Lucas-Bur/pix/commit/e6061a8b6cda1160cfef9c1bad87396919c5d6e3))
+* **vector-store deepening:** remove dead PathFilter export, fix makeOnlyFilter logic, add tests ([afafe69](https://github.com/Lucas-Bur/pix/commit/afafe69ad314c9bffb9bb15af2fec71b9f00f9ff))
+* verify query dims match index dims, remove dead export EMBEDDING_DTYPES, reduce test dupes ([3559254](https://github.com/Lucas-Bur/pix/commit/3559254afab8720593145f6eabf05e9708455a61))
+
+
+### Performance Improvements
+
+* precompute ignore matcher in path-filter.ts ([f417bf3](https://github.com/Lucas-Bur/pix/commit/f417bf3bf064d923066b46d5a52ee2c1241b532e))
+
 ## [0.13.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.12.0...pix-v0.13.0) (2026-05-16)
 
 
