@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Data, Effect, Schema } from "effect"
 import * as ParseResult from "effect/ParseResult"
 
 import { ChunkValidationError } from "../../domain/errors.js"
@@ -8,17 +8,15 @@ export interface ValidationEntry {
   readonly message: string
 }
 
-export interface JsonSyntaxError {
-  readonly _tag: "JsonSyntaxError"
+export class JsonSyntaxError extends Data.TaggedError("JsonSyntaxError")<{
   readonly message: string
   readonly errors: ReadonlyArray<ValidationEntry>
-}
+}> {}
 
-export interface SchemaValidationError {
-  readonly _tag: "SchemaValidationError"
+export class SchemaValidationError extends Data.TaggedError("SchemaValidationError")<{
   readonly message: string
   readonly errors: ReadonlyArray<ValidationEntry>
-}
+}> {}
 
 export type JsonDecodeError = JsonSyntaxError | SchemaValidationError
 
@@ -80,9 +78,7 @@ export const decodeJsonWithErrors = <A>(
         message: formatSchemaMessage(error),
         errors: formatSchemaErrors(error),
       }
-      return isJsonSyntaxError(error)
-        ? { ...base, _tag: "JsonSyntaxError" as const }
-        : { ...base, _tag: "SchemaValidationError" as const }
+      return isJsonSyntaxError(error) ? new JsonSyntaxError(base) : new SchemaValidationError(base)
     }),
   )
 
