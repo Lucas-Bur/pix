@@ -1,3 +1,7 @@
+import { Effect } from "effect"
+
+import { Display } from "../../domain/ports.js"
+
 /**
  * Maps Data.TaggedError _tag values to JSON error codes for structured output. Used by formatError
  * to produce the spec-mandated `{ error: true, code, message }` format.
@@ -57,10 +61,6 @@ export const formatError = (error: unknown): FormattedError => {
     ...context,
   }
 }
-
-import { Effect } from "effect"
-
-import { Display } from "../../domain/ports.js"
 
 /** Log the error to Display in human + agent format, then re-fail to preserve non-zero exit code. */
 export const reportError = <E>(error: E): Effect.Effect<never, E, Display> =>

@@ -6,8 +6,12 @@ import { Display } from "../domain/ports.js"
 import type { SearchOptions, SearchResponse } from "../domain/ports.js"
 import { clampTopK } from "../lib/config/validation.js"
 import { reportError } from "../lib/errors/error-format.js"
-import { applyCharBudget } from "../lib/formatting/format.js"
-import { formatResult, formatLocation, toJsonOutput } from "../lib/formatting/search-output.js"
+import {
+  applyCharBudget,
+  formatLocation,
+  formatResult,
+  toJsonOutput,
+} from "../lib/formatting/search-output.js"
 
 const DEFAULT_TOP_K = 5
 const DEFAULT_CONTEXT_LINES = 0

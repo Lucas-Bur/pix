@@ -1,7 +1,7 @@
 import { expect, test } from "vite-plus/test"
 
 import type { SearchResult } from "../../domain/ports.js"
-import { applyCharBudget, formatBytes } from "./format.js"
+import { applyCharBudget, formatBytes } from "./search-output.js"
 
 test("formatBytes returns 0 B for zero", () => {
   expect(formatBytes(0)).toBe("0 B")

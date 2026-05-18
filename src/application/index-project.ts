@@ -15,9 +15,9 @@ import {
   type SkippedEntry,
   type IndexOptions,
 } from "../domain/ports.js"
-import { mergeConfig } from "../lib/config/config-merge.js"
 import { getExtension, getFileExtension, getFilename } from "../lib/config/extension.js"
 import { buildProcessorMap } from "../lib/config/processors.js"
+import { mergeConfig } from "../lib/config/validation.js"
 import type { StatusResult } from "./get-status.js"
 
 export interface IndexResult {
