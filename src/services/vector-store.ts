@@ -104,7 +104,7 @@ const make = Effect.gen(function* () {
       }
     })
 
-  /** Read index-meta.json. Falls back to fp32 defaults if meta file does not exist. */
+  /** Read index-meta.json. Returns null only if the file is missing. */
   const readIndexMeta = (): Effect.Effect<IndexMeta | null, StoreError> =>
     Effect.gen(function* () {
       const exists = yield* withReadError(fs.exists(META_FILE), "check index meta")
@@ -114,10 +114,9 @@ const make = Effect.gen(function* () {
         "read index meta",
         META_FILE,
       )
-      const parsed = yield* Schema.decodeUnknown(Schema.parseJson(IndexMetaSchema))(content).pipe(
-        Effect.catchAll(() => Effect.succeed(null)),
+      return yield* Schema.decodeUnknown(Schema.parseJson(IndexMetaSchema))(content).pipe(
+        Effect.mapError((e) => new StoreError({ message: "Corrupted index-meta.json", cause: e })),
       )
-      return parsed
     })
 
   /** Load index meta, read config, and validate dtype compatibility. */
@@ -128,7 +127,11 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* ensureIndexExists()
       const indexMeta = yield* readIndexMeta()
-      const storedDtype = indexMeta?.dtype ?? "fp32"
+      if (!indexMeta) {
+        return yield* new StoreError({
+          message: "Index meta file missing. Index may be corrupted — run pix reset and re-index.",
+        })
+      }
       const config = yield* configStore
         .readConfig()
         .pipe(
@@ -137,14 +140,14 @@ const make = Effect.gen(function* () {
           ),
         )
       const configDtype = config.embedder.dtype
-      if (storedDtype !== configDtype) {
+      if (indexMeta.dtype !== configDtype) {
         return yield* new DtypeMismatchError({
-          message: `Index was built with dtype "${storedDtype}" but config expects "${configDtype}". Re-index to fix.`,
-          storedDtype,
+          message: `Index was built with dtype "${indexMeta.dtype}" but config expects "${configDtype}". Re-index to fix.`,
+          storedDtype: indexMeta.dtype,
           configDtype,
         })
       }
-      return { dims: indexMeta?.dims ?? 384, dtype: configDtype }
+      return { dims: indexMeta.dims, dtype: configDtype }
     })
 
   /** Read chunks.jsonl and vectors.bin, decode vectors. */
