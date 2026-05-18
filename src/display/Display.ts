@@ -153,9 +153,9 @@ export const ClackDisplay = {
           effect: Effect.Effect<A, E, R>,
         ): Effect.Effect<A, E, R> =>
           Effect.gen(function* () {
-            yield* appendLogEntry(fs, { type: "spinner-start", message })
             const current = yield* getActive(activeRef)
             if (current !== null) return yield* effect
+            yield* appendLogEntry(fs, { type: "spinner-start", message })
             const s = clack.spinner()
             s.start(message)
             yield* setActive(activeRef, { type: "spinner" })
