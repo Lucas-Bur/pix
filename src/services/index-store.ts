@@ -12,7 +12,7 @@ import { buildChunkValidationErrors } from "../lib/config/validation.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/errors/fs-error.js"
 import { buildBm25Index } from "../lib/retrieval/bm25.js"
 import { getVectorCodec } from "../lib/vectors/vector-codec.js"
-import { serializeVectors } from "../lib/vectors/vector-math.js"
+import { serializeVectors } from "../lib/vectors/vector-serialization.js"
 import { ConfigStoreLive } from "./config-store.js"
 
 const parseChunkLine = (line: string): Effect.Effect<Option.Option<Chunk>> =>
