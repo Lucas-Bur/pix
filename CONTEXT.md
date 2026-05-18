@@ -2,12 +2,24 @@
 
 ## Glossary
 
+### BM25
+
+Lexical retrieval algorithm scoring chunks by term frequency × inverse document frequency. Corpus statistics (term frequencies, document frequencies, chunk lengths) pre-built at index time, stored in `.pix/bm25.json`. Constants: k1=1.5, b=0.75 (standard Okapi BM25).
+
+### BM25 Index
+
+Pre-computed BM25 statistics stored in `.pix/bm25.json`: average chunk length, per-term document frequencies, per-chunk term frequencies, per-chunk lengths. Built during `pix index`, deleted on `pix reset`. Survives Phase 3 text removal.
+
 ### Chunk
 
 A piece of source code produced by the chunker. One chunk = N lines of code with overlap.
 Stored as one line in `chunks.jsonl`. Maximum size guided by 60 lines (configurable `chunkLines`), with `overlapLines` lines overlapping between consecutive chunks.
 Chunk-ID = `sha1(file:startLine).slice(0, 12)`.
 Minimum chunk size: 20 characters (hardcoded for MVP, TODO: promote to configurable).
+
+### ChunkEntry
+
+Raw data loaded from the index and passed to scorers at query time. Contains chunk text, vector, file location, and context lines. Shape: `{ index, file, startLine, endLine, text, vector, contextBefore, contextAfter }`.
 
 ### Config
 
@@ -32,6 +44,26 @@ Reads/writes the `.pix/` directory: `config.json`, `chunks.jsonl`, `vectors.bin`
 ### MVP Scope
 
 init, index, query, status, reset. No incremental indexing, no cloud providers, no GUI.
+
+### Query Routing
+
+Token-count heuristic adjusting scorer weights before RRF fusion. Short queries (1-2 tokens) boost BM25 weight; long queries (8+ tokens) boost semantic weight. Default: equal weights. Lives in `src/lib/query-router.ts`.
+
+### RankedChunk
+
+Scorer output — ranks all chunks against a query. Shape: `{ chunkIndex: number, score: number }[]` sorted by score descending. Each scorer returns its own ranked list; RRF fuses N lists by rank position.
+
+### RRF (Reciprocal Rank Fusion)
+
+Fuses N ranked lists by rank position: `Σ weight * 1 / (k + rank_in_path)`. Raw scores are discarded — only rank position matters. k=60 (standard, configurable later). Pure function in `src/lib/rrf.ts`.
+
+### Scorer
+
+A pure scoring function in `src/lib/` that ranks all chunks against a query. BM25 scorer uses pre-built index from `.pix/bm25.json`. Dense scorer uses cosine similarity on embeddings. Each scorer returns `RankedChunk[]`. Adding a scorer means adding a function + wiring it into `Effect.all`.
+
+### Scorer Weight
+
+Multiplier applied to a scorer's RRF contribution, set by query routing. Dialogs a retrieval path's influence up or down based on query characteristics. Not a normalization factor — RRF rank positions are already comparable across paths.
 
 ### Effect
 
@@ -178,6 +210,13 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 - `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
 
 All commands support `--json` for agent-ready structured output on stdout. Single JSON object emitted at end of successful operations (e.g. `{ chunks, files, totalLines, byteSize, durationMs }`). Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent).
+
+## Relationships
+
+- A **Scorer** consumes **ChunkEntry** data and produces a **RankedChunk** list
+- **RRF** fuses N **RankedChunk** lists, each weighted by **Query Routing** output
+- **BM25 Index** is built once by the index pipeline, consumed by the BM25 **Scorer** at query time
+- Adding a retrieval path means: write a pure **Scorer** function + add it to `Effect.all` + add its list to **RRF**
 
 ## Architecture Decisions
 
