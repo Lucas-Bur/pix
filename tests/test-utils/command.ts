@@ -3,7 +3,7 @@ import { Effect, Exit, Layer, Ref } from "effect"
 import type { MemoryFileSystem } from "effect-memfs"
 import { expect } from "vite-plus/test"
 
-import type { DisplayEntry } from "../../src/display/Display.js"
+import type { DisplayEntry } from "../../src/display/entries.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
 import { ConfigError, ModelLoadError, StoreError } from "../../src/domain/errors.js"
 import type { DisplaySeverity } from "../../src/domain/ports.js"

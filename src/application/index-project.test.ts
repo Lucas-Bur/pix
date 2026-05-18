@@ -4,15 +4,14 @@ import { expect, test } from "vite-plus/test"
 import { makeFailingIndexStore } from "../../tests/test-utils/command.js"
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import type { Config } from "../domain/config.js"
 import { StoreError } from "../domain/errors.js"
 import { ConfigStore } from "../domain/ports.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { IndexProject } from "./index-project.js"
 
 const makeConfig = (overrides: Record<string, unknown> = {}): string =>
-  makeConfigJson(
-    overrides as Record<string, unknown> & Partial<import("../domain/config.js").Config>,
-  )
+  makeConfigJson(overrides as Record<string, unknown> & Partial<Config>)
 
 const sourceFile = `import { Effect } from "effect"
 // Line 2 - ${"padding ".repeat(50)}

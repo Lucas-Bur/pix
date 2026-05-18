@@ -2,8 +2,8 @@ import { Args, Command, Options } from "@effect/cli"
 import { Effect, Option } from "effect"
 
 import { QueryProject } from "../application/query-project.js"
-import { Display } from "../display/Display.js"
-import type { SearchResponse } from "../domain/ports.js"
+import { Display } from "../domain/ports.js"
+import type { SearchOptions, SearchResponse } from "../domain/ports.js"
 import { clampTopK } from "../lib/config/validation.js"
 import { reportError } from "../lib/errors/error-format.js"
 import { applyCharBudget } from "../lib/formatting/format.js"
@@ -19,7 +19,7 @@ const buildSearchOptions = (
   top: Option.Option<number>,
   ignorePath: readonly string[],
   onlyPath: readonly string[],
-): { options: import("../domain/ports.js").SearchOptions; clamped: boolean; rawValue: number } => {
+): { options: SearchOptions; clamped: boolean; rawValue: number } => {
   const rawValue = Option.getOrElse(top, () => DEFAULT_TOP_K)
   const clamped = clampTopK(rawValue, MIN_TOP_K, MAX_TOP_K)
   return {

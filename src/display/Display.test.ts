@@ -4,7 +4,8 @@ import { MemoryFileSystem } from "effect-memfs"
 import { describe, expect, it } from "vite-plus/test"
 
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
-import { Display, JsonDisplay } from "./Display.js"
+import { Display } from "../domain/ports.js"
+import { JsonDisplay } from "./json-display.js"
 
 describe("SilentDisplay", () => {
   it("records log messages with severity", () => {

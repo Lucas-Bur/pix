@@ -2,7 +2,7 @@ import { Command, Options } from "@effect/cli"
 import { Clock, Effect } from "effect"
 
 import { ResetIndex } from "../application/reset-index.js"
-import { Display } from "../display/Display.js"
+import { Display } from "../domain/ports.js"
 import { reportError } from "../lib/errors/error-format.js"
 import { formatBytes } from "../lib/formatting/format.js"
 

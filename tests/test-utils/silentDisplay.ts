@@ -1,7 +1,7 @@
 import { Ref } from "effect"
 
-import { SilentDisplay } from "../../src/display/Display.js"
-import type { DisplayEntry } from "../../src/display/Display.js"
+import type { DisplayEntry } from "../../src/display/entries.js"
+import { SilentDisplay } from "../../src/display/silent-display.js"
 
 /** Creates a SilentDisplay layer with a fresh Ref for test assertions */
 export const silentDisplay = () => {

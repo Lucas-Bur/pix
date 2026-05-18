@@ -2,7 +2,7 @@ import { Command, Options } from "@effect/cli"
 import { Effect } from "effect"
 
 import { InitProject } from "../application/init-project.js"
-import { Display } from "../display/Display.js"
+import { Display } from "../domain/ports.js"
 import { reportError } from "../lib/errors/error-format.js"
 
 /** CLI command: pix init [--json] */

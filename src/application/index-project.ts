@@ -1,10 +1,10 @@
 import { Effect, Ref, Stream, Option } from "effect"
 import * as Chunk from "effect/Chunk"
 
-import { Display } from "../display/Display.js"
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type { IndexError, AllProcessorErrors, ChunkerError } from "../domain/errors.js"
+import { Display } from "../domain/ports.js"
 import {
   ConfigStore,
   Scanner,
