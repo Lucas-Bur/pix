@@ -1,6 +1,8 @@
 import { Effect, Schema } from "effect"
 import * as ParseResult from "effect/ParseResult"
 
+import { ChunkValidationError } from "../domain/errors.js"
+
 export interface ValidationEntry {
   readonly path: string
   readonly message: string
@@ -83,3 +85,17 @@ export const decodeJsonWithErrors = <A>(
         : { ...base, _tag: "SchemaValidationError" as const }
     }),
   )
+
+export const buildChunkValidationErrors = (
+  malformedLines: number,
+): readonly ChunkValidationError[] =>
+  malformedLines > 0
+    ? [
+        new ChunkValidationError({
+          message: `Skipped ${malformedLines} malformed chunk line(s) in chunks.jsonl`,
+          errors: [
+            { path: "chunks.jsonl", message: `${malformedLines} line(s) failed schema validation` },
+          ],
+        }),
+      ]
+    : []
