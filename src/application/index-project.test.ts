@@ -1,7 +1,7 @@
 import { Cause, Effect, Exit } from "effect"
 import { expect, test } from "vite-plus/test"
 
-import { makeFailingVectorStore } from "../../tests/test-utils/command.js"
+import { makeFailingIndexStore } from "../../tests/test-utils/command.js"
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { StoreError } from "../domain/errors.js"
@@ -78,14 +78,14 @@ test("IndexProject.index scans, chunks, embeds, and stores", () =>
     Effect.scoped,
   ))
 
-test("IndexProject.index propagates errors from VectorStore", () =>
+test("IndexProject.index propagates errors from IndexStore", () =>
   Effect.gen(function* () {
     const exit = yield* Effect.exit(IndexProject.index()).pipe(
       Effect.provide(
         testLayer({
           contents: fixtures,
           scannerLayer: ScannerLive,
-          vectorStoreLayer: makeFailingVectorStore("storeBatch"),
+          indexStoreLayer: makeFailingIndexStore("storeBatch"),
         }),
       ),
     )

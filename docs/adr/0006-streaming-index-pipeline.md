@@ -15,7 +15,7 @@ Phase 2: Stream.fromIterable(chunks) → grouped(batchSize) → mapEffect(embed)
 
 Scanner stays `Effect<ScanResult>` (discovery operation, not a stream), converted to `Stream` in the use case via `Stream.fromIterable`.
 
-### VectorStore lifecycle
+### IndexStore lifecycle
 
 Four new port methods replace the single `store()`: `storeBegin()` (idempotent — cleans stale temp files), `storeBatch()` (append to temp files), `storeCommit()` (atomic rename, return stats), `storeAbort()` (delete temp files). The use case wraps Phase 2 in `d.progress()` which handles the spinner→progress bar transition.
 
@@ -46,6 +46,6 @@ Phase 1 uses a spinner ("Processing N files..."). Phase 2 uses a progress bar wi
 
 - Memory pressure drops significantly — only one batch of embeddings in memory at a time (Phase 2)
 - Progress bar shows percentage with known total from Phase 1
-- Four new port methods on VectorStore; all tests and mocks must update
+- Four new port methods on IndexStore; all tests and mocks must update
 - Embedder `batch()` is simpler but loses internal safety — misconfigured `batchSize` can OOM
 - CLI flags (`--batch-size`, `--chunk-concurrency`, etc.) override config for one-off runs

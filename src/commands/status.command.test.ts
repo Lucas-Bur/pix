@@ -5,7 +5,7 @@ import {
   assertCommandError,
   expectJsonEntry,
   indexFixtures,
-  makeFailingVectorStore,
+  makeFailingIndexStore,
   runCommand,
 } from "../../tests/test-utils/command.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
@@ -54,11 +54,11 @@ test("pix status without --json logs status entries via Display", () => {
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
 
-test("pix status --json with failing VectorStore produces error JSON", () => {
+test("pix status --json with failing IndexStore produces error JSON", () => {
   const { ref, layer } = silentDisplay()
   return assertCommandError(run(["status", "--json"]), ref).pipe(
     Effect.provide(
-      testLayer({ vectorStoreLayer: makeFailingVectorStore("getStatus"), displayLayer: layer }),
+      testLayer({ indexStoreLayer: makeFailingIndexStore("getStatus"), displayLayer: layer }),
     ),
   )
 })

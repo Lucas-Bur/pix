@@ -6,24 +6,24 @@ import { makeChunk, makeEmbedding } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { GetStatus } from "../application/get-status.js"
-import { VectorStore } from "../domain/ports.js"
-import { VectorStoreLive } from "./vector-store.js"
+import { IndexStore } from "../domain/ports.js"
+import { IndexStoreLive } from "./index-store.js"
 
-const vsLayer = Layer.provideMerge(VectorStoreLive, memoryFsLayer({}))
+const isLayer = Layer.provideMerge(IndexStoreLive, memoryFsLayer({}))
 
 const storeFixture = (
   chunks: ReturnType<typeof makeChunk>[],
   embeddings: ReturnType<typeof makeEmbedding>[],
 ) =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
+    const store = yield* IndexStore
     yield* store.storeBegin()
     yield* store.storeBatch(chunks, embeddings)
     yield* store.storeCommit()
     return store
   })
 
-test("FileSystemVectorStore.getStatus returns 0 when no index exists", () =>
+test("IndexStore.getStatus returns 0 when no index exists", () =>
   Effect.gen(function* () {
     const result = yield* GetStatus.getStatus()
     expect(result.chunks).toBe(0)
@@ -34,45 +34,45 @@ test("FileSystemVectorStore.getStatus returns 0 when no index exists", () =>
     expect(result.byteSize).toBe(0)
   }).pipe(Effect.provide(testLayer({ cleanStore: true })), Effect.scoped))
 
-test("VectorStoreLive.reset returns 0/0/false when no index exists", () =>
+test("IndexStore.reset returns 0/0/false when no index exists", () =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
+    const store = yield* IndexStore
     const resetResult = yield* store.reset()
     expect(resetResult.deletedChunks).toBe(false)
     expect(resetResult.deletedVectors).toBe(false)
     expect(resetResult.freedBytes).toBe(0)
-  }).pipe(Effect.provide(Layer.provideMerge(VectorStoreLive, memoryFsLayer({}))), Effect.scoped))
+  }).pipe(Effect.provide(Layer.provideMerge(IndexStoreLive, memoryFsLayer({}))), Effect.scoped))
 
-test("VectorStoreLive.store writes chunks and vectors to index files", () =>
+test("IndexStore.store writes chunks and vectors to index files", () =>
   Effect.gen(function* () {
     const store = yield* storeFixture([makeChunk()], [makeEmbedding()])
     const status = yield* store.getStatus()
     expect(status.chunks).toBe(1)
     expect(status.files).toBe(1)
     expect(status.totalLines).toBe(1)
-  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+  }).pipe(Effect.provide(isLayer), Effect.scoped))
 
-test("VectorStoreLive.reset deletes index files when they exist", () =>
+test("IndexStore.reset deletes index files when they exist", () =>
   Effect.gen(function* () {
     yield* storeFixture([makeChunk()], [makeEmbedding()])
-    const store = yield* VectorStore
+    const store = yield* IndexStore
     const result = yield* store.reset()
     expect(result.deletedChunks).toBe(true)
     expect(result.deletedVectors).toBe(true)
     expect(result.freedBytes).toBeGreaterThan(0)
-  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+  }).pipe(Effect.provide(isLayer), Effect.scoped))
 
-test("VectorStoreLive.store works when .pix directory already exists", () =>
+test("IndexStore.store works when .pix directory already exists", () =>
   Effect.gen(function* () {
     const store = yield* storeFixture([makeChunk()], [makeEmbedding()])
     const status = yield* store.getStatus()
     expect(status.chunks).toBe(1)
   }).pipe(
-    Effect.provide(Layer.provideMerge(VectorStoreLive, memoryFsLayer({ ".pix": null }))),
+    Effect.provide(Layer.provideMerge(IndexStoreLive, memoryFsLayer({ ".pix": null }))),
     Effect.scoped,
   ))
 
-test("VectorStoreLive.getStatus handles chunks.jsonl with malformed lines", () =>
+test("IndexStore.getStatus handles chunks.jsonl with malformed lines", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const store = yield* storeFixture(
@@ -89,17 +89,17 @@ test("VectorStoreLive.getStatus handles chunks.jsonl with malformed lines", () =
     expect(status.files).toBe(1)
     expect(status.validationErrors.length).toBe(1)
     expect(status.validationErrors[0].message).toContain("malformed")
-  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+  }).pipe(Effect.provide(isLayer), Effect.scoped))
 
-test("VectorStoreLive.storeCommit writes bm25.json", () =>
+test("IndexStore.storeCommit writes bm25.json", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     yield* storeFixture([makeChunk()], [makeEmbedding()])
     const exists = yield* fs.exists(".pix/bm25.json")
     expect(exists).toBe(true)
-  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+  }).pipe(Effect.provide(isLayer), Effect.scoped))
 
-test("VectorStoreLive.loadSearchData returns bm25Index after indexing", () =>
+test("IndexStore.loadSearchData returns bm25Index after indexing", () =>
   Effect.gen(function* () {
     yield* storeFixture(
       [
@@ -108,27 +108,27 @@ test("VectorStoreLive.loadSearchData returns bm25Index after indexing", () =>
       ],
       [makeEmbedding(0.1), makeEmbedding(0.1)],
     )
-    const store = yield* VectorStore
+    const store = yield* IndexStore
     const data = yield* store.loadSearchData()
     expect(data.entries).toHaveLength(2)
     expect(data.bm25Index).not.toBeNull()
     expect(data.bm25Index!.chunkLengths).toHaveLength(2)
     expect(data.bm25Index!.chunkLengths).toEqual([3, 3])
-  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+  }).pipe(Effect.provide(isLayer), Effect.scoped))
 
-test("VectorStoreLive.reset deletes bm25.json", () =>
+test("IndexStore.reset deletes bm25.json", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     yield* storeFixture([makeChunk()], [makeEmbedding()])
-    const store = yield* VectorStore
+    const store = yield* IndexStore
     yield* store.reset()
     const exists = yield* fs.exists(".pix/bm25.json")
     expect(exists).toBe(false)
-  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+  }).pipe(Effect.provide(isLayer), Effect.scoped))
 
-test("VectorStoreLive.loadSearchData fails when bm25.json is missing", () =>
+test("IndexStore.loadSearchData fails when bm25.json is missing", () =>
   Effect.gen(function* () {
-    const store = yield* VectorStore
+    const store = yield* IndexStore
     yield* store.storeBegin()
     yield* store.storeBatch([makeChunk()], [makeEmbedding()])
     yield* store.storeCommit()
@@ -138,4 +138,4 @@ test("VectorStoreLive.loadSearchData fails when bm25.json is missing", () =>
 
     const result = yield* Effect.either(store.loadSearchData())
     expect(result._tag).toBe("Left")
-  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+  }).pipe(Effect.provide(isLayer), Effect.scoped))

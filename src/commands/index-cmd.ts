@@ -2,7 +2,7 @@ import { Command, Options } from "@effect/cli"
 import { Effect, Option } from "effect"
 
 import { IndexProject } from "../application/index-project.js"
-import type { IndexOptions } from "../application/index-project.js"
+import type { IndexOptions, IndexResult } from "../application/index-project.js"
 import { Display } from "../display/Display.js"
 import { reportError } from "../lib/error-format.js"
 
@@ -62,14 +62,7 @@ const buildIndexOptions = (args: {
   }
 }
 
-const emitIndexResult = (
-  d: typeof Display.Service,
-  result: {
-    status: { chunks: number; files: number; totalLines: number; byteSize: number }
-    durationMs: number
-    embedderFallback?: { originalDevice: string; reason: string }
-  },
-): Effect.Effect<void> =>
+const emitIndexResult = (d: typeof Display.Service, result: IndexResult): Effect.Effect<void> =>
   Effect.gen(function* () {
     yield* d.json({
       chunks: result.status.chunks,

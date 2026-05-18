@@ -13,15 +13,15 @@ import { ChunkerLive } from "./services/chunker.js"
 import { ConfigStoreLive } from "./services/config-store.js"
 import { ContentExtractorLive } from "./services/content-extractor.js"
 import { OnnxEmbedderLive } from "./services/embedder.js"
+import { IndexStoreLive } from "./services/index-store.js"
 import { ScannerLive } from "./services/scanner.js"
-import { VectorStoreLive } from "./services/vector-store.js"
 
 // === Layer 1: Infrastructure services ===
 const ServicesLayer = Layer.mergeAll(
   ConfigStoreLive,
   ScannerLive,
   OnnxEmbedderLive,
-  VectorStoreLive,
+  IndexStoreLive,
   ContentExtractorLive,
 )
 

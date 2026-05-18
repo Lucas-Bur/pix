@@ -105,7 +105,7 @@ export class Embedder extends Context.Tag("Embedder")<
   }
 >() {}
 
-// === VectorStore Port ===
+// === IndexStore Port ===
 
 /** Pre-built BM25 corpus statistics stored in .pix/bm25.json. */
 export interface Bm25Index {
@@ -196,8 +196,8 @@ export interface SearchResponse {
 }
 
 /** Port for persisting chunks and embeddings and querying the index. */
-export class VectorStore extends Context.Tag("VectorStore")<
-  VectorStore,
+export class IndexStore extends Context.Tag("IndexStore")<
+  IndexStore,
   {
     /** Initialize transactional staging: clean stale temp files and reset accumulators. */
     readonly storeBegin: () => Effect.Effect<void, StoreError | DiskFullError>

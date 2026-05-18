@@ -4,7 +4,7 @@ import { expect, test } from "vite-plus/test"
 import {
   assertCommandError,
   expectJsonEntry,
-  makeFailingVectorStore,
+  makeFailingIndexStore,
   runCommand,
 } from "../../tests/test-utils/command.js"
 import { makeChunkJson, TEST_CONFIG_JSON } from "../../tests/test-utils/fixtures.js"
@@ -81,11 +81,11 @@ test("pix reset without --json on clean project shows info", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix reset --json with failing VectorStore produces error JSON", () => {
+test("pix reset --json with failing IndexStore produces error JSON", () => {
   const { ref, layer } = silentDisplay()
   return assertCommandError(run(["reset", "--json"]), ref).pipe(
     Effect.provide(
-      testLayer({ vectorStoreLayer: makeFailingVectorStore("reset"), displayLayer: layer }),
+      testLayer({ indexStoreLayer: makeFailingIndexStore("reset"), displayLayer: layer }),
     ),
   )
 })
