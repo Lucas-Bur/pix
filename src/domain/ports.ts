@@ -107,6 +107,38 @@ export class Embedder extends Context.Tag("Embedder")<
 
 // === VectorStore Port ===
 
+/** Pre-built BM25 corpus statistics stored in .pix/bm25.json. */
+export interface Bm25Index {
+  readonly avgChunkLength: number
+  readonly chunkLengths: readonly number[]
+  readonly docFreqs: Record<string, number>
+  readonly chunkTfs: Record<string, ReadonlyArray<readonly [number, number]>>
+}
+
+/** A single scored chunk from a scorer, before RRF fusion. */
+export interface RankedChunk {
+  readonly chunkIndex: number
+  readonly score: number
+}
+
+/** Raw chunk data loaded from the index for passing to scorers at query time. */
+export interface ChunkEntry {
+  readonly index: number
+  readonly file: string
+  readonly startLine: number
+  readonly endLine: number
+  readonly text: string
+  readonly vector: Float32Array
+  readonly contextBefore: string | null
+  readonly contextAfter: string | null
+}
+
+/** All index data needed at query time for hybrid search. */
+export interface SearchData {
+  readonly entries: readonly ChunkEntry[]
+  readonly bm25Index: Bm25Index
+}
+
 /** Options for searching the vector store. All fields are optional — omitted = use default. */
 export interface SearchOptions {
   /** Maximum number of results to return. Default: no limit. */
@@ -186,6 +218,11 @@ export class VectorStore extends Context.Tag("VectorStore")<
       options?: SearchOptions,
     ) => Effect.Effect<
       SearchResponse,
+      StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
+    >
+    /** Load all index data needed for hybrid search (chunks + vectors + BM25 stats). */
+    readonly loadSearchData: () => Effect.Effect<
+      SearchData,
       StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
     >
     /** Return index statistics: chunk/file counts, model, last index time, etc. */

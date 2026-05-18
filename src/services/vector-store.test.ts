@@ -201,3 +201,52 @@ test("VectorStoreLive.getStatus handles chunks.jsonl with malformed lines", () =
     expect(status.validationErrors.length).toBe(1)
     expect(status.validationErrors[0].message).toContain("malformed")
   }).pipe(Effect.provide(vsLayer), Effect.scoped))
+
+test("VectorStoreLive.storeCommit writes bm25.json", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    yield* storeFixture([makeChunk()], [makeEmbedding()])
+    const exists = yield* fs.exists(".pix/bm25.json")
+    expect(exists).toBe(true)
+  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+
+test("VectorStoreLive.loadSearchData returns bm25Index after indexing", () =>
+  Effect.gen(function* () {
+    yield* storeFixture(
+      [
+        makeChunk({ id: "a1", idx: 0, text: "function handleRequest(req)" }),
+        makeChunk({ id: "a2", idx: 1, text: "const x = 1" }),
+      ],
+      [makeEmbedding(0.1), makeEmbedding(0.1)],
+    )
+    const store = yield* VectorStore
+    const data = yield* store.loadSearchData()
+    expect(data.entries).toHaveLength(2)
+    expect(data.bm25Index).not.toBeNull()
+    expect(data.bm25Index!.chunkLengths).toHaveLength(2)
+    expect(data.bm25Index!.chunkLengths).toEqual([3, 3])
+  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+
+test("VectorStoreLive.reset deletes bm25.json", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    yield* storeFixture([makeChunk()], [makeEmbedding()])
+    const store = yield* VectorStore
+    yield* store.reset()
+    const exists = yield* fs.exists(".pix/bm25.json")
+    expect(exists).toBe(false)
+  }).pipe(Effect.provide(vsLayer), Effect.scoped))
+
+test("VectorStoreLive.loadSearchData fails when bm25.json is missing", () =>
+  Effect.gen(function* () {
+    const store = yield* VectorStore
+    yield* store.storeBegin()
+    yield* store.storeBatch([makeChunk()], [makeEmbedding()])
+    yield* store.storeCommit()
+
+    const fs = yield* FileSystem.FileSystem
+    yield* fs.remove(".pix/bm25.json")
+
+    const result = yield* Effect.either(store.loadSearchData())
+    expect(result._tag).toBe("Left")
+  }).pipe(Effect.provide(vsLayer), Effect.scoped))
