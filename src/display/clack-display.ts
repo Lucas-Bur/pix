@@ -111,100 +111,95 @@ const runWithProgressBar = <A, E, R>(
     return yield* Effect.failCause(exit.cause)
   })
 
-export const ClackDisplay = {
-  layer: Layer.effect(
-    Display,
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
-      const activeRef = yield* Ref.make<ActiveInteractive>(null)
-      const handleRef = yield* Ref.make<ClackHandle | null>(null)
-      const lastSpinnerMsg = yield* Ref.make<string>("")
+export const ClackDisplayLive = Layer.effect(
+  Display,
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const activeRef = yield* Ref.make<ActiveInteractive>(null)
+    const handleRef = yield* Ref.make<ClackHandle | null>(null)
+    const lastSpinnerMsg = yield* Ref.make<string>("")
 
-      const dismissSpinnerToProgress = (msg: string) =>
-        dismissSpinnerAndStop(fs, activeRef, handleRef, lastSpinnerMsg, msg)
+    const dismissSpinnerToProgress = (msg: string) =>
+      dismissSpinnerAndStop(fs, activeRef, handleRef, lastSpinnerMsg, msg)
 
-      return {
-        intro: (title) =>
-          appendLogEntry(fs, { type: "intro", title }).pipe(
-            Effect.andThen(Effect.sync(() => clack.intro(styleText("inverse", ` ${title} `)))),
+    return {
+      intro: (title) =>
+        appendLogEntry(fs, { type: "intro", title }).pipe(
+          Effect.andThen(Effect.sync(() => clack.intro(styleText("inverse", ` ${title} `)))),
+        ),
+
+      outro: (message) =>
+        appendLogEntry(fs, { type: "outro", message }).pipe(
+          Effect.andThen(Effect.sync(() => clack.outro(message))),
+        ),
+
+      log: (message, severity) =>
+        appendLogEntry(fs, { severity, message }).pipe(
+          Effect.andThen(
+            Effect.sync(() => severityToClack[severity](terminalStyle.status(message))),
           ),
+        ),
 
-        outro: (message) =>
-          appendLogEntry(fs, { type: "outro", message }).pipe(
-            Effect.andThen(Effect.sync(() => clack.outro(message))),
-          ),
+      note: (content, title) =>
+        appendLogEntry(fs, { type: "note", content, title }).pipe(
+          Effect.andThen(Effect.sync(() => clack.note(content, title))),
+        ),
 
-        log: (message, severity) =>
-          appendLogEntry(fs, { severity, message }).pipe(
-            Effect.andThen(
-              Effect.sync(() => severityToClack[severity](terminalStyle.status(message))),
-            ),
-          ),
+      text: (message) =>
+        appendLogEntry(fs, { type: "text", message }).pipe(
+          Effect.andThen(Effect.sync(() => clack.log.message(message))),
+        ),
 
-        note: (content, title) =>
-          appendLogEntry(fs, { type: "note", content, title }).pipe(
-            Effect.andThen(Effect.sync(() => clack.note(content, title))),
-          ),
+      spinner: <A, E, R>(message: string, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+        Effect.gen(function* () {
+          const current = yield* getActive(activeRef)
+          if (current !== null) return yield* effect
+          yield* appendLogEntry(fs, { type: "spinner-start", message })
+          const s = clack.spinner()
+          s.start(message)
+          yield* setActive(activeRef, { type: "spinner" })
+          yield* Ref.set(handleRef, { type: "spinner", handle: s } satisfies ClackHandle)
+          yield* Ref.set(lastSpinnerMsg, message)
+          const exit = yield* Effect.exit(effect)
+          const lastMsg = yield* Ref.get(lastSpinnerMsg)
+          s.stop(exit._tag === "Success" && lastMsg ? lastMsg : `${message} (failed)`)
+          yield* Ref.set(handleRef, null)
+          yield* clearActive(activeRef)
+          yield* appendLogEntry(fs, { type: "spinner-stop" })
+          if (Exit.isSuccess(exit)) return exit.value
+          return yield* Effect.failCause(exit.cause)
+        }),
 
-        text: (message) =>
-          appendLogEntry(fs, { type: "text", message }).pipe(
-            Effect.andThen(Effect.sync(() => clack.log.message(message))),
-          ),
+      progress: <A, E, R>(
+        opts: ProgressOptions,
+        effect: Effect.Effect<A, E, R>,
+      ): Effect.Effect<A, E, R> =>
+        Effect.gen(function* () {
+          yield* appendLogEntry(fs, {
+            type: "progress-start",
+            message: opts.message,
+            max: opts.max,
+          })
+          yield* dismissSpinnerToProgress(opts.message)
+          return yield* runWithProgressBar(fs, opts, effect, activeRef, handleRef)
+        }),
 
-        spinner: <A, E, R>(
-          message: string,
-          effect: Effect.Effect<A, E, R>,
-        ): Effect.Effect<A, E, R> =>
-          Effect.gen(function* () {
-            const current = yield* getActive(activeRef)
-            if (current !== null) return yield* effect
-            yield* appendLogEntry(fs, { type: "spinner-start", message })
-            const s = clack.spinner()
-            s.start(message)
-            yield* setActive(activeRef, { type: "spinner" })
-            yield* Ref.set(handleRef, { type: "spinner", handle: s } satisfies ClackHandle)
-            yield* Ref.set(lastSpinnerMsg, message)
-            const exit = yield* Effect.exit(effect)
-            const lastMsg = yield* Ref.get(lastSpinnerMsg)
-            s.stop(exit._tag === "Success" && lastMsg ? lastMsg : `${message} (failed)`)
-            yield* Ref.set(handleRef, null)
-            yield* clearActive(activeRef)
-            yield* appendLogEntry(fs, { type: "spinner-stop" })
-            if (Exit.isSuccess(exit)) return exit.value
-            return yield* Effect.failCause(exit.cause)
-          }),
+      updateInteractive: (payload) =>
+        Effect.gen(function* () {
+          yield* appendLogEntry(fs, updatePayloadLog(payload))
+          const active = yield* getActive(activeRef)
+          if (!active) return
+          const h = yield* Ref.get(handleRef)
+          if (!h) return
+          if (active.type === "spinner" && h.type === "spinner") {
+            return yield* updateSpinnerMessage(payload, h, lastSpinnerMsg)
+          }
+          if (active.type === "progress" && h.type === "progress") {
+            return yield* updateProgressBar(payload, active, h, activeRef)
+          }
+        }),
 
-        progress: <A, E, R>(
-          opts: ProgressOptions,
-          effect: Effect.Effect<A, E, R>,
-        ): Effect.Effect<A, E, R> =>
-          Effect.gen(function* () {
-            yield* appendLogEntry(fs, {
-              type: "progress-start",
-              message: opts.message,
-              max: opts.max,
-            })
-            yield* dismissSpinnerToProgress(opts.message)
-            return yield* runWithProgressBar(fs, opts, effect, activeRef, handleRef)
-          }),
-
-        updateInteractive: (payload) =>
-          Effect.gen(function* () {
-            yield* appendLogEntry(fs, updatePayloadLog(payload))
-            const active = yield* getActive(activeRef)
-            if (!active) return
-            const h = yield* Ref.get(handleRef)
-            if (!h) return
-            if (active.type === "spinner" && h.type === "spinner") {
-              return yield* updateSpinnerMessage(payload, h, lastSpinnerMsg)
-            }
-            if (active.type === "progress" && h.type === "progress") {
-              return yield* updateProgressBar(payload, active, h, activeRef)
-            }
-          }),
-
-        json: () => appendLogEntry(fs, { type: "json" }),
-      } satisfies DisplayService
-    }),
-  ),
-}
+      json: () => appendLogEntry(fs, { type: "json" }),
+    } satisfies DisplayService
+  }),
+)

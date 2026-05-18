@@ -8,8 +8,8 @@ import { initCommand } from "./commands/init.ts"
 import { queryCommand } from "./commands/query.ts"
 import { resetCommand } from "./commands/reset.ts"
 import { statusCommand } from "./commands/status.ts"
-import { ClackDisplay } from "./display/clack-display.js"
-import { JsonDisplay } from "./display/json-display.js"
+import { ClackDisplayLive } from "./display/clack-display.js"
+import { JsonDisplayLive } from "./display/json-display.js"
 import { Display } from "./domain/ports.js"
 
 const require = createRequire(import.meta.url)
@@ -28,7 +28,7 @@ const pix = rootCommand.pipe(
 
 export const cli = (args: readonly string[]) => {
   const isJson = args.some((a) => a === "--json")
-  const displayLayer = isJson ? JsonDisplay.layer : ClackDisplay.layer
+  const displayLayer = isJson ? JsonDisplayLive : ClackDisplayLive
 
   const effect = Command.run(pix, { name: "pix", version: VERSION })(args)
 

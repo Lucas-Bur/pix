@@ -5,7 +5,7 @@ import { describe, expect, it } from "vite-plus/test"
 
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { Display } from "../domain/ports.js"
-import { JsonDisplay } from "./json-display.js"
+import { JsonDisplayLive } from "./json-display.js"
 
 describe("SilentDisplay", () => {
   it("records log messages with severity", () => {
@@ -196,7 +196,7 @@ describe("SilentDisplay", () => {
 
 describe("JsonDisplay file logging", () => {
   const makeJsonDisplayLayer = () =>
-    JsonDisplay.layer.pipe(Layer.provide(MemoryFileSystem.layerWith({})))
+    JsonDisplayLive.pipe(Layer.provide(MemoryFileSystem.layerWith({})))
 
   const readLogEntries = () =>
     Effect.gen(function* () {
