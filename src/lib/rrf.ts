@@ -6,6 +6,10 @@ export const rrfFuse = (
   rankedLists: readonly (readonly RankedChunk[])[],
   weights: readonly number[],
 ): RankedChunk[] => {
+  if (rankedLists.length !== weights.length) {
+    throw new Error(`rrfFuse: expected ${rankedLists.length} weights, got ${weights.length}`)
+  }
+
   const scoreMap = new Map<number, number>()
 
   for (let p = 0; p < rankedLists.length; p++) {

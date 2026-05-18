@@ -56,6 +56,12 @@ export class QueryProject extends Effect.Service<QueryProject>()("QueryProject",
     > =>
       Effect.gen(function* () {
         const { entries, bm25Index, malformedLines } = yield* store.loadSearchData()
+        if (entries.length === 0) {
+          return {
+            results: [],
+            validationErrors: buildChunkValidationErrors(malformedLines),
+          }
+        }
         const embedding = yield* embedder.embed(queryText)
 
         const lexicalRanks = rankBm25(queryText, bm25Index)

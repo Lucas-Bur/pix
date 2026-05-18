@@ -332,25 +332,21 @@ const make = Effect.gen(function* () {
       return { ...stats, files: files.size }
     })
 
+  const removeTempIfExists = (file: string, description: string): Effect.Effect<void, StoreError> =>
+    Effect.gen(function* () {
+      const exists = yield* withReadError(fs.exists(file), `check ${description}`)
+      if (exists) {
+        yield* withReadError(fs.remove(file), `abort ${description}`, file)
+      }
+    })
+
   const storeAbort = (): Effect.Effect<void, StoreError> =>
     Effect.gen(function* () {
       yield* Ref.set(seenFiles, new Set())
-      const chunksExists = yield* withReadError(fs.exists(chunksTemp), "check chunks temp")
-      if (chunksExists) {
-        yield* withReadError(fs.remove(chunksTemp), "abort chunks temp", chunksTemp)
-      }
-      const vectorsExists = yield* withReadError(fs.exists(vectorsTemp), "check vectors temp")
-      if (vectorsExists) {
-        yield* withReadError(fs.remove(vectorsTemp), "abort vectors temp", vectorsTemp)
-      }
-      const metaTempExists = yield* withReadError(fs.exists(metaTemp), "check index meta temp")
-      if (metaTempExists) {
-        yield* withReadError(fs.remove(metaTemp), "abort index meta temp", metaTemp)
-      }
-      const bm25TempExists = yield* withReadError(fs.exists(bm25Temp), "check bm25 temp")
-      if (bm25TempExists) {
-        yield* withReadError(fs.remove(bm25Temp), "abort bm25 temp", bm25Temp)
-      }
+      yield* removeTempIfExists(chunksTemp, "chunks temp")
+      yield* removeTempIfExists(vectorsTemp, "vectors temp")
+      yield* removeTempIfExists(metaTemp, "index meta temp")
+      yield* removeTempIfExists(bm25Temp, "bm25 temp")
     })
 
   const parseChunkEntries = (
@@ -375,7 +371,7 @@ const make = Effect.gen(function* () {
         startLine: chunk.startLine,
         endLine: chunk.endLine,
         text: chunk.text,
-        vector: vectors.slice(startIdx, startIdx + dims),
+        vector: vectors.subarray(startIdx, startIdx + dims),
         contextBefore: chunk.contextBefore,
         contextAfter: chunk.contextAfter,
       })

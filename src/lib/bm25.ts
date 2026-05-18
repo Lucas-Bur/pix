@@ -38,7 +38,7 @@ export const buildBm25Index = (
 }
 
 const idf = (docCount: number, df: number): number =>
-  Math.max(0, Math.log((docCount - df + 0.5) / (df + 0.5)))
+  Math.log(1 + (docCount - df + 0.5) / (df + 0.5))
 
 const bm25Score = (
   tf: number,
