@@ -25,6 +25,13 @@ describe("bm25", () => {
   })
 
   describe("rankBm25", () => {
+    it("returns the only chunk when a matching term exists in a single-document corpus", () => {
+      const index = buildBm25Index(makeTexts("function handleRequest"))
+      const ranks = rankBm25("handleRequest", index)
+      expect(ranks).toHaveLength(1)
+      expect(ranks[0].chunkIndex).toBe(0)
+    })
+
     it("ranks chunks with exact term match", () => {
       const index = buildBm25Index(
         makeTexts("function handleRequest req", "function handleResponse res", "const x = 1"),

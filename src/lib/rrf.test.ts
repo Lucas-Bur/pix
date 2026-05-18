@@ -3,6 +3,11 @@ import { describe, expect, it } from "vite-plus/test"
 import { rrfFuse } from "./rrf.js"
 
 describe("rrfFuse", () => {
+  it("throws when ranked list count and weight count differ", () => {
+    const listA = [{ chunkIndex: 0, score: 1 }]
+    expect(() => rrfFuse([listA], [1, 1])).toThrow()
+  })
+
   it("merges two ranked lists by rank position", () => {
     // Chunk 0: rank 1 in list A, rank 2 in list B
     // Chunk 1: rank 2 in list A, rank 1 in list B

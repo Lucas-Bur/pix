@@ -118,17 +118,21 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
     const d = yield* Display
     const extractor = yield* ContentExtractor
 
-    const index = (opts: IndexOptions = {}): Effect.Effect<IndexResult, IndexError> =>
-      Effect.gen(function* () {
-        const start = Date.now()
+    interface IndexContext {
+      readonly eff: ReturnType<typeof mergeConfig>
+      readonly knownFiles: string[]
+      readonly skipped: Ref.Ref<readonly SkippedEntry[]>
+      readonly start: number
+    }
 
+    const prepareIndexContext = (opts: IndexOptions): Effect.Effect<IndexContext, IndexError> =>
+      Effect.gen(function* () {
         const hasConfig = yield* configStore.configExists()
         if (!hasConfig) {
           yield* configStore.writeConfig(DEFAULT_CONFIG)
         }
         const config = yield* configStore.readConfig()
         const eff = mergeConfig(opts, config)
-
         const processorMap = buildProcessorMap(eff.skipExtensions)
 
         yield* d.updateInteractive("Scanning source files...")
@@ -155,32 +159,41 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           ])
         }
 
-        if (knownFiles.length === 0) {
-          return yield* emptyIndexResult(d, skipped, start)
+        return { eff, knownFiles, skipped, start: Date.now() }
+      })
+
+    const scanAndChunkFiles = (ctx: IndexContext): Effect.Effect<Phase1Result, IndexError> =>
+      Effect.gen(function* () {
+        if (ctx.knownFiles.length === 0) {
+          return { chunks: [], totalChunks: 0 }
         }
 
-        yield* d.updateInteractive(`Processing ${knownFiles.length} files...`)
-
-        const { chunks, totalChunks } = yield* classifyAndCollectChunks(
-          knownFiles,
+        yield* d.updateInteractive(`Processing ${ctx.knownFiles.length} files...`)
+        return yield* classifyAndCollectChunks(
+          ctx.knownFiles,
           extractor,
           chunker,
-          eff.concurrency,
-          skipped,
+          ctx.eff.concurrency,
+          ctx.skipped,
         )
+      })
 
-        if (totalChunks === 0) {
-          return yield* emptyIndexResult(d, skipped, start)
-        }
-
+    const embedAndPersistChunks = (
+      ctx: IndexContext,
+      chunks: DomainChunk[],
+      totalChunks: number,
+    ): Effect.Effect<
+      { chunks: number; files: number; totalLines: number; byteSize: number },
+      IndexError
+    > =>
+      Effect.gen(function* () {
         yield* indexStore.storeBegin()
-
         const embeddedRef = yield* Ref.make(0)
 
-        const stats = yield* d.progress(
+        return yield* d.progress(
           { message: `Embedding ${totalChunks} chunks...`, max: totalChunks },
           Stream.fromIterable(chunks).pipe(
-            Stream.grouped(eff.batchSize),
+            Stream.grouped(ctx.eff.batchSize),
             Stream.mapEffect((batchChunk) =>
               Effect.gen(function* () {
                 const batch = Chunk.toArray(batchChunk)
@@ -202,7 +215,14 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
             }),
           ),
         )
+      })
 
+    const buildIndexResult = (
+      stats: { chunks: number; files: number; totalLines: number; byteSize: number },
+      skipped: Ref.Ref<readonly SkippedEntry[]>,
+      start: number,
+    ): Effect.Effect<IndexResult> =>
+      Effect.gen(function* () {
         const collected = yield* Ref.get(skipped)
         yield* displaySkippedNote(d, collected)
 
@@ -226,6 +246,19 @@ export class IndexProject extends Effect.Service<IndexProject>()("IndexProject",
           durationMs: Date.now() - start,
           embedderFallback: fallbackInfo,
         }
+      })
+
+    const index = (opts: IndexOptions = {}): Effect.Effect<IndexResult, IndexError> =>
+      Effect.gen(function* () {
+        const ctx = yield* prepareIndexContext(opts)
+
+        const phase1 = yield* scanAndChunkFiles(ctx)
+        if (phase1.totalChunks === 0) {
+          return yield* emptyIndexResult(d, ctx.skipped, ctx.start)
+        }
+
+        const stats = yield* embedAndPersistChunks(ctx, phase1.chunks, phase1.totalChunks)
+        return yield* buildIndexResult(stats, ctx.skipped, ctx.start)
       })
 
     return { index }
