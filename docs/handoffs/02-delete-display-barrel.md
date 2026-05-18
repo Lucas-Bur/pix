@@ -3,6 +3,7 @@
 ## Context
 
 `src/display/Display.ts` is a 6-line barrel re-export file:
+
 ```typescript
 export { Display } from "../domain/ports.js"
 export { DisplayEntry } from "./entries.js"
@@ -17,18 +18,18 @@ It creates confusion: should consumers import from `Display.ts` or from the indi
 
 Find ALL files that import from `../display/Display.js` or `./display/Display.js` and update them:
 
-| File | Current Import | New Import |
-|------|---------------|------------|
-| `src/commands/index-cmd.ts` | `import { Display } from "../display/Display.js"` | `import { Display } from "../domain/ports.js"` |
-| `src/application/index-project.ts` | `import { Display } from "../display/Display.js"` | `import { Display } from "../domain/ports.js"` |
-| `src/lib/errors/error-format.ts` | `import { Display } from "../../display/Display.js"` | `import { Display } from "../../domain/ports.js"` |
-| `src/commands/query.ts` | `import { Display } from "../display/Display.js"` | `import { Display } from "../domain/ports.js"` |
-| `src/commands/status.ts` | `import { Display } from "../display/Display.js"` | `import { Display } from "../domain/ports.js"` |
-| `src/commands/reset.ts` | `import { Display } from "../display/Display.js"` | `import { Display } from "../domain/ports.js"` |
-| `src/commands/init.ts` | `import { Display } from "../display/Display.js"` | `import { Display } from "../domain/ports.js"` |
-| `src/commands/init.command.test.ts` | `import type { DisplayEntry } from "../display/Display.js"` | `import type { DisplayEntry } from "../display/entries.js"` |
-| `src/cli.ts` | `import { ClackDisplay } from "./display/clack-display.js"` + `import { Display } from "./display/Display.js"` + `import { JsonDisplay } from "./display/json-display.js"` | Keep clack-display and json-display imports as-is, change `Display` import to `import { Display } from "./domain/ports.js"` |
-| `tests/test-utils/silentDisplay.ts` | `import { SilentDisplay } from "../../src/display/Display.js"` + `import type { DisplayEntry } from "../../src/display/Display.js"` | `import { SilentDisplay } from "../../src/display/silent-display.js"` + `import type { DisplayEntry } from "../../src/display/entries.js"` |
+| File                                | Current Import                                                                                                                                                             | New Import                                                                                                                                 |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/commands/index-cmd.ts`         | `import { Display } from "../display/Display.js"`                                                                                                                          | `import { Display } from "../domain/ports.js"`                                                                                             |
+| `src/application/index-project.ts`  | `import { Display } from "../display/Display.js"`                                                                                                                          | `import { Display } from "../domain/ports.js"`                                                                                             |
+| `src/lib/errors/error-format.ts`    | `import { Display } from "../../display/Display.js"`                                                                                                                       | `import { Display } from "../../domain/ports.js"`                                                                                          |
+| `src/commands/query.ts`             | `import { Display } from "../display/Display.js"`                                                                                                                          | `import { Display } from "../domain/ports.js"`                                                                                             |
+| `src/commands/status.ts`            | `import { Display } from "../display/Display.js"`                                                                                                                          | `import { Display } from "../domain/ports.js"`                                                                                             |
+| `src/commands/reset.ts`             | `import { Display } from "../display/Display.js"`                                                                                                                          | `import { Display } from "../domain/ports.js"`                                                                                             |
+| `src/commands/init.ts`              | `import { Display } from "../display/Display.js"`                                                                                                                          | `import { Display } from "../domain/ports.js"`                                                                                             |
+| `src/commands/init.command.test.ts` | `import type { DisplayEntry } from "../display/Display.js"`                                                                                                                | `import type { DisplayEntry } from "../display/entries.js"`                                                                                |
+| `src/cli.ts`                        | `import { ClackDisplay } from "./display/clack-display.js"` + `import { Display } from "./display/Display.js"` + `import { JsonDisplay } from "./display/json-display.js"` | Keep clack-display and json-display imports as-is, change `Display` import to `import { Display } from "./domain/ports.js"`                |
+| `tests/test-utils/silentDisplay.ts` | `import { SilentDisplay } from "../../src/display/Display.js"` + `import type { DisplayEntry } from "../../src/display/Display.js"`                                        | `import { SilentDisplay } from "../../src/display/silent-display.js"` + `import type { DisplayEntry } from "../../src/display/entries.js"` |
 
 **IMPORTANT**: Search the entire codebase with grep for `from ["'].*display/Display` to ensure NO importers are missed.
 

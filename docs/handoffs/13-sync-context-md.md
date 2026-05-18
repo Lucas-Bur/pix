@@ -3,6 +3,7 @@
 ## Context
 
 After the architecture restructuring, `CONTEXT.md` references many paths that no longer exist:
+
 - `src/lib/query-router.ts` → moved to `src/application/query-project.ts` (inlined)
 - `src/lib/tokenize.ts` → moved to `src/lib/retrieval/bm25.ts` (private)
 - `src/lib/bm25.ts` → moved to `src/lib/retrieval/bm25.ts`

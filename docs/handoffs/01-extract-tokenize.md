@@ -3,6 +3,7 @@
 ## Context
 
 The `tokenize` function exists in **two identical copies**:
+
 - `src/lib/retrieval/bm25.ts:3` — private function used by `buildBm25Index` and `rankBm25`
 - `src/application/query-project.ts:19` — private function used by inlined `routeQuery`
 
@@ -11,6 +12,7 @@ This is a locality violation. If the tokenization heuristic changes (e.g., Unico
 ## What to Do
 
 1. **Create** `src/lib/retrieval/tokenize.ts` with the tokenize function:
+
    ```typescript
    export const tokenize = (text: string): string[] =>
      text

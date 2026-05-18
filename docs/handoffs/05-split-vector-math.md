@@ -3,6 +3,7 @@
 ## Context
 
 `src/lib/vectors/vector-math.ts` (54 lines) contains two unrelated concerns:
+
 1. `computeCosineSimilarity` — pure math function, no Effect, no I/O
 2. `serializeVectors` — Effect-wrapped validation + binary serialization
 
@@ -11,6 +12,7 @@ They share a file only because both deal with "vectors." The deletion test confi
 ## What to Do
 
 1. **Create** `src/lib/vectors/vector-serialization.ts` with:
+
    ```typescript
    import { Effect } from "effect"
 
@@ -47,6 +49,7 @@ They share a file only because both deal with "vectors." The deletion test confi
 3. **Update** `src/lib/vectors/vector-math.ts` to remove the `serializeVectors` function and its related imports (`Effect`, `Embedding`, `StoreError`)
 
 4. **Update** `src/services/index-store.ts` — it imports `serializeVectors` from `vector-math.js`. Change to:
+
    ```typescript
    import { serializeVectors } from "../lib/vectors/vector-serialization.js"
    ```

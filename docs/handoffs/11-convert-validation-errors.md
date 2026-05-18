@@ -19,6 +19,7 @@ export interface SchemaValidationError {
 ```
 
 These are NOT `Data.TaggedError` types. This means:
+
 - Cannot use `Effect.catchTag("JsonSyntaxError", ...)`
 - Inconsistent with the project's domain error pattern (all domain errors in `domain/errors.ts` are `Data.TaggedError`)
 - The `decodeJsonWithErrors` function returns `Effect.Effect<A, JsonDecodeError>` where `JsonDecodeError` is a union of plain interfaces
@@ -26,6 +27,7 @@ These are NOT `Data.TaggedError` types. This means:
 ## What to Do
 
 1. **Convert** `JsonSyntaxError` and `SchemaValidationError` to `Data.TaggedError`:
+
    ```typescript
    import { Data } from "effect"
 
@@ -41,6 +43,7 @@ These are NOT `Data.TaggedError` types. This means:
    ```
 
 2. **Update** `decodeJsonWithErrors` to return the new tagged error instances:
+
    ```typescript
    export const decodeJsonWithErrors = <A>(
      schema: Schema.Schema<A, any, never>,
