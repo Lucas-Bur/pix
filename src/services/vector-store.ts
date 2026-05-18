@@ -366,6 +366,23 @@ const make = Effect.gen(function* () {
       }
     })
 
+  const validateQueryDims = (
+    queryDims: number,
+    indexDims: number,
+  ): Effect.Effect<void, StoreError> =>
+    queryDims === indexDims
+      ? Effect.void
+      : Effect.fail(
+          new StoreError({
+            message: `Query dims (${queryDims}) do not match index dims (${indexDims}). Re-index to fix.`,
+          }),
+        )
+
+  const buildFilters = (options: SearchOptions | undefined) => ({
+    ignore: makeIgnoreFilter(options?.ignorePaths ?? []),
+    only: makeOnlyFilter(options?.onlyPaths ?? []),
+  })
+
   const search = (
     query: Embedding,
     options?: SearchOptions,
@@ -375,17 +392,39 @@ const make = Effect.gen(function* () {
   > =>
     Effect.gen(function* () {
       const { chunkLines, vectors, dims: indexDims } = yield* loadIndex()
-      if (query.dims !== indexDims) {
-        return yield* new StoreError({
-          message: `Query dims (${query.dims}) do not match index dims (${indexDims}). Re-index to fix.`,
-        })
-      }
-      const ignoreFilter = makeIgnoreFilter(options?.ignorePaths ?? [])
-      const onlyFilter = makeOnlyFilter(options?.onlyPaths ?? [])
+      yield* validateQueryDims(query.dims, indexDims)
+      const { ignore: ignoreFilter, only: onlyFilter } = buildFilters(options)
       const { results, malformedLines } = scoreChunks(chunkLines, vectors, query)
       const filtered = applyFilters(results, ignoreFilter, onlyFilter)
       return rankAndSlice(filtered, malformedLines, options?.topK)
     })
+
+  const emptyStatus = {
+    chunks: 0,
+    files: 0,
+    model: "",
+    lastIndex: 0,
+    totalLines: 0,
+    byteSize: 0,
+    validationErrors: [] as readonly ChunkValidationError[],
+  }
+
+  const buildStatusPayload = (
+    lines: string[],
+    uniqueFiles: Set<string>,
+    totalLines: number,
+    malformedLines: number,
+    indexMeta: IndexMeta | null,
+    vectorsStat: { size: number | bigint } | Record<string, unknown>,
+  ) => ({
+    chunks: lines.length - malformedLines,
+    files: uniqueFiles.size,
+    model: indexMeta?.model ?? "",
+    lastIndex: indexMeta?.lastIndex ?? 0,
+    totalLines,
+    byteSize: "size" in vectorsStat ? Number(vectorsStat.size) : 0,
+    validationErrors: buildChunkValidationErrors(malformedLines),
+  })
 
   const getStatus = (): Effect.Effect<
     {
@@ -401,17 +440,7 @@ const make = Effect.gen(function* () {
   > =>
     Effect.gen(function* () {
       const exists = yield* checkIndexExists()
-      if (!exists) {
-        return {
-          chunks: 0,
-          files: 0,
-          model: "",
-          lastIndex: 0,
-          totalLines: 0,
-          byteSize: 0,
-          validationErrors: [],
-        }
-      }
+      if (!exists) return emptyStatus
 
       const content = yield* withReadError(
         fs.readFileString(CHUNKS_FILE),
@@ -421,18 +450,16 @@ const make = Effect.gen(function* () {
       const lines = content.split("\n").filter((l) => l.trim().length > 0)
       const { files: uniqueFiles, totalLines, malformedLines } = yield* countChunkStats(lines)
       const indexMeta = yield* readIndexMeta()
-
       const vectorsStat = yield* withReadError(fs.stat(VECTORS_FILE), "stat vectors", VECTORS_FILE)
 
-      return {
-        chunks: lines.length - malformedLines,
-        files: uniqueFiles.size,
-        model: indexMeta?.model ?? "",
-        lastIndex: indexMeta?.lastIndex ?? 0,
+      return buildStatusPayload(
+        lines,
+        uniqueFiles,
         totalLines,
-        byteSize: "size" in vectorsStat ? Number(vectorsStat.size) : 0,
-        validationErrors: buildChunkValidationErrors(malformedLines),
-      }
+        malformedLines,
+        indexMeta,
+        vectorsStat,
+      )
     })
 
   const reset = (): Effect.Effect<
