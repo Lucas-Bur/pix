@@ -1,11 +1,5 @@
 import type { Bm25Index, RankedChunk } from "../../domain/ports.js"
-
-const tokenize = (text: string): string[] =>
-  text
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((t) => t.length > 0)
+import { tokenize } from "./tokenize.js"
 
 const K1 = 1.5
 const B = 0.75

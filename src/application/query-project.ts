@@ -15,13 +15,7 @@ import { filterResults } from "../lib/filtering/result-filter.js"
 import { rankBm25 } from "../lib/retrieval/bm25.js"
 import { rankDense } from "../lib/retrieval/dense.js"
 import { rrfFuse } from "../lib/retrieval/rrf.js"
-
-const tokenize = (text: string): string[] =>
-  text
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((t) => t.length > 0)
+import { tokenize } from "../lib/retrieval/tokenize.js"
 
 const SHORT_QUERY_MAX = 2
 const LONG_QUERY_MIN = 8
