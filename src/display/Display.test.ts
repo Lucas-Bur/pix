@@ -276,4 +276,48 @@ describe("JsonDisplay file logging", () => {
       })
       expect(entries[1]).toMatchObject({ type: "progress-stop" })
     }).pipe(Effect.provide(makeJsonDisplayLayer())))
+
+  it("records updateInteractive for string payload", () =>
+    Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.updateInteractive("Just a message")
+
+      const fs = yield* FileSystem.FileSystem
+      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
+      const entry = JSON.parse(content.trim())
+      expect(entry).toMatchObject({ type: "update", message: "Just a message" })
+    }).pipe(Effect.provide(makeJsonDisplayLayer())))
+
+  it("records updateInteractive for advanceBy payload", () =>
+    Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.updateInteractive({ message: "Advancing", advanceBy: 5 })
+
+      const fs = yield* FileSystem.FileSystem
+      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
+      const entry = JSON.parse(content.trim())
+      expect(entry).toMatchObject({ type: "update", message: "Advancing", advanceBy: 5 })
+    }).pipe(Effect.provide(makeJsonDisplayLayer())))
+
+  it("records updateInteractive for setTo payload", () =>
+    Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.updateInteractive({ message: "Setting", setTo: 42 })
+
+      const fs = yield* FileSystem.FileSystem
+      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
+      const entry = JSON.parse(content.trim())
+      expect(entry).toMatchObject({ type: "update", message: "Setting", setTo: 42 })
+    }).pipe(Effect.provide(makeJsonDisplayLayer())))
+
+  it("records updateInteractive for setToPercent payload", () =>
+    Effect.gen(function* () {
+      const d = yield* Display
+      yield* d.updateInteractive({ message: "Percent", setToPercent: 0.75 })
+
+      const fs = yield* FileSystem.FileSystem
+      const content = yield* fs.readFileString(".pix/logs/events.jsonl")
+      const entry = JSON.parse(content.trim())
+      expect(entry).toMatchObject({ type: "update", message: "Percent", setToPercent: 0.75 })
+    }).pipe(Effect.provide(makeJsonDisplayLayer())))
 })

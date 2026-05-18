@@ -286,7 +286,7 @@ export const JsonDisplay = {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       return {
-        intro: () => appendLogEntry(fs, { type: "intro" }),
+        intro: (title) => appendLogEntry(fs, { type: "intro", title }),
         outro: (message) => appendLogEntry(fs, { type: "outro", message }),
         log: (message, severity) => appendLogEntry(fs, { severity, message }),
         note: (content, title) => appendLogEntry(fs, { type: "note", content, title }),
@@ -311,11 +311,7 @@ export const JsonDisplay = {
             { type: "progress-start", message: opts.message, max: opts.max },
             { type: "progress-stop" },
           ),
-        updateInteractive: (payload) =>
-          appendLogEntry(fs, {
-            type: "update",
-            message: typeof payload === "string" ? payload : payload.message,
-          }),
+        updateInteractive: (payload) => appendLogEntry(fs, updatePayloadLog(payload)),
         json: makeJsonHandler(fs),
       } satisfies DisplayService
     }),
