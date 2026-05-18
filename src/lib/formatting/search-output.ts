@@ -1,4 +1,4 @@
-import type { SearchResult } from "../domain/ports.js"
+import type { SearchResult } from "../../domain/ports.js"
 
 /** Format a single result for human-readable output */
 export const formatResult = (result: SearchResult): string => {

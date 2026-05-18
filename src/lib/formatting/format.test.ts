@@ -75,7 +75,7 @@ test("applyCharBudget truncates when budget is exceeded", () => {
 })
 
 test("applyCharBudget preserves contextBefore and contextAfter when within budget", () => {
-  const results: import("../domain/ports.js").SearchResult[] = [
+  const results: import("../../domain/ports.js").SearchResult[] = [
     {
       score: 1,
       file: "a.ts",
@@ -92,7 +92,7 @@ test("applyCharBudget preserves contextBefore and contextAfter when within budge
 })
 
 test("applyCharBudget strips context when truncating", () => {
-  const results: import("../domain/ports.js").SearchResult[] = [
+  const results: import("../../domain/ports.js").SearchResult[] = [
     {
       score: 1,
       file: "a.ts",

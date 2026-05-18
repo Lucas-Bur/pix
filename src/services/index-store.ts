@@ -8,11 +8,11 @@ import { DtypeMismatchError, IndexMetaSchema, VectorDecodeError } from "../domai
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
 import { ConfigStore, IndexStore } from "../domain/ports.js"
 import type { Bm25Index, ChunkEntry, IndexStats, SearchData } from "../domain/ports.js"
-import { buildBm25Index } from "../lib/bm25.js"
-import { ensureDirExists, withFsError, withReadError } from "../lib/fs-error.js"
-import { buildChunkValidationErrors } from "../lib/validation.js"
-import { getVectorCodec } from "../lib/vector-codec.js"
-import { serializeVectors } from "../lib/vector-math.js"
+import { buildChunkValidationErrors } from "../lib/config/validation.js"
+import { ensureDirExists, withFsError, withReadError } from "../lib/errors/fs-error.js"
+import { buildBm25Index } from "../lib/retrieval/bm25.js"
+import { getVectorCodec } from "../lib/vectors/vector-codec.js"
+import { serializeVectors } from "../lib/vectors/vector-math.js"
 import { ConfigStoreLive } from "./config-store.js"
 
 const parseChunkLine = (line: string): Effect.Effect<Option.Option<Chunk>> =>

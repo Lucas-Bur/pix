@@ -4,10 +4,10 @@ import { Effect, Option } from "effect"
 import { QueryProject } from "../application/query-project.js"
 import { Display } from "../display/Display.js"
 import type { SearchResponse } from "../domain/ports.js"
-import { reportError } from "../lib/error-format.js"
-import { applyCharBudget } from "../lib/format.js"
-import { formatResult, formatLocation, toJsonOutput } from "../lib/search-output.js"
-import { clampTopK } from "../lib/validation.js"
+import { clampTopK } from "../lib/config/validation.js"
+import { reportError } from "../lib/errors/error-format.js"
+import { applyCharBudget } from "../lib/formatting/format.js"
+import { formatResult, formatLocation, toJsonOutput } from "../lib/formatting/search-output.js"
 
 const DEFAULT_TOP_K = 5
 const DEFAULT_CONTEXT_LINES = 0

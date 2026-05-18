@@ -13,10 +13,11 @@ import {
   IndexStore,
   ContentExtractor,
   type SkippedEntry,
+  type IndexOptions,
 } from "../domain/ports.js"
-import { mergeConfig } from "../lib/config-merge.js"
-import { getExtension, getFileExtension, getFilename } from "../lib/extension.js"
-import { buildProcessorMap } from "../services/processors/index.js"
+import { mergeConfig } from "../lib/config/config-merge.js"
+import { getExtension, getFileExtension, getFilename } from "../lib/config/extension.js"
+import { buildProcessorMap } from "../lib/config/processors.js"
 import type { StatusResult } from "./get-status.js"
 
 export interface IndexResult {
@@ -27,14 +28,6 @@ export interface IndexResult {
     readonly originalDevice: string
     readonly reason: string
   }
-}
-
-export interface IndexOptions {
-  readonly batchSize?: number
-  readonly chunkConcurrency?: number
-  readonly skipExtensions?: readonly string[]
-  readonly ignorePaths?: readonly string[]
-  readonly ignoreGitignore?: boolean
 }
 
 interface FileClassification {

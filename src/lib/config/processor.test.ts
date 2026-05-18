@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { expect, test } from "vite-plus/test"
 
-import { buildProcessorMap } from "./index.js"
+import { buildProcessorMap } from "./processors.js"
 
 test("buildProcessorMap returns chunk processor for known code extensions", () => {
   const map = buildProcessorMap([])

@@ -1,5 +1,33 @@
-import { identityProcessor, type FileProcessor } from "./identity.js"
-import { skipProcessor } from "./skip.js"
+import { FileSystem } from "@effect/platform"
+import { Effect } from "effect"
+
+import { ExtractionFailed, UnsupportedFormat } from "../../domain/errors.js"
+
+export type FileProcessor = (
+  file: string,
+) => Effect.Effect<string, ExtractionFailed | UnsupportedFormat, FileSystem.FileSystem>
+
+const identityProcessor: FileProcessor = (file) =>
+  FileSystem.FileSystem.pipe(
+    Effect.flatMap((fs) => fs.readFileString(file)),
+    Effect.mapError(
+      (cause) =>
+        new ExtractionFailed({
+          message: `Failed to read file for extraction: ${file}`,
+          file,
+          cause,
+        }),
+    ),
+  )
+
+const skipProcessor = (extension: string) => {
+  const error = new UnsupportedFormat({
+    message: `Unsupported file type: ${extension}`,
+    extension,
+  })
+  return (_file: string): Effect.Effect<string, UnsupportedFormat, FileSystem.FileSystem> =>
+    Effect.fail(error)
+}
 
 const DEFAULT_PROCESSOR_MAP: Record<string, FileProcessor> = {
   // Code
@@ -51,7 +79,7 @@ const DEFAULT_PROCESSOR_MAP: Record<string, FileProcessor> = {
   ".jpg": skipProcessor(".jpg"),
   ".jpeg": skipProcessor(".jpeg"),
   ".gif": skipProcessor(".gif"),
-  ".svg": identityProcessor, // SVG is text
+  ".svg": identityProcessor,
   ".ico": skipProcessor(".ico"),
   ".webp": skipProcessor(".webp"),
   ".mp3": skipProcessor(".mp3"),
@@ -76,8 +104,6 @@ const DEFAULT_PROCESSOR_MAP: Record<string, FileProcessor> = {
   ".lock": identityProcessor,
   lock: identityProcessor,
 }
-
-export type { FileProcessor }
 
 /**
  * Builds the processor map by merging domain defaults with user-specified skip extensions. Skip

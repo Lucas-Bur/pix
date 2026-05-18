@@ -3,7 +3,7 @@ import { Effect } from "effect"
 
 import { GetStatus } from "../application/get-status.js"
 import { Display } from "../display/Display.js"
-import { reportError } from "../lib/error-format.js"
+import { reportError } from "../lib/errors/error-format.js"
 
 /** CLI command: pix status [--json] */
 export const statusCommand = Command.make(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 
-import type { SearchResult } from "../domain/ports.js"
+import type { SearchResult } from "../../domain/ports.js"
 import { filterResults } from "./result-filter.js"
 
 const makeResult = (file: string): SearchResult => ({

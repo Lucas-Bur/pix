@@ -3,7 +3,7 @@ import { Effect } from "effect"
 
 import { InitProject } from "../application/init-project.js"
 import { Display } from "../display/Display.js"
-import { reportError } from "../lib/error-format.js"
+import { reportError } from "../lib/errors/error-format.js"
 
 /** CLI command: pix init [--json] */
 export const initCommand = Command.make(

@@ -1,4 +1,4 @@
-import type { SearchResult } from "../domain/ports.js"
+import type { SearchResult } from "../../domain/ports.js"
 import { formatResultMetadata } from "./search-output.js"
 
 /** Format byte count as human-readable string (e.g. "1.5 MB") */

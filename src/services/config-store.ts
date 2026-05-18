@@ -11,9 +11,9 @@ import {
   DiskFullError,
 } from "../domain/errors.js"
 import { ConfigStore } from "../domain/ports.js"
-import { withConfigError } from "../lib/fs-error.js"
-import { isPlatformReason } from "../lib/platform-error.js"
-import { decodeJsonWithErrors } from "../lib/validation.js"
+import { decodeJsonWithErrors } from "../lib/config/validation.js"
+import { withConfigError } from "../lib/errors/fs-error.js"
+import { isPlatformReason } from "../lib/errors/platform-error.js"
 export { ConfigStore }
 
 const CONFIG_DIR = ".pix"

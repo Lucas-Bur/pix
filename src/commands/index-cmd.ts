@@ -2,9 +2,10 @@ import { Command, Options } from "@effect/cli"
 import { Effect, Option } from "effect"
 
 import { IndexProject } from "../application/index-project.js"
-import type { IndexOptions, IndexResult } from "../application/index-project.js"
+import type { IndexResult } from "../application/index-project.js"
 import { Display } from "../display/Display.js"
-import { reportError } from "../lib/error-format.js"
+import type { IndexOptions } from "../domain/ports.js"
+import { reportError } from "../lib/errors/error-format.js"
 
 const batchSizeOption = Options.integer("batch-size").pipe(Options.withAlias("b"), Options.optional)
 

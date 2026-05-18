@@ -7,7 +7,7 @@ import {
   UnknownEmbeddingDtypeError,
   VectorDecodeError,
   VectorEncodeError,
-} from "../domain/dtype.js"
+} from "../../domain/dtype.js"
 import { getVectorCodec } from "./vector-codec.js"
 
 const makeTestBuffer = (dims: number, count: number): Uint8Array =>

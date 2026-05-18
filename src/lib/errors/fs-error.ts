@@ -1,7 +1,7 @@
 import { FileSystem } from "@effect/platform"
 import { Effect } from "effect"
 
-import { ConfigError, DiskFullError, StoreError } from "../domain/errors.js"
+import { ConfigError, DiskFullError, StoreError } from "../../domain/errors.js"
 import { isPlatformReason } from "./platform-error.js"
 
 /** Map a platform error to DiskFullError or StoreError. */

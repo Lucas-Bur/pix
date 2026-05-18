@@ -8,7 +8,9 @@ import { initCommand } from "./commands/init.ts"
 import { queryCommand } from "./commands/query.ts"
 import { resetCommand } from "./commands/reset.ts"
 import { statusCommand } from "./commands/status.ts"
-import { ClackDisplay, Display, JsonDisplay } from "./display/Display.js"
+import { ClackDisplay } from "./display/clack-display.js"
+import { Display } from "./display/Display.js"
+import { JsonDisplay } from "./display/json-display.js"
 
 const require = createRequire(import.meta.url)
 const VERSION = (require("../package.json") as { version: string }).version
