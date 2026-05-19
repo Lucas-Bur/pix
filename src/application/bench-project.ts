@@ -308,6 +308,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
             style: "heavy",
             size: 40,
             indicator: "dots",
+            stopMessage: "Benchmark complete",
           },
           Effect.gen(function* () {
             for (const device of availableDevices) {
@@ -324,6 +325,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
                 advanceBy: 1,
               })
 
+              const deviceStart = Date.now()
               const coldResult = yield* measureColdStart(devCfg, corpus)
 
               if (coldResult.error) {
@@ -333,6 +335,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
                   coldLatencyMs: coldResult.latencyMs,
                   warmChunksPerSec: 0,
                   warmLatencyPerBatchMs: 0,
+                  totalDurationMs: Date.now() - deviceStart,
                   status: "failed",
                   error: coldResult.error,
                 })
@@ -346,6 +349,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
                   advanceBy: 1,
                 })
 
+                const batchStart = Date.now()
                 const warmResult = yield* measureWarmPath(
                   devCfg,
                   corpus,
@@ -363,6 +367,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
                   coldLatencyMs: coldResult.latencyMs,
                   warmChunksPerSec: warmResult.chunksPerSec,
                   warmLatencyPerBatchMs: warmResult.latencyPerBatchMs,
+                  totalDurationMs: Date.now() - batchStart,
                   status,
                   error: warmResult.error,
                 })

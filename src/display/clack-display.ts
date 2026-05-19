@@ -104,7 +104,7 @@ const runWithProgressBar = <A, E, R>(
     yield* Ref.set(handleRef, null)
     yield* appendLogEntry(fs, { type: "progress-stop" })
     if (Exit.isSuccess(exit)) {
-      bar.stop(opts.message)
+      bar.stop(opts.stopMessage ?? opts.message)
       return exit.value
     }
     bar.error(opts.message)

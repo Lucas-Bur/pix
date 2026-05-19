@@ -14,6 +14,7 @@ export interface BenchMeasurement {
   readonly coldLatencyMs: number
   readonly warmChunksPerSec: number
   readonly warmLatencyPerBatchMs: number
+  readonly totalDurationMs: number
   readonly status: BenchStatus
   readonly error?: string
 }

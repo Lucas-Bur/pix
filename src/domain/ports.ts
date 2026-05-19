@@ -280,6 +280,7 @@ export type DisplayProgressOptions = {
   readonly style?: "light" | "heavy" | "block"
   readonly size?: number
   readonly indicator?: "dots" | "timer"
+  readonly stopMessage?: string
 }
 
 /** Payload for updateInteractive — plain string updates text, object adds position control */

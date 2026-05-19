@@ -9,6 +9,7 @@ const makeMeasurement = (overrides: Partial<BenchMeasurement> = {}): BenchMeasur
   coldLatencyMs: 500,
   warmChunksPerSec: 1000,
   warmLatencyPerBatchMs: 16,
+  totalDurationMs: 100,
   status: "ok",
   ...overrides,
 })
@@ -47,6 +48,7 @@ describe("formatTable", () => {
     expect(table).toContain("batchSize")
     expect(table).toContain("cold (ms)")
     expect(table).toContain("warm (ch/s)")
+    expect(table).toContain("time (ms)")
     expect(table).toContain("status")
   })
 })
