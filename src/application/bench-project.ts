@@ -1,4 +1,4 @@
-import { Effect, Random, Stream } from "effect"
+import { Effect, Either, Random, Stream } from "effect"
 import * as Chunk from "effect/Chunk"
 
 import type {
@@ -10,13 +10,14 @@ import type {
 } from "../domain/bench.js"
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
+import type { Config } from "../domain/config.js"
 import type {
   AllConfigErrors,
   ChunkerError,
   AllProcessorErrors,
   DiskFullError,
 } from "../domain/errors.js"
-import { ModelLoadError } from "../domain/errors.js"
+import { ConfigError, ModelLoadError } from "../domain/errors.js"
 import { Display, Embedder, type EmbedderDeviceConfig } from "../domain/ports.js"
 import { ConfigStore, Scanner, Chunker, ContentExtractor } from "../domain/ports.js"
 import { getExtension } from "../lib/config/extension.js"
@@ -132,6 +133,17 @@ const computeRecommendation = (
   }
 
   return `Recommended: ${best.device}/batchSize=${best.batchSize} (${profile})`
+}
+
+const parseRecommendation = (
+  rec: string,
+): Either.Either<{ device: string; batchSize: number }, string> => {
+  const match = rec.match(/^Recommended: (.+?)\/batchSize=(\d+) \(.+\)$/)
+  if (!match) return Either.left("Unparseable recommendation string")
+  const device = match[1]
+  const batchSize = parseInt(match[2]!, 10)
+  if (Number.isNaN(batchSize)) return Either.left("Invalid batch size in recommendation")
+  return Either.right({ device, batchSize })
 }
 
 export class BenchProject extends Effect.Service<BenchProject>()("BenchProject", {
@@ -392,6 +404,37 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
         }
       })
 
-    return { bench, prepareCorpus }
+    const applyConfig = (
+      recommendation: string,
+    ): Effect.Effect<void, ConfigError | DiskFullError | AllConfigErrors> =>
+      Effect.gen(function* () {
+        const parsed = parseRecommendation(recommendation)
+        if (Either.isLeft(parsed)) {
+          yield* d.log(`Could not apply: ${parsed.left}`, "warn")
+          return yield* new ConfigError({ message: parsed.left })
+        }
+
+        const { device, batchSize } = parsed.right
+
+        const hasConfig = yield* configStore.configExists()
+        const currentConfig = hasConfig ? yield* configStore.readConfig() : DEFAULT_CONFIG
+
+        const updated: Config = {
+          ...currentConfig,
+          embedder: {
+            ...currentConfig.embedder,
+            device: device as Config["embedder"]["device"],
+            batchSize,
+          },
+        }
+
+        yield* configStore.writeConfig(updated)
+        yield* d.log(
+          `Applied: device=${device}, batchSize=${batchSize} to .pix/config.json`,
+          "success",
+        )
+      })
+
+    return { bench, prepareCorpus, applyConfig }
   }),
 }) {}

@@ -1,9 +1,10 @@
 import { Effect, Layer, Ref } from "effect"
 import { expect, test, describe } from "vite-plus/test"
 
+import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
-import { Embedder } from "../domain/ports.js"
+import { ConfigStore, Embedder } from "../domain/ports.js"
 import { DeviceDetection } from "../services/device-detect.js"
 import type { DeviceType } from "../services/device-detect.js"
 import { ScannerLive } from "../services/scanner.ts"
@@ -434,4 +435,64 @@ describe("BenchProject measurement pipeline", () => {
       Effect.scoped,
     )
   })
+})
+
+describe("BenchProject.applyConfig", () => {
+  test("patches device and batchSize from recommendation string", () =>
+    Effect.gen(function* () {
+      yield* BenchProject.applyConfig("Recommended: cuda/batchSize=64 (throughput)")
+
+      const store = yield* ConfigStore
+      const config = yield* store.readConfig()
+      expect(config.embedder.device).toBe("cuda")
+      expect(config.embedder.batchSize).toBe(64)
+      expect(config.chunkLines).toBe(60)
+      expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
+    }).pipe(
+      Effect.provide(testLayer({ contents: { ".pix/config.json": makeConfigJson() } })),
+      Effect.scoped,
+    ))
+
+  test("creates default config when missing", () =>
+    Effect.gen(function* () {
+      yield* BenchProject.applyConfig("Recommended: cpu/batchSize=32 (cold)")
+
+      const store = yield* ConfigStore
+      const config = yield* store.readConfig()
+      expect(config.embedder.device).toBe("cpu")
+      expect(config.embedder.batchSize).toBe(32)
+    }).pipe(Effect.provide(testLayer({ contents: {} })), Effect.scoped))
+
+  test("preserves user settings when patching", () => {
+    const configContent = makeConfigJson({
+      chunkLines: 100,
+      overlapLines: 20,
+      embedder: { device: "auto", batchSize: 8, model: "custom/model" },
+    })
+    return Effect.gen(function* () {
+      yield* BenchProject.applyConfig("Recommended: dml/batchSize=128 (balanced)")
+
+      const store = yield* ConfigStore
+      const config = yield* store.readConfig()
+      expect(config.embedder.device).toBe("dml")
+      expect(config.embedder.batchSize).toBe(128)
+      expect(config.chunkLines).toBe(100)
+      expect(config.overlapLines).toBe(20)
+      expect(config.embedder.model).toBe("custom/model")
+    }).pipe(
+      Effect.provide(testLayer({ contents: { ".pix/config.json": configContent } })),
+      Effect.scoped,
+    )
+  })
+
+  test("returns error for unparseable recommendation", () =>
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        BenchProject.applyConfig("No successful measurements to recommend from"),
+      )
+      expect(exit._tag).toBe("Failure")
+    }).pipe(
+      Effect.provide(testLayer({ contents: { ".pix/config.json": makeConfigJson() } })),
+      Effect.scoped,
+    ))
 })

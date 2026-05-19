@@ -103,3 +103,36 @@ test("pix bench --batch-sizes with negative numbers fails", () => {
     expect(exit._tag).toBe("Failure")
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
+
+test("pix bench --apply throughput applies config and logs success", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
+    yield* run(["bench", "--apply", "throughput"])
+    const entries = yield* Ref.get(ref)
+    const logEntries = entries.filter((e) => e._tag === "log")
+    const appliedEntry = logEntries.find((e) => e.message.includes("Applied"))
+    expect(appliedEntry).toBeDefined()
+  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+})
+
+test("pix bench --apply cold applies config", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
+    yield* run(["bench", "--apply", "cold"])
+    const entries = yield* Ref.get(ref)
+    const logEntries = entries.filter((e) => e._tag === "log")
+    const appliedEntry = logEntries.find((e) => e.message.includes("Applied"))
+    expect(appliedEntry).toBeDefined()
+  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+})
+
+test("pix bench without --apply (balanced default) does not apply config", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
+    yield* run(["bench"])
+    const entries = yield* Ref.get(ref)
+    const logEntries = entries.filter((e) => e._tag === "log")
+    const appliedEntry = logEntries.find((e) => e.message.includes("Applied"))
+    expect(appliedEntry).toBeUndefined()
+  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+})

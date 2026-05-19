@@ -74,6 +74,10 @@ const benchCommand = Command.make(
         measurements: result.measurements,
         recommendation: result.recommendation,
       })
+
+      yield* BenchProject.applyConfig(result.recommendation).pipe(
+        Effect.catchAll((e) => d.log(`Apply failed: ${e.message}`, "warn")),
+      )
     }).pipe(Effect.catchAll(reportError)),
 )
 
