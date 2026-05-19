@@ -1,4 +1,4 @@
-import { env } from "@huggingface/transformers"
+import { type DataType } from "@huggingface/transformers"
 import { Effect, Layer, Ref, Option } from "effect"
 
 import type { Embedding } from "../domain/chunk.js"
@@ -6,16 +6,14 @@ import type { EmbeddingDtype } from "../domain/dtype.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
 import { ConfigStore, Display, Embedder } from "../domain/ports.js"
 import { ConfigStoreLive } from "./config-store.js"
+import { DeviceDetection, DeviceDetectionLive } from "./device-detect.js"
+import type { DeviceType } from "./device-detect.js"
 import { MODEL_REGISTRY } from "./models.js"
 export { Embedder }
 
-const CACHE_DIR = ".pix/cache"
-
-env.cacheDir = CACHE_DIR
-
 interface EmbedderConfig {
   readonly model: string
-  readonly device: "auto" | "cpu" | "cuda" | "dml" | "coreml"
+  readonly device: DeviceType
   readonly dtype: EmbeddingDtype
   readonly dims: number
 }
@@ -27,6 +25,7 @@ interface FallbackInfo {
 
 const resolveEmbedderConfig = (
   configStore: typeof ConfigStore.Service,
+  detection: typeof DeviceDetection.Service,
 ): Effect.Effect<EmbedderConfig, ModelLoadError> =>
   Effect.gen(function* () {
     const config = yield* configStore
@@ -34,7 +33,7 @@ const resolveEmbedderConfig = (
       .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
 
     const model = config?.embedder.model ?? "Xenova/all-MiniLM-L6-v2"
-    const device = config?.embedder.device ?? "auto"
+    const deviceConfig = config?.embedder.device ?? "auto"
     const dtype = config?.embedder.dtype ?? "fp32"
 
     const modelInfo = MODEL_REGISTRY[model]
@@ -51,6 +50,9 @@ const resolveEmbedderConfig = (
         model,
       })
     }
+
+    const device =
+      deviceConfig === "auto" ? yield* detection.detect(model, dtype as DataType) : deviceConfig
 
     return { model, device, dtype, dims: modelInfo.dims }
   })
@@ -103,8 +105,9 @@ const createExtractorWithFallback = (
 
 const make = Effect.gen(function* () {
   const configStore = yield* ConfigStore
+  const detection = yield* DeviceDetection
   const d = yield* Display
-  const cfg = yield* resolveEmbedderConfig(configStore)
+  const cfg = yield* resolveEmbedderConfig(configStore, detection)
   const fallbackRef = yield* Ref.make<Option.Option<FallbackInfo>>(Option.none())
   const getExtractor = yield* Effect.cached(createExtractorWithFallback(cfg, fallbackRef, d))
 
@@ -152,4 +155,7 @@ const make = Effect.gen(function* () {
   return { embed, batch, getFallbackInfo } as const
 })
 
-export const OnnxEmbedderLive = Layer.provideMerge(Layer.effect(Embedder, make), ConfigStoreLive)
+export const OnnxEmbedderLive = Layer.provideMerge(
+  Layer.effect(Embedder, make),
+  Layer.merge(ConfigStoreLive, DeviceDetectionLive),
+)
