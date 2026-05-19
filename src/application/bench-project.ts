@@ -294,6 +294,8 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
           }
         }
 
+        yield* d.log(`Available devices: ${availableDevices.join(", ")}`, "info")
+
         const totalSteps = availableDevices.length * (1 + opts.batchSizes.length)
         let currentStep = 0
 
