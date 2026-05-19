@@ -4,7 +4,7 @@ import { expect, test, describe } from "vite-plus/test"
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
-import { ConfigStore, Embedder } from "../domain/ports.js"
+import { ConfigStore, Display, Embedder, Scanner } from "../domain/ports.js"
 import { DeviceDetection } from "../services/device-detect.js"
 import type { DeviceType } from "../services/device-detect.js"
 import { ScannerLive } from "../services/scanner.ts"
@@ -121,17 +121,17 @@ const benchLayer = (
   devices: readonly DeviceType[],
   opts?: {
     embedderLayer?: Layer.Layer<Embedder>
-    displayLayer?: Layer.Layer<Embedder>
-    scannerLayer?: Layer.Layer<Embedder>
+    displayLayer?: Layer.Layer<Display>
+    scannerLayer?: Layer.Layer<Scanner>
   },
 ) => {
   const mock = createMockEmbedder()
   return {
     layer: testLayer({
       contents,
-      scannerLayer: opts?.scannerLayer as any,
+      scannerLayer: opts?.scannerLayer,
       embedderLayer: opts?.embedderLayer ?? mock.layer,
-      displayLayer: opts?.displayLayer as any,
+      displayLayer: opts?.displayLayer,
     }).pipe(Layer.merge(mockDeviceDetection(devices))),
     mock,
   }
