@@ -5,6 +5,8 @@ import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { ConfigStore, Display, Embedder, Scanner } from "../domain/ports.js"
+import { DeviceDetection } from "../services/device-detect.js"
+import type { DeviceType } from "../services/device-detect.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { BenchProject } from "./bench-project.js"
 
@@ -69,6 +71,12 @@ const defaultBenchOpts = {
   json: false,
 }
 
+const mockDeviceDetection = (devices: readonly DeviceType[]) =>
+  Layer.succeed(DeviceDetection, {
+    detect: () => Effect.succeed(devices[0]!),
+    detectAll: () => Effect.succeed(devices),
+  })
+
 const createMockEmbedder = () => {
   let createCallCount = 0
   const batchCallCounts: number[] = []
@@ -111,19 +119,21 @@ const createMockEmbedder = () => {
 const benchLayer = (
   contents: Record<string, string>,
   opts?: {
+    devices?: readonly DeviceType[]
     embedderLayer?: Layer.Layer<Embedder>
     displayLayer?: Layer.Layer<Display>
     scannerLayer?: Layer.Layer<Scanner>
   },
 ) => {
   const mock = createMockEmbedder()
+  const devices = opts?.devices ?? ["cpu"]
   return {
     layer: testLayer({
       contents,
       scannerLayer: opts?.scannerLayer,
       embedderLayer: opts?.embedderLayer ?? mock.layer,
       displayLayer: opts?.displayLayer,
-    }),
+    }).pipe(Layer.merge(mockDeviceDetection(devices))),
     mock,
   }
 }
@@ -133,7 +143,7 @@ test("BenchProject.bench reports corpus size", () =>
     const result = yield* BenchProject.bench(defaultBenchOpts)
     expect(result.profile).toBe("balanced")
     expect(result.measurements.length).toBeGreaterThan(0)
-  }).pipe(Effect.provide(benchLayer(fixtures).layer), Effect.scoped))
+  }).pipe(Effect.provide(benchLayer(fixtures, { devices: ["cpu"] }).layer), Effect.scoped))
 
 test("BenchProject.bench reports zero chunks for empty project", () => {
   const { ref, layer } = silentDisplay()

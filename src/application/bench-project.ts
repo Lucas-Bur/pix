@@ -26,10 +26,8 @@ import { formatTable, formatRecommendationMessage } from "../lib/bench/format.js
 import { getExtension } from "../lib/config/extension.js"
 import { buildProcessorMap } from "../lib/config/processors.js"
 import { mergeConfig } from "../lib/config/validation.js"
-import { type DeviceType } from "../services/device-detect.js"
+import { DeviceDetection } from "../services/device-detect.js"
 import { MODEL_REGISTRY } from "../services/models.js"
-
-const DEVICE_PRIORITY: readonly DeviceType[] = ["cuda", "dml", "coreml", "cpu"]
 
 type CorpusError = AllConfigErrors | ChunkerError | AllProcessorErrors | DiskFullError
 
@@ -107,6 +105,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
     const d = yield* Display
     const extractor = yield* ContentExtractor
     const embedder = yield* Embedder
+    const detection = yield* DeviceDetection
 
     const prepareCorpus = (opts: BenchOptions): Effect.Effect<Corpus, CorpusError> =>
       Effect.gen(function* () {
@@ -283,7 +282,19 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
         }
 
         const ecfg = yield* getEmbedderConfig()
-        const totalSteps = DEVICE_PRIORITY.length * (1 + opts.batchSizes.length)
+        const availableDevices = yield* detection.detectAll(ecfg.model, ecfg.dtype)
+
+        if (availableDevices.length === 0) {
+          return {
+            profile: opts.profile,
+            warmup: opts.warmup,
+            measureBatches: opts.measureBatches,
+            measurements: [],
+            recommendation: { device: "cpu", batchSize: 16, profile: opts.profile },
+          }
+        }
+
+        const totalSteps = availableDevices.length * (1 + opts.batchSizes.length)
         let currentStep = 0
 
         const measurements: BenchMeasurement[] = []
@@ -297,7 +308,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
             indicator: "dots",
           },
           Effect.gen(function* () {
-            for (const device of DEVICE_PRIORITY) {
+            for (const device of availableDevices) {
               const devCfg: EmbedderDeviceConfig = {
                 device,
                 model: ecfg.model,
