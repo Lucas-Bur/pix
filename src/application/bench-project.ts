@@ -12,6 +12,7 @@ import type {
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type { Config } from "../domain/config.js"
+import type { EmbeddingDtype } from "../domain/dtype.js"
 import type {
   AllConfigErrors,
   ChunkerError,
@@ -208,7 +209,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
       })
 
     const getEmbedderConfig = (): Effect.Effect<
-      { model: string; dtype: string; dims: number },
+      { model: string; dtype: EmbeddingDtype; dims: number },
       ModelLoadError
     > =>
       Effect.gen(function* () {
@@ -216,7 +217,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
           .readConfig()
           .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
         const model = config?.embedder.model ?? "Xenova/all-MiniLM-L6-v2"
-        const dtype = config?.embedder.dtype ?? "fp32"
+        const dtype = (config?.embedder.dtype ?? "fp32") as EmbeddingDtype
         const modelInfo = MODEL_REGISTRY[model]
         if (!modelInfo) {
           return yield* new ModelLoadError({

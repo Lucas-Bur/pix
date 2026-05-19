@@ -1,8 +1,9 @@
 import { Context, Effect } from "effect"
 
-import type { Chunk } from "./chunk.js"
-import type { Embedding } from "./chunk.js"
+import type { DeviceType } from "../services/device-detect.js"
+import type { Chunk, Embedding } from "./chunk.js"
 import type { Config } from "./config.js"
+import type { EmbeddingDtype } from "./dtype.js"
 import type { DtypeMismatchError, VectorDecodeError } from "./dtype.js"
 import type {
   AllConfigErrors,
@@ -101,9 +102,9 @@ export class Chunker extends Context.Tag("Chunker")<
 
 /** Configuration for creating an embedder for a specific device. */
 export interface EmbedderDeviceConfig {
-  readonly device: string
+  readonly device: DeviceType
   readonly model: string
-  readonly dtype: string
+  readonly dtype: EmbeddingDtype
   readonly dims: number
 }
 

@@ -12,16 +12,8 @@ import {
 } from "../domain/ports.js"
 import { ConfigStoreLive } from "./config-store.js"
 import { DeviceDetection, DeviceDetectionLive } from "./device-detect.js"
-import type { DeviceType } from "./device-detect.js"
 import { MODEL_REGISTRY } from "./models.js"
 export { Embedder }
-
-interface EmbedderConfig {
-  readonly model: string
-  readonly device: DeviceType
-  readonly dtype: EmbeddingDtype
-  readonly dims: number
-}
 
 interface FallbackInfo {
   readonly originalDevice: string
@@ -128,7 +120,6 @@ const withGpuFallback = (
     }
 
     const originalError = gpuResult.left
-    yield* Effect.logInfo(device, originalError.model)
     yield* d.log(`GPU (${device}) failed, falling back to CPU...`, "warn")
     yield* Ref.set(
       fallbackRef,
@@ -146,7 +137,7 @@ const withGpuFallback = (
 const resolveEmbedderConfig = (
   configStore: typeof ConfigStore.Service,
   detection: typeof DeviceDetection.Service,
-): Effect.Effect<EmbedderConfig, ModelLoadError> =>
+): Effect.Effect<EmbedderDeviceConfig, ModelLoadError> =>
   Effect.gen(function* () {
     const config = yield* configStore
       .readConfig()
@@ -201,14 +192,7 @@ const make = Effect.gen(function* () {
     Ref.get(fallbackRef).pipe(Effect.map(Option.getOrElse(() => undefined)))
 
   const createForDevice = (devCfg: EmbedderDeviceConfig) =>
-    withGpuFallback(
-      devCfg.model,
-      devCfg.device,
-      devCfg.dtype as EmbeddingDtype,
-      devCfg.dims,
-      d,
-      fallbackRef,
-    )
+    withGpuFallback(devCfg.model, devCfg.device, devCfg.dtype, devCfg.dims, d, fallbackRef)
 
   return { embed, batch: batchEmbed, getFallbackInfo, createForDevice } as const
 })
