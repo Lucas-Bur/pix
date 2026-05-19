@@ -21,6 +21,7 @@ const tryDevice = (
   Effect.tryPromise(() =>
     loadPipeline().then((p) => p("feature-extraction", model, { device, dtype })),
   ).pipe(
+    Effect.as(device),
     Effect.mapError(
       (cause) =>
         new ModelLoadError({
