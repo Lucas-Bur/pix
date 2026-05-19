@@ -4,9 +4,9 @@ import { Context, Effect, Layer, Ref } from "effect"
 import { ModelLoadError } from "../domain/errors.js"
 
 /** Available compute devices for ONNX model execution. */
-export type DeviceType = "cuda" | "dml" | "coreml" | "cpu"
+export type DeviceType = "cuda" | "dml" | "coreml" | "webgpu" | "wasm" | "cpu"
 
-const DEVICE_PRIORITY: readonly DeviceType[] = ["cuda", "dml", "coreml", "cpu"]
+const DEVICE_PRIORITY: readonly DeviceType[] = ["cuda", "dml", "coreml", "webgpu", "wasm", "cpu"]
 
 const initCacheDir = Effect.sync(() => {
   env.cacheDir = ".pix/cache"
@@ -21,7 +21,6 @@ const tryDevice = (
   Effect.tryPromise(() =>
     loadPipeline().then((p) => p("feature-extraction", model, { device, dtype })),
   ).pipe(
-    Effect.as(device),
     Effect.mapError(
       (cause) =>
         new ModelLoadError({

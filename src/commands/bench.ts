@@ -1,5 +1,5 @@
 import { Command, Options } from "@effect/cli"
-import { Effect, Either } from "effect"
+import { Effect, Either, Option } from "effect"
 
 import { BenchProject } from "../application/bench-project.js"
 import type { BenchProfile } from "../domain/bench.js"
@@ -43,9 +43,7 @@ const benchCommand = Command.make(
     ),
     batchSizes: Options.text("batch-sizes").pipe(Options.withDefault(DEFAULT_BATCH_SIZES)),
     timeout: Options.integer("timeout").pipe(Options.withDefault(DEFAULT_TIMEOUT)),
-    apply: Options.choice("apply", ["throughput", "cold", "balanced"]).pipe(
-      Options.withDefault(DEFAULT_PROFILE),
-    ),
+    apply: Options.choice("apply", ["throughput", "cold", "balanced"]).pipe(Options.optional),
     json: Options.boolean("json").pipe(Options.withDefault(false)),
   },
   ({ warmup, measureBatches, batchSizes, timeout, apply, json }) =>
@@ -58,12 +56,14 @@ const benchCommand = Command.make(
       })
       const sizes = yield* parsedBatchSizes
 
+      const profile: BenchProfile = Option.getOrElse(apply, () => DEFAULT_PROFILE)
+
       const result = yield* BenchProject.bench({
         warmup,
         measureBatches,
         batchSizes: sizes,
         timeout,
-        profile: apply,
+        profile,
         json,
       })
 
@@ -75,9 +75,11 @@ const benchCommand = Command.make(
         recommendation: result.recommendation,
       })
 
-      yield* BenchProject.applyConfig(result.recommendation).pipe(
-        Effect.catchAll((e) => d.log(`Apply failed: ${e.message}`, "warn")),
-      )
+      if (Option.isSome(apply)) {
+        yield* BenchProject.applyConfig(result.recommendation).pipe(
+          Effect.catchAll((e) => d.log(`Apply failed: ${e.message}`, "warn")),
+        )
+      }
     }).pipe(Effect.catchAll(reportError)),
 )
 

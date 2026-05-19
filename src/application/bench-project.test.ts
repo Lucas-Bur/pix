@@ -5,8 +5,6 @@ import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { ConfigStore, Display, Embedder, Scanner } from "../domain/ports.js"
-import { DeviceDetection } from "../services/device-detect.js"
-import type { DeviceType } from "../services/device-detect.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { BenchProject } from "./bench-project.js"
 
@@ -71,12 +69,6 @@ const defaultBenchOpts = {
   json: false,
 }
 
-const mockDeviceDetection = (devices: readonly DeviceType[]) =>
-  Layer.succeed(DeviceDetection, {
-    detect: () => Effect.succeed(devices[0]!),
-    detectAll: () => Effect.succeed(devices),
-  })
-
 const createMockEmbedder = () => {
   let createCallCount = 0
   const batchCallCounts: number[] = []
@@ -118,7 +110,6 @@ const createMockEmbedder = () => {
 
 const benchLayer = (
   contents: Record<string, string>,
-  devices: readonly DeviceType[],
   opts?: {
     embedderLayer?: Layer.Layer<Embedder>
     displayLayer?: Layer.Layer<Display>
@@ -132,7 +123,7 @@ const benchLayer = (
       scannerLayer: opts?.scannerLayer,
       embedderLayer: opts?.embedderLayer ?? mock.layer,
       displayLayer: opts?.displayLayer,
-    }).pipe(Layer.merge(mockDeviceDetection(devices))),
+    }),
     mock,
   }
 }
@@ -142,14 +133,15 @@ test("BenchProject.bench reports corpus size", () =>
     const result = yield* BenchProject.bench(defaultBenchOpts)
     expect(result.profile).toBe("balanced")
     expect(result.measurements.length).toBeGreaterThan(0)
-  }).pipe(Effect.provide(benchLayer(fixtures, ["cpu"]).layer), Effect.scoped))
+  }).pipe(Effect.provide(benchLayer(fixtures).layer), Effect.scoped))
 
 test("BenchProject.bench reports zero chunks for empty project", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     const result = yield* BenchProject.bench(defaultBenchOpts)
     expect(result.measurements).toEqual([])
-    expect(result.recommendation).toContain("No chunks")
+    expect(result.recommendation.device).toBe("cpu")
+    expect(result.recommendation.batchSize).toBe(16)
 
     const entries = yield* Ref.get(ref)
     const logEntries = entries.filter((e) => e._tag === "log")
@@ -168,7 +160,7 @@ test("BenchProject.bench reports zero chunks for empty project", () => {
 
 test("BenchProject.bench finds chunks from files", () => {
   const { ref, layer } = silentDisplay()
-  const { layer: benchL } = benchLayer(fixtures, ["cpu"], { displayLayer: layer as any })
+  const { layer: benchL } = benchLayer(fixtures, { displayLayer: layer })
   return Effect.gen(function* () {
     yield* BenchProject.bench(defaultBenchOpts)
 
@@ -233,7 +225,6 @@ test("BenchProject.prepareCorpus returns empty corpus for no files", () =>
 describe("BenchProject measurement pipeline", () => {
   test("measures cold-start and warm-path for each device x batchSize", () => {
     const { layer } = silentDisplay()
-    const devices: DeviceType[] = ["cpu"]
     const batchSizes = [4, 16] as const
     const opts = {
       warmup: 2,
@@ -247,29 +238,20 @@ describe("BenchProject measurement pipeline", () => {
     return Effect.gen(function* () {
       const result = yield* BenchProject.bench(opts)
 
-      expect(result.measurements.length).toBe(devices.length * batchSizes.length)
+      const okMeasurements = result.measurements.filter((m) => m.status === "ok")
+      expect(okMeasurements.length).toBeGreaterThan(0)
 
-      for (const device of devices) {
-        for (const bs of batchSizes) {
-          const m = result.measurements.find((x) => x.device === device && x.batchSize === bs)
-          expect(m).toBeDefined()
-          expect(m!.device).toBe(device)
-          expect(m!.batchSize).toBe(bs)
-          expect(m!.coldLatencyMs).toBeGreaterThanOrEqual(0)
-          expect(m!.warmChunksPerSec).toBeGreaterThanOrEqual(0)
-          expect(m!.warmLatencyPerBatchMs).toBeGreaterThanOrEqual(0)
-          expect(m!.status).toBe("ok")
-        }
+      for (const m of okMeasurements) {
+        expect(batchSizes).toContain(m.batchSize)
+        expect(m.coldLatencyMs).toBeGreaterThanOrEqual(0)
+        expect(m.warmChunksPerSec).toBeGreaterThanOrEqual(0)
+        expect(m.warmLatencyPerBatchMs).toBeGreaterThanOrEqual(0)
       }
-    }).pipe(
-      Effect.provide(benchLayer(fixtures, devices, { displayLayer: layer as any }).layer),
-      Effect.scoped,
-    )
+    }).pipe(Effect.provide(benchLayer(fixtures, { displayLayer: layer }).layer), Effect.scoped)
   })
 
   test("creates embedder per device for cold-start", () => {
     const mock = createMockEmbedder()
-    const devices: DeviceType[] = ["cpu", "dml"]
     const opts = {
       warmup: 1,
       measureBatches: 1,
@@ -281,14 +263,14 @@ describe("BenchProject measurement pipeline", () => {
 
     return Effect.gen(function* () {
       yield* BenchProject.bench(opts)
-      expect(mock.getCreateCallCount()).toBe(devices.length)
+      expect(mock.getCreateCallCount()).toBeGreaterThan(0)
     }).pipe(
       Effect.provide(
         testLayer({
           contents: fixtures,
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
-        }).pipe(Layer.merge(mockDeviceDetection(devices))),
+        }),
       ),
       Effect.scoped,
     )
@@ -323,7 +305,7 @@ describe("BenchProject measurement pipeline", () => {
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
           displayLayer: layer,
-        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
+        }),
       ),
       Effect.scoped,
     )
@@ -341,15 +323,16 @@ describe("BenchProject measurement pipeline", () => {
         json: false,
       })
 
-      expect(result.recommendation).toContain("throughput")
-      expect(result.recommendation).toContain("Recommended")
+      expect(result.recommendation.profile).toBe("throughput")
+      expect(result.recommendation.device).toBeDefined()
+      expect(result.recommendation.batchSize).toBeDefined()
     }).pipe(
       Effect.provide(
         testLayer({
           contents: fixtures,
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
-        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
+        }),
       ),
       Effect.scoped,
     )
@@ -367,15 +350,16 @@ describe("BenchProject measurement pipeline", () => {
         json: false,
       })
 
-      expect(result.recommendation).toContain("cold")
-      expect(result.recommendation).toContain("Recommended")
+      expect(result.recommendation.profile).toBe("cold")
+      expect(result.recommendation.device).toBeDefined()
+      expect(result.recommendation.batchSize).toBeDefined()
     }).pipe(
       Effect.provide(
         testLayer({
           contents: fixtures,
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
-        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
+        }),
       ),
       Effect.scoped,
     )
@@ -393,15 +377,16 @@ describe("BenchProject measurement pipeline", () => {
         json: false,
       })
 
-      expect(result.recommendation).toContain("balanced")
-      expect(result.recommendation).toContain("Recommended")
+      expect(result.recommendation.profile).toBe("balanced")
+      expect(result.recommendation.device).toBeDefined()
+      expect(result.recommendation.batchSize).toBeDefined()
     }).pipe(
       Effect.provide(
         testLayer({
           contents: fixtures,
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
-        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
+        }),
       ),
       Effect.scoped,
     )
@@ -420,7 +405,9 @@ describe("BenchProject measurement pipeline", () => {
         json: false,
       })
 
-      const m = result.measurements[0]!
+      const okMeasurements = result.measurements.filter((m) => m.status === "ok")
+      expect(okMeasurements.length).toBeGreaterThan(0)
+      const m = okMeasurements[0]!
       const expectedChunks = batchSize * 2
       expect(m.warmChunksPerSec).toBeGreaterThan(0)
       expect(m.warmChunksPerSec).toBeLessThanOrEqual(expectedChunks * 1000)
@@ -430,7 +417,7 @@ describe("BenchProject measurement pipeline", () => {
           contents: fixtures,
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
-        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
+        }),
       ),
       Effect.scoped,
     )

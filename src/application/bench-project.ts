@@ -26,8 +26,10 @@ import { formatTable, formatRecommendationMessage } from "../lib/bench/format.js
 import { getExtension } from "../lib/config/extension.js"
 import { buildProcessorMap } from "../lib/config/processors.js"
 import { mergeConfig } from "../lib/config/validation.js"
-import { DeviceDetection } from "../services/device-detect.js"
+import { type DeviceType } from "../services/device-detect.js"
 import { MODEL_REGISTRY } from "../services/models.js"
+
+const DEVICE_PRIORITY: readonly DeviceType[] = ["cuda", "dml", "coreml", "cpu"]
 
 type CorpusError = AllConfigErrors | ChunkerError | AllProcessorErrors | DiskFullError
 
@@ -105,7 +107,6 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
     const d = yield* Display
     const extractor = yield* ContentExtractor
     const embedder = yield* Embedder
-    const detection = yield* DeviceDetection
 
     const prepareCorpus = (opts: BenchOptions): Effect.Effect<Corpus, CorpusError> =>
       Effect.gen(function* () {
@@ -282,78 +283,101 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
         }
 
         const ecfg = yield* getEmbedderConfig()
-        const workingDevices = yield* detection.detectAll(ecfg.model, ecfg.dtype)
-
-        if (workingDevices.length === 0) {
-          return {
-            profile: opts.profile,
-            warmup: opts.warmup,
-            measureBatches: opts.measureBatches,
-            measurements: [],
-            recommendation: { device: "cpu", batchSize: 16, profile: opts.profile },
-          }
-        }
-
-        yield* d.log(
-          `Testing ${workingDevices.length} device(s): ${workingDevices.join(", ")}`,
-          "info",
-        )
+        const totalSteps = DEVICE_PRIORITY.length * (1 + opts.batchSizes.length)
+        let currentStep = 0
 
         const measurements: BenchMeasurement[] = []
 
-        for (const device of workingDevices) {
-          const devCfg: EmbedderDeviceConfig = {
-            device,
-            model: ecfg.model,
-            dtype: ecfg.dtype,
-            dims: ecfg.dims,
-          }
+        yield* d.progress(
+          {
+            message: "Benchmarking devices...",
+            max: totalSteps,
+            style: "heavy",
+            size: 40,
+            indicator: "dots",
+          },
+          Effect.gen(function* () {
+            for (const device of DEVICE_PRIORITY) {
+              const devCfg: EmbedderDeviceConfig = {
+                device,
+                model: ecfg.model,
+                dtype: ecfg.dtype,
+                dims: ecfg.dims,
+              }
 
-          yield* d.updateInteractive(`Measuring cold-start: ${device}`)
-          const coldResult = yield* measureColdStart(devCfg, corpus)
+              currentStep++
+              yield* d.updateInteractive({
+                message: `Cold-start: ${device} (${currentStep}/${totalSteps})`,
+                advanceBy: 1,
+              })
 
-          for (const batchSize of opts.batchSizes) {
-            yield* d.updateInteractive(`Measuring warm-path: ${device} batchSize=${batchSize}`)
+              const coldResult = yield* measureColdStart(devCfg, corpus)
 
-            const warmResult = yield* measureWarmPath(
-              devCfg,
-              corpus,
-              batchSize,
-              opts.warmup,
-              opts.measureBatches,
-              opts.timeout * 1000,
-            )
+              if (coldResult.error) {
+                measurements.push({
+                  device,
+                  batchSize: 0,
+                  coldLatencyMs: coldResult.latencyMs,
+                  warmChunksPerSec: 0,
+                  warmLatencyPerBatchMs: 0,
+                  status: "failed",
+                  error: coldResult.error,
+                })
+                continue
+              }
 
-            const status: BenchStatus = (coldResult.error ?? warmResult.error) ? "failed" : "ok"
+              for (const batchSize of opts.batchSizes) {
+                currentStep++
+                yield* d.updateInteractive({
+                  message: `Warm-path: ${device} batchSize=${batchSize} (${currentStep}/${totalSteps})`,
+                  advanceBy: 1,
+                })
 
-            measurements.push({
-              device,
-              batchSize,
-              coldLatencyMs: coldResult.latencyMs,
-              warmChunksPerSec: warmResult.chunksPerSec,
-              warmLatencyPerBatchMs: warmResult.latencyPerBatchMs,
-              status,
-              error: coldResult.error ?? warmResult.error,
-            })
-          }
-        }
+                const warmResult = yield* measureWarmPath(
+                  devCfg,
+                  corpus,
+                  batchSize,
+                  opts.warmup,
+                  opts.measureBatches,
+                  opts.timeout * 1000,
+                )
 
-        const table = formatTable(measurements)
-        yield* d.log(table, "info")
+                const status: BenchStatus = warmResult.error ? "failed" : "ok"
 
-        const recommendation = computeRecommendation(measurements, opts.profile)
-        if (recommendation) {
-          yield* d.log(formatRecommendationMessage(recommendation), "success")
-        } else {
-          yield* d.log("No successful measurements to recommend from", "warn")
-        }
+                measurements.push({
+                  device,
+                  batchSize,
+                  coldLatencyMs: coldResult.latencyMs,
+                  warmChunksPerSec: warmResult.chunksPerSec,
+                  warmLatencyPerBatchMs: warmResult.latencyPerBatchMs,
+                  status,
+                  error: warmResult.error,
+                })
+              }
+            }
+
+            const table = formatTable(measurements)
+            yield* d.log(table, "info")
+
+            const recommendation = computeRecommendation(measurements, opts.profile)
+            if (recommendation) {
+              yield* d.log(formatRecommendationMessage(recommendation), "success")
+            } else {
+              yield* d.log("No successful measurements to recommend from", "warn")
+            }
+          }),
+        )
 
         return {
           profile: opts.profile,
           warmup: opts.warmup,
           measureBatches: opts.measureBatches,
           measurements,
-          recommendation: recommendation ?? { device: "cpu", batchSize: 16, profile: opts.profile },
+          recommendation: computeRecommendation(measurements, opts.profile) ?? {
+            device: "cpu",
+            batchSize: 16,
+            profile: opts.profile,
+          },
         }
       })
 
