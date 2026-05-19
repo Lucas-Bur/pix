@@ -438,9 +438,9 @@ describe("BenchProject measurement pipeline", () => {
 })
 
 describe("BenchProject.applyConfig", () => {
-  test("patches device and batchSize from recommendation string", () =>
+  test("patches device and batchSize from recommendation", () =>
     Effect.gen(function* () {
-      yield* BenchProject.applyConfig("Recommended: cuda/batchSize=64 (throughput)")
+      yield* BenchProject.applyConfig({ device: "cuda", batchSize: 64, profile: "throughput" })
 
       const store = yield* ConfigStore
       const config = yield* store.readConfig()
@@ -455,7 +455,7 @@ describe("BenchProject.applyConfig", () => {
 
   test("creates default config when missing", () =>
     Effect.gen(function* () {
-      yield* BenchProject.applyConfig("Recommended: cpu/batchSize=32 (cold)")
+      yield* BenchProject.applyConfig({ device: "cpu", batchSize: 32, profile: "cold" })
 
       const store = yield* ConfigStore
       const config = yield* store.readConfig()
@@ -470,7 +470,7 @@ describe("BenchProject.applyConfig", () => {
       embedder: { device: "auto", batchSize: 8, model: "custom/model" },
     })
     return Effect.gen(function* () {
-      yield* BenchProject.applyConfig("Recommended: dml/batchSize=128 (balanced)")
+      yield* BenchProject.applyConfig({ device: "dml", batchSize: 128, profile: "balanced" })
 
       const store = yield* ConfigStore
       const config = yield* store.readConfig()
@@ -484,15 +484,4 @@ describe("BenchProject.applyConfig", () => {
       Effect.scoped,
     )
   })
-
-  test("returns error for unparseable recommendation", () =>
-    Effect.gen(function* () {
-      const exit = yield* Effect.exit(
-        BenchProject.applyConfig("No successful measurements to recommend from"),
-      )
-      expect(exit._tag).toBe("Failure")
-    }).pipe(
-      Effect.provide(testLayer({ contents: { ".pix/config.json": makeConfigJson() } })),
-      Effect.scoped,
-    ))
 })

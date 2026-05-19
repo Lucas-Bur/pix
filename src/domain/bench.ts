@@ -35,11 +35,18 @@ export interface Corpus {
   readonly chunkCount: number
 }
 
+/** Structured recommendation from a benchmark run. */
+export interface BenchRecommendation {
+  readonly device: DeviceType
+  readonly batchSize: number
+  readonly profile: BenchProfile
+}
+
 /** Output of a benchmark run — measurements and a recommendation. */
 export interface BenchResult {
   readonly profile: BenchProfile
   readonly warmup: number
   readonly measureBatches: number
   readonly measurements: readonly BenchMeasurement[]
-  readonly recommendation: string
+  readonly recommendation: BenchRecommendation
 }

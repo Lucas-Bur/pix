@@ -128,6 +128,7 @@ const withGpuFallback = (
     }
 
     const originalError = gpuResult.left
+    yield* Effect.logInfo(device, originalError.model)
     yield* d.log(`GPU (${device}) failed, falling back to CPU...`, "warn")
     yield* Ref.set(
       fallbackRef,

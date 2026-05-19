@@ -1,9 +1,10 @@
-import { Effect, Either, Random, Stream } from "effect"
+import { Effect, Random, Stream } from "effect"
 import * as Chunk from "effect/Chunk"
 
 import type {
   BenchMeasurement,
   BenchOptions,
+  BenchRecommendation,
   BenchResult,
   BenchStatus,
   Corpus,
@@ -103,9 +104,9 @@ const buildTable = (measurements: readonly BenchMeasurement[]): string => {
 const computeRecommendation = (
   measurements: readonly BenchMeasurement[],
   profile: "throughput" | "cold" | "balanced",
-): string => {
+): BenchRecommendation | null => {
   const ok = measurements.filter((m) => m.status === "ok")
-  if (ok.length === 0) return "No successful measurements to recommend from"
+  if (ok.length === 0) return null
 
   let best: BenchMeasurement
   if (profile === "throughput") {
@@ -132,19 +133,11 @@ const computeRecommendation = (
     })
   }
 
-  return `Recommended: ${best.device}/batchSize=${best.batchSize} (${profile})`
+  return { device: best.device, batchSize: best.batchSize, profile }
 }
 
-const parseRecommendation = (
-  rec: string,
-): Either.Either<{ device: string; batchSize: number }, string> => {
-  const match = rec.match(/^Recommended: (.+?)\/batchSize=(\d+) \(.+\)$/)
-  if (!match) return Either.left("Unparseable recommendation string")
-  const device = match[1]
-  const batchSize = parseInt(match[2]!, 10)
-  if (Number.isNaN(batchSize)) return Either.left("Invalid batch size in recommendation")
-  return Either.right({ device, batchSize })
-}
+const formatRecommendationMessage = (rec: BenchRecommendation): string =>
+  `Recommended: ${rec.device}/batchSize=${rec.batchSize} (${rec.profile})`
 
 export class BenchProject extends Effect.Service<BenchProject>()("BenchProject", {
   accessors: true,
@@ -328,7 +321,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
             warmup: opts.warmup,
             measureBatches: opts.measureBatches,
             measurements: [],
-            recommendation: "No chunks available for benchmarking",
+            recommendation: { device: "cpu", batchSize: 16, profile: opts.profile },
           }
         }
 
@@ -341,7 +334,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
             warmup: opts.warmup,
             measureBatches: opts.measureBatches,
             measurements: [],
-            recommendation: "No working devices detected",
+            recommendation: { device: "cpu", batchSize: 16, profile: opts.profile },
           }
         }
 
@@ -393,28 +386,26 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
         yield* d.log(table, "info")
 
         const recommendation = computeRecommendation(measurements, opts.profile)
-        yield* d.log(recommendation, "success")
+        if (recommendation) {
+          yield* d.log(formatRecommendationMessage(recommendation), "success")
+        } else {
+          yield* d.log("No successful measurements to recommend from", "warn")
+        }
 
         return {
           profile: opts.profile,
           warmup: opts.warmup,
           measureBatches: opts.measureBatches,
           measurements,
-          recommendation,
+          recommendation: recommendation ?? { device: "cpu", batchSize: 16, profile: opts.profile },
         }
       })
 
     const applyConfig = (
-      recommendation: string,
+      recommendation: BenchRecommendation,
     ): Effect.Effect<void, ConfigError | DiskFullError | AllConfigErrors> =>
       Effect.gen(function* () {
-        const parsed = parseRecommendation(recommendation)
-        if (Either.isLeft(parsed)) {
-          yield* d.log(`Could not apply: ${parsed.left}`, "warn")
-          return yield* new ConfigError({ message: parsed.left })
-        }
-
-        const { device, batchSize } = parsed.right
+        const { device, batchSize } = recommendation
 
         const hasConfig = yield* configStore.configExists()
         const currentConfig = hasConfig ? yield* configStore.readConfig() : DEFAULT_CONFIG
@@ -423,7 +414,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
           ...currentConfig,
           embedder: {
             ...currentConfig.embedder,
-            device: device as Config["embedder"]["device"],
+            device,
             batchSize,
           },
         }
