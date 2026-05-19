@@ -22,6 +22,7 @@ import type {
 import { ConfigError, ModelLoadError } from "../domain/errors.js"
 import { Display, Embedder, type EmbedderDeviceConfig } from "../domain/ports.js"
 import { ConfigStore, Scanner, Chunker, ContentExtractor } from "../domain/ports.js"
+import { formatTable, formatRecommendationMessage } from "../lib/bench/format.js"
 import { getExtension } from "../lib/config/extension.js"
 import { buildProcessorMap } from "../lib/config/processors.js"
 import { mergeConfig } from "../lib/config/validation.js"
@@ -59,49 +60,6 @@ const totalWork = (opts: BenchOptions): number => {
   return opts.warmup * maxBatch + opts.measureBatches * maxBatch
 }
 
-const formatNumber = (n: number): string => n.toLocaleString("en-US")
-
-const buildTable = (measurements: readonly BenchMeasurement[]): string => {
-  const header = ["device", "batchSize", "cold (ms)", "warm (ch/s)", "status"]
-  const colWidths = [
-    Math.max(header[0]!.length, ...measurements.map((m) => m.device.length)),
-    Math.max(header[1]!.length, ...measurements.map((m) => String(m.batchSize).length)),
-    Math.max(
-      header[2]!.length,
-      ...measurements.map((m) => String(Math.round(m.coldLatencyMs)).length),
-    ),
-    Math.max(
-      header[3]!.length,
-      ...measurements.map((m) =>
-        m.status === "ok" ? formatNumber(Math.round(m.warmChunksPerSec)).length : 1,
-      ),
-    ),
-    Math.max(header[4]!.length, ...measurements.map((m) => m.status.length)),
-  ]
-
-  const pad = (s: string, w: number) => s.padStart(w)
-
-  const row = (cells: string[]) => `│ ${cells.map((c, i) => pad(c, colWidths[i]!)).join(" │ ")} │`
-
-  const separator = (left: string, mid: string, right: string) =>
-    left + colWidths.map((w) => mid.padStart(w + 2, mid)).join(mid) + right
-
-  const lines: string[] = []
-  lines.push(separator("┌", "─", "┐"))
-  lines.push(row(header))
-  lines.push(separator("├", "─", "┤"))
-
-  for (const m of measurements) {
-    const warm = m.status === "ok" ? formatNumber(Math.round(m.warmChunksPerSec)) : "—"
-    lines.push(
-      row([m.device, String(m.batchSize), String(Math.round(m.coldLatencyMs)), warm, m.status]),
-    )
-  }
-
-  lines.push(separator("└", "─", "┘"))
-  return lines.join("\n")
-}
-
 const computeRecommendation = (
   measurements: readonly BenchMeasurement[],
   profile: "throughput" | "cold" | "balanced",
@@ -136,9 +94,6 @@ const computeRecommendation = (
 
   return { device: best.device, batchSize: best.batchSize, profile }
 }
-
-const formatRecommendationMessage = (rec: BenchRecommendation): string =>
-  `Recommended: ${rec.device}/batchSize=${rec.batchSize} (${rec.profile})`
 
 export class BenchProject extends Effect.Service<BenchProject>()("BenchProject", {
   accessors: true,
@@ -383,7 +338,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
           }
         }
 
-        const table = buildTable(measurements)
+        const table = formatTable(measurements)
         yield* d.log(table, "info")
 
         const recommendation = computeRecommendation(measurements, opts.profile)
