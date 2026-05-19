@@ -1,3 +1,5 @@
+import type { Chunk } from "./chunk.js"
+
 /** Benchmark profile — determines what aspect of performance to optimize for. */
 export type BenchProfile = "throughput" | "cold" | "balanced"
 
@@ -17,6 +19,13 @@ export interface BenchOptions {
   readonly timeout: number
   readonly profile: BenchProfile
   readonly json: boolean
+}
+
+/** Prepared corpus held in memory for the measurement pipeline. */
+export interface Corpus {
+  readonly chunks: readonly Chunk[]
+  readonly fileCount: number
+  readonly chunkCount: number
 }
 
 /** Output of a benchmark run — measurements and a recommendation. */

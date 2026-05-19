@@ -3,6 +3,7 @@ import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
 import { MemoryFileSystem } from "effect-memfs"
 
+import { BenchProject } from "../../src/application/bench-project.js"
 import { GetStatus } from "../../src/application/get-status.js"
 import { IndexProject } from "../../src/application/index-project.js"
 import { InitProject } from "../../src/application/init-project.js"
@@ -74,6 +75,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     QueryProject.Default,
     IndexProject.Default,
     ResetIndex.Default,
+    BenchProject.Default,
   )
 
   const appLayer = Layer.merge(useCaseLayer.pipe(Layer.provide(infraLayer)), memFs)
