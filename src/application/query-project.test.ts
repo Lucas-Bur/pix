@@ -22,6 +22,23 @@ const nonZeroEmbedder = Layer.succeed(Embedder, {
       })),
     ),
   getFallbackInfo: () => Effect.succeed(undefined),
+  createForDevice: () =>
+    Effect.succeed({
+      embed: () =>
+        Effect.succeed({
+          vector: new Float32Array(384).fill(0.15),
+          dims: 384,
+          dtype: "fp32" as const,
+        }),
+      batch: (texts: readonly string[]) =>
+        Effect.succeed(
+          texts.map(() => ({
+            vector: new Float32Array(384).fill(0.15),
+            dims: 384,
+            dtype: "fp32" as const,
+          })),
+        ),
+    }),
 })
 
 const hybridLayer = testLayer({ embedderLayer: nonZeroEmbedder })

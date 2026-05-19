@@ -1,4 +1,4 @@
-import { env, type DataType } from "@huggingface/transformers"
+import { env } from "@huggingface/transformers"
 import { Context, Effect, Layer, Ref } from "effect"
 
 import { ModelLoadError } from "../domain/errors.js"
@@ -14,7 +14,7 @@ const initCacheDir = Effect.sync(() => {
 
 const tryDevice = (
   model: string,
-  dtype: DataType,
+  dtype: string,
   device: DeviceType,
   loadPipeline: () => Promise<any>,
 ): Effect.Effect<DeviceType, ModelLoadError> =>
@@ -39,7 +39,15 @@ export class DeviceDetection extends Context.Tag("DeviceDetection")<
      * Detect the best available device by attempting model load on each device in priority order:
      * cuda → dml → coreml → cpu. Returns the first device that succeeds.
      */
-    readonly detect: (model: string, dtype: DataType) => Effect.Effect<DeviceType, ModelLoadError>
+    readonly detect: (model: string, dtype: string) => Effect.Effect<DeviceType, ModelLoadError>
+    /**
+     * Test all devices and return the list of working ones. Each device is tested independently
+     * (model is loaded fresh per device). Returns devices in priority order.
+     */
+    readonly detectAll: (
+      model: string,
+      dtype: string,
+    ) => Effect.Effect<readonly DeviceType[], never>
   }
 >() {}
 
@@ -47,7 +55,7 @@ const make = Effect.gen(function* () {
   yield* initCacheDir
   const { pipeline } = yield* Effect.tryPromise(() => import("@huggingface/transformers"))
 
-  const detect = (model: string, dtype: DataType): Effect.Effect<DeviceType, ModelLoadError> =>
+  const detect = (model: string, dtype: string): Effect.Effect<DeviceType, ModelLoadError> =>
     Effect.gen(function* () {
       const lastError = yield* Ref.make<ModelLoadError | undefined>(undefined)
 
@@ -74,7 +82,21 @@ const make = Effect.gen(function* () {
       )
     })
 
-  return { detect } as const
+  const detectAll = (model: string, dtype: string): Effect.Effect<readonly DeviceType[], never> =>
+    Effect.gen(function* () {
+      const working: DeviceType[] = []
+      for (const device of DEVICE_PRIORITY) {
+        const result = yield* tryDevice(model, dtype, device, () => Promise.resolve(pipeline)).pipe(
+          Effect.either,
+        )
+        if (result._tag === "Right") {
+          working.push(device)
+        }
+      }
+      return working
+    })
+
+  return { detect, detectAll } as const
 })
 
 /** Live implementation of DeviceDetection that attempts real model loading. */

@@ -26,7 +26,6 @@ test("pix bench --json outputs parsed options as JSON", () => {
     expect(data.profile).toBe("balanced")
     expect(data.warmup).toBe(5)
     expect(data.measureBatches).toBe(10)
-    expect(data.recommendation).toBe("benchmark not yet implemented")
     expect(Array.isArray(data.measurements)).toBe(true)
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })

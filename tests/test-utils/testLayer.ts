@@ -38,6 +38,19 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
       texts.map(() => ({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const })),
     ),
   getFallbackInfo: () => Effect.succeed(undefined),
+  createForDevice: () =>
+    Effect.succeed({
+      embed: () =>
+        Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
+      batch: (texts: readonly string[]) =>
+        Effect.succeed(
+          texts.map(() => ({
+            vector: new Float32Array(384),
+            dims: 384,
+            dtype: "fp32" as const,
+          })),
+        ),
+    }),
 })
 
 /**

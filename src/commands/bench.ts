@@ -74,14 +74,6 @@ const benchCommand = Command.make(
         measurements: result.measurements,
         recommendation: result.recommendation,
       })
-
-      if (!json) {
-        yield* d.log(`Profile: ${result.profile}`, "info")
-        yield* d.log(`Warmup: ${result.warmup}, Measure batches: ${result.measureBatches}`, "info")
-        yield* d.log(`Batch sizes: ${sizes.join(", ")}`, "info")
-        yield* d.log(`Timeout: ${timeout}s`, "info")
-        yield* d.log(result.recommendation, "warn")
-      }
     }).pipe(Effect.catchAll(reportError)),
 )
 

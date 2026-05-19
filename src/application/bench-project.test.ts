@@ -1,8 +1,11 @@
-import { Effect, Ref } from "effect"
-import { expect, test } from "vite-plus/test"
+import { Effect, Layer, Ref } from "effect"
+import { expect, test, describe } from "vite-plus/test"
 
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import { Embedder } from "../domain/ports.js"
+import { DeviceDetection } from "../services/device-detect.js"
+import type { DeviceType } from "../services/device-detect.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { BenchProject } from "./bench-project.js"
 
@@ -67,32 +70,104 @@ const defaultBenchOpts = {
   json: false,
 }
 
+const mockDeviceDetection = (devices: readonly DeviceType[]) =>
+  Layer.succeed(DeviceDetection, {
+    detect: () => Effect.succeed(devices[0]!),
+    detectAll: () => Effect.succeed(devices),
+  })
+
+const createMockEmbedder = () => {
+  let createCallCount = 0
+  const batchCallCounts: number[] = []
+
+  const layer = Layer.succeed(Embedder, {
+    embed: () =>
+      Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
+    batch: (texts: readonly string[]) =>
+      Effect.succeed(
+        texts.map(() => ({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const })),
+      ),
+    getFallbackInfo: () => Effect.succeed(undefined),
+    createForDevice: () =>
+      Effect.sync(() => {
+        const idx = createCallCount++
+        batchCallCounts.push(0)
+        return {
+          embed: () =>
+            Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
+          batch: (texts: readonly string[]) =>
+            Effect.sync(() => {
+              batchCallCounts[idx] = (batchCallCounts[idx] ?? 0) + 1
+              return texts.map(() => ({
+                vector: new Float32Array(384),
+                dims: 384,
+                dtype: "fp32" as const,
+              }))
+            }),
+        }
+      }),
+  })
+
+  return {
+    layer,
+    getCreateCallCount: () => createCallCount,
+    getBatchCallCounts: () => [...batchCallCounts],
+  }
+}
+
+const benchLayer = (
+  contents: Record<string, string>,
+  devices: readonly DeviceType[],
+  opts?: {
+    embedderLayer?: Layer.Layer<Embedder>
+    displayLayer?: Layer.Layer<Embedder>
+    scannerLayer?: Layer.Layer<Embedder>
+  },
+) => {
+  const mock = createMockEmbedder()
+  return {
+    layer: testLayer({
+      contents,
+      scannerLayer: opts?.scannerLayer as any,
+      embedderLayer: opts?.embedderLayer ?? mock.layer,
+      displayLayer: opts?.displayLayer as any,
+    }).pipe(Layer.merge(mockDeviceDetection(devices))),
+    mock,
+  }
+}
+
 test("BenchProject.bench reports corpus size", () =>
   Effect.gen(function* () {
     const result = yield* BenchProject.bench(defaultBenchOpts)
     expect(result.profile).toBe("balanced")
-    expect(result.recommendation).toBe("measurement pipeline not yet implemented")
-    expect(result.measurements).toEqual([])
-  }).pipe(
-    Effect.provide(testLayer({ contents: fixtures, scannerLayer: ScannerLive })),
-    Effect.scoped,
-  ))
+    expect(result.measurements.length).toBeGreaterThan(0)
+  }).pipe(Effect.provide(benchLayer(fixtures, ["cpu"]).layer), Effect.scoped))
 
 test("BenchProject.bench reports zero chunks for empty project", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     const result = yield* BenchProject.bench(defaultBenchOpts)
-    expect(result.recommendation).toBe("measurement pipeline not yet implemented")
+    expect(result.measurements).toEqual([])
+    expect(result.recommendation).toContain("No chunks")
 
     const entries = yield* Ref.get(ref)
     const logEntries = entries.filter((e) => e._tag === "log")
     const corpusEntry = logEntries.find((e) => e.message.includes("Found 0 chunks from 0 files"))
     expect(corpusEntry).toBeDefined()
-  }).pipe(Effect.provide(testLayer({ contents: {}, displayLayer: layer })), Effect.scoped)
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        contents: {},
+        displayLayer: layer,
+      }),
+    ),
+    Effect.scoped,
+  )
 })
 
 test("BenchProject.bench finds chunks from files", () => {
   const { ref, layer } = silentDisplay()
+  const { layer: benchL } = benchLayer(fixtures, ["cpu"], { displayLayer: layer as any })
   return Effect.gen(function* () {
     yield* BenchProject.bench(defaultBenchOpts)
 
@@ -100,12 +175,7 @@ test("BenchProject.bench finds chunks from files", () => {
     const logEntries = entries.filter((e) => e._tag === "log")
     const corpusEntry = logEntries.find((e) => e.message.includes("chunks from 2 files"))
     expect(corpusEntry).toBeDefined()
-  }).pipe(
-    Effect.provide(
-      testLayer({ contents: fixtures, scannerLayer: ScannerLive, displayLayer: layer }),
-    ),
-    Effect.scoped,
-  )
+  }).pipe(Effect.provide(benchL), Effect.scoped)
 })
 
 test("BenchProject.prepareCorpus shuffles chunks", () =>
@@ -158,3 +228,210 @@ test("BenchProject.prepareCorpus returns empty corpus for no files", () =>
     expect(corpus.fileCount).toBe(0)
     expect(corpus.chunkCount).toBe(0)
   }).pipe(Effect.provide(testLayer({ contents: {} })), Effect.scoped))
+
+describe("BenchProject measurement pipeline", () => {
+  test("measures cold-start and warm-path for each device x batchSize", () => {
+    const { layer } = silentDisplay()
+    const devices: DeviceType[] = ["cpu"]
+    const batchSizes = [4, 16] as const
+    const opts = {
+      warmup: 2,
+      measureBatches: 3,
+      batchSizes,
+      timeout: 60,
+      profile: "balanced" as const,
+      json: false,
+    }
+
+    return Effect.gen(function* () {
+      const result = yield* BenchProject.bench(opts)
+
+      expect(result.measurements.length).toBe(devices.length * batchSizes.length)
+
+      for (const device of devices) {
+        for (const bs of batchSizes) {
+          const m = result.measurements.find((x) => x.device === device && x.batchSize === bs)
+          expect(m).toBeDefined()
+          expect(m!.device).toBe(device)
+          expect(m!.batchSize).toBe(bs)
+          expect(m!.coldLatencyMs).toBeGreaterThanOrEqual(0)
+          expect(m!.warmChunksPerSec).toBeGreaterThanOrEqual(0)
+          expect(m!.warmLatencyPerBatchMs).toBeGreaterThanOrEqual(0)
+          expect(m!.status).toBe("ok")
+        }
+      }
+    }).pipe(
+      Effect.provide(benchLayer(fixtures, devices, { displayLayer: layer as any }).layer),
+      Effect.scoped,
+    )
+  })
+
+  test("creates embedder per device for cold-start", () => {
+    const mock = createMockEmbedder()
+    const devices: DeviceType[] = ["cpu", "dml"]
+    const opts = {
+      warmup: 1,
+      measureBatches: 1,
+      batchSizes: [4] as const,
+      timeout: 60,
+      profile: "balanced" as const,
+      json: false,
+    }
+
+    return Effect.gen(function* () {
+      yield* BenchProject.bench(opts)
+      expect(mock.getCreateCallCount()).toBe(devices.length)
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          contents: fixtures,
+          scannerLayer: ScannerLive,
+          embedderLayer: mock.layer,
+        }).pipe(Layer.merge(mockDeviceDetection(devices))),
+      ),
+      Effect.scoped,
+    )
+  })
+
+  test("outputs human-readable table", () => {
+    const { ref, layer } = silentDisplay()
+    const mock = createMockEmbedder()
+    return Effect.gen(function* () {
+      yield* BenchProject.bench({
+        warmup: 1,
+        measureBatches: 1,
+        batchSizes: [4] as const,
+        timeout: 60,
+        profile: "balanced" as const,
+        json: false,
+      })
+
+      const entries = yield* Ref.get(ref)
+      const logEntries = entries.filter((e) => e._tag === "log")
+      const tableEntry = logEntries.find(
+        (e) => e.message.includes("device") && e.message.includes("batchSize"),
+      )
+      expect(tableEntry).toBeDefined()
+      expect(tableEntry!.message).toContain("cold (ms)")
+      expect(tableEntry!.message).toContain("warm (ch/s)")
+      expect(tableEntry!.message).toContain("status")
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          contents: fixtures,
+          scannerLayer: ScannerLive,
+          embedderLayer: mock.layer,
+          displayLayer: layer,
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
+      ),
+      Effect.scoped,
+    )
+  })
+
+  test("computes recommendation for throughput profile", () => {
+    const mock = createMockEmbedder()
+    return Effect.gen(function* () {
+      const result = yield* BenchProject.bench({
+        warmup: 1,
+        measureBatches: 1,
+        batchSizes: [4, 16] as const,
+        timeout: 60,
+        profile: "throughput" as const,
+        json: false,
+      })
+
+      expect(result.recommendation).toContain("throughput")
+      expect(result.recommendation).toContain("Recommended")
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          contents: fixtures,
+          scannerLayer: ScannerLive,
+          embedderLayer: mock.layer,
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
+      ),
+      Effect.scoped,
+    )
+  })
+
+  test("computes recommendation for cold profile", () => {
+    const mock = createMockEmbedder()
+    return Effect.gen(function* () {
+      const result = yield* BenchProject.bench({
+        warmup: 1,
+        measureBatches: 1,
+        batchSizes: [4, 16] as const,
+        timeout: 60,
+        profile: "cold" as const,
+        json: false,
+      })
+
+      expect(result.recommendation).toContain("cold")
+      expect(result.recommendation).toContain("Recommended")
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          contents: fixtures,
+          scannerLayer: ScannerLive,
+          embedderLayer: mock.layer,
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
+      ),
+      Effect.scoped,
+    )
+  })
+
+  test("computes recommendation for balanced profile", () => {
+    const mock = createMockEmbedder()
+    return Effect.gen(function* () {
+      const result = yield* BenchProject.bench({
+        warmup: 1,
+        measureBatches: 1,
+        batchSizes: [4, 16] as const,
+        timeout: 60,
+        profile: "balanced" as const,
+        json: false,
+      })
+
+      expect(result.recommendation).toContain("balanced")
+      expect(result.recommendation).toContain("Recommended")
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          contents: fixtures,
+          scannerLayer: ScannerLive,
+          embedderLayer: mock.layer,
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
+      ),
+      Effect.scoped,
+    )
+  })
+
+  test("reports throughput as chunks/sec", () => {
+    const mock = createMockEmbedder()
+    const batchSize = 16
+    return Effect.gen(function* () {
+      const result = yield* BenchProject.bench({
+        warmup: 1,
+        measureBatches: 2,
+        batchSizes: [batchSize] as const,
+        timeout: 60,
+        profile: "balanced" as const,
+        json: false,
+      })
+
+      const m = result.measurements[0]!
+      const expectedChunks = batchSize * 2
+      expect(m.warmChunksPerSec).toBeGreaterThan(0)
+      expect(m.warmChunksPerSec).toBeLessThanOrEqual(expectedChunks * 1000)
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          contents: fixtures,
+          scannerLayer: ScannerLive,
+          embedderLayer: mock.layer,
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
+      ),
+      Effect.scoped,
+    )
+  })
+})

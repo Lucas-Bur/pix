@@ -1,7 +1,13 @@
 import { Effect, Random, Stream } from "effect"
 import * as Chunk from "effect/Chunk"
 
-import type { BenchOptions, BenchResult, Corpus } from "../domain/bench.js"
+import type {
+  BenchMeasurement,
+  BenchOptions,
+  BenchResult,
+  BenchStatus,
+  Corpus,
+} from "../domain/bench.js"
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type {
@@ -10,13 +16,18 @@ import type {
   AllProcessorErrors,
   DiskFullError,
 } from "../domain/errors.js"
-import { Display } from "../domain/ports.js"
+import { ModelLoadError } from "../domain/errors.js"
+import { Display, Embedder, type EmbedderDeviceConfig } from "../domain/ports.js"
 import { ConfigStore, Scanner, Chunker, ContentExtractor } from "../domain/ports.js"
 import { getExtension } from "../lib/config/extension.js"
 import { buildProcessorMap } from "../lib/config/processors.js"
 import { mergeConfig } from "../lib/config/validation.js"
+import { DeviceDetection } from "../services/device-detect.js"
+import { MODEL_REGISTRY } from "../services/models.js"
 
 type CorpusError = AllConfigErrors | ChunkerError | AllProcessorErrors | DiskFullError
+
+const COLD_START_BATCH_SIZE = 16
 
 const fisherYatesShuffle = <A>(arr: readonly A[]): Effect.Effect<A[]> =>
   Effect.gen(function* () {
@@ -45,6 +56,84 @@ const totalWork = (opts: BenchOptions): number => {
   return opts.warmup * maxBatch + opts.measureBatches * maxBatch
 }
 
+const formatNumber = (n: number): string => n.toLocaleString("en-US")
+
+const buildTable = (measurements: readonly BenchMeasurement[]): string => {
+  const header = ["device", "batchSize", "cold (ms)", "warm (ch/s)", "status"]
+  const colWidths = [
+    Math.max(header[0]!.length, ...measurements.map((m) => m.device.length)),
+    Math.max(header[1]!.length, ...measurements.map((m) => String(m.batchSize).length)),
+    Math.max(
+      header[2]!.length,
+      ...measurements.map((m) => String(Math.round(m.coldLatencyMs)).length),
+    ),
+    Math.max(
+      header[3]!.length,
+      ...measurements.map((m) =>
+        m.status === "ok" ? formatNumber(Math.round(m.warmChunksPerSec)).length : 1,
+      ),
+    ),
+    Math.max(header[4]!.length, ...measurements.map((m) => m.status.length)),
+  ]
+
+  const pad = (s: string, w: number) => s.padStart(w)
+
+  const row = (cells: string[]) => `│ ${cells.map((c, i) => pad(c, colWidths[i]!)).join(" │ ")} │`
+
+  const separator = (left: string, mid: string, right: string) =>
+    left + colWidths.map((w) => mid.padStart(w + 2, mid)).join(mid) + right
+
+  const lines: string[] = []
+  lines.push(separator("┌", "─", "┐"))
+  lines.push(row(header))
+  lines.push(separator("├", "─", "┤"))
+
+  for (const m of measurements) {
+    const warm = m.status === "ok" ? formatNumber(Math.round(m.warmChunksPerSec)) : "—"
+    lines.push(
+      row([m.device, String(m.batchSize), String(Math.round(m.coldLatencyMs)), warm, m.status]),
+    )
+  }
+
+  lines.push(separator("└", "─", "┘"))
+  return lines.join("\n")
+}
+
+const computeRecommendation = (
+  measurements: readonly BenchMeasurement[],
+  profile: "throughput" | "cold" | "balanced",
+): string => {
+  const ok = measurements.filter((m) => m.status === "ok")
+  if (ok.length === 0) return "No successful measurements to recommend from"
+
+  let best: BenchMeasurement
+  if (profile === "throughput") {
+    best = ok.reduce((a, b) => (a.warmChunksPerSec > b.warmChunksPerSec ? a : b))
+  } else if (profile === "cold") {
+    best = ok.reduce((a, b) => (a.coldLatencyMs < b.coldLatencyMs ? a : b))
+  } else {
+    const maxCold = Math.max(...ok.map((m) => m.coldLatencyMs))
+    const minCold = Math.min(...ok.map((m) => m.coldLatencyMs))
+    const maxWarm = Math.max(...ok.map((m) => m.warmChunksPerSec))
+    const minWarm = Math.min(...ok.map((m) => m.warmChunksPerSec))
+
+    const coldRange = maxCold - minCold || 1
+    const warmRange = maxWarm - minWarm || 1
+
+    best = ok.reduce((best, m) => {
+      const coldScore = 1 - (m.coldLatencyMs - minCold) / coldRange
+      const warmScore = (m.warmChunksPerSec - minWarm) / warmRange
+      const score = 0.7 * coldScore + 0.3 * warmScore
+      const bestColdScore = 1 - (best.coldLatencyMs - minCold) / coldRange
+      const bestWarmScore = (best.warmChunksPerSec - minWarm) / warmRange
+      const bestScore = 0.7 * bestColdScore + 0.3 * bestWarmScore
+      return score > bestScore ? m : best
+    })
+  }
+
+  return `Recommended: ${best.device}/batchSize=${best.batchSize} (${profile})`
+}
+
 export class BenchProject extends Effect.Service<BenchProject>()("BenchProject", {
   accessors: true,
   dependencies: [],
@@ -54,6 +143,8 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
     const chunker = yield* Chunker
     const d = yield* Display
     const extractor = yield* ContentExtractor
+    const embedder = yield* Embedder
+    const detection = yield* DeviceDetection
 
     const prepareCorpus = (opts: BenchOptions): Effect.Effect<Corpus, CorpusError> =>
       Effect.gen(function* () {
@@ -111,16 +202,193 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
         }
       })
 
-    const bench = (opts: BenchOptions): Effect.Effect<BenchResult, CorpusError> =>
+    const getEmbedderConfig = (): Effect.Effect<
+      { model: string; dtype: string; dims: number },
+      ModelLoadError
+    > =>
       Effect.gen(function* () {
-        yield* prepareCorpus(opts)
+        const config = yield* configStore
+          .readConfig()
+          .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+        const model = config?.embedder.model ?? "Xenova/all-MiniLM-L6-v2"
+        const dtype = config?.embedder.dtype ?? "fp32"
+        const modelInfo = MODEL_REGISTRY[model]
+        if (!modelInfo) {
+          return yield* new ModelLoadError({
+            message: `Unknown embedding model "${model}"`,
+            model,
+          })
+        }
+        return { model, dtype, dims: modelInfo.dims }
+      })
+
+    const measureColdStart = (
+      devCfg: EmbedderDeviceConfig,
+      corpus: Corpus,
+    ): Effect.Effect<{ latencyMs: number; error: string | undefined }, never> =>
+      Effect.gen(function* () {
+        const start = Date.now()
+        const embedderResult = yield* embedder.createForDevice(devCfg).pipe(Effect.either)
+        if (embedderResult._tag === "Left") {
+          return { latencyMs: Date.now() - start, error: embedderResult.left.message }
+        }
+        const embedderInstance = embedderResult.right
+        const batchTexts = corpus.chunks.slice(0, COLD_START_BATCH_SIZE).map((c) => c.text)
+        if (batchTexts.length === 0) {
+          yield* Effect.sleep("10 millis")
+        } else {
+          const batchResult = yield* embedderInstance.batch(batchTexts).pipe(Effect.either)
+          if (batchResult._tag === "Left") {
+            return { latencyMs: Date.now() - start, error: batchResult.left.message }
+          }
+        }
+        return { latencyMs: Date.now() - start, error: undefined }
+      }).pipe(Effect.orElseSucceed(() => ({ latencyMs: 0, error: "unexpected error" })))
+
+    const measureWarmPath = (
+      devCfg: EmbedderDeviceConfig,
+      corpus: Corpus,
+      batchSize: number,
+      warmupBatches: number,
+      measureBatches: number,
+      timeoutMs: number,
+    ): Effect.Effect<
+      { chunksPerSec: number; latencyPerBatchMs: number; error: string | undefined },
+      never
+    > =>
+      Effect.gen(function* () {
+        const embedderResult = yield* embedder.createForDevice(devCfg).pipe(Effect.either)
+        if (embedderResult._tag === "Left") {
+          return { chunksPerSec: 0, latencyPerBatchMs: 0, error: embedderResult.left.message }
+        }
+        const embedderInstance = embedderResult.right
+
+        const totalChunks = batchSize * measureBatches
+        const availableChunks = corpus.chunks.length
+        if (availableChunks < totalChunks) {
+          return { chunksPerSec: 0, latencyPerBatchMs: 0, error: "insufficient corpus" }
+        }
+
+        for (let i = 0; i < warmupBatches; i++) {
+          const offset = i * batchSize
+          const texts = corpus.chunks.slice(offset, offset + batchSize).map((c) => c.text)
+          const result = yield* embedderInstance.batch(texts).pipe(Effect.either)
+          if (result._tag === "Left") {
+            return { chunksPerSec: 0, latencyPerBatchMs: 0, error: result.left.message }
+          }
+        }
+
+        const measureStart = Date.now()
+        let totalLatency = 0
+
+        for (let i = 0; i < measureBatches; i++) {
+          const offset = (warmupBatches + i) * batchSize
+          const texts = corpus.chunks.slice(offset, offset + batchSize).map((c) => c.text)
+          const batchStart = Date.now()
+          const result = yield* embedderInstance.batch(texts).pipe(Effect.either)
+          if (result._tag === "Left") {
+            return { chunksPerSec: 0, latencyPerBatchMs: 0, error: result.left.message }
+          }
+          totalLatency += Date.now() - batchStart
+        }
+
+        const totalMs = Date.now() - measureStart
+        const chunksPerSec = totalMs > 0 ? (totalChunks / totalMs) * 1000 : 0
+        const latencyPerBatchMs = measureBatches > 0 ? totalLatency / measureBatches : 0
+
+        return { chunksPerSec, latencyPerBatchMs, error: undefined }
+      }).pipe(
+        Effect.timeout(`${timeoutMs} millis`),
+        Effect.catchAll(() =>
+          Effect.succeed({ chunksPerSec: 0, latencyPerBatchMs: 0, error: "timeout" }),
+        ),
+      )
+
+    type BenchError = CorpusError | ModelLoadError
+
+    const bench = (opts: BenchOptions): Effect.Effect<BenchResult, BenchError> =>
+      Effect.gen(function* () {
+        const corpus = yield* prepareCorpus(opts)
+
+        if (corpus.chunks.length === 0) {
+          return {
+            profile: opts.profile,
+            warmup: opts.warmup,
+            measureBatches: opts.measureBatches,
+            measurements: [],
+            recommendation: "No chunks available for benchmarking",
+          }
+        }
+
+        const ecfg = yield* getEmbedderConfig()
+        const workingDevices = yield* detection.detectAll(ecfg.model, ecfg.dtype)
+
+        if (workingDevices.length === 0) {
+          return {
+            profile: opts.profile,
+            warmup: opts.warmup,
+            measureBatches: opts.measureBatches,
+            measurements: [],
+            recommendation: "No working devices detected",
+          }
+        }
+
+        yield* d.log(
+          `Testing ${workingDevices.length} device(s): ${workingDevices.join(", ")}`,
+          "info",
+        )
+
+        const measurements: BenchMeasurement[] = []
+
+        for (const device of workingDevices) {
+          const devCfg: EmbedderDeviceConfig = {
+            device,
+            model: ecfg.model,
+            dtype: ecfg.dtype,
+            dims: ecfg.dims,
+          }
+
+          yield* d.updateInteractive(`Measuring cold-start: ${device}`)
+          const coldResult = yield* measureColdStart(devCfg, corpus)
+
+          for (const batchSize of opts.batchSizes) {
+            yield* d.updateInteractive(`Measuring warm-path: ${device} batchSize=${batchSize}`)
+
+            const warmResult = yield* measureWarmPath(
+              devCfg,
+              corpus,
+              batchSize,
+              opts.warmup,
+              opts.measureBatches,
+              opts.timeout * 1000,
+            )
+
+            const status: BenchStatus = (coldResult.error ?? warmResult.error) ? "failed" : "ok"
+
+            measurements.push({
+              device,
+              batchSize,
+              coldLatencyMs: coldResult.latencyMs,
+              warmChunksPerSec: warmResult.chunksPerSec,
+              warmLatencyPerBatchMs: warmResult.latencyPerBatchMs,
+              status,
+              error: coldResult.error ?? warmResult.error,
+            })
+          }
+        }
+
+        const table = buildTable(measurements)
+        yield* d.log(table, "info")
+
+        const recommendation = computeRecommendation(measurements, opts.profile)
+        yield* d.log(recommendation, "success")
 
         return {
           profile: opts.profile,
           warmup: opts.warmup,
           measureBatches: opts.measureBatches,
-          measurements: [],
-          recommendation: "measurement pipeline not yet implemented",
+          measurements,
+          recommendation,
         }
       })
 
