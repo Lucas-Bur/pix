@@ -328,7 +328,7 @@ describe("BenchProject measurement pipeline", () => {
     )
   })
 
-  test("outputs human-readable table", () => {
+  test("outputs table via display", () => {
     const { ref, layer } = silentDisplay()
     const mock = createMockEmbedder()
     return Effect.gen(function* () {
@@ -342,14 +342,13 @@ describe("BenchProject measurement pipeline", () => {
       })
 
       const entries = yield* Ref.get(ref)
-      const logEntries = entries.filter((e) => e._tag === "log")
-      const tableEntry = logEntries.find(
-        (e) => e.message.includes("device") && e.message.includes("batchSize"),
-      )
-      expect(tableEntry).toBeDefined()
-      expect(tableEntry!.message).toContain("cold (ms)")
-      expect(tableEntry!.message).toContain("warm (ch/s)")
-      expect(tableEntry!.message).toContain("status")
+      const tableEntries = entries.filter((e) => e._tag === "table")
+      expect(tableEntries.length).toBeGreaterThan(0)
+      const table = tableEntries[0]!
+      expect(table.header).toContain("device")
+      expect(table.header).toContain("batchSize")
+      expect(table.header).toContain("status")
+      expect(table.rows.length).toBeGreaterThan(0)
     }).pipe(
       Effect.provide(
         testLayer({
@@ -530,13 +529,13 @@ describe("BenchProject measurement pipeline", () => {
       })
 
       const entries = yield* Ref.get(ref)
-      const logEntries = entries.filter((e) => e._tag === "log")
-      const tableEntry = logEntries.find(
-        (e) => e.message.includes("device") && e.message.includes("batchSize"),
-      )
-      expect(tableEntry).toBeDefined()
-      expect(tableEntry!.message).toContain("cuda")
-      expect(tableEntry!.message).toContain("failed")
+      const tableEntries = entries.filter((e) => e._tag === "table")
+      expect(tableEntries.length).toBeGreaterThan(0)
+      const table = tableEntries[0]!
+      const cudaRow = table.rows.find((r) => r[0] === "cuda")
+      expect(cudaRow).toBeDefined()
+      expect(cudaRow![1]).toBe("—")
+      expect(cudaRow![5]).toBe("failed")
     }).pipe(
       Effect.provide(
         testLayer({

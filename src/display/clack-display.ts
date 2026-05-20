@@ -11,6 +11,7 @@ import {
   type DisplayProgressOptions as ProgressOptions,
   type DisplayUpdatePayload,
 } from "../domain/ports.js"
+import { formatTable } from "../lib/display/table.js"
 import {
   type ActiveInteractive,
   clearActive,
@@ -148,6 +149,11 @@ export const ClackDisplayLive = Layer.effect(
       text: (message) =>
         appendLogEntry(fs, { type: "text", message }).pipe(
           Effect.andThen(Effect.sync(() => clack.log.message(message))),
+        ),
+
+      table: (header, rows) =>
+        appendLogEntry(fs, { type: "table", header, rows }).pipe(
+          Effect.andThen(Effect.sync(() => clack.log.message(formatTable(header, rows)))),
         ),
 
       spinner: <A, E, R>(message: string, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>

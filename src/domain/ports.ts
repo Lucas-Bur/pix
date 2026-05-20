@@ -318,6 +318,10 @@ export interface DisplayService {
   readonly log: (message: string, severity: DisplaySeverity) => Effect.Effect<void>
   readonly note: (content: string, title?: string) => Effect.Effect<void>
   readonly text: (message: string) => Effect.Effect<void>
+  readonly table: (
+    header: readonly string[],
+    rows: readonly (readonly string[])[],
+  ) => Effect.Effect<void>
   readonly spinner: <A, E, R>(
     message: string,
     effect: Effect.Effect<A, E, R>,

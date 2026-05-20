@@ -1,7 +1,7 @@
 import { expect, test, describe } from "vite-plus/test"
 
 import type { BenchMeasurement } from "../../domain/bench.js"
-import { formatTable, computeRecommendations } from "./format.js"
+import { computeRecommendations } from "./format.js"
 
 const makeMeasurement = (overrides: Partial<BenchMeasurement> = {}): BenchMeasurement => ({
   device: "cpu",
@@ -12,54 +12,6 @@ const makeMeasurement = (overrides: Partial<BenchMeasurement> = {}): BenchMeasur
   totalDurationMs: 100,
   status: "ok",
   ...overrides,
-})
-
-describe("formatTable", () => {
-  test("formats single measurement with clack-style corners", () => {
-    const table = formatTable([makeMeasurement()])
-    expect(table).toContain("cpu")
-    expect(table).toContain("16")
-    expect(table).toContain("ok")
-    expect(table).toContain("500")
-    expect(table).toContain("1,000")
-    expect(table).toContain("╭")
-    expect(table).toContain("╮")
-    expect(table).toContain("╰")
-    expect(table).toContain("╯")
-  })
-
-  test("formats failed measurement with dash for batchSize and warm", () => {
-    const table = formatTable([makeMeasurement({ status: "failed", batchSize: 0 })])
-    expect(table).toContain("failed")
-    expect(table).toContain("—")
-  })
-
-  test("formats multiple measurements", () => {
-    const measurements = [
-      makeMeasurement({ device: "cuda", batchSize: 64, warmChunksPerSec: 12000 }),
-      makeMeasurement({ device: "cpu", batchSize: 8, warmChunksPerSec: 2000 }),
-    ]
-    const table = formatTable(measurements)
-    expect(table).toContain("cuda")
-    expect(table).toContain("cpu")
-    expect(table).toContain("12,000")
-    expect(table).toContain("2,000")
-  })
-
-  test("empty measurements returns table with header only", () => {
-    const table = formatTable([])
-    expect(table).toContain("device")
-    expect(table).toContain("batchSize")
-    expect(table).toContain("cold (ms)")
-    expect(table).toContain("warm (ch/s)")
-    expect(table).toContain("time (ms)")
-    expect(table).toContain("status")
-  })
-
-  test("uses vertical bar separator between columns", () => {
-    const table = formatTable([makeMeasurement()])
-    expect(table).toContain("│")
-  })
 })
 
 describe("computeRecommendations", () => {

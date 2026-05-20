@@ -22,7 +22,7 @@ import type {
 import { ConfigError, ModelLoadError } from "../domain/errors.js"
 import { Display, Embedder, type EmbedderDeviceConfig } from "../domain/ports.js"
 import { ConfigStore, Scanner, Chunker, ContentExtractor } from "../domain/ports.js"
-import { formatTable, computeRecommendations } from "../lib/bench/format.js"
+import { computeRecommendations } from "../lib/bench/format.js"
 import { getExtension } from "../lib/config/extension.js"
 import { buildProcessorMap } from "../lib/config/processors.js"
 import { mergeConfig } from "../lib/config/validation.js"
@@ -374,8 +374,23 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
               }
             }
 
-            const table = formatTable(measurements)
-            yield* d.log(table, "info")
+            const header = [
+              "device",
+              "batchSize",
+              "cold (ms)",
+              "warm (ch/s)",
+              "time (ms)",
+              "status",
+            ]
+            const rows = measurements.map((m) => [
+              m.device,
+              m.status === "failed" && m.batchSize === 0 ? "—" : String(m.batchSize),
+              String(Math.round(m.coldLatencyMs)),
+              m.status === "ok" ? String(Math.round(m.warmChunksPerSec)) : "—",
+              String(Math.round(m.totalDurationMs)),
+              m.status,
+            ])
+            yield* d.table(header, rows)
 
             const recs = computeRecommendations(measurements, opts.profile)
             if (recs.length === 0) {

@@ -9,6 +9,10 @@ export type DisplayEntry = Data.TaggedEnum<{
   readonly log: { readonly message: string; readonly severity: DisplaySeverity }
   readonly note: { readonly content: string; readonly title?: string }
   readonly text: { readonly message: string }
+  readonly table: {
+    readonly header: readonly string[]
+    readonly rows: readonly (readonly string[])[]
+  }
   readonly spinner: { readonly message: string }
   readonly progress: { readonly message: string; readonly max: number }
   readonly updateInteractive: {
