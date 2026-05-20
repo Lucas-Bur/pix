@@ -116,6 +116,48 @@ const createMockEmbedder = () => {
   }
 }
 
+const createFailingEmbedder = (failDevices: readonly string[]) => {
+  let createCallCount = 0
+  const batchCallCounts: number[] = []
+
+  const layer = Layer.succeed(Embedder, {
+    embed: () =>
+      Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
+    batch: (texts: readonly string[]) =>
+      Effect.succeed(
+        texts.map(() => ({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const })),
+      ),
+    getFallbackInfo: () => Effect.succeed(undefined),
+    createForDevice: (cfg) =>
+      Effect.sync(() => {
+        if (failDevices.includes(cfg.device)) {
+          throw new Error(`Device ${cfg.device} unavailable`)
+        }
+        const idx = createCallCount++
+        batchCallCounts.push(0)
+        return {
+          embed: () =>
+            Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
+          batch: (texts: readonly string[]) =>
+            Effect.sync(() => {
+              batchCallCounts[idx] = (batchCallCounts[idx] ?? 0) + 1
+              return texts.map(() => ({
+                vector: new Float32Array(384),
+                dims: 384,
+                dtype: "fp32" as const,
+              }))
+            }),
+        }
+      }),
+  })
+
+  return {
+    layer,
+    getCreateCallCount: () => createCallCount,
+    getBatchCallCounts: () => [...batchCallCounts],
+  }
+}
+
 const benchLayer = (
   contents: Record<string, string>,
   opts?: {
@@ -151,7 +193,7 @@ test("BenchProject.bench reports zero chunks for empty project", () => {
     const result = yield* BenchProject.bench(defaultBenchOpts)
     expect(result.measurements).toEqual([])
     expect(result.recommendation.device).toBe("cpu")
-    expect(result.recommendation.batchSize).toBe(16)
+    expect(result.recommendation.batchSize).toBe(8)
 
     const entries = yield* Ref.get(ref)
     const logEntries = entries.filter((e) => e._tag === "log")
@@ -427,6 +469,81 @@ describe("BenchProject measurement pipeline", () => {
           contents: fixtures,
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
+        }),
+      ),
+      Effect.scoped,
+    )
+  })
+
+  test("outputs three recommendations with active profile highlighted", () => {
+    const { ref, layer } = silentDisplay()
+    const mock = createMockEmbedder()
+    return Effect.gen(function* () {
+      yield* BenchProject.bench({
+        warmup: 1,
+        measureBatches: 1,
+        batchSizes: [4, 16] as const,
+        timeout: 60,
+        profile: "balanced" as const,
+        json: false,
+      })
+
+      const entries = yield* Ref.get(ref)
+      const logEntries = entries.filter((e) => e._tag === "log")
+      const successEntries = logEntries.filter((e) => e.severity === "success")
+      const infoEntries = logEntries.filter((e) => e.severity === "info")
+
+      const recSuccess = successEntries.find((e) => e.message.includes("balanced"))
+      expect(recSuccess).toBeDefined()
+
+      const recThroughput = infoEntries.find((e) => e.message.includes("throughput"))
+      expect(recThroughput).toBeDefined()
+      expect(recThroughput!.severity).toBe("info")
+
+      const recCold = infoEntries.find((e) => e.message.includes("cold"))
+      expect(recCold).toBeDefined()
+      expect(recCold!.severity).toBe("info")
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          contents: fixtures,
+          scannerLayer: ScannerLive,
+          embedderLayer: mock.layer,
+          displayLayer: layer,
+        }),
+      ),
+      Effect.scoped,
+    )
+  })
+
+  test("marks failed device with dash for batchSize in table", () => {
+    const { ref, layer } = silentDisplay()
+    const mock = createFailingEmbedder(["cuda"])
+    return Effect.gen(function* () {
+      yield* BenchProject.bench({
+        warmup: 1,
+        measureBatches: 1,
+        batchSizes: [4] as const,
+        timeout: 60,
+        profile: "balanced" as const,
+        json: false,
+      })
+
+      const entries = yield* Ref.get(ref)
+      const logEntries = entries.filter((e) => e._tag === "log")
+      const tableEntry = logEntries.find(
+        (e) => e.message.includes("device") && e.message.includes("batchSize"),
+      )
+      expect(tableEntry).toBeDefined()
+      expect(tableEntry!.message).toContain("cuda")
+      expect(tableEntry!.message).toContain("failed")
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          contents: fixtures,
+          scannerLayer: ScannerLive,
+          embedderLayer: mock.layer,
+          displayLayer: layer,
         }),
       ),
       Effect.scoped,

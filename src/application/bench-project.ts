@@ -22,7 +22,7 @@ import type {
 import { ConfigError, ModelLoadError } from "../domain/errors.js"
 import { Display, Embedder, type EmbedderDeviceConfig } from "../domain/ports.js"
 import { ConfigStore, Scanner, Chunker, ContentExtractor } from "../domain/ports.js"
-import { formatTable, formatRecommendationMessage } from "../lib/bench/format.js"
+import { formatTable, computeRecommendations } from "../lib/bench/format.js"
 import { getExtension } from "../lib/config/extension.js"
 import { buildProcessorMap } from "../lib/config/processors.js"
 import { mergeConfig } from "../lib/config/validation.js"
@@ -277,7 +277,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
             warmup: opts.warmup,
             measureBatches: opts.measureBatches,
             measurements: [],
-            recommendation: { device: "cpu", batchSize: 16, profile: opts.profile },
+            recommendation: { device: "cpu", batchSize: 8, profile: opts.profile },
           }
         }
 
@@ -290,7 +290,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
             warmup: opts.warmup,
             measureBatches: opts.measureBatches,
             measurements: [],
-            recommendation: { device: "cpu", batchSize: 16, profile: opts.profile },
+            recommendation: { device: "cpu", batchSize: 8, profile: opts.profile },
           }
         }
 
@@ -377,11 +377,13 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
             const table = formatTable(measurements)
             yield* d.log(table, "info")
 
-            const recommendation = computeRecommendation(measurements, opts.profile)
-            if (recommendation) {
-              yield* d.log(formatRecommendationMessage(recommendation), "success")
-            } else {
+            const recs = computeRecommendations(measurements, opts.profile)
+            if (recs.length === 0) {
               yield* d.log("No successful measurements to recommend from", "warn")
+            } else {
+              for (const rec of recs) {
+                yield* d.log(rec.label, rec.isRecommended ? "success" : "info")
+              }
             }
           }),
         )
@@ -393,7 +395,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
           measurements,
           recommendation: computeRecommendation(measurements, opts.profile) ?? {
             device: "cpu",
-            batchSize: 16,
+            batchSize: 8,
             profile: opts.profile,
           },
         }
