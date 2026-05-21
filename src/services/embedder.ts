@@ -1,4 +1,4 @@
-import type { FeatureExtractionPipeline } from "@huggingface/transformers"
+import type { FeatureExtractionPipeline, Tensor } from "@huggingface/transformers"
 import { Effect, Layer, Ref, Option } from "effect"
 
 import type { Embedding } from "../domain/chunk.js"
@@ -20,6 +20,19 @@ interface FallbackInfo {
   readonly originalDevice: string
   readonly reason: string
 }
+
+/**
+ * Extract Float32Array from inference tensor.
+ *
+ * IMPORTANT: The `dtype` config (`fp32`, `fp16`, `q8`, `q4`) controls model weight precision, NOT
+ * output activation dtype. FeatureExtractionPipeline always returns `tensor.type: "float32"` with
+ * `tensor.data` as `Float32Array`, regardless of weight dtype. Quantization is applied to weights
+ * only; the forward pass still produces float32 embeddings.
+ *
+ * Verified experimentally (scripts/check-dtype-output.mjs): fp32 → Float32Array, q8 → Float32Array,
+ * q4 → Float32Array
+ */
+const extractF32Data = (tensor: Tensor): Float32Array => tensor.data as Float32Array
 
 const loadExtractor = (
   model: string,
@@ -58,8 +71,8 @@ const makeEmbedBatch = (
           (cause) => new InferenceError({ message: "Embedding inference failed", cause }),
         ),
       )
-      const data = tensor.data as Float32Array //TODO: this needs to get looked at!
-      return { vector: data, dims, dtype }
+      const vector = extractF32Data(tensor)
+      return { vector, dims, dtype }
     })
 
   const batchEmbed = (texts: readonly string[]) =>
@@ -72,7 +85,7 @@ const makeEmbedBatch = (
           (cause) => new InferenceError({ message: "Batch embedding inference failed", cause }),
         ),
       )
-      const data = tensor.data as Float32Array //TODO: this needs to get looked at!
+      const data = extractF32Data(tensor)
       const n = tensor.dims[0]
       const results: Embedding[] = []
       for (let j = 0; j < n; j++) {
