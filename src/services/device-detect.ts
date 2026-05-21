@@ -1,10 +1,10 @@
 import { env } from "@huggingface/transformers"
 import { Context, Effect, Layer, Ref } from "effect"
 
+import type { DeviceType } from "../domain/device.js"
 import { ModelLoadError } from "../domain/errors.js"
 
-/** Available compute devices for ONNX model execution. */
-export type DeviceType = "cuda" | "dml" | "coreml" | "webgpu" | "wasm" | "cpu"
+export type { DeviceType } from "../domain/device.js"
 
 const DEVICE_PRIORITY: readonly DeviceType[] = ["cuda", "dml", "coreml", "webgpu", "wasm", "cpu"]
 
@@ -21,6 +21,7 @@ const tryDevice = (
   Effect.tryPromise(() =>
     loadPipeline().then((p) => p("feature-extraction", model, { device, dtype })),
   ).pipe(
+    Effect.as(device),
     Effect.mapError(
       (cause) =>
         new ModelLoadError({
@@ -37,7 +38,7 @@ export class DeviceDetection extends Context.Tag("DeviceDetection")<
   {
     /**
      * Detect the best available device by attempting model load on each device in priority order:
-     * cuda → dml → coreml → cpu. Returns the first device that succeeds.
+     * cuda → dml → coreml → webgpu → wasm → cpu. Returns the first device that succeeds.
      */
     readonly detect: (model: string, dtype: string) => Effect.Effect<DeviceType, ModelLoadError>
     /**

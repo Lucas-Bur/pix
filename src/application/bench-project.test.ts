@@ -4,9 +4,9 @@ import { expect, test, describe } from "vite-plus/test"
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import type { DeviceType } from "../domain/device.js"
 import { ConfigStore, Display, Embedder, Scanner } from "../domain/ports.js"
 import { DeviceDetection } from "../services/device-detect.js"
-import type { DeviceType } from "../services/device-detect.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { BenchProject } from "./bench-project.js"
 
@@ -204,7 +204,7 @@ test("BenchProject.bench reports zero chunks for empty project", () => {
       testLayer({
         contents: {},
         displayLayer: layer,
-      }),
+      }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
     ),
     Effect.scoped,
   )
@@ -322,7 +322,7 @@ describe("BenchProject measurement pipeline", () => {
           contents: fixtures,
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
-        }),
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
       ),
       Effect.scoped,
     )
@@ -356,7 +356,7 @@ describe("BenchProject measurement pipeline", () => {
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
           displayLayer: layer,
-        }),
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
       ),
       Effect.scoped,
     )
@@ -383,7 +383,7 @@ describe("BenchProject measurement pipeline", () => {
           contents: fixtures,
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
-        }),
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
       ),
       Effect.scoped,
     )
@@ -410,7 +410,7 @@ describe("BenchProject measurement pipeline", () => {
           contents: fixtures,
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
-        }),
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
       ),
       Effect.scoped,
     )
@@ -437,7 +437,7 @@ describe("BenchProject measurement pipeline", () => {
           contents: fixtures,
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
-        }),
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
       ),
       Effect.scoped,
     )
@@ -468,7 +468,7 @@ describe("BenchProject measurement pipeline", () => {
           contents: fixtures,
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
-        }),
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
       ),
       Effect.scoped,
     )
@@ -509,7 +509,7 @@ describe("BenchProject measurement pipeline", () => {
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
           displayLayer: layer,
-        }),
+        }).pipe(Layer.merge(mockDeviceDetection(["cpu"]))),
       ),
       Effect.scoped,
     )
@@ -543,7 +543,7 @@ describe("BenchProject measurement pipeline", () => {
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
           displayLayer: layer,
-        }),
+        }).pipe(Layer.merge(mockDeviceDetection(["cuda", "cpu"]))),
       ),
       Effect.scoped,
     )

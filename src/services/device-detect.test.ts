@@ -62,13 +62,15 @@ describe("DeviceDetection", () => {
       mockedPipeline.mockRejectedValueOnce(new Error("cuda not available"))
       mockedPipeline.mockRejectedValueOnce(new Error("dml not available"))
       mockedPipeline.mockRejectedValueOnce(new Error("coreml not available"))
+      mockedPipeline.mockRejectedValueOnce(new Error("webgpu not available"))
+      mockedPipeline.mockRejectedValueOnce(new Error("wasm not available"))
       mockedPipeline.mockResolvedValue({} as any)
 
       const detection = yield* DeviceDetection
       const result = yield* detection.detect("test-model", "fp32")
 
       expect(result).toBe("cpu")
-      expect(mockedPipeline).toHaveBeenCalledTimes(4)
+      expect(mockedPipeline).toHaveBeenCalledTimes(6)
     }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
 
   test("detect fails with ModelLoadError when all devices including cpu fail", () =>
@@ -80,7 +82,7 @@ describe("DeviceDetection", () => {
 
       expect(result).toBeInstanceOf(ModelLoadError)
       expect(result.message).toContain("No device available")
-      expect(mockedPipeline).toHaveBeenCalledTimes(4)
+      expect(mockedPipeline).toHaveBeenCalledTimes(6)
     }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
 
   test("detect error contains cause from last failed device", () =>
@@ -108,8 +110,10 @@ describe("DeviceDetection", () => {
       })
     }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
 
-  test("device priority order is cuda → dml → coreml → cpu", () =>
+  test("device priority order is cuda → dml → coreml → webgpu → wasm → cpu", () =>
     Effect.gen(function* () {
+      mockedPipeline.mockRejectedValueOnce(new Error("fail"))
+      mockedPipeline.mockRejectedValueOnce(new Error("fail"))
       mockedPipeline.mockRejectedValueOnce(new Error("fail"))
       mockedPipeline.mockRejectedValueOnce(new Error("fail"))
       mockedPipeline.mockRejectedValueOnce(new Error("fail"))
@@ -122,6 +126,8 @@ describe("DeviceDetection", () => {
       expect(calls[0]![2]!.device).toBe("cuda")
       expect(calls[1]![2]!.device).toBe("dml")
       expect(calls[2]![2]!.device).toBe("coreml")
-      expect(calls[3]![2]!.device).toBe("cpu")
+      expect(calls[3]![2]!.device).toBe("webgpu")
+      expect(calls[4]![2]!.device).toBe("wasm")
+      expect(calls[5]![2]!.device).toBe("cpu")
     }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
 })

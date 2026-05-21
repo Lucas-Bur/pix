@@ -139,6 +139,12 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
           ),
           Stream.flatMap((chunks) => Stream.fromIterable(chunks)),
           Stream.runCollect,
+          Effect.timeout("5 minutes"),
+          Effect.catchAll((e) =>
+            e._tag === "TimeoutException"
+              ? Effect.fail(new ConfigError({ message: "Chunking timed out after 5 minutes" }))
+              : Effect.fail(e as CorpusError),
+          ),
           Effect.map(Chunk.toArray),
         )
 
@@ -337,7 +343,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
                   warmLatencyPerBatchMs: 0,
                   totalDurationMs: Date.now() - deviceStart,
                   status: "failed",
-                  error: coldResult.error,
+                  error: coldResult.error ?? null,
                 })
                 continue
               }
@@ -369,7 +375,7 @@ export class BenchProject extends Effect.Service<BenchProject>()("BenchProject",
                   warmLatencyPerBatchMs: warmResult.latencyPerBatchMs,
                   totalDurationMs: Date.now() - batchStart,
                   status,
-                  error: warmResult.error,
+                  error: warmResult.error ?? null,
                 })
               }
             }

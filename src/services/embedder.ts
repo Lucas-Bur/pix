@@ -1,3 +1,4 @@
+import type { FeatureExtractionPipeline } from "@huggingface/transformers"
 import { Effect, Layer, Ref, Option } from "effect"
 
 import type { Embedding } from "../domain/chunk.js"
@@ -11,7 +12,7 @@ import {
   type BoundEmbedder,
 } from "../domain/ports.js"
 import { ConfigStoreLive } from "./config-store.js"
-import { DeviceDetection, DeviceDetectionLive } from "./device-detect.js"
+import { DeviceDetection, DeviceDetectionLive, type DeviceType } from "./device-detect.js"
 import { MODEL_REGISTRY } from "./models.js"
 export { Embedder }
 
@@ -20,25 +21,14 @@ interface FallbackInfo {
   readonly reason: string
 }
 
-type Extractor = (
-  texts: string | string[],
-  opts: { pooling: string; normalize: boolean },
-) => Promise<{
-  data: Float32Array
-  dims: number[]
-}>
-
 const loadExtractor = (
   model: string,
-  device: string,
-  dtype: string,
-): Effect.Effect<Extractor, ModelLoadError> =>
+  device: DeviceType,
+  dtype: EmbeddingDtype,
+): Effect.Effect<FeatureExtractionPipeline, ModelLoadError> =>
   Effect.tryPromise(async () => {
     const { pipeline } = await import("@huggingface/transformers")
-    return (await pipeline("feature-extraction", model, {
-      device,
-      dtype,
-    } as any)) as Extractor
+    return await pipeline("feature-extraction", model, { device, dtype })
   }).pipe(
     Effect.mapError(
       (cause) =>
@@ -51,7 +41,7 @@ const loadExtractor = (
   )
 
 const makeEmbedBatch = (
-  getExtractor: () => Effect.Effect<Extractor, never, never>,
+  getExtractor: () => Effect.Effect<FeatureExtractionPipeline, never, never>,
   dims: number,
   dtype: EmbeddingDtype,
 ): {
@@ -68,7 +58,8 @@ const makeEmbedBatch = (
           (cause) => new InferenceError({ message: "Embedding inference failed", cause }),
         ),
       )
-      return { vector: tensor.data, dims, dtype } as Embedding
+      const data = tensor.data as Float32Array //TODO: this needs to get looked at!
+      return { vector: data, dims, dtype }
     })
 
   const batchEmbed = (texts: readonly string[]) =>
@@ -81,7 +72,7 @@ const makeEmbedBatch = (
           (cause) => new InferenceError({ message: "Batch embedding inference failed", cause }),
         ),
       )
-      const data = tensor.data
+      const data = tensor.data as Float32Array //TODO: this needs to get looked at!
       const n = tensor.dims[0]
       const results: Embedding[] = []
       for (let j = 0; j < n; j++) {
@@ -100,7 +91,7 @@ const makeEmbedBatch = (
 
 const withGpuFallback = (
   model: string,
-  device: string,
+  device: DeviceType,
   dtype: EmbeddingDtype,
   dims: number,
   d: typeof Display.Service,

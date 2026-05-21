@@ -11,6 +11,7 @@ const makeMeasurement = (overrides: Partial<BenchMeasurement> = {}): BenchMeasur
   warmLatencyPerBatchMs: 16,
   totalDurationMs: 100,
   status: "ok",
+  error: null,
   ...overrides,
 })
 

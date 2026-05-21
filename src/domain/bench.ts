@@ -1,5 +1,5 @@
-import type { DeviceType } from "../services/device-detect.js"
 import type { Chunk } from "./chunk.js"
+import type { DeviceType } from "./device.js"
 
 /** Benchmark profile — determines what aspect of performance to optimize for. */
 export type BenchProfile = "throughput" | "cold" | "balanced"
@@ -16,7 +16,7 @@ export interface BenchMeasurement {
   readonly warmLatencyPerBatchMs: number
   readonly totalDurationMs: number
   readonly status: BenchStatus
-  readonly error?: string
+  readonly error: string | null
 }
 
 /** Input options for the benchmark command, typically from CLI flags. */

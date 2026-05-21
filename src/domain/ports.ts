@@ -1,8 +1,8 @@
 import { Context, Effect } from "effect"
 
-import type { DeviceType } from "../services/device-detect.js"
 import type { Chunk, Embedding } from "./chunk.js"
 import type { Config } from "./config.js"
+import type { DeviceType } from "./device.js"
 import type { EmbeddingDtype } from "./dtype.js"
 import type { DtypeMismatchError, VectorDecodeError } from "./dtype.js"
 import type {

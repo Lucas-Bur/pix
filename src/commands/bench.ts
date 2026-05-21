@@ -24,8 +24,11 @@ const parseBatchSizes = (raw: string): Either.Either<number[], string> => {
 
   const numbers: number[] = []
   for (const s of parts) {
+    if (!/^\d+$/.test(s)) {
+      return Either.left(`Invalid batch size "${s}" — must be a positive integer`)
+    }
     const n = parseInt(s, 10)
-    if (Number.isNaN(n) || n <= 0) {
+    if (n <= 0) {
       return Either.left(`Invalid batch size "${s}" — must be a positive integer`)
     }
     numbers.push(n)
@@ -71,6 +74,8 @@ const benchCommand = Command.make(
         profile: result.profile,
         warmup: result.warmup,
         measureBatches: result.measureBatches,
+        batchSizes: sizes,
+        timeout,
         measurements: result.measurements,
         recommendation: result.recommendation,
       })
