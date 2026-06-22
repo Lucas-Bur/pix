@@ -21,14 +21,14 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
   "Xenova/all-MiniLM-L6-v2": {
     id: "Xenova/all-MiniLM-L6-v2",
     dims: 384,
-    dtypes: ["fp32", "fp16", "q8"],
+    dtypes: ["fp32", "q8"],
     defaultDtype: "fp32",
     description: "General-purpose sentence embeddings, 23MB q8",
   },
   "Xenova/bge-small-en-v1.5": {
     id: "Xenova/bge-small-en-v1.5",
     dims: 384,
-    dtypes: ["fp32", "fp16", "q8"],
+    dtypes: ["fp32", "q8"],
     defaultDtype: "fp32",
     description: "BGE retrieval-optimized embeddings, 34MB q8",
   },

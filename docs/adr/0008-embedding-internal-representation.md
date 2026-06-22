@@ -41,11 +41,12 @@ The `dtype` config option (`fp32`, `fp16`, `q8`, `q4`) controls **model weight p
 
 **Verified experimentally** (`scripts/check-dtype-output.mjs`):
 
-| dtype | tensor.type                    | tensor.data constructor |
-| ----- | ------------------------------ | ----------------------- |
-| fp32  | float32                        | Float32Array            |
-| fp16  | ❌ not supported by this model | —                       |
-| q8    | float32                        | Float32Array            |
-| q4    | float32                        | Float32Array            |
+| Model                                      | fp32         | fp16          | q8           | q4                |
+| ------------------------------------------ | ------------ | ------------- | ------------ | ----------------- |
+| Xenova/all-MiniLM-L6-v2 (384d)             | Float32Array | ❌ ONNX crash | Float32Array | —                 |
+| Xenova/bge-small-en-v1.5 (384d)            | Float32Array | ❌ ONNX crash | Float32Array | —                 |
+| jinaai/jina-embeddings-v2-base-code (768d) | Float32Array | —             | Float32Array | ❌ file not found |
+
+All working dtypes produce `tensor.type: "float32"`, `tensor.data: Float32Array`. fp16 crashes with `InsertedPrecisionFreeCast` ONNX error across all tested models. q4 ONNX file does not exist on the HuggingFace hub for the jina model. The `MODEL_REGISTRY` dtypes reflect only verified-working combinations.
 
 This means the cast `tensor.data as Float32Array` in `src/services/embedder.ts` is safe — no conversion or dequantization is needed at the inference boundary. Quantization is applied to weights only; the forward pass still produces float32 embeddings.
