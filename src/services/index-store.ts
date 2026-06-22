@@ -11,7 +11,6 @@ import type { Bm25Index, ChunkEntry, IndexStats, SearchData } from "../domain/po
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/errors/fs-error.js"
 import { buildBm25Index } from "../lib/retrieval/bm25.js"
-import { getVectorCodec } from "../lib/vectors/vector-codec.js"
 import { serializeVectors } from "../lib/vectors/vector-serialization.js"
 import { ConfigStoreLive } from "./config-store.js"
 
@@ -152,7 +151,7 @@ const make = Effect.gen(function* () {
 
   /** Load index meta, read config, and validate dtype compatibility. */
   const loadAndValidateMeta = (): Effect.Effect<
-    { dims: number; dtype: EmbeddingDtype },
+    { dims: number },
     StoreError | NoIndexError | DtypeMismatchError
   > =>
     Effect.gen(function* () {
@@ -170,21 +169,19 @@ const make = Effect.gen(function* () {
             (cause) => new StoreError({ message: "Failed to read config for search", cause }),
           ),
         )
-      const configDtype = config.embedder.dtype
-      if (indexMeta.dtype !== configDtype) {
+      if (indexMeta.dtype !== config.embedder.dtype) {
         return yield* new DtypeMismatchError({
-          message: `Index was built with dtype "${indexMeta.dtype}" but config expects "${configDtype}". Re-index to fix.`,
+          message: `Index was built with dtype "${indexMeta.dtype}" but config expects "${config.embedder.dtype}". Re-index to fix.`,
           storedDtype: indexMeta.dtype,
-          configDtype,
+          configDtype: config.embedder.dtype,
         })
       }
-      return { dims: indexMeta.dims, dtype: configDtype }
+      return { dims: indexMeta.dims }
     })
 
-  /** Read chunks.jsonl and vectors.bin, decode vectors. */
+  /** Read chunks.jsonl and vectors.bin. Vectors are stored as Float32Array bytes (see ADR-0008). */
   const loadChunksAndVectors = (
     dims: number,
-    dtype: EmbeddingDtype,
   ): Effect.Effect<
     { chunkLines: string[]; vectors: Float32Array; dims: number },
     StoreError | VectorDecodeError
@@ -201,8 +198,18 @@ const make = Effect.gen(function* () {
         "read vectors",
         VECTORS_FILE,
       )
-      const codec = getVectorCodec(dtype)
-      const vectors = yield* codec.decode(vectorsBuffer, dims, chunkLines.length)
+      const expectedBytes = chunkLines.length * dims * Float32Array.BYTES_PER_ELEMENT
+      if (vectorsBuffer.byteLength !== expectedBytes) {
+        return yield* new VectorDecodeError({
+          message: `Invalid vector buffer length: expected ${expectedBytes}, got ${vectorsBuffer.byteLength}`,
+          dtype: "fp32",
+        })
+      }
+      const vectors = new Float32Array(
+        vectorsBuffer.buffer,
+        vectorsBuffer.byteOffset,
+        chunkLines.length * dims,
+      )
       return { chunkLines, vectors, dims }
     })
 
@@ -212,8 +219,8 @@ const make = Effect.gen(function* () {
     StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
   > =>
     Effect.gen(function* () {
-      const { dims, dtype } = yield* loadAndValidateMeta()
-      return yield* loadChunksAndVectors(dims, dtype)
+      const { dims } = yield* loadAndValidateMeta()
+      return yield* loadChunksAndVectors(dims)
     })
 
   /**
@@ -302,24 +309,29 @@ const make = Effect.gen(function* () {
         )
       const { dims, dtype } = yield* Ref.get(batchMetaRef)
       const indexMeta: IndexMeta = {
-        schemaVersion: "1",
         dtype,
         dims,
         model: config.embedder.model,
         lastIndex: Date.now(),
       }
-      yield* withFsError(
-        fs.writeFile(metaTemp, Buffer.from(JSON.stringify(indexMeta))),
-        "write index meta",
-        metaTemp,
-      )
 
-      const chunksContent = yield* withReadError(
-        fs.readFileString(chunksTemp),
-        "read chunks for bm25",
-        chunksTemp,
+      yield* Effect.gen(function* () {
+        yield* withFsError(
+          fs.writeFile(metaTemp, Buffer.from(JSON.stringify(indexMeta))),
+          "write index meta",
+          metaTemp,
+        )
+        const chunksContent = yield* withReadError(
+          fs.readFileString(chunksTemp),
+          "read chunks for bm25",
+          chunksTemp,
+        )
+        yield* buildAndStoreBm25(fs, chunksContent, bm25Temp)
+      }).pipe(
+        Effect.catchAll((err) =>
+          storeAbort().pipe(Effect.ignore, Effect.andThen(Effect.fail(err))),
+        ),
       )
-      yield* buildAndStoreBm25(fs, chunksContent, bm25Temp)
 
       yield* withFsError(fs.rename(metaTemp, META_FILE), "commit index meta", META_FILE)
       yield* withFsError(fs.rename(bm25Temp, BM25_FILE), "commit bm25 index", BM25_FILE)

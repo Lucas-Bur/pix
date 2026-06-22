@@ -20,6 +20,8 @@ const errorCodes: Record<string, string> = {
   ModelLoadError: "MODEL_LOAD_ERROR",
   InferenceError: "INFERENCE_ERROR",
   ModelMismatchError: "MODEL_MISMATCH",
+  DtypeMismatchError: "DTYPE_MISMATCH",
+  VectorDecodeError: "VECTOR_DECODE_ERROR",
   DisplayLogError: "DISPLAY_LOG_ERROR",
   UnsupportedFormat: "UNSUPPORTED_FORMAT",
   ExtractionFailed: "EXTRACTION_FAILED",

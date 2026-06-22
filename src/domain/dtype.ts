@@ -8,7 +8,6 @@ export type EmbeddingDtype = typeof EmbeddingDtypeSchema.Type
 
 /** Runtime schema for index metadata persisted to .pix/index-meta.json. */
 export const IndexMetaSchema = Schema.Struct({
-  schemaVersion: Schema.String,
   dtype: EmbeddingDtypeSchema,
   dims: Schema.Number,
   model: Schema.String,
@@ -35,21 +34,4 @@ export class DtypeMismatchError extends Data.TaggedError("DtypeMismatchError")<{
 export class VectorDecodeError extends Data.TaggedError("VectorDecodeError")<{
   readonly message: string
   readonly dtype: EmbeddingDtype
-}> {}
-
-/**
- * Failed to encode a Float32Array into a binary buffer. Should not happen under normal operation —
- * typically indicates an internal inconsistency.
- */
-export class VectorEncodeError extends Data.TaggedError("VectorEncodeError")<{
-  readonly message: string
-  readonly dtype: EmbeddingDtype
-}> {}
-
-/**
- * An EmbeddingDtype string value is not recognised. This should not happen if the type-system
- * exhaustiveness check is working correctly; the error is treated as a defect.
- */
-export class UnknownEmbeddingDtypeError extends Data.TaggedError("UnknownEmbeddingDtypeError")<{
-  readonly message: string
 }> {}

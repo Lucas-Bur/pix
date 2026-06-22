@@ -66,7 +66,7 @@ export interface HealConflict {
 }
 
 /** Result of healConfig — the healed config plus a list of all conflicts found. */
-export interface HealPlan {
+interface HealPlan {
   readonly config: Config
   readonly conflicts: ReadonlyArray<HealConflict>
 }
@@ -78,10 +78,7 @@ export class ConfigStore extends Context.Tag("ConfigStore")<
     /** Read and heal config in memory. Fails on unhealable conflicts (unknown model). */
     readonly readConfig: () => Effect.Effect<Config, AllConfigErrors>
     /** Read and heal config, returning conflicts for warning. Fails on unhealable conflicts. */
-    readonly readConfigWithConflicts: () => Effect.Effect<
-      { readonly config: Config; readonly conflicts: ReadonlyArray<HealConflict> },
-      AllConfigErrors
-    >
+    readonly readConfigWithConflicts: () => Effect.Effect<HealPlan, AllConfigErrors>
     /** Read and heal config, returning a full plan with all conflicts (including unhealed). */
     readonly healConfig: () => Effect.Effect<
       HealPlan,

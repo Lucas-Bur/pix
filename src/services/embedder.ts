@@ -196,7 +196,11 @@ const make = Effect.gen(function* () {
     Ref.get(fallbackRef).pipe(Effect.map(Option.getOrElse(() => undefined)))
 
   const createForDevice = (devCfg: EmbedderDeviceConfig) =>
-    withGpuFallback(devCfg.model, devCfg.device, devCfg.dtype, devCfg.dims, d, fallbackRef)
+    Effect.gen(function* () {
+      const extractor = yield* loadExtractor(devCfg.model, devCfg.device, devCfg.dtype)
+      const getExtractor = () => Effect.succeed(extractor)
+      return makeEmbedBatch(getExtractor, devCfg.dims, devCfg.dtype)
+    })
 
   return { embed, batch: batchEmbed, getFallbackInfo, createForDevice } as const
 })

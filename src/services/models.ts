@@ -32,6 +32,13 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
     defaultDtype: "fp32",
     description: "BGE retrieval-optimized embeddings, 34MB q8",
   },
+  "jinaai/jina-embeddings-v2-base-code": {
+    id: "jinaai/jina-embeddings-v2-base-code",
+    dims: 768,
+    dtypes: ["fp32", "q8"],
+    defaultDtype: "fp32",
+    description: "Jina code-tuned embeddings, 8192 context, 162MB q8",
+  },
 }
 
 /** Port for querying embedding model metadata (dtypes, dims, defaults). */

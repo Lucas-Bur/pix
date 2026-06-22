@@ -19,7 +19,6 @@ test("GetStatus.getStatus returns index model from index-meta.json", () =>
         contents: {
           ...indexFixtures,
           ".pix/index-meta.json": JSON.stringify({
-            schemaVersion: "1",
             dtype: "fp32",
             dims: 384,
             model: "test-model",

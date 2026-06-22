@@ -139,3 +139,24 @@ test("IndexStore.loadSearchData fails when bm25.json is missing", () =>
     const result = yield* Effect.either(store.loadSearchData())
     expect(result._tag).toBe("Left")
   }).pipe(Effect.provide(isLayer), Effect.scoped))
+
+test("IndexStore.storeCommit cleans up tmp files when commit fails", () =>
+  Effect.gen(function* () {
+    const store = yield* IndexStore
+    const fs = yield* FileSystem.FileSystem
+    yield* store.storeBegin()
+    const result = yield* Effect.either(store.storeCommit())
+    expect(result._tag).toBe("Left")
+    const chunksTmpExists = yield* fs.exists(".pix/chunks.jsonl.tmp")
+    const vectorsTmpExists = yield* fs.exists(".pix/vectors.bin.tmp")
+    const metaTmpExists = yield* fs.exists(".pix/index-meta.json.tmp")
+    const bm25TmpExists = yield* fs.exists(".pix/bm25.json.tmp")
+    expect(chunksTmpExists).toBe(false)
+    expect(vectorsTmpExists).toBe(false)
+    expect(metaTmpExists).toBe(false)
+    expect(bm25TmpExists).toBe(false)
+    const chunksExists = yield* fs.exists(".pix/chunks.jsonl")
+    const vectorsExists = yield* fs.exists(".pix/vectors.bin")
+    expect(chunksExists).toBe(false)
+    expect(vectorsExists).toBe(false)
+  }).pipe(Effect.provide(isLayer), Effect.scoped))

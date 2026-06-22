@@ -112,6 +112,8 @@ export const queryCommand = Command.make(
         StoreError: reportError,
         NoIndexError: reportError,
         ModelMismatchError: reportError,
+        DtypeMismatchError: reportError,
+        VectorDecodeError: reportError,
         ConfigHealError: reportError,
         ConfigError: reportError,
         ConfigNotFoundError: reportError,
