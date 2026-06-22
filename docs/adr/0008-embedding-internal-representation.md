@@ -33,3 +33,18 @@ The embedder adapter converts from its native format (ONNX `Float32Array`, OpenA
 - `src/domain/chunk.ts` — `Embedding.vector: number[]` (domain type)
 - `src/lib/vector-codec.ts` — `VectorCodec.decode/encode` (infrastructure, uses `Float32Array`)
 - `src/lib/vector-math.ts` — `computeCosineSimilarity(chunkVector: Float32Array, query: Float32Array)` (infrastructure)
+
+## Findings: ONNX Transformers Output Dtype
+
+The `dtype` config option (`fp32`, `fp16`, `q8`, `q4`) controls **model weight precision**, not **output activation dtype**. Regardless of weight dtype, `FeatureExtractionPipeline` always returns `tensor.type: "float32"` with `tensor.data` as `Float32Array`.
+
+**Verified experimentally** (`scripts/check-dtype-output.mjs`):
+
+| dtype | tensor.type                    | tensor.data constructor |
+| ----- | ------------------------------ | ----------------------- |
+| fp32  | float32                        | Float32Array            |
+| fp16  | ❌ not supported by this model | —                       |
+| q8    | float32                        | Float32Array            |
+| q4    | float32                        | Float32Array            |
+
+This means the cast `tensor.data as Float32Array` in `src/services/embedder.ts` is safe — no conversion or dequantization is needed at the inference boundary. Quantization is applied to weights only; the forward pass still produces float32 embeddings.

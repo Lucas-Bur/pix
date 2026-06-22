@@ -4,7 +4,7 @@ import { EmbeddingDtypeSchema } from "./dtype.js"
 
 const EmbedderConfigSchema = Schema.Struct({
   model: Schema.String,
-  device: Schema.Literal("auto", "cpu", "cuda", "dml", "coreml"),
+  device: Schema.Literal("auto", "cpu", "cuda", "dml", "coreml", "webgpu", "wasm"),
   dtype: EmbeddingDtypeSchema,
   batchSize: Schema.Number,
 })

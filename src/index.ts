@@ -2,6 +2,7 @@ import { CliConfig } from "@effect/cli"
 import { NodeRuntime, NodeContext } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 
+import { BenchProject } from "./application/bench-project.js"
 import { GetStatus } from "./application/get-status.js"
 import { IndexProject } from "./application/index-project.js"
 import { InitProject } from "./application/init-project.js"
@@ -40,6 +41,7 @@ const UseCaseLayer = Layer.mergeAll(
   QueryProject.Default,
   IndexProject.Default,
   ResetIndex.Default,
+  BenchProject.Default,
 )
 
 // === AppLayer: wiring everything together ===

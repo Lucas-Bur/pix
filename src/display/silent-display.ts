@@ -20,6 +20,9 @@ export const SilentDisplayLive = (
 
     text: (message) => Ref.update(ref, (entries) => [...entries, DisplayEntry.text({ message })]),
 
+    table: (header, rows) =>
+      Ref.update(ref, (entries) => [...entries, DisplayEntry.table({ header, rows })]),
+
     spinner: <A, E, R>(message: string, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
       Ref.update(ref, (entries) => [...entries, DisplayEntry.spinner({ message })]).pipe(
         Effect.andThen(effect),

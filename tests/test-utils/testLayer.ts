@@ -3,6 +3,7 @@ import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
 import { MemoryFileSystem } from "effect-memfs"
 
+import { BenchProject } from "../../src/application/bench-project.js"
 import { GetStatus } from "../../src/application/get-status.js"
 import { IndexProject } from "../../src/application/index-project.js"
 import { InitProject } from "../../src/application/init-project.js"
@@ -37,6 +38,19 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
       texts.map(() => ({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const })),
     ),
   getFallbackInfo: () => Effect.succeed(undefined),
+  createForDevice: () =>
+    Effect.succeed({
+      embed: () =>
+        Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
+      batch: (texts: readonly string[]) =>
+        Effect.succeed(
+          texts.map(() => ({
+            vector: new Float32Array(384),
+            dims: 384,
+            dtype: "fp32" as const,
+          })),
+        ),
+    }),
 })
 
 /**
@@ -74,6 +88,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     QueryProject.Default,
     IndexProject.Default,
     ResetIndex.Default,
+    BenchProject.Default,
   )
 
   const appLayer = Layer.merge(useCaseLayer.pipe(Layer.provide(infraLayer)), memFs)

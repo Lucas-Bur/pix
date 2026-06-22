@@ -1,8 +1,9 @@
 import { Context, Effect } from "effect"
 
-import type { Chunk } from "./chunk.js"
-import type { Embedding } from "./chunk.js"
+import type { Chunk, Embedding } from "./chunk.js"
 import type { Config } from "./config.js"
+import type { DeviceType } from "./device.js"
+import type { EmbeddingDtype } from "./dtype.js"
 import type { DtypeMismatchError, VectorDecodeError } from "./dtype.js"
 import type {
   AllConfigErrors,
@@ -99,6 +100,22 @@ export class Chunker extends Context.Tag("Chunker")<
 
 // === Embedder Port ===
 
+/** Configuration for creating an embedder for a specific device. */
+export interface EmbedderDeviceConfig {
+  readonly device: DeviceType
+  readonly model: string
+  readonly dtype: EmbeddingDtype
+  readonly dims: number
+}
+
+/** An embedder instance bound to a specific device configuration. */
+export interface BoundEmbedder {
+  readonly embed: (text: string) => Effect.Effect<Embedding, ModelLoadError | InferenceError>
+  readonly batch: (
+    texts: readonly string[],
+  ) => Effect.Effect<ReadonlyArray<Embedding>, ModelLoadError | InferenceError>
+}
+
 /** Port for creating vector embeddings from text. */
 export class Embedder extends Context.Tag("Embedder")<
   Embedder,
@@ -113,6 +130,10 @@ export class Embedder extends Context.Tag("Embedder")<
     readonly getFallbackInfo: () => Effect.Effect<
       { readonly originalDevice: string; readonly reason: string } | undefined
     >
+    /** Create a fresh embedder instance for a specific device (used by benchmark). */
+    readonly createForDevice: (
+      cfg: EmbedderDeviceConfig,
+    ) => Effect.Effect<BoundEmbedder, ModelLoadError>
   }
 >() {}
 
@@ -259,6 +280,7 @@ export type DisplayProgressOptions = {
   readonly style?: "light" | "heavy" | "block"
   readonly size?: number
   readonly indicator?: "dots" | "timer"
+  readonly stopMessage?: string
 }
 
 /** Payload for updateInteractive — plain string updates text, object adds position control */
@@ -296,6 +318,10 @@ export interface DisplayService {
   readonly log: (message: string, severity: DisplaySeverity) => Effect.Effect<void>
   readonly note: (content: string, title?: string) => Effect.Effect<void>
   readonly text: (message: string) => Effect.Effect<void>
+  readonly table: (
+    header: readonly string[],
+    rows: readonly (readonly string[])[],
+  ) => Effect.Effect<void>
   readonly spinner: <A, E, R>(
     message: string,
     effect: Effect.Effect<A, E, R>,

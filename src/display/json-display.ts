@@ -18,6 +18,7 @@ export const JsonDisplayLive = Layer.effect(
       log: (message, severity) => appendLogEntry(fs, { severity, message }),
       note: (content, title) => appendLogEntry(fs, { type: "note", content, title }),
       text: (message) => appendLogEntry(fs, { type: "text", message }),
+      table: (header, rows) => appendLogEntry(fs, { type: "table", header, rows }),
       spinner: <A, E, R>(message: string, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
         withLoggedEffect(fs, effect, { type: "spinner-start", message }, { type: "spinner-stop" }),
       progress: <A, E, R>(

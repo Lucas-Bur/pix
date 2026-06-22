@@ -3,6 +3,7 @@ import { createRequire } from "node:module"
 import { Command } from "@effect/cli"
 import { Effect } from "effect"
 
+import { benchCommand } from "./commands/bench.js"
 import { indexCommand } from "./commands/index-cmd.ts"
 import { initCommand } from "./commands/init.ts"
 import { queryCommand } from "./commands/query.ts"
@@ -23,7 +24,14 @@ const rootCommand = Command.make("pix", {}, () =>
 )
 
 const pix = rootCommand.pipe(
-  Command.withSubcommands([initCommand, statusCommand, indexCommand, queryCommand, resetCommand]),
+  Command.withSubcommands([
+    initCommand,
+    statusCommand,
+    indexCommand,
+    queryCommand,
+    resetCommand,
+    benchCommand,
+  ]),
 )
 
 export const cli = (args: readonly string[]) => {
