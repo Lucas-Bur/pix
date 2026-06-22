@@ -11,6 +11,7 @@ const errorCodes: Record<string, string> = {
   ConfigNotFoundError: "CONFIG_NOT_FOUND",
   ConfigMalformedError: "CONFIG_MALFORMED",
   ConfigValidationError: "CONFIG_VALIDATION_ERROR",
+  ConfigHealError: "CONFIG_HEAL_ERROR",
   ChunkValidationError: "CHUNK_VALIDATION_ERROR",
   NoIndexError: "NO_INDEX",
   DiskFullError: "DISK_FULL",
@@ -18,6 +19,7 @@ const errorCodes: Record<string, string> = {
   ChunkerError: "CHUNK_ERROR",
   ModelLoadError: "MODEL_LOAD_ERROR",
   InferenceError: "INFERENCE_ERROR",
+  ModelMismatchError: "MODEL_MISMATCH",
   DisplayLogError: "DISPLAY_LOG_ERROR",
   UnsupportedFormat: "UNSUPPORTED_FORMAT",
   ExtractionFailed: "EXTRACTION_FAILED",
@@ -49,6 +51,8 @@ export const formatError = (error: unknown): FormattedError => {
 
   const context: Record<string, unknown> = {}
   if (typeof err.model === "string") context.model = err.model
+  if (typeof err.configModel === "string") context.configModel = err.configModel
+  if (typeof err.indexModel === "string") context.indexModel = err.indexModel
   if (typeof err.file === "string") context.file = err.file
   if (typeof err.path === "string") context.path = err.path
   if (typeof err.stack === "string") context.stack = err.stack

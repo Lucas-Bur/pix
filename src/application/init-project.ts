@@ -13,18 +13,20 @@ interface InitResult {
 }
 
 /**
- * Use case: initialize a pix project by writing default config. Depends on ConfigStore via Effect
- * tag.
+ * Use case: initialize a pix project by writing config. Depends on ConfigStore via Effect tag.
+ * Accepts optional model override; falls back to DEFAULT_CONFIG.embedder.model.
  */
 export class InitProject extends Effect.Service<InitProject>()("InitProject", {
   accessors: true,
   effect: Effect.gen(function* () {
     const store = yield* ConfigStore
 
-    const init = (): Effect.Effect<InitResult, ConfigError | DiskFullError> =>
-      store
-        .writeConfig(DEFAULT_CONFIG)
-        .pipe(Effect.as({ success: true as const, config: DEFAULT_CONFIG }))
+    const init = (model?: string): Effect.Effect<InitResult, ConfigError | DiskFullError> => {
+      const config: Config = model
+        ? { ...DEFAULT_CONFIG, embedder: { ...DEFAULT_CONFIG.embedder, model } }
+        : DEFAULT_CONFIG
+      return store.writeConfig(config).pipe(Effect.as({ success: true as const, config }))
+    }
 
     return { init }
   }),

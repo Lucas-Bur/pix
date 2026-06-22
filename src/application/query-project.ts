@@ -2,8 +2,14 @@ import { Effect } from "effect"
 import ignore from "ignore"
 
 import type { DtypeMismatchError, VectorDecodeError } from "../domain/dtype.js"
-import type { AllEmbedderErrors, AllStoreErrors, NoIndexError } from "../domain/errors.js"
-import { Embedder, IndexStore } from "../domain/ports.js"
+import {
+  ModelMismatchError,
+  NoIndexError,
+  type AllConfigErrors,
+  type AllEmbedderErrors,
+  type AllStoreErrors,
+} from "../domain/errors.js"
+import { ConfigStore, Embedder, IndexStore } from "../domain/ports.js"
 import type {
   ChunkEntry,
   RankedChunk,
@@ -83,15 +89,33 @@ export class QueryProject extends Effect.Service<QueryProject>()("QueryProject",
   effect: Effect.gen(function* () {
     const embedder = yield* Embedder
     const store = yield* IndexStore
+    const configStore = yield* ConfigStore
 
     const queryProject = (
       queryText: string,
       options?: SearchOptions,
     ): Effect.Effect<
       SearchResponse,
-      AllEmbedderErrors | AllStoreErrors | NoIndexError | DtypeMismatchError | VectorDecodeError
+      | AllConfigErrors
+      | AllEmbedderErrors
+      | AllStoreErrors
+      | NoIndexError
+      | DtypeMismatchError
+      | VectorDecodeError
+      | ModelMismatchError
     > =>
       Effect.gen(function* () {
+        const status = yield* store.getStatus()
+        if (status.model === "") {
+          return yield* new NoIndexError({ message: "No index found. Run pix index first." })
+        }
+        const config = yield* configStore.readConfig()
+        if (config.embedder.model !== status.model) {
+          return yield* new ModelMismatchError({
+            configModel: config.embedder.model,
+            indexModel: status.model,
+          })
+        }
         const { entries, bm25Index, malformedLines } = yield* store.loadSearchData()
         if (entries.length === 0) {
           return {

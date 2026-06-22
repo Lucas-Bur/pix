@@ -1,7 +1,7 @@
-import { Effect, Layer } from "effect"
+import { Effect, Exit, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
-import { makeChunk, makeEmbedding } from "../../tests/test-utils/fixtures.js"
+import { makeChunk, makeEmbedding, makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { Embedder, IndexStore } from "../domain/ports.js"
 import { QueryProject } from "./query-project.js"
@@ -129,4 +129,30 @@ test("QueryProject.queryProject respects onlyPaths with hybrid search", () =>
     })
     expect(results.length).toBe(1)
     expect(results[0].file).toBe("/src/keep.ts")
+  }).pipe(Effect.provide(hybridLayer), Effect.scoped))
+
+test("QueryProject.queryProject fails with ModelMismatchError when config model differs from index", () =>
+  Effect.gen(function* () {
+    yield* indexFixture(
+      [makeChunk({ id: "a1", idx: 0, text: "function handleRequest", file: "/src/handler.ts" })],
+      [makeEmbedding(0.1)],
+    )
+
+    const configWithDifferentModel = makeConfigJson({
+      embedder: { model: "Xenova/bge-small-en-v1.5" },
+    })
+    const mismatchLayer = testLayer({
+      embedderLayer: nonZeroEmbedder,
+      contents: { ".pix/config.json": configWithDifferentModel },
+    })
+
+    const exit = yield* Effect.exit(QueryProject.queryProject("handleRequest", { topK: 5 })).pipe(
+      Effect.provide(mismatchLayer),
+      Effect.scoped,
+    )
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      expect(exit.cause._tag).toBe("Fail")
+    }
   }).pipe(Effect.provide(hybridLayer), Effect.scoped))
