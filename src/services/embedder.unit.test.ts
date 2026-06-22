@@ -19,14 +19,19 @@ const mockedPipeline = vi.mocked(mockPipeline)
 
 const DIMS = 384
 
-const makeMockExtractor = () =>
+type MockExtractor = (input: string | string[]) => Promise<{
+  data: Float32Array
+  dims: number[]
+}>
+
+const makeMockExtractor = (): MockExtractor =>
   vi.fn((input: string | string[]) => {
     const n = Array.isArray(input) ? input.length : 1
     return Promise.resolve({
       data: new Float32Array(n * DIMS),
       dims: [n, DIMS],
     })
-  })
+  }) as unknown as MockExtractor
 
 const buildLayer = (configJson: string) => {
   const { ref, layer: displayLayer } = silentDisplay()
@@ -41,7 +46,7 @@ const buildLayer = (configJson: string) => {
 
 const defaultCpuLayer = () => {
   const extractor = makeMockExtractor()
-  mockedPipeline.mockResolvedValue(extractor as any)
+  mockedPipeline.mockResolvedValue(extractor as never)
   return buildLayer(
     makeConfigJson({
       embedder: { model: "Xenova/all-MiniLM-L6-v2", device: "cpu", dtype: "fp32", batchSize: 16 },
@@ -52,9 +57,9 @@ const defaultCpuLayer = () => {
 const gpuFallbackLayer = (configDevice: "auto" | "cpu" = "auto") => {
   const extractor = makeMockExtractor()
   mockedPipeline
-    .mockResolvedValueOnce(extractor as any)
+    .mockResolvedValueOnce(extractor as never)
     .mockRejectedValueOnce(new Error("cuda not available"))
-    .mockResolvedValueOnce(extractor as any)
+    .mockResolvedValueOnce(extractor as never)
   return buildLayer(
     makeConfigJson({
       embedder: {
@@ -160,7 +165,7 @@ describe("OnnxEmbedder createForDevice", () => {
 describe("OnnxEmbedder config validation", () => {
   test("fails with ModelLoadError when model is unknown", () => {
     const extractor = makeMockExtractor()
-    mockedPipeline.mockResolvedValue(extractor as any)
+    mockedPipeline.mockResolvedValue(extractor as never)
     const { layer } = buildLayer(
       makeConfigJson({
         embedder: { model: "unknown/model", device: "cpu", dtype: "fp32", batchSize: 16 },
@@ -181,7 +186,7 @@ describe("OnnxEmbedder config validation", () => {
 
   test("fails with ModelLoadError when dtype is unsupported for model", () => {
     const extractor = makeMockExtractor()
-    mockedPipeline.mockResolvedValue(extractor as any)
+    mockedPipeline.mockResolvedValue(extractor as never)
     const { layer } = buildLayer(
       makeConfigJson({
         embedder: { model: "Xenova/all-MiniLM-L6-v2", device: "cpu", dtype: "q4", batchSize: 16 },

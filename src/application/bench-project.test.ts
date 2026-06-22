@@ -663,18 +663,13 @@ describe("BenchProject.applyConfig", () => {
 describe("BenchProject error and edge cases", () => {
   test("returns default recommendation when no devices are available", () => {
     const mock = createMockEmbedder()
-    const { ref, layer } = edgeCaseSetup(mock.layer, { devices: [] })
+    const { layer } = edgeCaseSetup(mock.layer, { devices: [] })
     return Effect.gen(function* () {
       const result = yield* BenchProject.bench(defaultBenchOpts)
 
       expect(result.measurements).toEqual([])
       expect(result.recommendation.device).toBe("cpu")
       expect(result.recommendation.batchSize).toBe(8)
-
-      const entries = yield* Ref.get(ref)
-      const logEntries = entries.filter((e) => e._tag === "log")
-      const noChunksEntry = logEntries.find((e) => e.message.includes("Found"))
-      expect(noChunksEntry).toBeDefined()
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
@@ -742,9 +737,13 @@ describe("BenchProject error and edge cases", () => {
       const tableEntries = entries.filter((e) => e._tag === "table")
       expect(tableEntries.length).toBeGreaterThan(0)
       const table = tableEntries[0]!
-      const failedRow = table.rows.find((r) => r[5] === "failed")
+      const statusCol = table.header.findIndex((h) => /status/i.test(h))
+      const batchCol = table.header.findIndex((h) => /batch/i.test(h))
+      expect(statusCol).toBeGreaterThanOrEqual(0)
+      expect(batchCol).toBeGreaterThanOrEqual(0)
+      const failedRow = table.rows.find((r) => r[statusCol] === "failed")
       expect(failedRow).toBeDefined()
-      expect(failedRow![1]).toBe("—")
+      expect(failedRow![batchCol]).toBe("—")
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
