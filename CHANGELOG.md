@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.16.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.15.0...pix-v0.16.0) (2026-06-22)
+
+
+### Features
+
+* add d.table() to Display service, move table formatting out of bench domain ([cb5715c](https://github.com/Lucas-Bur/pix/commit/cb5715c52fd159ad82a553521cecee5784e0d40a))
+* add duration column to benchmark table and fix progress stop message ([a9dac38](https://github.com/Lucas-Bur/pix/commit/a9dac3853bd710be8efe9b328b768ffb553168bc))
+* add pix bench command ([e2aaab1](https://github.com/Lucas-Bur/pix/commit/e2aaab18ad20bbb7634236b4cf89b86b46dc62c2))
+* extract device detection service and fix auto resolution ([8ff0e4d](https://github.com/Lucas-Bur/pix/commit/8ff0e4d50bd25cfc62fa084a87a9f7ce34440bbd))
+* implement --apply flag and final bench cleanup ([ba2a69f](https://github.com/Lucas-Bur/pix/commit/ba2a69fcdd51619dfb3b22495e9e9ce11325146d))
+* implement cold-start and warm-path measurement pipeline ([285be81](https://github.com/Lucas-Bur/pix/commit/285be81dab1e50cb0acf7caf4a4f343005ed3cf8))
+* implement corpus preparation for benchmark ([12831e5](https://github.com/Lucas-Bur/pix/commit/12831e587f7bcfea3aa9ae3db6c086f661bdce5d))
+* log available devices before benchmark starts ([a83935b](https://github.com/Lucas-Bur/pix/commit/a83935bf14e954c7dd42682681363ea27e5c317d))
+* refine bench output - clack corners, structured recs, failed device handling ([c1e335c](https://github.com/Lucas-Bur/pix/commit/c1e335cd15bd876abb757b32ad34df2ef0bf471f))
+* scaffold pix bench command with flags and domain types ([9f42685](https://github.com/Lucas-Bur/pix/commit/9f426859b5e00c7f3083c3f094275a815b69e331))
+
+
+### Bug Fixes
+
+* benchmark only available devices, not all devices with fallback ([54506a0](https://github.com/Lucas-Bur/pix/commit/54506a0010b47f37f20001d4ace5ef93c4aa8164))
+* correct benchLayer test helper type annotations ([771925c](https://github.com/Lucas-Bur/pix/commit/771925caf4e41f8655bd859a987aa3ce7af5fedd))
+* device detection returning extractor function instead of device name ([38043ca](https://github.com/Lucas-Bur/pix/commit/38043caab140bff6475b07aaf237a1294446e5b1))
+* replace toF32 with documented cast for tensor data ([37448e2](https://github.com/Lucas-Bur/pix/commit/37448e20061dc265af3a7151ea98c1abbc999052))
+* three bench issues - cold start, --apply opt-in, progress, device list ([a21c59c](https://github.com/Lucas-Bur/pix/commit/a21c59c39565a083a9dc2aae42e032141e165eba))
+* use structured BenchRecommendation type instead of string protocol ([e6bde6f](https://github.com/Lucas-Bur/pix/commit/e6bde6fb751d57ae690040321b65851c0bd8dc29))
+
 ## [0.15.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.14.0...pix-v0.15.0) (2026-05-18)
 
 
