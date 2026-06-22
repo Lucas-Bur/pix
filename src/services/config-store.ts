@@ -1,26 +1,121 @@
 import { FileSystem } from "@effect/platform"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Layer, Option, Schema } from "effect"
 
-import { ConfigSchema } from "../domain/config.js"
+import { ConfigSchema, DEFAULT_CONFIG } from "../domain/config.js"
 import type { Config } from "../domain/config.js"
 import {
   ConfigError,
+  ConfigHealError,
   ConfigMalformedError,
   ConfigNotFoundError,
   ConfigValidationError,
   DiskFullError,
 } from "../domain/errors.js"
-import { ConfigStore } from "../domain/ports.js"
-import { decodeJsonWithErrors } from "../lib/config/validation.js"
+import { ConfigStore, type HealConflict } from "../domain/ports.js"
+import { decodeObjectWithErrors } from "../lib/config/validation.js"
+import { deepMerge } from "../lib/deep-merge.js"
 import { withConfigError } from "../lib/errors/fs-error.js"
 import { isPlatformReason } from "../lib/errors/platform-error.js"
+import { ModelRegistry, ModelRegistryLive } from "./models.js"
 export { ConfigStore }
 
 const CONFIG_DIR = ".pix"
 const CONFIG_PATH = `${CONFIG_DIR}/config.json`
 
+/** Parse JSON string, deep-merge with DEFAULT_CONFIG, validate against ConfigSchema. */
+const structurallyHeal = (
+  content: string,
+): Effect.Effect<Config, ConfigMalformedError | ConfigValidationError> =>
+  Effect.gen(function* () {
+    const parsed = yield* Effect.try({
+      try: () => JSON.parse(content) as Record<string, unknown>,
+      catch: (cause) =>
+        new ConfigMalformedError({
+          message: "Invalid JSON in config.json",
+          path: CONFIG_PATH,
+          cause,
+        }),
+    })
+    const merged = deepMerge(
+      DEFAULT_CONFIG as unknown as Record<string, unknown>,
+      parsed,
+    ) as unknown as Record<string, unknown>
+    return yield* decodeObjectWithErrors(ConfigSchema, merged)
+  })
+
+/** Check coupled rules (model exists in registry, dtype supported by model) and collect conflicts. */
+const validateCoupled = (
+  config: Config,
+  registry: typeof ModelRegistry.Service,
+): Effect.Effect<{ config: Config; conflicts: ReadonlyArray<HealConflict> }> =>
+  Effect.gen(function* () {
+    const conflicts: HealConflict[] = []
+    let healed = config
+
+    const modelInfo = yield* registry.get(config.embedder.model)
+
+    if (Option.isNone(modelInfo)) {
+      conflicts.push({
+        field: "embedder.model",
+        currentValue: config.embedder.model,
+        validOptions: yield* listModelIds(registry),
+        reason: `Unknown model "${config.embedder.model}"`,
+        healed: false,
+      })
+      return { config: healed, conflicts }
+    }
+
+    const info = modelInfo.value
+    if (!info.dtypes.includes(config.embedder.dtype)) {
+      conflicts.push({
+        field: "embedder.dtype",
+        currentValue: config.embedder.dtype,
+        validOptions: info.dtypes as readonly string[],
+        reason: `Model "${config.embedder.model}" does not support dtype "${config.embedder.dtype}"`,
+        healed: true,
+        healedValue: info.defaultDtype,
+      })
+      healed = {
+        ...healed,
+        embedder: { ...healed.embedder, dtype: info.defaultDtype },
+      }
+    }
+
+    return { config: healed, conflicts }
+  })
+
+/** List all model IDs in the registry (for error messages and conflict options). */
+const listModelIds = (registry: typeof ModelRegistry.Service): Effect.Effect<readonly string[]> =>
+  registry.list()
+
+/** Read file, structural heal, coupled validation. Returns config + all conflicts. */
+const readAndHeal = (
+  fs: typeof FileSystem.FileSystem.Service,
+  registry: typeof ModelRegistry.Service,
+): Effect.Effect<
+  { config: Config; conflicts: ReadonlyArray<HealConflict> },
+  ConfigError | ConfigNotFoundError | ConfigMalformedError | ConfigValidationError
+> =>
+  Effect.gen(function* () {
+    const content = yield* fs.readFileString(CONFIG_PATH).pipe(
+      Effect.mapError((cause) => {
+        if (isPlatformReason(cause, "NotFound")) {
+          return new ConfigNotFoundError({
+            message: "Config file not found. Run pix init first.",
+            path: CONFIG_PATH,
+            cause,
+          })
+        }
+        return new ConfigError({ message: "Failed to read config.json", cause })
+      }),
+    )
+    const structurallyHealed = yield* structurallyHeal(content)
+    return yield* validateCoupled(structurallyHealed, registry)
+  })
+
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
+  const registry = yield* ModelRegistry
 
   const writeConfig = (config: Config): Effect.Effect<void, ConfigError | DiskFullError> =>
     Effect.gen(function* () {
@@ -40,46 +135,57 @@ const make = Effect.gen(function* () {
       )
     })
 
-  const readConfig = (): Effect.Effect<
-    Config,
-    ConfigError | ConfigNotFoundError | ConfigMalformedError | ConfigValidationError
-  > =>
-    Effect.gen(function* () {
-      const content = yield* fs.readFileString(CONFIG_PATH).pipe(
-        Effect.mapError((cause) => {
-          if (isPlatformReason(cause, "NotFound")) {
-            return new ConfigNotFoundError({
-              message: "Config file not found. Run pix init first.",
-              path: CONFIG_PATH,
-              cause,
-            })
-          }
-          return new ConfigError({ message: "Failed to read config.json", cause })
-        }),
-      )
-      return yield* decodeJsonWithErrors(ConfigSchema, content).pipe(
-        Effect.mapError((err) => {
-          if (err._tag === "JsonSyntaxError") {
-            return new ConfigMalformedError({
-              message: "Invalid JSON in config.json",
-              path: CONFIG_PATH,
-              cause: err,
-            })
-          }
-          return new ConfigValidationError({
-            message: err.message,
-            errors: err.errors,
-          })
-        }),
-      )
-    })
+  const readConfig = () =>
+    readAndHeal(fs, registry).pipe(
+      Effect.flatMap(({ config, conflicts }) => {
+        const unhealed = conflicts.filter((c) => !c.healed)
+        if (unhealed.length > 0) {
+          return Effect.fail(
+            new ConfigHealError({
+              conflicts: unhealed.map((c) => ({
+                field: c.field,
+                currentValue: c.currentValue,
+                validOptions: c.validOptions,
+                reason: c.reason,
+              })),
+            }),
+          )
+        }
+        return Effect.succeed(config)
+      }),
+    )
+
+  const readConfigWithConflicts = () =>
+    readAndHeal(fs, registry).pipe(
+      Effect.flatMap(({ config, conflicts }) => {
+        const unhealed = conflicts.filter((c) => !c.healed)
+        if (unhealed.length > 0) {
+          return Effect.fail(
+            new ConfigHealError({
+              conflicts: unhealed.map((c) => ({
+                field: c.field,
+                currentValue: c.currentValue,
+                validOptions: c.validOptions,
+                reason: c.reason,
+              })),
+            }),
+          )
+        }
+        return Effect.succeed({ config, conflicts })
+      }),
+    )
+
+  const healConfig = () => readAndHeal(fs, registry)
 
   const configExists = (): Effect.Effect<boolean> =>
     Effect.gen(function* () {
       return yield* fs.exists(CONFIG_PATH)
     }).pipe(Effect.catchAll(() => Effect.succeed(false)))
 
-  return { writeConfig, readConfig, configExists } as const
+  return { writeConfig, readConfig, readConfigWithConflicts, healConfig, configExists } as const
 })
 
-export const ConfigStoreLive = Layer.effect(ConfigStore, make)
+export const ConfigStoreLive = Layer.provideMerge(
+  Layer.effect(ConfigStore, make),
+  ModelRegistryLive,
+)

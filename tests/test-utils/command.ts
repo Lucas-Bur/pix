@@ -34,6 +34,13 @@ export const expectLogEntry = (
 
 export const indexFixtures: MemoryFileSystem.Contents = {
   ".pix/config.json": TEST_CONFIG_JSON,
+  ".pix/index-meta.json": JSON.stringify({
+    schemaVersion: "1",
+    dtype: "fp32",
+    dims: 384,
+    model: "test-model",
+    lastIndex: Date.now(),
+  }),
   ".pix/chunks.jsonl": [
     makeChunkJson({
       id: "a1",
@@ -149,12 +156,16 @@ export const expectJsonEntry = <T>(
 
 /** Create a ConfigStore layer where one method fails and all others succeed. */
 export const makeFailingConfigStore = (
-  method: "readConfig" | "writeConfig",
+  method: "readConfig" | "writeConfig" | "healConfig",
   message = `${method} failed`,
 ): Layer.Layer<ConfigStore> => {
   const fail = Effect.fail(new ConfigError({ message }))
   return Layer.succeed(ConfigStore, {
     readConfig: () => (method === "readConfig" ? fail : Effect.succeed(DEFAULT_CONFIG)),
+    readConfigWithConflicts: () =>
+      method === "readConfig" ? fail : Effect.succeed({ config: DEFAULT_CONFIG, conflicts: [] }),
+    healConfig: () =>
+      method === "healConfig" ? fail : Effect.succeed({ config: DEFAULT_CONFIG, conflicts: [] }),
     writeConfig: () => (method === "writeConfig" ? fail : Effect.void),
     configExists: () => Effect.succeed(false),
   })

@@ -21,6 +21,11 @@ export type DisplayEntry = Data.TaggedEnum<{
     readonly setTo?: number
     readonly setToPercent?: number
   }
+  readonly select: {
+    readonly message: string
+    readonly options: readonly string[]
+    readonly defaultValue?: string
+  }
   readonly json: { readonly data: unknown }
 }>
 

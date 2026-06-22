@@ -1,11 +1,13 @@
 import { Effect, Layer, Ref } from "effect"
 
+import { InteractiveError } from "../domain/errors.js"
 import { Display, type DisplayProgressOptions as ProgressOptions } from "../domain/ports.js"
 import { DisplayEntry } from "./entries.js"
 import type { DisplayEntry as DisplayEntryType } from "./entries.js"
 
 export const SilentDisplayLive = (
   ref: Ref.Ref<ReadonlyArray<DisplayEntryType>>,
+  selectValue?: string,
 ): Layer.Layer<Display> =>
   Layer.succeed(Display, {
     intro: (title) => Ref.update(ref, (entries) => [...entries, DisplayEntry.intro({ title })]),
@@ -49,6 +51,25 @@ export const SilentDisplayLive = (
               setToPercent: "setToPercent" in payload ? payload.setToPercent : undefined,
             }),
       ]),
+
+    select: <T>(
+      message: string,
+      options: ReadonlyArray<{ readonly value: T; readonly label: string }>,
+      defaultValue?: T,
+    ): Effect.Effect<T, InteractiveError> =>
+      Effect.gen(function* () {
+        yield* Ref.update(ref, (entries) => [
+          ...entries,
+          DisplayEntry.select({
+            message,
+            options: options.map((o) => o.label),
+            defaultValue: defaultValue as string | undefined,
+          }),
+        ])
+        if (selectValue !== undefined) return selectValue as T
+        if (defaultValue !== undefined) return defaultValue
+        return yield* new InteractiveError({ message: "No default value for select" })
+      }),
 
     json: (data) => Ref.update(ref, (entries) => [...entries, DisplayEntry.json({ data })]),
   })

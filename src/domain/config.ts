@@ -14,7 +14,6 @@ const EmbedderConfigSchema = Schema.Struct({
  * for `.pix/config.json`.
  */
 export const ConfigSchema = Schema.Struct({
-  schema: Schema.Literal("1"),
   chunkLines: Schema.Number,
   overlapLines: Schema.Number,
   chunkConcurrency: Schema.Number,
@@ -28,7 +27,6 @@ export const ConfigSchema = Schema.Struct({
 export type Config = typeof ConfigSchema.Type
 
 export const DEFAULT_CONFIG: Config = {
-  schema: "1",
   chunkLines: 60,
   overlapLines: 10,
   chunkConcurrency: 8,

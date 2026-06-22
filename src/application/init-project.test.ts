@@ -9,7 +9,6 @@ test("InitProject.init writes DEFAULT_CONFIG via ConfigStore", () =>
   Effect.gen(function* () {
     const result = yield* InitProject.init()
     expect(result.success).toBe(true)
-    expect(result.config.schema).toBe("1")
     expect(result.config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
   }).pipe(Effect.provide(testLayer({})), Effect.scoped))
 

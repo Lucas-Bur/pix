@@ -22,9 +22,9 @@ const assertInitDisplayEntries = (ref: Ref.Ref<ReadonlyArray<DisplayEntry>>) =>
     expect(entries[2]._tag).toBe("log")
     expect(entries[3]._tag).toBe("note")
     if (entries[1]._tag === "json") {
-      const data = entries[1].data as { success: boolean; config: { schemaVersion: string } }
+      const data = entries[1].data as { success: boolean; config: { embedder: { model: string } } }
       expect(data.success).toBe(true)
-      expect(data.config.schemaVersion).toBe("1")
+      expect(data.config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
     }
   })
 

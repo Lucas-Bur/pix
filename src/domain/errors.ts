@@ -31,6 +31,21 @@ export class ConfigValidationError extends Data.TaggedError("ConfigValidationErr
   }>
 }> {}
 
+/** Config has coupled-rule conflicts that require human/agent input to resolve (e.g. unknown model). */
+export class ConfigHealError extends Data.TaggedError("ConfigHealError")<{
+  readonly conflicts: ReadonlyArray<{
+    readonly field: string
+    readonly currentValue: string
+    readonly validOptions: readonly string[]
+    readonly reason: string
+  }>
+}> {}
+
+/** Interactive prompt was invoked in a non-interactive context (e.g. --json mode). */
+export class InteractiveError extends Data.TaggedError("InteractiveError")<{
+  readonly message: string
+}> {}
+
 // === Index store errors ===
 
 /** Index files (chunks.jsonl, vectors.bin) do not exist. Run pix index first. */
@@ -93,6 +108,7 @@ export type AllConfigErrors =
   | ConfigNotFoundError
   | ConfigMalformedError
   | ConfigValidationError
+  | ConfigHealError
 
 /** All index store error types. */
 export type AllStoreErrors = StoreError | DiskFullError | NoIndexError

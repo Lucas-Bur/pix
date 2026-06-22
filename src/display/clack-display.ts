@@ -4,6 +4,7 @@ import * as clack from "@clack/prompts"
 import { FileSystem } from "@effect/platform"
 import { Effect, Layer, Ref, Exit } from "effect"
 
+import { InteractiveError } from "../domain/errors.js"
 import {
   Display,
   type DisplayService,
@@ -203,6 +204,31 @@ export const ClackDisplayLive = Layer.effect(
           if (active.type === "progress" && h.type === "progress") {
             return yield* updateProgressBar(payload, active, h, activeRef)
           }
+        }),
+
+      select: <T>(
+        message: string,
+        options: ReadonlyArray<{ readonly value: T; readonly label: string }>,
+        defaultValue?: T,
+      ): Effect.Effect<T, InteractiveError> =>
+        Effect.gen(function* () {
+          yield* appendLogEntry(fs, { type: "select", message })
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              clack.select({
+                message,
+                options: options.map((o) => ({
+                  value: o.value as unknown as string,
+                  label: o.label,
+                })),
+                initialValue: defaultValue as unknown as string | undefined,
+              }) as Promise<unknown>,
+            catch: () => new InteractiveError({ message: `Selection cancelled: ${message}` }),
+          })
+          if (typeof result === "symbol") {
+            return yield* new InteractiveError({ message: `Selection cancelled: ${message}` })
+          }
+          return result as T
         }),
 
       json: () => appendLogEntry(fs, { type: "json" }),
