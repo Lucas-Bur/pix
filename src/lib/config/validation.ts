@@ -1,27 +1,15 @@
-import { Data, Effect, Schema } from "effect"
+import { Effect, Schema } from "effect"
 import * as ParseResult from "effect/ParseResult"
 
 import type { Config } from "../../domain/config.js"
 import { DEFAULT_CONFIG } from "../../domain/config.js"
-import { ChunkValidationError } from "../../domain/errors.js"
+import { ChunkValidationError, ConfigValidationError } from "../../domain/errors.js"
 import type { IndexOptions } from "../../domain/ports.js"
 
 interface ValidationEntry {
   readonly path: string
   readonly message: string
 }
-
-class JsonSyntaxError extends Data.TaggedError("JsonSyntaxError")<{
-  readonly message: string
-  readonly errors: ReadonlyArray<ValidationEntry>
-}> {}
-
-class SchemaValidationError extends Data.TaggedError("SchemaValidationError")<{
-  readonly message: string
-  readonly errors: ReadonlyArray<ValidationEntry>
-}> {}
-
-export type JsonDecodeError = JsonSyntaxError | SchemaValidationError
 
 const mergeMessages = (messages: readonly string[]): string => {
   if (messages.length === 1) return messages[0]
@@ -54,9 +42,6 @@ const formatSchemaErrors = (error: ParseResult.ParseError): ReadonlyArray<Valida
 const formatSchemaMessage = (error: ParseResult.ParseError): string =>
   ParseResult.TreeFormatter.formatErrorSync(error)
 
-const isJsonSyntaxError = (error: ParseResult.ParseError): boolean =>
-  error.issue._tag === "Transformation" && error.issue.kind === "Transformation"
-
 /** Clamp a number to be at least `min`. Returns the clamped value. */
 const clampPositive = (value: number, min = 1): number => Math.max(min, value)
 
@@ -71,18 +56,19 @@ export const clampTopK = (
   return { value, clamped: false }
 }
 
-export const decodeJsonWithErrors = <A>(
+/** Decode an already-parsed object against a schema, returning ConfigValidationError on failure. */
+export const decodeObjectWithErrors = <A>(
   schema: Schema.Schema<A, any, never>,
-  json: string,
-): Effect.Effect<A, JsonDecodeError> =>
-  Schema.decodeUnknown(Schema.parseJson(schema))(json).pipe(
-    Effect.mapError((error: ParseResult.ParseError) => {
-      const base = {
-        message: formatSchemaMessage(error),
-        errors: formatSchemaErrors(error),
-      }
-      return isJsonSyntaxError(error) ? new JsonSyntaxError(base) : new SchemaValidationError(base)
-    }),
+  value: unknown,
+): Effect.Effect<A, ConfigValidationError> =>
+  Schema.decodeUnknown(schema)(value).pipe(
+    Effect.mapError(
+      (error: ParseResult.ParseError) =>
+        new ConfigValidationError({
+          message: formatSchemaMessage(error),
+          errors: formatSchemaErrors(error),
+        }),
+    ),
   )
 
 export const buildChunkValidationErrors = (

@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 
 import type { ChunkValidationError, StoreError } from "../domain/errors.js"
-import { ConfigStore, IndexStore } from "../domain/ports.js"
+import { IndexStore } from "../domain/ports.js"
 
 /** Return type for pix status */
 export interface StatusResult {
@@ -14,21 +14,15 @@ export interface StatusResult {
   readonly validationErrors: readonly ChunkValidationError[]
 }
 
-/** Use case: get index statistics. Depends on IndexStore and ConfigStore via Effect tags. */
+/** Use case: get index statistics. Depends on IndexStore via Effect tag. */
 export class GetStatus extends Effect.Service<GetStatus>()("GetStatus", {
   accessors: true,
   effect: Effect.gen(function* () {
     const store = yield* IndexStore
-    const configStore = yield* ConfigStore
 
     const getStatus = (): Effect.Effect<StatusResult, StoreError> =>
       Effect.gen(function* () {
-        const status = yield* store.getStatus()
-        const configModel = yield* configStore.readConfig().pipe(
-          Effect.map((c) => c.embedder.model),
-          Effect.catchAll(() => Effect.succeed(status.model)),
-        )
-        return { ...status, model: configModel }
+        return yield* store.getStatus()
       })
 
     return { getStatus }

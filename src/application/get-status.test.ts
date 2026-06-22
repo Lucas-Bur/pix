@@ -6,16 +6,32 @@ import { makeChunkJson } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { GetStatus } from "./get-status.js"
 
-test("GetStatus.getStatus returns status from IndexStore with config model", () =>
+test("GetStatus.getStatus returns index model from index-meta.json", () =>
   Effect.gen(function* () {
     const result = yield* GetStatus.getStatus()
     expect(result.chunks).toBe(2)
     expect(result.files).toBe(2)
     expect(result.model).toBe("test-model")
     expect(result.totalLines).toBe(3)
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures })), Effect.scoped))
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        contents: {
+          ...indexFixtures,
+          ".pix/index-meta.json": JSON.stringify({
+            schemaVersion: "1",
+            dtype: "fp32",
+            dims: 384,
+            model: "test-model",
+            lastIndex: Date.now(),
+          }),
+        },
+      }),
+    ),
+    Effect.scoped,
+  ))
 
-test("GetStatus.getStatus falls back to IndexStore model when config read fails", () =>
+test("GetStatus.getStatus returns empty model when index-meta.json missing", () =>
   Effect.gen(function* () {
     const result = yield* GetStatus.getStatus()
     expect(result.model).toBe("")

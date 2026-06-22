@@ -1,6 +1,7 @@
 import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
 
+import { InteractiveError } from "../domain/errors.js"
 import {
   Display,
   type DisplayService,
@@ -32,6 +33,19 @@ export const JsonDisplayLive = Layer.effect(
           { type: "progress-stop" },
         ),
       updateInteractive: (payload) => appendLogEntry(fs, updatePayloadLog(payload)),
+      select: <T>(
+        message: string,
+        options: ReadonlyArray<{ readonly value: T; readonly label: string }>,
+        defaultValue?: T,
+      ): Effect.Effect<T, InteractiveError> => {
+        if (defaultValue !== undefined) return Effect.succeed(defaultValue)
+        const labels = options.map((o) => o.label).join(", ")
+        return Effect.fail(
+          new InteractiveError({
+            message: `${message}. Valid options: ${labels}`,
+          }),
+        )
+      },
       json: makeJsonHandler(fs),
     } satisfies DisplayService
   }),

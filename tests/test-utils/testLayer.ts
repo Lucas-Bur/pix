@@ -15,6 +15,7 @@ import { ChunkerLive } from "../../src/services/chunker.js"
 import { ConfigStoreLive } from "../../src/services/config-store.js"
 import { ContentExtractorLive } from "../../src/services/content-extractor.js"
 import { IndexStoreLive } from "../../src/services/index-store.js"
+import { ModelRegistryLive } from "../../src/services/models.js"
 
 export interface TestLayerOptions {
   readonly contents?: MemoryFileSystem.Contents
@@ -72,6 +73,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
 
   const servicesLayer = Layer.mergeAll(
     configStoreLayer ?? ConfigStoreLive,
+    ModelRegistryLive,
     scannerLayer ?? defaultScannerLayer,
     embedderLayer ?? defaultEmbedderLayer,
     indexStoreLayer ?? IndexStoreLive,

@@ -4,6 +4,7 @@ import { Command } from "@effect/cli"
 import { Effect } from "effect"
 
 import { benchCommand } from "./commands/bench.js"
+import { configCommand } from "./commands/config.js"
 import { indexCommand } from "./commands/index-cmd.ts"
 import { initCommand } from "./commands/init.ts"
 import { queryCommand } from "./commands/query.ts"
@@ -31,6 +32,7 @@ const pix = rootCommand.pipe(
     queryCommand,
     resetCommand,
     benchCommand,
+    configCommand,
   ]),
 )
 

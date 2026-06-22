@@ -23,13 +23,46 @@ Raw data loaded from the index and passed to scorers at query time. Contains chu
 
 ### Config
 
-Runtime configuration stored in `.pix/config.json`. Contains model name, dimensions, chunk parameters, file mtime cache.
-Schema version: "1".
+Runtime configuration stored in `.pix/config.json`. Contains model name, device, dtype, chunk parameters, embedder batch size.
+Structurally healed on read: missing fields are filled from `DEFAULT_CONFIG` via deep-merge. Coupled rules (model exists in registry, dtype supported by model) are validated against `ModelRegistry`. Unsupported dtypes are auto-healed to the model's `defaultDtype`; unknown models produce `ConfigHealError`.
 
 ### Embedder
 
 Component that turns text into vectors. Uses ONNX runtime with configurable dtype (`fp32` | `fp16` | `q8` | `q4`). Default model: `Xenova/all-MiniLM-L6-v2` (384 dims).
 Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable). Produces `Embedding` values with `dtype` field matching the configured quantization.
+
+### ModelRegistry
+
+Port (`Context.Tag` in `src/services/models.ts`) for querying embedding model metadata: dimensions, supported dtypes, default dtype, description. `ModelRegistryLive` wraps the static `MODEL_REGISTRY` record; test layers can inject a restricted fake registry to exercise coupled-validation edge cases. Two methods: `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. Follows the "two adapters = real seam" principle (live + test).
+
+### ModelInfo
+
+Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtypes` (supported quantizations), `defaultDtype` (used when healing an unsupported dtype), `description`. Lives in `src/services/models.ts`.
+
+### Config Healing
+
+Two-tier process that runs on every `ConfigStore.readConfig()` call:
+
+1. **Structural heal**: deep-merge user config onto `DEFAULT_CONFIG`, then schema-decode. Missing fields are filled from defaults; bad types (`chunkLines: "sixty"`) still fail with `ConfigValidationError`.
+2. **Coupled validation**: check `embedder.model` exists in `ModelRegistry` and `embedder.dtype` is in the model's `dtypes`. Unsupported dtype → auto-healed to `defaultDtype` (conflict recorded but not blocking). Unknown model → `ConfigHealError` (unhealable, blocks).
+
+`pix config heal` is the explicit command: returns a `HealPlan`, prompts for each conflict (human mode), writes the resolved config. `--json` mode: auto-applies defaults for healed conflicts, fails with `ConfigHealError` for unhealed conflicts (agent edits config and retries). Only `pix config heal` writes config; other commands heal in memory and warn via `readConfigWithConflicts()`.
+
+### HealConflict
+
+A field-level conflict found during coupled validation. Shape: `{ field, currentValue, validOptions, reason, healed, healedValue? }`. `healed: true` means auto-resolved with `defaultDtype`; `healed: false` means unhealable (unknown model) — requires human/agent input.
+
+### HealPlan
+
+Result of `ConfigStore.healConfig()`: `{ config, conflicts }`. The `config` has all auto-fixable issues resolved; `conflicts` lists all issues found (both healed and unhealed). The `pix config heal` command uses this to prompt and write.
+
+### ConfigHealError
+
+`Data.TaggedError` raised when config has unhealable coupled conflicts (unknown model). Contains `conflicts` array with `field`, `currentValue`, `validOptions`, `reason` per conflict. Distinct from `ConfigValidationError` (schema decode failure) — config passed schema but failed business rules.
+
+### InteractiveError
+
+`Data.TaggedError` raised when `Display.select` is called without a `defaultValue` in a non-interactive context (`--json` mode). Signals that the agent needs to edit the config file directly and retry.
 
 ### Scanner
 
@@ -100,6 +133,8 @@ Methods:
 | `progress(opts, eff)`        | Wrap effect with progress bar (also accepts `d.updateInteractive` payloads) | runs bar            | runs effect    |
 | `updateInteractive(payload)` | Update text & optionally advance progress bar                               | see below           | no-op          |
 | `json(data)`                 | Structured agent output                                                     | no-op               | `stdout.write` |
+
+**`d.select(message, options, defaultValue?)`**: Interactive selection prompt. Returns the chosen value. In `ClackDisplay`, renders via `clack.select` with `initialValue`. In `JsonDisplay`, returns `defaultValue` silently if provided; throws `InteractiveError` if not (agent must edit config and retry). In `SilentDisplay`, records `DisplayEntry.select` and returns `selectValue` (test override), `defaultValue`, or throws `InteractiveError`. Used by `pix config heal` for conflict resolution.
 
 **`d.updateInteractive(payload)` payloads** (discriminated union, exclusive keys via `never`):
 
@@ -209,6 +244,7 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 - `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content]` — Semantic search via cosine similarity. `--ignore-path`/`--only-path` filter by file path (gitignore patterns, repeatable). `--max-characters` caps output character budget. `--no-content` returns `file:line` references only (no text) — useful for agents that read files themselves.
 - `pix status` — Show index statistics
 - `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
+- `pix config heal` — Validate and repair `.pix/config.json`. Structural heal (fill missing fields from defaults) + coupled validation (model registry check). Prompts for each conflict in human mode; `--json` mode auto-applies defaults for healed conflicts, fails with `ConfigHealError` for unhealed conflicts.
 
 All commands support `--json` for agent-ready structured output on stdout. Single JSON object emitted at end of successful operations (e.g. `{ chunks, files, totalLines, byteSize, durationMs }`). Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent).
 

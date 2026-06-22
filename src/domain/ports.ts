@@ -9,7 +9,11 @@ import type {
   AllConfigErrors,
   ChunkValidationError,
   ConfigError,
+  ConfigMalformedError,
+  ConfigNotFoundError,
+  ConfigValidationError,
   DiskFullError,
+  InteractiveError,
   NoIndexError,
   StoreError,
   ChunkerError,
@@ -45,11 +49,44 @@ export interface ScanResult {
 
 // === ConfigStore Port ===
 
+/** A conflict found during config heal — a field value that violates a coupled rule. */
+export interface HealConflict {
+  /** Dotted path to the conflicting field (e.g. "embedder.dtype"). */
+  readonly field: string
+  /** The invalid value currently in the config. */
+  readonly currentValue: string
+  /** Valid values the user/agent can choose from. */
+  readonly validOptions: readonly string[]
+  /** Human-readable explanation of why this is a conflict. */
+  readonly reason: string
+  /** True if the conflict was auto-resolved with a default value. */
+  readonly healed: boolean
+  /** The value applied if healed (undefined if not healed). */
+  readonly healedValue?: string
+}
+
+/** Result of healConfig — the healed config plus a list of all conflicts found. */
+export interface HealPlan {
+  readonly config: Config
+  readonly conflicts: ReadonlyArray<HealConflict>
+}
+
 /** Port for reading/writing `.pix/config.json`. */
 export class ConfigStore extends Context.Tag("ConfigStore")<
   ConfigStore,
   {
+    /** Read and heal config in memory. Fails on unhealable conflicts (unknown model). */
     readonly readConfig: () => Effect.Effect<Config, AllConfigErrors>
+    /** Read and heal config, returning conflicts for warning. Fails on unhealable conflicts. */
+    readonly readConfigWithConflicts: () => Effect.Effect<
+      { readonly config: Config; readonly conflicts: ReadonlyArray<HealConflict> },
+      AllConfigErrors
+    >
+    /** Read and heal config, returning a full plan with all conflicts (including unhealed). */
+    readonly healConfig: () => Effect.Effect<
+      HealPlan,
+      ConfigError | ConfigNotFoundError | ConfigMalformedError | ConfigValidationError
+    >
     readonly writeConfig: (config: Config) => Effect.Effect<void, ConfigError | DiskFullError>
     readonly configExists: () => Effect.Effect<boolean>
   }
@@ -311,6 +348,12 @@ export type DisplayUpdatePayload =
       readonly setToPercent?: never
     }
 
+/** Option for the select method — a labeled value the user can choose. */
+export interface SelectOption<T> {
+  readonly value: T
+  readonly label: string
+}
+
 /** Display service — abstracts CLI output behind structured methods */
 export interface DisplayService {
   readonly intro: (title: string) => Effect.Effect<void>
@@ -331,6 +374,11 @@ export interface DisplayService {
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, R>
   readonly updateInteractive: (payload: DisplayUpdatePayload) => Effect.Effect<void>
+  readonly select: <T>(
+    message: string,
+    options: ReadonlyArray<SelectOption<T>>,
+    defaultValue?: T,
+  ) => Effect.Effect<T, InteractiveError>
   readonly json: (data: unknown) => Effect.Effect<void>
 }
 

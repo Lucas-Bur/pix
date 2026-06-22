@@ -45,7 +45,7 @@ const UseCaseLayer = Layer.mergeAll(
 )
 
 // === AppLayer: wiring everything together ===
-const AppLayer = Layer.merge(UseCaseLayer.pipe(Layer.provide(InfraLayer)), NodeContext.layer)
+const AppLayer = Layer.merge(UseCaseLayer.pipe(Layer.provideMerge(InfraLayer)), NodeContext.layer)
 
 const { effect, displayLayer } = cli(process.argv)
 
