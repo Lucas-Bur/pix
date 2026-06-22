@@ -8,31 +8,32 @@ Accepted
 
 The domain type `Embedding.vector` is `number[]` — provider-agnostic so that any embedder (ONNX, OpenAI, etc.) can satisfy the port. However, the arithmetic layer (cosine similarity, vector encoding/decoding) needs a performant working representation.
 
-Vectors are stored in `vectors.bin` as raw bytes. When loaded for search, they must be decoded into a typed array for SIMD-optimized arithmetic. Different dtypes (fp32, fp16, q8, q4) require different decode paths.
+Vectors are stored in `vectors.bin` as raw bytes. When loaded for search, they must be decoded into a typed array for SIMD-optimized arithmetic. Although the `dtype` config selects model weight precision (fp32, fp16, q8, q4), ONNX `FeatureExtractionPipeline` always emits `Float32Array` output regardless of weight dtype (see Findings below), so storage is always Float32Array bytes and a single fp32 decode path serves every dtype.
 
 ## Decision
 
-**Internal working representation is `Float32Array`.** The `VectorCodec` interface (`src/lib/vector-codec.ts`) decodes `vectors.bin` bytes → `Float32Array` and encodes `Float32Array` → bytes. `computeCosineSimilarity` operates on `Float32Array`.
+**Internal working representation is `Float32Array`.** `serializeVectors` writes `Float32Array` bytes to `vectors.bin`; `IndexStore.loadChunksAndVectors` reads them back as a `Float32Array` view over the buffer (with a byte-length guard that fails as `VectorDecodeError` on truncation). `computeCosineSimilarity` operates on `Float32Array`.
 
-The embedder adapter converts from its native format (ONNX `Float32Array`, OpenAI `number[]`, etc.) to `number[]` for the domain `Embedding`, then the codec converts back to `Float32Array` when vectors are staged for storage.
+The embedder adapter converts from its native format (ONNX `Float32Array`, OpenAI `number[]`, etc.) to `number[]` for the domain `Embedding`, then `serializeVectors` lays those values into a contiguous `Float32Array` for storage.
 
 ## Rationale
 
 - **Performance**: `Float32Array` is contiguous memory, SIMD-eligible, and the native format for ONNX, TensorFlow, and every ML runtime. `number[]` is an array of boxed JS objects — 8x memory, no SIMD.
-- **Correctness**: Cosine similarity requires floating-point arithmetic. Quantized dtypes (q8, q4) are dequantized to float32 before arithmetic.
-- **Reversible**: The codec is the single seam between binary storage and working representation. Adding a new dtype means adding one decoder/encoder pair.
+- **Correctness**: Cosine similarity requires floating-point arithmetic. The output of `FeatureExtractionPipeline` is already float32 regardless of weight dtype (see Findings), so no dequantization step is needed at read time.
+- **No dtype switch at the storage seam**: Because every dtype produces float32 output, `vectors.bin` always contains Float32Array bytes. The `dtype` field in `index-meta.json` is metadata only (used by `DtypeMismatchError` to detect stale indexes after a config change), not a selector between decode paths.
 
 ## Consequences
 
-- **Positive**: Arithmetic is fast and correct for all dtypes. The codec interface is simple: `decode(bytes) → Float32Array`, `encode(Float32Array) → bytes`.
+- **Positive**: One storage format, one read path. No codec abstraction to maintain; adding a new dtype only requires registering it in `EmbeddingDtypeSchema` and `MODEL_REGISTRY`.
 - **Negative**: Two conversions per vector (provider → `number[]` → `Float32Array` for storage, `Float32Array` → `number[]` for domain). Negligible for MVP-scale indexes; revisit if profiling shows it's a bottleneck.
-- **Risk**: If a future provider returns `Float64Array` or `Float16Array` natively, the adapter must convert. This is acceptable — the codec already handles dtype conversion.
+- **Risk**: If a future provider returns `Float64Array` or `Float16Array` natively, the adapter must convert to `Float32Array` before handing to `serializeVectors`. This is a localised concern in the adapter, not a storage-format change.
 
 ## Code References
 
 - `src/domain/chunk.ts` — `Embedding.vector: number[]` (domain type)
-- `src/lib/vector-codec.ts` — `VectorCodec.decode/encode` (infrastructure, uses `Float32Array`)
-- `src/lib/vector-math.ts` — `computeCosineSimilarity(chunkVector: Float32Array, query: Float32Array)` (infrastructure)
+- `src/services/index-store.ts` — `loadChunksAndVectors` reads `vectors.bin` as `Float32Array`; `serializeVectors` writes it
+- `src/lib/vectors/vector-serialization.ts` — `serializeVectors` (infrastructure, lays embeddings into a contiguous `Float32Array`)
+- `src/lib/vectors/cosine.ts` — `computeCosineSimilarity(chunkVector: Float32Array, query: Float32Array)` (infrastructure)
 
 ## Findings: ONNX Transformers Output Dtype
 

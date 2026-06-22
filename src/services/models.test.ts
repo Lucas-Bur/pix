@@ -28,5 +28,6 @@ test("ModelRegistryLive.list returns all registered model IDs", () =>
     const ids = yield* registry.list()
     expect(ids).toContain("Xenova/all-MiniLM-L6-v2")
     expect(ids).toContain("Xenova/bge-small-en-v1.5")
-    expect(ids).toHaveLength(2)
+    expect(ids).toContain("jinaai/jina-embeddings-v2-base-code")
+    expect(ids).toHaveLength(3)
   }).pipe(Effect.provide(ModelRegistryLive)))

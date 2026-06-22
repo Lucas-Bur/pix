@@ -35,7 +35,6 @@ export const expectLogEntry = (
 export const indexFixtures: MemoryFileSystem.Contents = {
   ".pix/config.json": TEST_CONFIG_JSON,
   ".pix/index-meta.json": JSON.stringify({
-    schemaVersion: "1",
     dtype: "fp32",
     dims: 384,
     model: "test-model",

@@ -1,8 +1,8 @@
 import { pipeline } from "@huggingface/transformers"
 
 const TEST_TEXT = "Hello world, this is a test sentence for embeddings."
-const MODEL = "Xenova/all-MiniLM-L6-v2"
-const DTYPE = process.argv[2] ?? "fp32"
+const MODEL = process.argv[2] ?? "Xenova/all-MiniLM-L6-v2"
+const DTYPE = process.argv[3] ?? "fp32"
 
 console.log(`Testing dtype: ${DTYPE}`)
 console.log(`Model: ${MODEL}`)
