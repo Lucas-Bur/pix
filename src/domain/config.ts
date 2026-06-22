@@ -17,6 +17,7 @@ export const ConfigSchema = Schema.Struct({
   chunkLines: Schema.Number,
   overlapLines: Schema.Number,
   chunkConcurrency: Schema.Number,
+  minChunkChars: Schema.Number,
   skipExtensions: Schema.Array(Schema.String),
   ignoredPaths: Schema.Array(Schema.String),
   ignoreGitignore: Schema.Boolean,
@@ -30,6 +31,7 @@ export const DEFAULT_CONFIG: Config = {
   chunkLines: 60,
   overlapLines: 10,
   chunkConcurrency: 8,
+  minChunkChars: 20,
   skipExtensions: [],
   ignoredPaths: [
     ".pix",

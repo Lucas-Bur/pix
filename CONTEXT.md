@@ -15,7 +15,7 @@ Pre-computed BM25 statistics stored in `.pix/bm25.json`: average chunk length, p
 A piece of source code produced by the chunker. One chunk = N lines of code with overlap.
 Stored as one line in `chunks.jsonl`. Maximum size guided by 60 lines (configurable `chunkLines`), with `overlapLines` lines overlapping between consecutive chunks.
 Chunk-ID = `sha1(file:startLine).slice(0, 12)`.
-Minimum chunk size: 20 characters (hardcoded for MVP, TODO: promote to configurable).
+Minimum chunk size: 20 characters (configurable `minChunkChars`).
 
 ### ChunkEntry
 
@@ -23,7 +23,7 @@ Raw data loaded from the index and passed to scorers at query time. Contains chu
 
 ### Config
 
-Runtime configuration stored in `.pix/config.json`. Contains model name, device, dtype, chunk parameters, embedder batch size.
+Runtime configuration stored in `.pix/config.json`. Contains model name, device, dtype, chunk parameters (lines, overlap, minChunkChars, concurrency), embedder batch size, ignored paths, skip extensions.
 Structurally healed on read: missing fields are filled from `DEFAULT_CONFIG` via deep-merge. Coupled rules (model exists in registry, dtype supported by model) are validated against `ModelRegistry`. Unsupported dtypes are auto-healed to the model's `defaultDtype`; unknown models produce `ConfigHealError`.
 
 ### Embedder
@@ -63,6 +63,10 @@ Result of `ConfigStore.healConfig()`: `{ config, conflicts }`. The `config` has 
 ### InteractiveError
 
 `Data.TaggedError` raised when `Display.select` is called without a `defaultValue` in a non-interactive context (`--json` mode). Signals that the agent needs to edit the config file directly and retry.
+
+### ModelMismatchError
+
+`Data.TaggedError` raised at query time when `config.embedder.model` differs from the model recorded in `index-meta.json`. Prevents silent wrong results when config is changed without re-indexing. Contains `configModel` and `indexModel` for actionable error messages. Re-indexing resolves the mismatch.
 
 ### Scanner
 
@@ -239,7 +243,7 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 
 ### CLI Commands
 
-- `pix init` — Create `.pix/config.json` with defaults
+- `pix init` — Create `.pix/config.json`. Prompts for model selection (human mode); `--json` uses default model.
 - `pix index` — Scan, chunk, embed, store (full re-index). Two-phase pipeline: Phase 1 (extract + chunk, spinner), Phase 2 (embed + store, progress bar). CLI flags override config: `--batch-size`, `--chunk-concurrency`, `--skip-extensions`, `--ignore-path`/`--ignore-paths`, `--ignore-gitignore`. Uses spinner for Phase 1, progress bar for Phase 2.
 - `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content]` — Semantic search via cosine similarity. `--ignore-path`/`--only-path` filter by file path (gitignore patterns, repeatable). `--max-characters` caps output character budget. `--no-content` returns `file:line` references only (no text) — useful for agents that read files themselves.
 - `pix status` — Show index statistics

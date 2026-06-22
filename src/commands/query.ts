@@ -111,6 +111,12 @@ export const queryCommand = Command.make(
         DiskFullError: reportError,
         StoreError: reportError,
         NoIndexError: reportError,
+        ModelMismatchError: reportError,
+        ConfigHealError: reportError,
+        ConfigError: reportError,
+        ConfigNotFoundError: reportError,
+        ConfigMalformedError: reportError,
+        ConfigValidationError: reportError,
       }),
     ),
 )

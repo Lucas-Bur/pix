@@ -9,8 +9,6 @@ import { ChunkerError } from "../domain/errors.js"
 import { ConfigStore, Chunker } from "../domain/ports.js"
 export { Chunker }
 
-const MIN_CHUNK_CHARS = 20
-
 const buildChunks = (file: string, content: string, config: Config): Chunk[] => {
   const lines = content.split("\n")
   const chunks: Chunk[] = []
@@ -23,7 +21,7 @@ const buildChunks = (file: string, content: string, config: Config): Chunk[] => 
     const chunkLines = lines.slice(startLine - 1, endLine)
     const text = chunkLines.join("\n")
 
-    if (text.length >= MIN_CHUNK_CHARS) {
+    if (text.length >= config.minChunkChars) {
       const id = crypto.createHash("sha1").update(`${file}:${startLine}`).digest("hex").slice(0, 12)
 
       const contextBeforeStart = Math.max(0, startLine - 1 - config.overlapLines)

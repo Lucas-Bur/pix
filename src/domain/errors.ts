@@ -41,6 +41,12 @@ export class ConfigHealError extends Data.TaggedError("ConfigHealError")<{
   }>
 }> {}
 
+/** Config model differs from the model the index was built with. Re-index required. */
+export class ModelMismatchError extends Data.TaggedError("ModelMismatchError")<{
+  readonly configModel: string
+  readonly indexModel: string
+}> {}
+
 /** Interactive prompt was invoked in a non-interactive context (e.g. --json mode). */
 export class InteractiveError extends Data.TaggedError("InteractiveError")<{
   readonly message: string
