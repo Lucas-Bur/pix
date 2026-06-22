@@ -10,7 +10,7 @@ test("ModelRegistryLive returns ModelInfo for known model with defaultDtype", ()
     expect(Option.isSome(info)).toBe(true)
     if (Option.isSome(info)) {
       expect(info.value.dims).toBe(384)
-      expect(info.value.dtypes).toEqual(["fp32", "fp16", "q8"])
+      expect(info.value.dtypes).toEqual(["fp32", "q8"])
       expect(info.value.defaultDtype).toBe("fp32")
     }
   }).pipe(Effect.provide(ModelRegistryLive)))
