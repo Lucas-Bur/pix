@@ -5,6 +5,7 @@ import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import type { DeviceType } from "../domain/device.js"
+import { InferenceError, ModelLoadError } from "../domain/errors.js"
 import { ConfigStore, Display, Embedder, Scanner } from "../domain/ports.js"
 import { DeviceDetection } from "../services/device-detect.js"
 import { ScannerLive } from "../services/scanner.ts"
@@ -77,33 +78,31 @@ const mockDeviceDetection = (devices: readonly DeviceType[]) =>
     detectAll: () => Effect.succeed(devices),
   })
 
+const mockEmb = () => ({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const })
+const mockBatch = (texts: readonly string[]) => texts.map(mockEmb)
+
+const embedderBase = {
+  embed: () => Effect.succeed(mockEmb()),
+  batch: (texts: readonly string[]) => Effect.succeed(mockBatch(texts)),
+  getFallbackInfo: () => Effect.succeed(undefined),
+} as const
+
 const createMockEmbedder = () => {
   let createCallCount = 0
   const batchCallCounts: number[] = []
 
   const layer = Layer.succeed(Embedder, {
-    embed: () =>
-      Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
-    batch: (texts: readonly string[]) =>
-      Effect.succeed(
-        texts.map(() => ({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const })),
-      ),
-    getFallbackInfo: () => Effect.succeed(undefined),
+    ...embedderBase,
     createForDevice: () =>
       Effect.sync(() => {
         const idx = createCallCount++
         batchCallCounts.push(0)
         return {
-          embed: () =>
-            Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
+          embed: () => Effect.succeed(mockEmb()),
           batch: (texts: readonly string[]) =>
             Effect.sync(() => {
               batchCallCounts[idx] = (batchCallCounts[idx] ?? 0) + 1
-              return texts.map(() => ({
-                vector: new Float32Array(384),
-                dims: 384,
-                dtype: "fp32" as const,
-              }))
+              return mockBatch(texts)
             }),
         }
       }),
@@ -121,13 +120,7 @@ const createFailingEmbedder = (failDevices: readonly string[]) => {
   const batchCallCounts: number[] = []
 
   const layer = Layer.succeed(Embedder, {
-    embed: () =>
-      Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
-    batch: (texts: readonly string[]) =>
-      Effect.succeed(
-        texts.map(() => ({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const })),
-      ),
-    getFallbackInfo: () => Effect.succeed(undefined),
+    ...embedderBase,
     createForDevice: (cfg) =>
       Effect.sync(() => {
         if (failDevices.includes(cfg.device)) {
@@ -136,16 +129,11 @@ const createFailingEmbedder = (failDevices: readonly string[]) => {
         const idx = createCallCount++
         batchCallCounts.push(0)
         return {
-          embed: () =>
-            Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
+          embed: () => Effect.succeed(mockEmb()),
           batch: (texts: readonly string[]) =>
             Effect.sync(() => {
               batchCallCounts[idx] = (batchCallCounts[idx] ?? 0) + 1
-              return texts.map(() => ({
-                vector: new Float32Array(384),
-                dims: 384,
-                dtype: "fp32" as const,
-              }))
+              return mockBatch(texts)
             }),
         }
       }),
@@ -156,6 +144,64 @@ const createFailingEmbedder = (failDevices: readonly string[]) => {
     getCreateCallCount: () => createCallCount,
     getBatchCallCounts: () => [...batchCallCounts],
   }
+}
+
+const createColdStartBatchFailingEmbedder = () => ({
+  layer: Layer.succeed(Embedder, {
+    ...embedderBase,
+    createForDevice: () =>
+      Effect.succeed({
+        embed: () => Effect.succeed(mockEmb()),
+        batch: () =>
+          Effect.fail(new InferenceError({ message: "cold-start batch inference failed" })),
+      }),
+  }),
+})
+
+const createWarmPathBatchFailingEmbedder = () => {
+  let createCallCount = 0
+  const layer = Layer.succeed(Embedder, {
+    ...embedderBase,
+    createForDevice: () =>
+      Effect.sync(() => {
+        const idx = createCallCount++
+        if (idx === 0) {
+          return {
+            embed: () => Effect.succeed(mockEmb()),
+            batch: (texts: readonly string[]) => Effect.succeed(mockBatch(texts)),
+          }
+        }
+        return {
+          embed: () => Effect.succeed(mockEmb()),
+          batch: () =>
+            Effect.fail(new InferenceError({ message: "warm-path batch inference failed" })),
+        }
+      }),
+  })
+  return { layer, getCreateCallCount: () => createCallCount }
+}
+
+const createSlowWarmPathEmbedder = () => {
+  let createCallCount = 0
+  const layer = Layer.succeed(Embedder, {
+    ...embedderBase,
+    createForDevice: () =>
+      Effect.sync(() => {
+        const idx = createCallCount++
+        if (idx === 0) {
+          return {
+            embed: () => Effect.succeed(mockEmb()),
+            batch: (texts: readonly string[]) => Effect.succeed(mockBatch(texts)),
+          }
+        }
+        return {
+          embed: () => Effect.succeed(mockEmb()),
+          batch: (texts: readonly string[]) =>
+            Effect.sleep("2 seconds").pipe(Effect.andThen(Effect.succeed(mockBatch(texts)))),
+        }
+      }),
+  })
+  return { layer }
 }
 
 const benchLayer = (
@@ -178,6 +224,21 @@ const benchLayer = (
     }).pipe(Layer.merge(mockDeviceDetection(devices))),
     mock,
   }
+}
+
+const edgeCaseSetup = (
+  embedderLayer: Layer.Layer<Embedder>,
+  opts?: { devices?: readonly DeviceType[]; contents?: Record<string, string> },
+) => {
+  const { ref, layer: displayLayer } = silentDisplay()
+  const devices = opts?.devices ?? ["cpu"]
+  const layer = testLayer({
+    contents: opts?.contents ?? fixtures,
+    scannerLayer: ScannerLive,
+    embedderLayer,
+    displayLayer,
+  }).pipe(Layer.merge(mockDeviceDetection(devices)))
+  return { ref, layer }
 }
 
 test("BenchProject.bench reports corpus size", () =>
@@ -597,4 +658,159 @@ describe("BenchProject.applyConfig", () => {
       Effect.scoped,
     )
   })
+})
+
+describe("BenchProject error and edge cases", () => {
+  test("returns default recommendation when no devices are available", () => {
+    const mock = createMockEmbedder()
+    const { ref, layer } = edgeCaseSetup(mock.layer, { devices: [] })
+    return Effect.gen(function* () {
+      const result = yield* BenchProject.bench(defaultBenchOpts)
+
+      expect(result.measurements).toEqual([])
+      expect(result.recommendation.device).toBe("cpu")
+      expect(result.recommendation.batchSize).toBe(8)
+
+      const entries = yield* Ref.get(ref)
+      const logEntries = entries.filter((e) => e._tag === "log")
+      const noChunksEntry = logEntries.find((e) => e.message.includes("Found"))
+      expect(noChunksEntry).toBeDefined()
+    }).pipe(Effect.provide(layer), Effect.scoped)
+  })
+
+  test("fails with ModelLoadError when model is unknown", () => {
+    const mock = createMockEmbedder()
+    const configWithUnknownModel = makeConfigJson({
+      embedder: { model: "unknown/model", device: "cpu", dtype: "fp32", batchSize: 8 },
+    })
+    const { layer } = edgeCaseSetup(mock.layer, {
+      contents: { ...fixtures, ".pix/config.json": configWithUnknownModel },
+    })
+    return Effect.gen(function* () {
+      const error = yield* Effect.flip(BenchProject.bench(defaultBenchOpts))
+      expect(error).toBeInstanceOf(ModelLoadError)
+      expect((error as ModelLoadError).model).toBe("unknown/model")
+    }).pipe(Effect.provide(layer), Effect.scoped)
+  })
+
+  test("logs warning when all devices fail cold-start", () => {
+    const mock = createFailingEmbedder(["cpu"])
+    const { ref, layer } = edgeCaseSetup(mock.layer)
+    return Effect.gen(function* () {
+      const result = yield* BenchProject.bench({
+        warmup: 1,
+        measureBatches: 1,
+        batchSizes: [4] as const,
+        timeout: 60,
+        profile: "balanced" as const,
+        json: false,
+      })
+
+      const failedMeasurements = result.measurements.filter((m) => m.status === "failed")
+      expect(failedMeasurements.length).toBe(1)
+      expect(result.recommendation.device).toBe("cpu")
+      expect(result.recommendation.batchSize).toBe(8)
+
+      const entries = yield* Ref.get(ref)
+      const logEntries = entries.filter((e) => e._tag === "log")
+      const warnEntry = logEntries.find(
+        (e) => e.severity === "warn" && e.message.includes("No successful measurements"),
+      )
+      expect(warnEntry).toBeDefined()
+    }).pipe(Effect.provide(layer), Effect.scoped)
+  })
+
+  test("marks device as failed when cold-start batch fails (createForDevice succeeds)", () => {
+    const mock = createColdStartBatchFailingEmbedder()
+    const { ref, layer } = edgeCaseSetup(mock.layer)
+    return Effect.gen(function* () {
+      const result = yield* BenchProject.bench({
+        warmup: 1,
+        measureBatches: 1,
+        batchSizes: [4, 16] as const,
+        timeout: 60,
+        profile: "balanced" as const,
+        json: false,
+      })
+
+      const failedMeasurements = result.measurements.filter((m) => m.status === "failed")
+      expect(failedMeasurements.length).toBe(1)
+      expect(failedMeasurements[0]!.error).toContain("cold-start batch inference failed")
+      expect(failedMeasurements[0]!.batchSize).toBe(0)
+
+      const entries = yield* Ref.get(ref)
+      const tableEntries = entries.filter((e) => e._tag === "table")
+      expect(tableEntries.length).toBeGreaterThan(0)
+      const table = tableEntries[0]!
+      const failedRow = table.rows.find((r) => r[5] === "failed")
+      expect(failedRow).toBeDefined()
+      expect(failedRow![1]).toBe("—")
+    }).pipe(Effect.provide(layer), Effect.scoped)
+  })
+
+  test("marks measurement as failed when warm-path batch fails", () => {
+    const mock = createWarmPathBatchFailingEmbedder()
+    const { layer } = edgeCaseSetup(mock.layer)
+    return Effect.gen(function* () {
+      const result = yield* BenchProject.bench({
+        warmup: 1,
+        measureBatches: 1,
+        batchSizes: [4, 16] as const,
+        timeout: 60,
+        profile: "balanced" as const,
+        json: false,
+      })
+
+      const okMeasurements = result.measurements.filter((m) => m.status === "ok")
+      const failedMeasurements = result.measurements.filter((m) => m.status === "failed")
+      expect(okMeasurements).toHaveLength(0)
+      expect(failedMeasurements.length).toBe(2)
+      for (const m of failedMeasurements) {
+        expect(m.error).toContain("warm-path batch inference failed")
+        expect(m.batchSize).toBeGreaterThan(0)
+      }
+    }).pipe(Effect.provide(layer), Effect.scoped)
+  })
+
+  test("marks measurement as failed with timeout error when warm-path exceeds timeout", () => {
+    const mock = createSlowWarmPathEmbedder()
+    const { layer } = edgeCaseSetup(mock.layer)
+    return Effect.gen(function* () {
+      const result = yield* BenchProject.bench({
+        warmup: 2,
+        measureBatches: 2,
+        batchSizes: [4] as const,
+        timeout: 1,
+        profile: "balanced" as const,
+        json: false,
+      })
+
+      const failedMeasurements = result.measurements.filter((m) => m.status === "failed")
+      expect(failedMeasurements.length).toBe(1)
+      expect(failedMeasurements[0]!.error).toBe("timeout")
+    }).pipe(Effect.provide(layer), Effect.scoped)
+  })
+
+  test("writes default config when missing during corpus preparation", () =>
+    Effect.gen(function* () {
+      const store = yield* ConfigStore
+
+      const existsBefore = yield* store.configExists()
+      expect(existsBefore).toBe(false)
+
+      yield* BenchProject.prepareCorpus(defaultBenchOpts)
+
+      const existsAfter = yield* store.configExists()
+      expect(existsAfter).toBe(true)
+
+      const config = yield* store.readConfig()
+      expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
+    }).pipe(
+      Effect.provide(
+        testLayer({ contents: fixtures, scannerLayer: ScannerLive }).pipe(
+          Layer.merge(mockDeviceDetection(["cpu"])),
+        ),
+      ),
+      Effect.scoped,
+    ))
 })
