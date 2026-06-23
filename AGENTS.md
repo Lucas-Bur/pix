@@ -76,3 +76,30 @@ Always bound consumption of streams. Infinite streams hang on `Stream.runCollect
 yield * Stream.runCollect(Stream.take(infiniteStream, 100))
 yield * Stream.runCollect(stream.pipe(Effect.timeout("5 seconds")))
 ```
+
+## Using `pix query` for Retrieval
+
+`pix` is an **exploration tool**, not a precision tool. Use it to find files, not to extract content.
+
+### Strategy
+
+1. **1-2 pix queries to locate relevant files** — Use `--no-content` to get file:line references only, saving tokens.
+2. **Then `read` the found files** for exact code, error types, and implementation details.
+3. **Only use grep/read for follow-up precision** — grep for specific identifiers, read the target file.
+
+### Recommended Flags
+
+```bash
+pix query --json --top 5 --no-content "<semantic description>"
+```
+
+- `--json` — structured output, parseable by agents
+- `--top 5` — enough candidates without flooding
+- `--no-content` — file:line only, saves tokens; then `read` the file
+
+### Anti-Patterns
+
+- **Don't spray 10+ queries** — 2 good queries + read beats 10 queries
+- **Don't rely on pix for full content** — it returns raw chunk text, inflating tokens
+- **Don't use pix for exact identifier lookup** — grep is cheaper and more precise
+- **Don't skip grep/read** — combine pix (find) + read (examine) for the best ratio

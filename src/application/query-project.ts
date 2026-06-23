@@ -1,3 +1,5 @@
+import { isAbsolute, relative } from "node:path"
+
 import { Effect } from "effect"
 import ignore from "ignore"
 
@@ -25,9 +27,24 @@ import { tokenize } from "../lib/retrieval/tokenize.js"
 
 type PathFilter = { ignores(path: string): boolean }
 
+/** Normalize an absolute or relative path to a forward-slash relative path for the `ignore` package. */
+const normalizeForIgnore = (p: string): string => {
+  const normalized = p.replace(/\\/g, "/")
+  if (!isAbsolute(p)) return normalized
+  return relative(process.cwd(), p).replace(/\\/g, "/")
+}
+
 const buildIgnoreFilter = (patterns: readonly string[]): PathFilter => {
   const ig = ignore().add([...patterns])
-  return { ignores: (p: string) => ig.ignores(p) }
+  return {
+    ignores: (p: string) => {
+      try {
+        return ig.ignores(normalizeForIgnore(p))
+      } catch {
+        return false
+      }
+    },
+  }
 }
 
 const makeIgnoreFilter = (patterns: readonly string[]): PathFilter | null =>
