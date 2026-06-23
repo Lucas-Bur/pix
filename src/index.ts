@@ -58,5 +58,5 @@ setupTerminalCleanup()
 
 effect.pipe(
   Effect.provide(AppLayer.pipe(Layer.provideMerge(cliLayer))),
-  NodeRuntime.runMain({ disableErrorReporting: true }),
+  NodeRuntime.runMain({ disableErrorReporting: false }),
 )

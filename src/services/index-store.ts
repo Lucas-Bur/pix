@@ -205,12 +205,17 @@ const make = Effect.gen(function* () {
           dtype: "fp32",
         })
       }
-      const vectors = new Float32Array(
-        vectorsBuffer.buffer,
-        vectorsBuffer.byteOffset,
-        chunkLines.length * dims,
-      )
-      return { chunkLines, vectors, dims }
+      // Node.js fs.readFile may return a Buffer with a non-4-aligned byteOffset
+      // due to shared memory pooling, which would cause Float32Array to throw RangeError.
+      const aligned =
+        vectorsBuffer.byteOffset % Float32Array.BYTES_PER_ELEMENT === 0
+          ? new Float32Array(
+              vectorsBuffer.buffer,
+              vectorsBuffer.byteOffset,
+              chunkLines.length * dims,
+            )
+          : new Float32Array(new Uint8Array(vectorsBuffer).buffer, 0, chunkLines.length * dims)
+      return { chunkLines, vectors: aligned, dims }
     })
 
   /** Read and parse chunks.jsonl and vectors.bin, with dtype validation from index-meta.json. */
