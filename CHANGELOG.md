@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.17.0...pix-v0.17.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* normalize paths for --ignore-path/--only-path on Windows; add pix retrieval guide to AGENTS.md ([a9490b6](https://github.com/Lucas-Bur/pix/commit/a9490b6fd2e41f3334ff1976538dd69f88c24f51))
+
 ## [0.17.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.16.0...pix-v0.17.0) (2026-06-23)
 
 
