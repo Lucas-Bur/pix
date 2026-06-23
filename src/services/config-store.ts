@@ -27,19 +27,20 @@ const structurallyHeal = (
   content: string,
 ): Effect.Effect<Config, ConfigMalformedError | ConfigValidationError> =>
   Effect.gen(function* () {
-    const parsed = yield* Effect.try({
-      try: () => JSON.parse(content) as Record<string, unknown>,
-      catch: (cause) =>
-        new ConfigMalformedError({
-          message: "Invalid JSON in config.json",
-          path: CONFIG_PATH,
-          cause,
-        }),
-    })
-    const merged = deepMerge(
-      DEFAULT_CONFIG as unknown as Record<string, unknown>,
-      parsed,
-    ) as unknown as Record<string, unknown>
+    const parsed = yield* Schema.decodeUnknown(
+      Schema.parseJson(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+    )(content).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ConfigMalformedError({
+            message: "Invalid JSON in config.json",
+            path: CONFIG_PATH,
+            cause,
+          }),
+      ),
+    )
+
+    const merged = deepMerge(DEFAULT_CONFIG, parsed)
     return yield* decodeObjectWithErrors(ConfigSchema, merged)
   })
 

@@ -50,6 +50,16 @@ const buildAndStoreBm25 = (
     )
   })
 
+const Bm25IndexSchema = Schema.Struct({
+  avgChunkLength: Schema.Number,
+  chunkLengths: Schema.Array(Schema.Number),
+  docFreqs: Schema.Record({ key: Schema.String, value: Schema.Number }),
+  chunkTfs: Schema.Record({
+    key: Schema.String,
+    value: Schema.Array(Schema.Tuple(Schema.Number, Schema.Number)),
+  }),
+})
+
 const loadBm25 = (
   fs: FileSystem.FileSystem,
   bm25Path: string,
@@ -62,13 +72,14 @@ const loadBm25 = (
       })
     }
     const content = yield* withReadError(fs.readFileString(bm25Path), "read bm25 index", bm25Path)
-    try {
-      return JSON.parse(content) as Bm25Index
-    } catch {
-      return yield* new StoreError({
-        message: `Corrupted ${bm25Path} — index may be damaged. Run pix reset and re-index.`,
-      })
-    }
+    return yield* Schema.decodeUnknown(Schema.parseJson(Bm25IndexSchema))(content).pipe(
+      Effect.mapError(
+        () =>
+          new StoreError({
+            message: `Corrupted ${bm25Path} — index may be damaged. Run pix reset and re-index.`,
+          }),
+      ),
+    )
   })
 
 /**
