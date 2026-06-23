@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.17.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.16.0...pix-v0.17.0) (2026-06-23)
+
+
+### Features
+
+* config heal command + ModelRegistry port ([1caa370](https://github.com/Lucas-Bur/pix/commit/1caa370f3ddeccd895b1102616c3284f356dcabd))
+* minChunkChars config, pix init model prompt, model mismatch check ([4ca3ee8](https://github.com/Lucas-Bur/pix/commit/4ca3ee8b104cf099434f5faa6aa78bf26c478746))
+
+
+### Bug Fixes
+
+* address CodeRabbit review — alignment guard, prototype pollution, test assertions ([17280cc](https://github.com/Lucas-Bur/pix/commit/17280ccc85cba6291c5478d4a8789e77b192a552))
+* remove dead vector-codec, fix jina q4 query, harden error reporting ([5380e14](https://github.com/Lucas-Bur/pix/commit/5380e14354e909270e47c87c690e464c581adba7))
+* remove fp16 and q4 from MODEL_REGISTRY — verified broken/missing ([cb9ae3f](https://github.com/Lucas-Bur/pix/commit/cb9ae3f1c2f75f5ba3a5b19ace015160c7dfc92a))
+
 ## [0.16.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.15.0...pix-v0.16.0) (2026-06-22)
 
 
