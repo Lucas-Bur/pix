@@ -1,8 +1,9 @@
-import { Effect, Exit, Layer } from "effect"
+import { Cause, Effect, Exit, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { makeChunk, makeEmbedding, makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import { ModelMismatchError } from "../domain/errors.js"
 import { Embedder, IndexStore } from "../domain/ports.js"
 import { QueryProject } from "./query-project.js"
 
@@ -153,6 +154,10 @@ test("QueryProject.queryProject fails with ModelMismatchError when config model 
 
     expect(Exit.isFailure(exit)).toBe(true)
     if (Exit.isFailure(exit)) {
-      expect(exit.cause._tag).toBe("Fail")
+      const failure = Cause.failureOption(exit.cause)
+      expect(failure._tag).toBe("Some")
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(ModelMismatchError)
+      }
     }
   }).pipe(Effect.provide(hybridLayer), Effect.scoped))
