@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.18.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.17.1...pix-v0.18.0) (2026-06-25)
+
+
+### Features
+
+* add rank + rel score to search output, idiomatic fuseResults channels ([28f8afe](https://github.com/Lucas-Bur/pix/commit/28f8afedcd2e09aefe530fd31627e6a4fa18b057))
+
+
+### Performance Improvements
+
+* lazy-load transformers, restructure layers with Layer.suspend ([23ef3e9](https://github.com/Lucas-Bur/pix/commit/23ef3e94ea2872f1edfc1ee49c0d778529297b99))
+
 ## [0.17.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.17.0...pix-v0.17.1) (2026-06-23)
 
 
