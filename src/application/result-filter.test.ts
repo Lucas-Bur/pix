@@ -5,6 +5,7 @@ import { filterResults } from "./query-project.js"
 
 const makeResult = (file: string): SearchResult => ({
   score: 1,
+  rel: 0.98,
   file,
   startLine: 1,
   endLine: 1,

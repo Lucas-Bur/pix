@@ -1,6 +1,6 @@
 import type { RankedChunk } from "../../domain/ports.js"
 
-const K = 60
+export const K = 60
 
 export const rrfFuse = (
   rankedLists: readonly (readonly RankedChunk[])[],

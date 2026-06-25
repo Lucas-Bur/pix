@@ -6,12 +6,7 @@ import { Display } from "../domain/ports.js"
 import type { SearchOptions, SearchResponse } from "../domain/ports.js"
 import { clampTopK } from "../lib/config/validation.js"
 import { reportError } from "../lib/errors/error-format.js"
-import {
-  applyCharBudget,
-  formatLocation,
-  formatResult,
-  toJsonOutput,
-} from "../lib/formatting/search-output.js"
+import { applyCharBudget, formatResult, toJsonOutput } from "../lib/formatting/search-output.js"
 
 const DEFAULT_TOP_K = 5
 const DEFAULT_CONTEXT_LINES = 0
@@ -55,9 +50,7 @@ const renderResults = (
     if (results.length === 0) {
       yield* d.log("No results found", "warn")
     } else {
-      for (const result of results) {
-        yield* d.text(noContent ? formatLocation(result) : formatResult(result))
-      }
+      yield* Effect.forEach(results, (result, i) => d.text(formatResult(result, i + 1, noContent)))
     }
   })
 

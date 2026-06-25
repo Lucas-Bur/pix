@@ -12,16 +12,16 @@ export const formatBytes = (bytes: number): string => {
 const formatResultMetadata = (result: SearchResult): string =>
   `${result.file}:${result.startLine}-${result.endLine}`
 
-/** Format a single result for human-readable output */
-export const formatResult = (result: SearchResult): string => {
+/** Format a search result for display. Omits chunk text when `noContent` is true. */
+export const formatResult = (result: SearchResult, rank: number, noContent = false): string => {
+  const prefix = `#${rank}  `
+  if (noContent) {
+    return `${prefix}${formatResultMetadata(result)} (rel: ${result.rel.toFixed(3)})`
+  }
   const contextBefore = result.contextBefore ? `\n${result.contextBefore}` : ""
   const contextAfter = result.contextAfter ? `\n${result.contextAfter}` : ""
-  return `${formatResultMetadata(result)} (score: ${result.score.toFixed(3)})${contextBefore}\n${result.text}${contextAfter}`
+  return `${prefix}${formatResultMetadata(result)} (rel: ${result.rel.toFixed(3)})${contextBefore}\n${result.text}${contextAfter}`
 }
-
-/** Format a result as a lightweight location reference (no text content). */
-export const formatLocation = (result: SearchResult): string =>
-  `${formatResultMetadata(result)} (score: ${result.score.toFixed(3)})`
 
 /** Build optional content fields for a single JSON output entry. */
 const buildContentFields = (
@@ -42,8 +42,10 @@ export const toJsonOutput = (
   ctxLines: number,
   noContent = false,
 ) =>
-  results.map((r) => ({
+  results.map((r, i) => ({
+    rank: i + 1,
     score: r.score,
+    rel: r.rel,
     file: r.file,
     startLine: r.startLine,
     endLine: r.endLine,

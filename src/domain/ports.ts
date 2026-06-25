@@ -224,8 +224,10 @@ export interface SearchOptions {
 
 /** A single search result from a semantic query. Results are sorted by similarity score descending. */
 export interface SearchResult {
-  /** Cosine similarity score between the query embedding and this chunk's embedding. */
+  /** Raw RRF fusion score (internal — use `rel` for human-friendly display). */
   readonly score: number
+  /** Normalised relevance score on [0, ~1] scale. score * K / sumWeights. */
+  readonly rel: number
   /** Repository-relative file path of the source file. */
   readonly file: string
   /** 1-based start line of the chunk in the source file. */

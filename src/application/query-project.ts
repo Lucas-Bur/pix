@@ -22,7 +22,7 @@ import type {
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
 import { rankBm25 } from "../lib/retrieval/bm25.js"
 import { rankDense } from "../lib/retrieval/dense.js"
-import { rrfFuse } from "../lib/retrieval/rrf.js"
+import { K, rrfFuse } from "../lib/retrieval/rrf.js"
 import { tokenize } from "../lib/retrieval/tokenize.js"
 
 type PathFilter = { ignores(path: string): boolean }
@@ -78,18 +78,21 @@ const routeQuery = (queryText: string): { bm25: number; dense: number } => {
 }
 
 const fuseResults = (
-  lexical: readonly RankedChunk[],
-  dense: readonly RankedChunk[],
-  weights: { bm25: number; dense: number },
+  channels: readonly { readonly list: readonly RankedChunk[]; readonly weight: number }[],
   entryMap: Map<number, ChunkEntry>,
 ): SearchResult[] => {
-  const fused = rrfFuse([lexical, dense], [weights.bm25, weights.dense])
+  const sumWeights = channels.reduce((a, c) => a + c.weight, 0)
+  const fused = rrfFuse(
+    channels.map((c) => c.list),
+    channels.map((c) => c.weight),
+  )
   const results: SearchResult[] = []
   for (const { chunkIndex, score } of fused) {
     const entry = entryMap.get(chunkIndex)
     if (!entry) continue
     results.push({
       score,
+      rel: (score * K) / sumWeights,
       file: entry.file,
       startLine: entry.startLine,
       endLine: entry.endLine,
@@ -146,7 +149,14 @@ export class QueryProject extends Effect.Service<QueryProject>()("QueryProject",
         const denseRanks = rankDense(embedding.vector, entries)
 
         const entryMap = new Map(entries.map((e) => [e.index, e]))
-        const results = fuseResults(lexicalRanks, denseRanks, routeQuery(queryText), entryMap)
+        const weights = routeQuery(queryText)
+        const results = fuseResults(
+          [
+            { list: lexicalRanks, weight: weights.bm25 },
+            { list: denseRanks, weight: weights.dense },
+          ],
+          entryMap,
+        )
         const filtered = filterResults(results, options)
 
         const topK = options?.topK

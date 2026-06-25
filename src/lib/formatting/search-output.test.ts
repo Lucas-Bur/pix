@@ -28,6 +28,7 @@ test("applyCharBudget returns all results when no maxChars", () => {
   const results = [
     {
       score: 1,
+      rel: 0.98,
       file: "a.ts",
       startLine: 1,
       endLine: 1,
@@ -37,6 +38,7 @@ test("applyCharBudget returns all results when no maxChars", () => {
     },
     {
       score: 0.5,
+      rel: 0.49,
       file: "b.ts",
       startLine: 1,
       endLine: 1,
@@ -53,6 +55,7 @@ test("applyCharBudget truncates when budget is exceeded", () => {
   const results = [
     {
       score: 1,
+      rel: 0.98,
       file: "a.ts",
       startLine: 1,
       endLine: 1,
@@ -62,6 +65,7 @@ test("applyCharBudget truncates when budget is exceeded", () => {
     },
     {
       score: 0.5,
+      rel: 0.49,
       file: "b.ts",
       startLine: 1,
       endLine: 1,
@@ -79,6 +83,7 @@ test("applyCharBudget preserves contextBefore and contextAfter when within budge
   const results: SearchResult[] = [
     {
       score: 1,
+      rel: 0.98,
       file: "a.ts",
       startLine: 1,
       endLine: 1,
@@ -96,6 +101,7 @@ test("applyCharBudget strips context when truncating", () => {
   const results: SearchResult[] = [
     {
       score: 1,
+      rel: 0.98,
       file: "a.ts",
       startLine: 1,
       endLine: 1,
