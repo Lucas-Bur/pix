@@ -10,31 +10,19 @@ import { QueryProject } from "./application/query-project.js"
 import { ResetIndex } from "./application/reset-index.js"
 import { cli } from "./cli.js"
 import { setupTerminalCleanup } from "./display/terminalCleanup.js"
-import { ChunkerLive } from "./services/chunker.js"
-import { ConfigStoreLive } from "./services/config-store.js"
-import { ContentExtractorLive } from "./services/content-extractor.js"
-import { OnnxEmbedderLive } from "./services/embedder.js"
-import { IndexStoreLive } from "./services/index-store.js"
-import { ScannerLive } from "./services/scanner.js"
+import { ConfigLayer } from "./layers/config-layer.js"
+import { EmbedderLayer } from "./layers/embedder-layer.js"
+import { FullInfraLayer } from "./layers/full-infra-layer.js"
+import { IndexStoreLayer } from "./layers/index-store-layer.js"
 
-// === Layer 1: Infrastructure services ===
-const ServicesLayer = Layer.mergeAll(
-  ConfigStoreLive,
-  ScannerLive,
-  OnnxEmbedderLive,
-  IndexStoreLive,
-  ContentExtractorLive,
+// Infrastructure: services provided via Layer.suspend for lazy construction
+const InfraLayer = Layer.suspend(() =>
+  Layer.mergeAll(ConfigLayer, IndexStoreLayer, EmbedderLayer, FullInfraLayer).pipe(
+    Layer.provide(NodeContext.layer),
+  ),
 )
 
-// === Layer 2: Services that depend on other services ===
-const ChunkerLayer = ChunkerLive.pipe(Layer.provide(ServicesLayer))
-
-// === Layer 3: Full infrastructure layer ===
-const InfraLayer = Layer.mergeAll(ServicesLayer, ChunkerLayer).pipe(
-  Layer.provide(NodeContext.layer),
-)
-
-// === Layer 4: Application use cases ===
+// Application use cases
 const UseCaseLayer = Layer.mergeAll(
   InitProject.Default,
   GetStatus.Default,
@@ -44,7 +32,6 @@ const UseCaseLayer = Layer.mergeAll(
   BenchProject.Default,
 )
 
-// === AppLayer: wiring everything together ===
 const AppLayer = Layer.merge(UseCaseLayer.pipe(Layer.provideMerge(InfraLayer)), NodeContext.layer)
 
 const { effect, displayLayer } = cli(process.argv)

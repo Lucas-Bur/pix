@@ -1,4 +1,3 @@
-import { env } from "@huggingface/transformers"
 import { Context, Effect, Layer, Ref } from "effect"
 
 import type { DeviceType } from "../domain/device.js"
@@ -7,10 +6,6 @@ import { ModelLoadError } from "../domain/errors.js"
 export type { DeviceType } from "../domain/device.js"
 
 const DEVICE_PRIORITY: readonly DeviceType[] = ["cuda", "dml", "coreml", "webgpu", "wasm", "cpu"]
-
-const initCacheDir = Effect.sync(() => {
-  env.cacheDir = ".pix/cache"
-})
 
 const tryDevice = (
   model: string,
@@ -53,8 +48,12 @@ export class DeviceDetection extends Context.Tag("DeviceDetection")<
 >() {}
 
 const make = Effect.gen(function* () {
-  yield* initCacheDir
-  const { pipeline } = yield* Effect.tryPromise(() => import("@huggingface/transformers"))
+  const { pipeline } = yield* Effect.tryPromise(() =>
+    import("@huggingface/transformers").then((m) => {
+      m.env.cacheDir = ".pix/cache"
+      return m
+    }),
+  )
 
   const detect = (model: string, dtype: string): Effect.Effect<DeviceType, ModelLoadError> =>
     Effect.gen(function* () {
