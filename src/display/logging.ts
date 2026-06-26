@@ -1,5 +1,5 @@
-import { FileSystem } from "@effect/platform"
 import { Effect, Exit } from "effect"
+import { FileSystem } from "effect/FileSystem"
 
 import { DisplayLogError } from "../domain/errors.js"
 import type { DisplayService, DisplayUpdatePayload } from "../domain/ports.js"
@@ -28,7 +28,7 @@ const withLogError = <A>(
 ): Effect.Effect<A, DisplayLogError> => op.pipe(Effect.mapError(toLogError(operation, path)))
 
 export const appendLogEntry = (
-  fs: typeof FileSystem.FileSystem.Service,
+  fs: typeof FileSystem.Service,
   entry: Record<string, unknown>,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
@@ -41,10 +41,10 @@ export const appendLogEntry = (
       "append log entry",
       LOG_FILE,
     )
-  }).pipe(Effect.catchAll((err) => Effect.logError(err).pipe(Effect.as(void 0))))
+  }).pipe(Effect.catch((err) => Effect.logError(err).pipe(Effect.as(void 0))))
 
 export const withLoggedEffect = <A, E, R>(
-  fs: typeof FileSystem.FileSystem.Service,
+  fs: typeof FileSystem.Service,
   effect: Effect.Effect<A, E, R>,
   startEntry: Record<string, unknown>,
   stopEntry: Record<string, unknown>,
@@ -58,7 +58,7 @@ export const withLoggedEffect = <A, E, R>(
   })
 
 export const makeJsonHandler =
-  (fs: typeof FileSystem.FileSystem.Service): DisplayService["json"] =>
+  (fs: typeof FileSystem.Service): DisplayService["json"] =>
   (data) =>
     appendLogEntry(fs, { type: "json" }).pipe(
       Effect.andThen(Effect.sync(() => process.stdout.write(`${JSON.stringify(data)}\n`))),

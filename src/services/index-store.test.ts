@@ -1,5 +1,5 @@
-import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
+import { FileSystem } from "effect/FileSystem"
 import { expect, test } from "vite-plus/test"
 
 import { makeChunk, makeEmbedding } from "../../tests/test-utils/fixtures.js"
@@ -25,7 +25,7 @@ const storeFixture = (
 
 test("IndexStore.getStatus returns 0 when no index exists", () =>
   Effect.gen(function* () {
-    const result = yield* GetStatus.getStatus()
+    const result = yield* (yield* GetStatus).getStatus()
     expect(result.chunks).toBe(0)
     expect(result.files).toBe(0)
     expect(result.model).toBe("")
@@ -74,7 +74,7 @@ test("IndexStore.store works when .pix directory already exists", () =>
 
 test("IndexStore.getStatus handles chunks.jsonl with malformed lines", () =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+    const fs = yield* FileSystem
     const store = yield* storeFixture(
       [makeChunk(), makeChunk({ id: "a2", idx: 1, text: "line1\nline2" })],
       [makeEmbedding(0.1), makeEmbedding(0.1)],
@@ -93,7 +93,7 @@ test("IndexStore.getStatus handles chunks.jsonl with malformed lines", () =>
 
 test("IndexStore.storeCommit writes bm25.json", () =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+    const fs = yield* FileSystem
     yield* storeFixture([makeChunk()], [makeEmbedding()])
     const exists = yield* fs.exists(".pix/bm25.json")
     expect(exists).toBe(true)
@@ -118,7 +118,7 @@ test("IndexStore.loadSearchData returns bm25Index after indexing", () =>
 
 test("IndexStore.reset deletes bm25.json", () =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+    const fs = yield* FileSystem
     yield* storeFixture([makeChunk()], [makeEmbedding()])
     const store = yield* IndexStore
     yield* store.reset()
@@ -133,19 +133,19 @@ test("IndexStore.loadSearchData fails when bm25.json is missing", () =>
     yield* store.storeBatch([makeChunk()], [makeEmbedding()])
     yield* store.storeCommit()
 
-    const fs = yield* FileSystem.FileSystem
+    const fs = yield* FileSystem
     yield* fs.remove(".pix/bm25.json")
 
-    const result = yield* Effect.either(store.loadSearchData())
+    const result = yield* Effect.result(store.loadSearchData())
     expect(result._tag).toBe("Left")
   }).pipe(Effect.provide(isLayer), Effect.scoped))
 
 test("IndexStore.storeCommit cleans up tmp files when commit fails", () =>
   Effect.gen(function* () {
     const store = yield* IndexStore
-    const fs = yield* FileSystem.FileSystem
+    const fs = yield* FileSystem
     yield* store.storeBegin()
-    const result = yield* Effect.either(store.storeCommit())
+    const result = yield* Effect.result(store.storeCommit())
     expect(result._tag).toBe("Left")
     const chunksTmpExists = yield* fs.exists(".pix/chunks.jsonl.tmp")
     const vectorsTmpExists = yield* fs.exists(".pix/vectors.bin.tmp")

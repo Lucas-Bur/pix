@@ -1,6 +1,6 @@
 import { isAbsolute, relative } from "node:path"
 
-import { Effect } from "effect"
+import { Context, Effect, Layer } from "effect"
 import ignore from "ignore"
 
 import type { DtypeMismatchError, VectorDecodeError } from "../domain/dtype.js"
@@ -104,17 +104,13 @@ const fuseResults = (
   return results
 }
 
-export class QueryProject extends Effect.Service<QueryProject>()("QueryProject", {
-  accessors: true,
-  effect: Effect.gen(function* () {
-    const embedder = yield* Embedder
-    const store = yield* IndexStore
-    const configStore = yield* ConfigStore
-
-    const queryProject = (
+export class QueryProject extends Context.Service<
+  QueryProject,
+  {
+    readonly queryProject: (
       queryText: string,
       options?: SearchOptions,
-    ): Effect.Effect<
+    ) => Effect.Effect<
       SearchResponse,
       | AllConfigErrors
       | AllEmbedderErrors
@@ -123,54 +119,76 @@ export class QueryProject extends Effect.Service<QueryProject>()("QueryProject",
       | DtypeMismatchError
       | VectorDecodeError
       | ModelMismatchError
-    > =>
-      Effect.gen(function* () {
-        const status = yield* store.getStatus()
-        if (status.model === "") {
-          return yield* new NoIndexError({ message: "No index found. Run pix index first." })
-        }
-        const config = yield* configStore.readConfig()
-        if (config.embedder.model !== status.model) {
-          return yield* new ModelMismatchError({
-            configModel: config.embedder.model,
-            indexModel: status.model,
-          })
-        }
-        const { entries, bm25Index, malformedLines } = yield* store.loadSearchData()
-        if (entries.length === 0) {
-          return {
-            results: [],
-            validationErrors: buildChunkValidationErrors(malformedLines),
-          }
-        }
-        const embedding = yield* embedder.embed(queryText)
+    >
+  }
+>()("QueryProject") {}
 
-        const lexicalRanks = rankBm25(queryText, bm25Index)
-        const denseRanks = rankDense(embedding.vector, entries)
+const make = Effect.gen(function* () {
+  const embedder = yield* Embedder
+  const store = yield* IndexStore
+  const configStore = yield* ConfigStore
 
-        const entryMap = new Map(entries.map((e) => [e.index, e]))
-        const weights = routeQuery(queryText)
-        const results = fuseResults(
-          [
-            { list: lexicalRanks, weight: weights.bm25 },
-            { list: denseRanks, weight: weights.dense },
-          ],
-          entryMap,
-        )
-        const filtered = filterResults(results, options)
-
-        const topK = options?.topK
-        const finalResults =
-          topK != null
-            ? filtered.slice(0, Math.max(0, Math.min(Math.floor(topK), filtered.length)))
-            : filtered
-
+  const queryProject = (
+    queryText: string,
+    options?: SearchOptions,
+  ): Effect.Effect<
+    SearchResponse,
+    | AllConfigErrors
+    | AllEmbedderErrors
+    | AllStoreErrors
+    | NoIndexError
+    | DtypeMismatchError
+    | VectorDecodeError
+    | ModelMismatchError
+  > =>
+    Effect.gen(function* () {
+      const status = yield* store.getStatus()
+      if (status.model === "") {
+        return yield* new NoIndexError({ message: "No index found. Run pix index first." })
+      }
+      const config = yield* configStore.readConfig()
+      if (config.embedder.model !== status.model) {
+        return yield* new ModelMismatchError({
+          configModel: config.embedder.model,
+          indexModel: status.model,
+        })
+      }
+      const { entries, bm25Index, malformedLines } = yield* store.loadSearchData()
+      if (entries.length === 0) {
         return {
-          results: finalResults,
+          results: [],
           validationErrors: buildChunkValidationErrors(malformedLines),
         }
-      })
+      }
+      const embedding = yield* embedder.embed(queryText)
 
-    return { queryProject }
-  }),
-}) {}
+      const lexicalRanks = rankBm25(queryText, bm25Index)
+      const denseRanks = rankDense(embedding.vector, entries)
+
+      const entryMap = new Map(entries.map((e) => [e.index, e]))
+      const weights = routeQuery(queryText)
+      const results = fuseResults(
+        [
+          { list: lexicalRanks, weight: weights.bm25 },
+          { list: denseRanks, weight: weights.dense },
+        ],
+        entryMap,
+      )
+      const filtered = filterResults(results, options)
+
+      const topK = options?.topK
+      const finalResults =
+        topK != null
+          ? filtered.slice(0, Math.max(0, Math.min(Math.floor(topK), filtered.length)))
+          : filtered
+
+      return {
+        results: finalResults,
+        validationErrors: buildChunkValidationErrors(malformedLines),
+      }
+    })
+
+  return { queryProject } as const
+})
+
+export const QueryProjectLive = Layer.effect(QueryProject, make)

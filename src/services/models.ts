@@ -42,7 +42,7 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
 }
 
 /** Port for querying embedding model metadata (dtypes, dims, defaults). */
-export class ModelRegistry extends Context.Tag("ModelRegistry")<
+export class ModelRegistry extends Context.Service<
   ModelRegistry,
   {
     /** Look up model info by HuggingFace model identifier. Returns Option.none if unknown. */
@@ -50,10 +50,10 @@ export class ModelRegistry extends Context.Tag("ModelRegistry")<
     /** List all registered model IDs. */
     readonly list: () => Effect.Effect<readonly string[]>
   }
->() {}
+>()("ModelRegistry") {}
 
 /** Live adapter: wraps the static MODEL_REGISTRY. */
 export const ModelRegistryLive = Layer.succeed(ModelRegistry, {
-  get: (id) => Effect.succeed(Option.fromNullable(MODEL_REGISTRY[id])),
+  get: (id) => Effect.succeed(Option.fromNullishOr(MODEL_REGISTRY[id])),
   list: () => Effect.succeed(Object.keys(MODEL_REGISTRY)),
 })

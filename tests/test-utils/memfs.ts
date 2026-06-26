@@ -1,4 +1,4 @@
 import { MemoryFileSystem } from "effect-memfs"
 
-export const memoryFsLayer = (contents?: MemoryFileSystem.Contents) =>
-  MemoryFileSystem.layerWith(contents ?? {})
+export const memoryFsLayer = ((contents?: MemoryFileSystem.Contents) =>
+  MemoryFileSystem.layerWith(contents ?? {})) as any

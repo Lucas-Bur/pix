@@ -1,5 +1,5 @@
-import { Args, Command, Options } from "@effect/cli"
 import { Effect, Option } from "effect"
+import { Argument, Command, Flag } from "effect/unstable/cli"
 
 import { QueryProject } from "../application/query-project.js"
 import { Display } from "../domain/ports.js"
@@ -15,12 +15,11 @@ const MAX_TOP_K = 100
 
 /** Build SearchOptions from parsed CLI args, clamping topK. */
 const buildSearchOptions = (
-  top: Option.Option<number>,
+  top: number,
   ignorePath: readonly string[],
   onlyPath: readonly string[],
 ): { options: SearchOptions; clamped: boolean; rawValue: number } => {
-  const rawValue = Option.getOrElse(top, () => DEFAULT_TOP_K)
-  const clamped = clampTopK(rawValue, MIN_TOP_K, MAX_TOP_K)
+  const clamped = clampTopK(top, MIN_TOP_K, MAX_TOP_K)
   return {
     options: {
       topK: clamped.value,
@@ -28,7 +27,7 @@ const buildSearchOptions = (
       ...(onlyPath.length > 0 && { onlyPaths: [...onlyPath] }),
     },
     clamped: clamped.clamped,
-    rawValue,
+    rawValue: top,
   }
 }
 
@@ -61,57 +60,40 @@ const renderResults = (
 export const queryCommand = Command.make(
   "query",
   {
-    queryText: Args.text({ name: "query" }),
-    top: Options.integer("top").pipe(Options.withDefault(DEFAULT_TOP_K), Options.optional),
-    json: Options.boolean("json").pipe(Options.withDefault(false)),
-    contextLines: Options.integer("context-lines").pipe(
-      Options.withDefault(DEFAULT_CONTEXT_LINES),
-      Options.optional,
-    ),
-    ignorePath: Options.text("ignore-path").pipe(Options.repeated),
-    onlyPath: Options.text("only-path").pipe(Options.repeated),
-    maxCharacters: Options.integer("max-characters").pipe(Options.optional),
-    noContent: Options.boolean("no-content").pipe(Options.withDefault(false)),
+    queryText: Argument.string("query"),
+    top: Flag.integer("top").pipe(Flag.withDefault(DEFAULT_TOP_K)),
+    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
+    contextLines: Flag.integer("context-lines").pipe(Flag.withDefault(DEFAULT_CONTEXT_LINES)),
+    ignorePath: Flag.string("ignore-path").pipe(Flag.withDefault("" as const)),
+    onlyPath: Flag.string("only-path").pipe(Flag.withDefault("" as const)),
+    maxCharacters: Flag.integer("max-characters").pipe(Flag.optional),
+    noContent: Flag.boolean("no-content").pipe(Flag.withDefault(false)),
   },
   ({ queryText, top, contextLines, ignorePath, onlyPath, maxCharacters, noContent }) =>
     Effect.gen(function* () {
       const d = yield* Display
-      const ctxLines = Option.getOrElse(contextLines, () => DEFAULT_CONTEXT_LINES)
+
       const {
         options: searchOptions,
         clamped,
         rawValue,
-      } = buildSearchOptions(top, ignorePath, onlyPath)
+      } = buildSearchOptions(top, [ignorePath].filter(Boolean), [onlyPath].filter(Boolean))
 
       if (clamped) {
         yield* d.log(`topK clamped from ${rawValue} to ${searchOptions.topK}`, "warn")
       }
 
+      const queryService = yield* QueryProject
+
       const searchResponse = yield* d.spinner(
         "Searching...",
-        QueryProject.queryProject(queryText, searchOptions),
+        queryService.queryProject(queryText, searchOptions),
       )
 
       const finalResults = noContent
         ? searchResponse.results
         : applyCharBudget(searchResponse.results, Option.getOrUndefined(maxCharacters)).results
 
-      yield* renderResults(d, { ...searchResponse, results: finalResults }, ctxLines, noContent)
-    }).pipe(
-      Effect.catchTags({
-        ModelLoadError: reportError,
-        InferenceError: reportError,
-        DiskFullError: reportError,
-        StoreError: reportError,
-        NoIndexError: reportError,
-        ModelMismatchError: reportError,
-        DtypeMismatchError: reportError,
-        VectorDecodeError: reportError,
-        ConfigHealError: reportError,
-        ConfigError: reportError,
-        ConfigNotFoundError: reportError,
-        ConfigMalformedError: reportError,
-        ConfigValidationError: reportError,
-      }),
-    ),
+      yield* renderResults(d, { ...searchResponse, results: finalResults }, contextLines, noContent)
+    }).pipe(Effect.catch(reportError)),
 )

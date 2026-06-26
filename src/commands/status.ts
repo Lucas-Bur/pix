@@ -1,5 +1,5 @@
-import { Command, Options } from "@effect/cli"
 import { Effect } from "effect"
+import { Command, Flag } from "effect/unstable/cli"
 
 import { GetStatus } from "../application/get-status.js"
 import { Display } from "../domain/ports.js"
@@ -9,12 +9,13 @@ import { reportError } from "../lib/errors/error-format.js"
 export const statusCommand = Command.make(
   "status",
   {
-    json: Options.boolean("json").pipe(Options.withDefault(false)),
+    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
   () =>
     Effect.gen(function* () {
       const d = yield* Display
-      const result = yield* GetStatus.getStatus()
+      const svc = yield* GetStatus
+      const result = yield* svc.getStatus()
 
       yield* d.json(result)
 

@@ -1,6 +1,6 @@
-import { Command } from "@effect/cli"
 import { Effect, Exit, Layer, Ref } from "effect"
 import type { MemoryFileSystem } from "effect-memfs"
+import { Command } from "effect/unstable/cli"
 import { expect } from "vite-plus/test"
 
 import type { DisplayEntry } from "../../src/display/entries.js"
@@ -11,9 +11,11 @@ import { ConfigStore, Embedder, IndexStore } from "../../src/domain/ports.js"
 import { makeChunkJson, TEST_CONFIG_JSON } from "./fixtures.js"
 
 export const runCommand =
-  <Name extends string, R, E, Opts>(command: Command.Command<Name, R, E, Opts>) =>
+  <Name extends string, Input, ContextInput, E, R>(
+    command: Command.Command<Name, Input, ContextInput, E, R>,
+  ) =>
   (args: string[]) =>
-    Command.run(command, { name: "pix", version: "0.0.0" })(args)
+    Command.runWith(command, { version: "0.0.0" })(args)
 
 export const expectLogEntry = (
   ref: Ref.Ref<ReadonlyArray<DisplayEntry>>,

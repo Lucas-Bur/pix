@@ -1,7 +1,7 @@
 import { Data, Schema } from "effect"
 
 /** Single source of truth for embedding dtype literals. */
-export const EmbeddingDtypeSchema = Schema.Literal("fp32", "fp16", "q8", "q4")
+export const EmbeddingDtypeSchema = Schema.Literals(["fp32", "fp16", "q8", "q4"])
 
 /** Domain type inferred from EmbeddingDtypeSchema. */
 export type EmbeddingDtype = typeof EmbeddingDtypeSchema.Type

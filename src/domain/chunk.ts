@@ -10,8 +10,8 @@ export const ChunkSchema = Schema.Struct({
   startLine: Schema.Number,
   endLine: Schema.Number,
   text: Schema.String,
-  contextBefore: Schema.Union(Schema.String, Schema.Null),
-  contextAfter: Schema.Union(Schema.String, Schema.Null),
+  contextBefore: Schema.Union([Schema.String, Schema.Null]),
+  contextAfter: Schema.Union([Schema.String, Schema.Null]),
 })
 
 /** Domain chunk type inferred from ChunkSchema. */

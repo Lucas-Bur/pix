@@ -7,19 +7,19 @@ import { InitProject } from "./init-project.js"
 
 test("InitProject.init writes DEFAULT_CONFIG via ConfigStore", () =>
   Effect.gen(function* () {
-    const result = yield* InitProject.init()
+    const result = yield* (yield* InitProject).init()
     expect(result.success).toBe(true)
     expect(result.config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
   }).pipe(Effect.provide(testLayer({})), Effect.scoped))
 
 test("InitProject.init returns ConfigError when writeConfig fails", () =>
   Effect.gen(function* () {
-    const exit = yield* Effect.exit(InitProject.init()).pipe(
+    const exit = yield* Effect.exit((yield* InitProject).init()).pipe(
       Effect.provide(testLayer({ configStoreLayer: makeFailingConfigStore("writeConfig") })),
     )
 
     expect(Exit.isFailure(exit)).toBe(true)
     if (Exit.isFailure(exit)) {
-      expect(exit.cause._tag).toBe("Fail")
+      expect(exit.cause.reasons[0]._tag).toBe("Fail")
     }
   }))

@@ -1,7 +1,7 @@
 import { createRequire } from "node:module"
 
-import { Command } from "@effect/cli"
 import { Effect } from "effect"
+import { Command } from "effect/unstable/cli"
 
 import { benchCommand } from "./commands/bench.js"
 import { configCommand } from "./commands/config.js"
@@ -40,7 +40,7 @@ export const cli = (args: readonly string[]) => {
   const isJson = args.some((a) => a === "--json")
   const displayLayer = isJson ? JsonDisplayLive : ClackDisplayLive
 
-  const effect = Command.run(pix, { name: "pix", version: VERSION })(args)
+  const effect = Command.run(pix, { version: VERSION })
 
   return { effect, displayLayer }
 }

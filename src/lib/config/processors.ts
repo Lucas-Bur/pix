@@ -1,14 +1,14 @@
-import { FileSystem } from "@effect/platform"
 import { Effect } from "effect"
+import { FileSystem } from "effect/FileSystem"
 
 import { ExtractionFailed, UnsupportedFormat } from "../../domain/errors.js"
 
 export type FileProcessor = (
   file: string,
-) => Effect.Effect<string, ExtractionFailed | UnsupportedFormat, FileSystem.FileSystem>
+) => Effect.Effect<string, ExtractionFailed | UnsupportedFormat, FileSystem>
 
 const identityProcessor: FileProcessor = (file) =>
-  FileSystem.FileSystem.pipe(
+  FileSystem.pipe(
     Effect.flatMap((fs) => fs.readFileString(file)),
     Effect.mapError(
       (cause) =>
@@ -25,8 +25,7 @@ const skipProcessor = (extension: string) => {
     message: `Unsupported file type: ${extension}`,
     extension,
   })
-  return (_file: string): Effect.Effect<string, UnsupportedFormat, FileSystem.FileSystem> =>
-    Effect.fail(error)
+  return (_file: string): Effect.Effect<string, UnsupportedFormat, FileSystem> => Effect.fail(error)
 }
 
 const DEFAULT_PROCESSOR_MAP: Record<string, FileProcessor> = {

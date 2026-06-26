@@ -1,5 +1,5 @@
-import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
+import { FileSystem } from "effect/FileSystem"
 
 import { UnsupportedFormat } from "../domain/errors.js"
 import type { AllProcessorErrors } from "../domain/errors.js"
@@ -8,7 +8,7 @@ import { getExtension } from "../lib/config/extension.js"
 import { buildProcessorMap } from "../lib/config/processors.js"
 
 const make = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem
+  const fs = yield* FileSystem
   const processorMap = buildProcessorMap([])
 
   const extract = (file: string): Effect.Effect<string, AllProcessorErrors> => {
@@ -23,7 +23,7 @@ const make = Effect.gen(function* () {
         }),
       )
     }
-    return processor(file).pipe(Effect.provideService(FileSystem.FileSystem, fs))
+    return processor(file).pipe(Effect.provideService(FileSystem, fs))
   }
 
   return { extract } as const

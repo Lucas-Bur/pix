@@ -1,15 +1,12 @@
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Result } from "effect"
 import { MemoryFileSystem } from "effect-memfs"
 import { expect, test } from "vite-plus/test"
 
-const expectLeft = <A>(
-  result: { _tag: "Left"; left: A } | { _tag: "Right"; right: unknown },
-): A => {
-  expect(result._tag).toBe("Left")
-  if (result._tag === "Right") throw new Error("Expected Left")
-  return result.left
+const expectLeft = <A>(result: Result.Result<unknown, A>): A => {
+  expect(Result.isFailure(result)).toBe(true)
+  if (Result.isSuccess(result)) throw new Error("Expected Failure")
+  return result.failure
 }
-
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { DEFAULT_CONFIG } from "../domain/config.ts"
@@ -52,7 +49,7 @@ test("ConfigStore.writeConfig creates .pix/config.json with defaults", () =>
 test("ConfigStore.readConfig returns ConfigError when config doesn't exist", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = expectLeft(yield* Effect.either(store.readConfig()))
+    const result = expectLeft(yield* Effect.result(store.readConfig()))
     expect(result._tag).toBe("ConfigError")
     expect(result.message).toBe("Failed to read config.json")
   }).pipe(Effect.provide(makeLayer())))
@@ -75,7 +72,7 @@ test("ConfigStore.configExists returns true when config exists", () =>
 test("readConfig returns ConfigMalformedError for invalid JSON", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = expectLeft(yield* Effect.either(store.readConfig()))
+    const result = expectLeft(yield* Effect.result(store.readConfig()))
     expect(result._tag).toBe("ConfigMalformedError")
   }).pipe(Effect.provide(makeLayer({ ".pix/config.json": "not json" }))))
 
@@ -95,7 +92,7 @@ const invalidConfig = {
 test("readConfig returns ConfigValidationError for invalid enum value", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = expectLeft(yield* Effect.either(store.readConfig()))
+    const result = expectLeft(yield* Effect.result(store.readConfig()))
     expect(result._tag).toBe("ConfigValidationError")
     expect(result.message).toContain("device")
   }).pipe(
@@ -147,7 +144,7 @@ test("readConfig heals partial embedder with defaults", () =>
 test("readConfig still fails on bad type (not healable)", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = expectLeft(yield* Effect.either(store.readConfig()))
+    const result = expectLeft(yield* Effect.result(store.readConfig()))
     expect(result._tag).toBe("ConfigValidationError")
   }).pipe(
     Effect.provide(makeLayer({ ".pix/config.json": JSON.stringify({ chunkLines: "sixty" }) })),
@@ -188,7 +185,7 @@ test("readConfigWithConflicts returns healed dtype as a conflict", () =>
 test("readConfig fails with ConfigHealError on unknown model", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = expectLeft(yield* Effect.either(store.readConfig()))
+    const result = expectLeft(yield* Effect.result(store.readConfig()))
     expect(result._tag).toBe("ConfigHealError")
     if (result._tag === "ConfigHealError") {
       expect(result.conflicts).toHaveLength(1)

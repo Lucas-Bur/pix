@@ -1,6 +1,6 @@
-import { FileSystem } from "@effect/platform"
-import { Effect } from "effect"
+import { Effect, Result } from "effect"
 import { MemoryFileSystem } from "effect-memfs"
+import { FileSystem } from "effect/FileSystem"
 import { expect, test } from "vite-plus/test"
 
 import { ensureDirExists, withFsError, withReadError, withConfigError } from "./fs-error.js"
@@ -9,18 +9,17 @@ const memFsLayer = (contents?: MemoryFileSystem.Contents) =>
   MemoryFileSystem.layerWith(contents ?? {})
 
 const expectErrorResult = <A extends { _tag: string; message: string; path?: string }>(
-  result: { _tag: "Left"; left: A } | { _tag: "Right"; right: unknown },
+  result: Result.Result<never, A>,
   assertions: (err: A) => void,
 ) => {
-  expect(result._tag).toBe("Left")
-  if (result._tag === "Left") {
-    assertions(result.left)
+  expect(Result.isFailure(result)).toBe(true)
+  if (Result.isFailure(result)) {
+    assertions(result.failure)
   }
 }
-
 test("withFsError maps BadResource to DiskFullError", () =>
   Effect.gen(function* () {
-    const result = yield* Effect.either(
+    const result = yield* Effect.result(
       withFsError(Effect.fail({ reason: "BadResource", message: "disk full" }), "write", "/test"),
     )
     expectErrorResult(result, (err) => {
@@ -32,7 +31,7 @@ test("withFsError maps BadResource to DiskFullError", () =>
 
 test("withFsError maps other errors to StoreError", () =>
   Effect.gen(function* () {
-    const result = yield* Effect.either(
+    const result = yield* Effect.result(
       withFsError(Effect.fail({ reason: "Unknown", message: "oops" }), "read", "/test"),
     )
     expectErrorResult(result, (err) => {
@@ -50,7 +49,7 @@ test("withFsError passes through success", () =>
 
 test("withReadError always maps to StoreError", () =>
   Effect.gen(function* () {
-    const result = yield* Effect.either(
+    const result = yield* Effect.result(
       withReadError(Effect.fail({ reason: "BadResource" }), "read", "/data"),
     )
     expectErrorResult(result, (err) => {
@@ -61,7 +60,7 @@ test("withReadError always maps to StoreError", () =>
 
 test("withConfigError maps BadResource to DiskFullError", () =>
   Effect.gen(function* () {
-    const result = yield* Effect.either(
+    const result = yield* Effect.result(
       withConfigError(Effect.fail({ reason: "BadResource" }), "write config", "/config"),
     )
     expectErrorResult(result, (err) => {
@@ -72,7 +71,7 @@ test("withConfigError maps BadResource to DiskFullError", () =>
 
 test("withConfigError maps other errors to ConfigError", () =>
   Effect.gen(function* () {
-    const result = yield* Effect.either(
+    const result = yield* Effect.result(
       withConfigError(Effect.fail({ reason: "NotFound" }), "read config"),
     )
     expectErrorResult(result, (err) => {
@@ -83,7 +82,7 @@ test("withConfigError maps other errors to ConfigError", () =>
 
 test("ensureDirExists creates directory when absent", () =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+    const fs = yield* FileSystem
     yield* ensureDirExists(fs, "/new-dir")
     const exists = yield* fs.exists("/new-dir")
     expect(exists).toBe(true)
@@ -91,7 +90,7 @@ test("ensureDirExists creates directory when absent", () =>
 
 test("ensureDirExists does nothing when directory exists", () =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+    const fs = yield* FileSystem
     yield* ensureDirExists(fs, "/existing-dir")
     const exists = yield* fs.exists("/existing-dir")
     expect(exists).toBe(true)

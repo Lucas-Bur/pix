@@ -1,5 +1,5 @@
-import { Command, Options } from "@effect/cli"
-import { Effect, Either, Option } from "effect"
+import { Effect, Result } from "effect"
+import { Command, Flag } from "effect/unstable/cli"
 
 import { BenchProject } from "../application/bench-project.js"
 import type { BenchProfile } from "../domain/bench.js"
@@ -12,56 +12,56 @@ const DEFAULT_BATCH_SIZES = "1,4,8,16,32,64,96,128"
 const DEFAULT_TIMEOUT = 60
 const DEFAULT_PROFILE: BenchProfile = "balanced"
 
-const parseBatchSizes = (raw: string): Either.Either<number[], string> => {
+const parseBatchSizes = (raw: string): Result.Result<number[], string> => {
   const parts = raw
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
 
   if (parts.length === 0) {
-    return Either.left("--batch-sizes must not be empty")
+    return Result.fail("--batch-sizes must not be empty")
   }
 
   const numbers: number[] = []
   for (const s of parts) {
     if (!/^\d+$/.test(s)) {
-      return Either.left(`Invalid batch size "${s}" — must be a positive integer`)
+      return Result.fail(`Invalid batch size "${s}" — must be a positive integer`)
     }
     const n = parseInt(s, 10)
     if (n <= 0) {
-      return Either.left(`Invalid batch size "${s}" — must be a positive integer`)
+      return Result.fail(`Invalid batch size "${s}" — must be a positive integer`)
     }
     numbers.push(n)
   }
 
-  return Either.right(numbers)
+  return Result.succeed(numbers)
 }
 
 const benchCommand = Command.make(
   "bench",
   {
-    warmup: Options.integer("warmup").pipe(Options.withDefault(DEFAULT_WARMUP)),
-    measureBatches: Options.integer("measure-batches").pipe(
-      Options.withDefault(DEFAULT_MEASURE_BATCHES),
+    warmup: Flag.integer("warmup").pipe(Flag.withDefault(DEFAULT_WARMUP)),
+    measureBatches: Flag.integer("measure-batches").pipe(Flag.withDefault(DEFAULT_MEASURE_BATCHES)),
+    batchSizes: Flag.string("batch-sizes").pipe(Flag.withDefault(DEFAULT_BATCH_SIZES)),
+    timeout: Flag.integer("timeout").pipe(Flag.withDefault(DEFAULT_TIMEOUT)),
+    profile: Flag.choice("profile", ["throughput", "cold", "balanced"]).pipe(
+      Flag.withDefault(DEFAULT_PROFILE),
     ),
-    batchSizes: Options.text("batch-sizes").pipe(Options.withDefault(DEFAULT_BATCH_SIZES)),
-    timeout: Options.integer("timeout").pipe(Options.withDefault(DEFAULT_TIMEOUT)),
-    apply: Options.choice("apply", ["throughput", "cold", "balanced"]).pipe(Options.optional),
-    json: Options.boolean("json").pipe(Options.withDefault(false)),
+    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
-  ({ warmup, measureBatches, batchSizes, timeout, apply, json }) =>
+  ({ warmup, measureBatches, batchSizes, timeout, profile, json }) =>
     Effect.gen(function* () {
       const d = yield* Display
 
-      const parsedBatchSizes = Either.match(parseBatchSizes(batchSizes), {
-        onLeft: (e) => Effect.fail(new Error(e)),
-        onRight: Effect.succeed,
+      const parsedBatchSizes = Result.match(parseBatchSizes(batchSizes), {
+        onFailure: (e) => Effect.fail(new Error(e)),
+        onSuccess: Effect.succeed,
       })
       const sizes = yield* parsedBatchSizes
 
-      const profile: BenchProfile = Option.getOrElse(apply, () => DEFAULT_PROFILE)
+      const benchService = yield* BenchProject
 
-      const result = yield* BenchProject.bench({
+      const result = yield* benchService.bench({
         warmup,
         measureBatches,
         batchSizes: sizes,
@@ -80,12 +80,10 @@ const benchCommand = Command.make(
         recommendation: result.recommendation,
       })
 
-      if (Option.isSome(apply)) {
-        yield* BenchProject.applyConfig(result.recommendation).pipe(
-          Effect.catchAll((e) => d.log(`Apply failed: ${e.message}`, "warn")),
-        )
-      }
-    }).pipe(Effect.catchAll(reportError)),
+      yield* benchService
+        .applyConfig(result.recommendation)
+        .pipe(Effect.catch((e) => d.log(`Apply failed: ${(e as Error).message}`, "warn")))
+    }).pipe(Effect.catch(reportError)),
 )
 
 export { benchCommand }

@@ -1,5 +1,5 @@
-import { FileSystem } from "@effect/platform"
 import { Effect } from "effect"
+import { FileSystem } from "effect/FileSystem"
 
 import { ConfigError, DiskFullError, StoreError } from "../../domain/errors.js"
 import { isPlatformReason } from "./platform-error.js"
@@ -37,7 +37,7 @@ export const withReadError = <A>(
 
 /** Ensure a directory exists, creating it recursively if absent. */
 export const ensureDirExists = (
-  fs: typeof FileSystem.FileSystem.Service,
+  fs: typeof FileSystem.Service,
   dir: string,
   description = dir,
 ): Effect.Effect<void, DiskFullError | StoreError> =>

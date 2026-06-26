@@ -1,5 +1,5 @@
-import { FileSystem } from "@effect/platform"
 import { Effect, Layer, Option, Ref, Schema } from "effect"
+import { FileSystem } from "effect/FileSystem"
 
 import { ChunkSchema } from "../domain/chunk.js"
 import type { Chunk, Embedding } from "../domain/chunk.js"
@@ -15,7 +15,7 @@ import { serializeVectors } from "../lib/vectors/vector-serialization.js"
 import { ConfigStoreLive } from "./config-store.js"
 
 const parseChunkLine = (line: string): Effect.Effect<Option.Option<Chunk>> =>
-  Schema.decodeUnknown(parseJsonChunk)(line).pipe(Effect.option)
+  Schema.decodeUnknownEffect(parseJsonChunk)(line).pipe(Effect.option)
 
 const STORE_DIR = ".pix"
 const CHUNKS_FILE = `${STORE_DIR}/chunks.jsonl`
@@ -24,10 +24,10 @@ const META_FILE = `${STORE_DIR}/index-meta.json`
 const BM25_FILE = `${STORE_DIR}/bm25.json`
 
 /** Pre-built Schema instance for chunk encode/decode. */
-const parseJsonChunk = Schema.parseJson(ChunkSchema)
+const parseJsonChunk = Schema.fromJsonString(ChunkSchema)
 
 const buildAndStoreBm25 = (
-  fs: FileSystem.FileSystem,
+  fs: FileSystem,
   chunksContent: string,
   bm25Path: string,
 ): Effect.Effect<void, StoreError | DiskFullError> =>
@@ -43,27 +43,25 @@ const buildAndStoreBm25 = (
       }
     }
     const bm25Index = buildBm25Index(texts)
-    yield* withFsError(
-      fs.writeFile(bm25Path, Buffer.from(JSON.stringify(bm25Index))),
-      "write bm25 index",
-      bm25Path,
+    const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Bm25IndexSchema))(
+      bm25Index,
+    ).pipe(
+      Effect.mapError((e) => new StoreError({ message: "Failed to encode BM25 index", cause: e })),
     )
+    yield* withFsError(fs.writeFile(bm25Path, Buffer.from(encoded)), "write bm25 index", bm25Path)
   })
 
 const Bm25IndexSchema = Schema.Struct({
   avgChunkLength: Schema.Number,
   chunkLengths: Schema.Array(Schema.Number),
-  docFreqs: Schema.Record({ key: Schema.String, value: Schema.Number }),
-  chunkTfs: Schema.Record({
-    key: Schema.String,
-    value: Schema.Array(Schema.Tuple(Schema.Number, Schema.Number)),
-  }),
+  docFreqs: Schema.Record(Schema.String, Schema.Number),
+  chunkTfs: Schema.Record(
+    Schema.String,
+    Schema.Array(Schema.Tuple([Schema.Number, Schema.Number])),
+  ),
 })
 
-const loadBm25 = (
-  fs: FileSystem.FileSystem,
-  bm25Path: string,
-): Effect.Effect<Bm25Index, StoreError> =>
+const loadBm25 = (fs: FileSystem, bm25Path: string): Effect.Effect<Bm25Index, StoreError> =>
   Effect.gen(function* () {
     const exists = yield* withReadError(fs.exists(bm25Path), "check bm25 index")
     if (!exists) {
@@ -72,7 +70,7 @@ const loadBm25 = (
       })
     }
     const content = yield* withReadError(fs.readFileString(bm25Path), "read bm25 index", bm25Path)
-    return yield* Schema.decodeUnknown(Schema.parseJson(Bm25IndexSchema))(content).pipe(
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Bm25IndexSchema))(content).pipe(
       Effect.mapError(
         () =>
           new StoreError({
@@ -87,7 +85,7 @@ const loadBm25 = (
  * vectors.bin, index-meta.json, and bm25.json.
  */
 const make = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem
+  const fs = yield* FileSystem
   const configStore = yield* ConfigStore
 
   const chunksTemp = `${CHUNKS_FILE}.tmp`
@@ -155,7 +153,9 @@ const make = Effect.gen(function* () {
         "read index meta",
         META_FILE,
       )
-      return yield* Schema.decodeUnknown(Schema.parseJson(IndexMetaSchema))(content).pipe(
+      return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(IndexMetaSchema))(
+        content,
+      ).pipe(
         Effect.mapError((e) => new StoreError({ message: "Corrupted index-meta.json", cause: e })),
       )
     })
@@ -278,7 +278,7 @@ const make = Effect.gen(function* () {
   ): Effect.Effect<void, StoreError | DiskFullError> =>
     Effect.gen(function* () {
       const lines = yield* Effect.forEach(chunks, (c) =>
-        Schema.encode(parseJsonChunk)(c).pipe(
+        Schema.encodeEffect(parseJsonChunk)(c).pipe(
           Effect.mapError((e) => new StoreError({ message: "Failed to encode chunk", cause: e })),
         ),
       )
@@ -344,9 +344,7 @@ const make = Effect.gen(function* () {
         )
         yield* buildAndStoreBm25(fs, chunksContent, bm25Temp)
       }).pipe(
-        Effect.catchAll((err) =>
-          storeAbort().pipe(Effect.ignore, Effect.andThen(Effect.fail(err))),
-        ),
+        Effect.catch((err) => storeAbort().pipe(Effect.ignore, Effect.andThen(Effect.fail(err)))),
       )
 
       yield* withFsError(fs.rename(metaTemp, META_FILE), "commit index meta", META_FILE)

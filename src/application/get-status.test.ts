@@ -8,7 +8,7 @@ import { GetStatus } from "./get-status.js"
 
 test("GetStatus.getStatus returns index model from index-meta.json", () =>
   Effect.gen(function* () {
-    const result = yield* GetStatus.getStatus()
+    const result = yield* (yield* GetStatus).getStatus()
     expect(result.chunks).toBe(2)
     expect(result.files).toBe(2)
     expect(result.model).toBe("test-model")
@@ -32,7 +32,7 @@ test("GetStatus.getStatus returns index model from index-meta.json", () =>
 
 test("GetStatus.getStatus returns empty model when index-meta.json missing", () =>
   Effect.gen(function* () {
-    const result = yield* GetStatus.getStatus()
+    const result = yield* (yield* GetStatus).getStatus()
     expect(result.model).toBe("")
     expect(result.chunks).toBe(2)
     expect(result.files).toBe(2)

@@ -1,5 +1,4 @@
-import { Effect, Schema } from "effect"
-import * as ParseResult from "effect/ParseResult"
+import { Effect, Schema, SchemaIssue } from "effect"
 
 import type { Config } from "../../domain/config.js"
 import { DEFAULT_CONFIG } from "../../domain/config.js"
@@ -25,11 +24,14 @@ const mergeMessages = (messages: readonly string[]): string => {
   return uniq.join("\n")
 }
 
-const formatSchemaErrors = (error: ParseResult.ParseError): ReadonlyArray<ValidationEntry> => {
-  const issues = ParseResult.ArrayFormatter.formatErrorSync(error)
+const formatSchemaErrors = (error: Schema.SchemaError): ReadonlyArray<ValidationEntry> => {
+  const formatter = SchemaIssue.makeFormatterStandardSchemaV1()
+  const result = formatter(error.issue) as {
+    issues: ReadonlyArray<{ message: string; path?: ReadonlyArray<PropertyKey> }>
+  }
   const byPath = new Map<string, string[]>()
-  for (const issue of issues) {
-    const path = issue.path.join(".")
+  for (const issue of result.issues) {
+    const path = issue.path?.map((p) => String(p)).join(".") ?? ""
     if (!byPath.has(path)) byPath.set(path, [])
     byPath.get(path)!.push(issue.message)
   }
@@ -39,11 +41,27 @@ const formatSchemaErrors = (error: ParseResult.ParseError): ReadonlyArray<Valida
   }))
 }
 
-const formatSchemaMessage = (error: ParseResult.ParseError): string =>
-  ParseResult.TreeFormatter.formatErrorSync(error)
+const formatSchemaMessage = (error: Schema.SchemaError): string => {
+  const formatter = SchemaIssue.makeFormatterDefault()
+  return formatter(error.issue)
+}
 
 /** Clamp a number to be at least `min`. Returns the clamped value. */
 const clampPositive = (value: number, min = 1): number => Math.max(min, value)
+
+export const decodeObjectWithErrors = <A>(
+  schema: Schema.Schema<A>,
+  value: unknown,
+): Effect.Effect<A, ConfigValidationError> =>
+  (Schema.decodeUnknownEffect(schema)(value) as Effect.Effect<A, Schema.SchemaError>).pipe(
+    Effect.mapError(
+      (error: Schema.SchemaError) =>
+        new ConfigValidationError({
+          message: formatSchemaMessage(error),
+          errors: formatSchemaErrors(error),
+        }),
+    ),
+  )
 
 export const clampTopK = (
   value: number,
@@ -55,21 +73,6 @@ export const clampTopK = (
   if (value > max) return { value: max, clamped: true }
   return { value, clamped: false }
 }
-
-/** Decode an already-parsed object against a schema, returning ConfigValidationError on failure. */
-export const decodeObjectWithErrors = <A>(
-  schema: Schema.Schema<A, any, never>,
-  value: unknown,
-): Effect.Effect<A, ConfigValidationError> =>
-  Schema.decodeUnknown(schema)(value).pipe(
-    Effect.mapError(
-      (error: ParseResult.ParseError) =>
-        new ConfigValidationError({
-          message: formatSchemaMessage(error),
-          errors: formatSchemaErrors(error),
-        }),
-    ),
-  )
 
 export const buildChunkValidationErrors = (
   malformedLines: number,

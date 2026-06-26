@@ -1,5 +1,5 @@
-import { Command, Options } from "@effect/cli"
 import { Effect } from "effect"
+import { Command, Flag } from "effect/unstable/cli"
 
 import type { Config } from "../domain/config.js"
 import type { EmbeddingDtype } from "../domain/dtype.js"
@@ -21,7 +21,7 @@ const applyChoice = (config: Config, field: string, value: string): Config => {
 export const healCommand = Command.make(
   "heal",
   {
-    json: Options.boolean("json").pipe(Options.withDefault(false)),
+    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
   () =>
     Effect.gen(function* () {
