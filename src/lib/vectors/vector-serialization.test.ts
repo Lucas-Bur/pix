@@ -23,6 +23,10 @@ describe("serializeVectors", () => {
     Effect.gen(function* () {
       const result = yield* Effect.result(serializeVectors([]))
       expect(result._tag).toBe("Failure")
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe("StoreError")
+        expect(result.failure.message).toContain("empty embeddings batch")
+      }
     }).pipe(Effect.runPromise))
 
   it("uses correct byte size", () =>
@@ -37,6 +41,10 @@ describe("serializeVectors", () => {
       const embeddings = [makeEmbedding([1, 2, 3], 3), makeEmbedding([4, 5], 2)]
       const result = yield* Effect.result(serializeVectors(embeddings))
       expect(result._tag).toBe("Failure")
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe("StoreError")
+        expect(result.failure.message).toContain("Inconsistent embedding shape")
+      }
     }).pipe(Effect.runPromise))
 
   it("fails when vector length does not match dims", () =>

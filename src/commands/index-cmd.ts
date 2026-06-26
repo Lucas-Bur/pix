@@ -92,10 +92,8 @@ export const indexCommand = Command.make(
         ignoreGitignore,
       })
 
-      const result = yield* d.spinner(
-        "Indexing project...",
-        IndexProject.use((svc) => svc.index(opts)),
-      )
+      const indexService = yield* IndexProject
+      const result = yield* d.spinner("Indexing project...", indexService.index(opts))
 
       yield* emitIndexResult(d, result)
     }).pipe(Effect.catch(reportError)),

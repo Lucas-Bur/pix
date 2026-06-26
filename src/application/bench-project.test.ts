@@ -399,7 +399,6 @@ describe("BenchProject measurement pipeline", () => {
         batchSizes: [4] as const,
         timeout: 60,
         profile: "balanced" as const,
-        json: false,
       })
 
       const entries = yield* Ref.get(ref)
@@ -432,7 +431,6 @@ describe("BenchProject measurement pipeline", () => {
         batchSizes: [4, 16] as const,
         timeout: 60,
         profile: "throughput" as const,
-        json: false,
       })
 
       expect(result.recommendation.profile).toBe("throughput")
@@ -459,7 +457,6 @@ describe("BenchProject measurement pipeline", () => {
         batchSizes: [4, 16] as const,
         timeout: 60,
         profile: "cold" as const,
-        json: false,
       })
 
       expect(result.recommendation.profile).toBe("cold")
@@ -486,7 +483,6 @@ describe("BenchProject measurement pipeline", () => {
         batchSizes: [4, 16] as const,
         timeout: 60,
         profile: "balanced" as const,
-        json: false,
       })
 
       expect(result.recommendation.profile).toBe("balanced")
@@ -514,7 +510,6 @@ describe("BenchProject measurement pipeline", () => {
         batchSizes: [batchSize] as const,
         timeout: 60,
         profile: "balanced" as const,
-        json: false,
       })
 
       const okMeasurements = result.measurements.filter((m) => m.status === "ok")
@@ -545,7 +540,6 @@ describe("BenchProject measurement pipeline", () => {
         batchSizes: [4, 16] as const,
         timeout: 60,
         profile: "balanced" as const,
-        json: false,
       })
 
       const entries = yield* Ref.get(ref)
@@ -586,7 +580,6 @@ describe("BenchProject measurement pipeline", () => {
         batchSizes: [4] as const,
         timeout: 60,
         profile: "balanced" as const,
-        json: false,
       })
 
       const entries = yield* Ref.get(ref)
@@ -706,7 +699,6 @@ describe("BenchProject error and edge cases", () => {
         batchSizes: [4] as const,
         timeout: 60,
         profile: "balanced" as const,
-        json: false,
       })
 
       const failedMeasurements = result.measurements.filter((m) => m.status === "failed")
@@ -733,7 +725,6 @@ describe("BenchProject error and edge cases", () => {
         batchSizes: [4, 16] as const,
         timeout: 60,
         profile: "balanced" as const,
-        json: false,
       })
 
       const failedMeasurements = result.measurements.filter((m) => m.status === "failed")
@@ -765,7 +756,6 @@ describe("BenchProject error and edge cases", () => {
         batchSizes: [4, 16] as const,
         timeout: 60,
         profile: "balanced" as const,
-        json: false,
       })
 
       const okMeasurements = result.measurements.filter((m) => m.status === "ok")
@@ -789,7 +779,6 @@ describe("BenchProject error and edge cases", () => {
         batchSizes: [4] as const,
         timeout: 1,
         profile: "balanced" as const,
-        json: false,
       })
 
       const failedMeasurements = result.measurements.filter((m) => m.status === "failed")
