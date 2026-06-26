@@ -26,7 +26,6 @@ export interface BenchOptions {
   readonly batchSizes: readonly number[]
   readonly timeout: number
   readonly profile: BenchProfile
-  readonly json: boolean
 }
 
 /** Prepared corpus held in memory for the measurement pipeline. */

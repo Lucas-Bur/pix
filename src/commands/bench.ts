@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect"
+import { Effect, Option, Result } from "effect"
 import { Command, Flag } from "effect/unstable/cli"
 
 import { BenchProject } from "../application/bench-project.js"
@@ -47,9 +47,10 @@ const benchCommand = Command.make(
     profile: Flag.choice("profile", ["throughput", "cold", "balanced"]).pipe(
       Flag.withDefault(DEFAULT_PROFILE),
     ),
+    apply: Flag.choice("apply", ["throughput", "cold", "balanced"]).pipe(Flag.optional),
     json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
-  ({ warmup, measureBatches, batchSizes, timeout, profile, json }) =>
+  ({ warmup, measureBatches, batchSizes, timeout, profile, apply }) =>
     Effect.gen(function* () {
       const d = yield* Display
 
@@ -67,7 +68,6 @@ const benchCommand = Command.make(
         batchSizes: sizes,
         timeout,
         profile,
-        json,
       })
 
       yield* d.json({
@@ -80,9 +80,11 @@ const benchCommand = Command.make(
         recommendation: result.recommendation,
       })
 
-      yield* benchService
-        .applyConfig(result.recommendation)
-        .pipe(Effect.catch((e) => d.log(`Apply failed: ${(e as Error).message}`, "warn")))
+      if (Option.isSome(apply)) {
+        yield* benchService
+          .applyConfig({ ...result.recommendation, profile: apply.value })
+          .pipe(Effect.catch((e) => d.log(`Apply failed: ${(e as Error).message}`, "warn")))
+      }
     }).pipe(Effect.catch(reportError)),
 )
 
