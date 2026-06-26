@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.18.0...pix-v0.18.1) (2026-06-26)
+
+
+### Bug Fixes
+
+* address CodeRabbit findings from v4 migration ([ba503b2](https://github.com/Lucas-Bur/pix/commit/ba503b2b118a2212c4068550f83e9d36a4586376))
+* apply remaining CodeRabbit fixes ([d225864](https://github.com/Lucas-Bur/pix/commit/d22586421581bcdeabb9edf458aa1a9a0b2e8ab7))
+
 ## [0.18.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.17.1...pix-v0.18.0) (2026-06-25)
 
 
