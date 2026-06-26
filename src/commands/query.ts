@@ -64,8 +64,8 @@ export const queryCommand = Command.make(
     top: Flag.integer("top").pipe(Flag.withDefault(DEFAULT_TOP_K)),
     json: Flag.boolean("json").pipe(Flag.withDefault(false)),
     contextLines: Flag.integer("context-lines").pipe(Flag.withDefault(DEFAULT_CONTEXT_LINES)),
-    ignorePath: Flag.string("ignore-path").pipe(Flag.withDefault("" as const)),
-    onlyPath: Flag.string("only-path").pipe(Flag.withDefault("" as const)),
+    ignorePath: Flag.string("ignore-path").pipe(Flag.atLeast(0)),
+    onlyPath: Flag.string("only-path").pipe(Flag.atLeast(0)),
     maxCharacters: Flag.integer("max-characters").pipe(Flag.optional),
     noContent: Flag.boolean("no-content").pipe(Flag.withDefault(false)),
   },
@@ -77,7 +77,7 @@ export const queryCommand = Command.make(
         options: searchOptions,
         clamped,
         rawValue,
-      } = buildSearchOptions(top, [ignorePath].filter(Boolean), [onlyPath].filter(Boolean))
+      } = buildSearchOptions(top, ignorePath, onlyPath)
 
       if (clamped) {
         yield* d.log(`topK clamped from ${rawValue} to ${searchOptions.topK}`, "warn")
