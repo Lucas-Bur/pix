@@ -1,5 +1,5 @@
-import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
+import { FileSystem } from "effect/FileSystem"
 
 import { InteractiveError } from "../domain/errors.js"
 import {
@@ -12,7 +12,7 @@ import { appendLogEntry, makeJsonHandler, updatePayloadLog, withLoggedEffect } f
 export const JsonDisplayLive = Layer.effect(
   Display,
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+    const fs = yield* FileSystem
     return {
       intro: (title) => appendLogEntry(fs, { type: "intro", title }),
       outro: (message) => appendLogEntry(fs, { type: "outro", message }),

@@ -1,6 +1,6 @@
-import { FileSystem } from "@effect/platform"
 import { Effect, Layer, Ref } from "effect"
 import { MemoryFileSystem } from "effect-memfs"
+import { FileSystem } from "effect/FileSystem"
 import { describe, expect, it } from "vite-plus/test"
 
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
@@ -200,7 +200,7 @@ describe("JsonDisplay file logging", () => {
 
   const readLogEntries = () =>
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
+      const fs = yield* FileSystem
       const content = yield* fs.readFileString(".pix/logs/events.jsonl")
       return content
         .trim()
@@ -226,7 +226,7 @@ describe("JsonDisplay file logging", () => {
       const d = yield* Display
       yield* d.intro("pix")
 
-      const fs = yield* FileSystem.FileSystem
+      const fs = yield* FileSystem
       const dirExists = yield* fs.exists(".pix/logs")
       expect(dirExists).toBe(true)
     }).pipe(Effect.provide(makeJsonDisplayLayer())))

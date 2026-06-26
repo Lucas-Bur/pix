@@ -1,5 +1,5 @@
 import type { FeatureExtractionPipeline, Tensor } from "@huggingface/transformers"
-import { Effect, Layer, Ref, Option } from "effect"
+import { Effect, Layer, Ref, Option, Result } from "effect"
 
 import type { Embedding } from "../domain/chunk.js"
 import type { EmbeddingDtype } from "../domain/dtype.js"
@@ -117,13 +117,13 @@ const withGpuFallback = (
       return makeEmbedBatch(getExtractor, dims, dtype)
     }
 
-    const gpuResult = yield* loadExtractor(model, device, dtype).pipe(Effect.either)
-    if (gpuResult._tag === "Right") {
-      const getExtractor = yield* Effect.succeed(() => Effect.succeed(gpuResult.right))
+    const gpuResult = yield* loadExtractor(model, device, dtype).pipe(Effect.result)
+    if (Result.isSuccess(gpuResult)) {
+      const getExtractor = yield* Effect.succeed(() => Effect.succeed(gpuResult.success))
       return makeEmbedBatch(getExtractor, dims, dtype)
     }
 
-    const originalError = gpuResult.left
+    const originalError = gpuResult.failure
     yield* d.log(`GPU (${device}) failed, falling back to CPU...`, "warn")
     yield* Ref.set(
       fallbackRef,
@@ -145,7 +145,7 @@ const resolveEmbedderConfig = (
   Effect.gen(function* () {
     const config = yield* configStore
       .readConfig()
-      .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+      .pipe(Effect.catch(() => Effect.succeed(undefined)))
 
     const model = config?.embedder.model ?? "Xenova/all-MiniLM-L6-v2"
     const deviceConfig = config?.embedder.device ?? "auto"

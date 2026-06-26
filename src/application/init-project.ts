@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Context, Effect, Layer } from "effect"
 
 import type { Config } from "../domain/config.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
@@ -16,18 +16,24 @@ interface InitResult {
  * Use case: initialize a pix project by writing config. Depends on ConfigStore via Effect tag.
  * Accepts optional model override; falls back to DEFAULT_CONFIG.embedder.model.
  */
-export class InitProject extends Effect.Service<InitProject>()("InitProject", {
-  accessors: true,
-  effect: Effect.gen(function* () {
-    const store = yield* ConfigStore
+export class InitProject extends Context.Service<
+  InitProject,
+  {
+    readonly init: (model?: string) => Effect.Effect<InitResult, ConfigError | DiskFullError>
+  }
+>()("InitProject") {}
 
-    const init = (model?: string): Effect.Effect<InitResult, ConfigError | DiskFullError> => {
-      const config: Config = model
-        ? { ...DEFAULT_CONFIG, embedder: { ...DEFAULT_CONFIG.embedder, model } }
-        : DEFAULT_CONFIG
-      return store.writeConfig(config).pipe(Effect.as({ success: true as const, config }))
-    }
+const make = Effect.gen(function* () {
+  const store = yield* ConfigStore
 
-    return { init }
-  }),
-}) {}
+  const init = (model?: string): Effect.Effect<InitResult, ConfigError | DiskFullError> => {
+    const config: Config = model
+      ? { ...DEFAULT_CONFIG, embedder: { ...DEFAULT_CONFIG.embedder, model } }
+      : DEFAULT_CONFIG
+    return store.writeConfig(config).pipe(Effect.as({ success: true as const, config }))
+  }
+
+  return { init } as const
+})
+
+export const InitProjectLive = Layer.effect(InitProject, make)

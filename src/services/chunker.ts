@@ -53,7 +53,7 @@ const make = Effect.gen(function* () {
 
   const config = yield* configStore
     .readConfig()
-    .pipe(Effect.catchAll(() => Effect.succeed(DEFAULT_CONFIG)))
+    .pipe(Effect.catch(() => Effect.succeed(DEFAULT_CONFIG)))
 
   const chunkText = (text: string, file: string): Effect.Effect<readonly Chunk[], ChunkerError> =>
     Effect.sync(() => {

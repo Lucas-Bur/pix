@@ -1,12 +1,12 @@
-import { FileSystem } from "@effect/platform"
 import { Effect, Layer } from "effect"
+import { FileSystem } from "effect/FileSystem"
 import ignore from "ignore"
 
 import type { ScanResult, SkippedEntry } from "../domain/ports.js"
 import { Scanner } from "../domain/ports.js"
 
 const make = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem
+  const fs = yield* FileSystem
 
   const readFileWithSkip = (
     path: string,
@@ -14,7 +14,7 @@ const make = Effect.gen(function* () {
   ): Effect.Effect<{ content: string; skipped: SkippedEntry | null }, never> =>
     fs.readFileString(path).pipe(
       Effect.map((content) => ({ content, skipped: null })),
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.succeed({
           content: "",
           skipped: { path, reason: mkReason(error) } satisfies SkippedEntry,
@@ -27,7 +27,7 @@ const make = Effect.gen(function* () {
   ): Effect.Effect<{ entries: string[]; skipped: SkippedEntry | null }, never> =>
     fs.readDirectory(dir).pipe(
       Effect.map((entries) => ({ entries, skipped: null })),
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.succeed({
           entries: [] as string[],
           skipped: {
@@ -41,7 +41,7 @@ const make = Effect.gen(function* () {
   const statWithSkip = (fullPath: string) =>
     fs.stat(fullPath).pipe(
       Effect.map((info) => ({ info, skipped: null })),
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.succeed({
           info: null,
           skipped: {
@@ -99,7 +99,7 @@ const make = Effect.gen(function* () {
       const gitignorePath = `${cwd}/.gitignore`
       const gitignoreExists = yield* fs
         .exists(gitignorePath)
-        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+        .pipe(Effect.catch(() => Effect.succeed(false)))
       if (gitignoreExists) {
         yield* loadIgnoreFile(gitignorePath, ig, skipped)
       }
@@ -107,7 +107,7 @@ const make = Effect.gen(function* () {
       const excludePath = `${cwd}/.git/info/exclude`
       const excludeExists = yield* fs
         .exists(excludePath)
-        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+        .pipe(Effect.catch(() => Effect.succeed(false)))
       if (excludeExists) {
         yield* loadIgnoreFile(excludePath, ig, skipped)
       }

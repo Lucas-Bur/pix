@@ -1,5 +1,5 @@
-import { Command, Options } from "@effect/cli"
 import { Clock, Effect } from "effect"
+import { Command, Flag } from "effect/unstable/cli"
 
 import { ResetIndex } from "../application/reset-index.js"
 import { Display } from "../domain/ports.js"
@@ -10,13 +10,14 @@ import { formatBytes } from "../lib/formatting/search-output.js"
 export const resetCommand = Command.make(
   "reset",
   {
-    json: Options.boolean("json").pipe(Options.withDefault(false)),
+    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
   () =>
     Effect.gen(function* () {
       const d = yield* Display
       const start = yield* Clock.currentTimeMillis
-      const result = yield* d.spinner("Resetting index...", ResetIndex.reset())
+      const svc = yield* ResetIndex
+      const result = yield* d.spinner("Resetting index...", svc.reset())
       const end = yield* Clock.currentTimeMillis
       const elapsedMs = end - start
 
@@ -40,10 +41,5 @@ export const resetCommand = Command.make(
         yield* d.log(`Freed: ${formatBytes(result.freedBytes)}`, "info")
         yield* d.log(`Time: ${elapsedMs}ms`, "info")
       }
-    }).pipe(
-      Effect.catchTags({
-        DiskFullError: reportError,
-        StoreError: reportError,
-      }),
-    ),
+    }).pipe(Effect.catch(reportError)),
 )

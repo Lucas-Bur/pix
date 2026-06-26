@@ -1,5 +1,5 @@
-import { Command, Options } from "@effect/cli"
 import { Effect } from "effect"
+import { Command, Flag } from "effect/unstable/cli"
 
 import { InitProject } from "../application/init-project.js"
 import { Display } from "../domain/ports.js"
@@ -10,7 +10,7 @@ import { ModelRegistry } from "../services/models.js"
 export const initCommand = Command.make(
   "init",
   {
-    json: Options.boolean("json").pipe(Options.withDefault(false)),
+    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
   () =>
     Effect.gen(function* () {
@@ -25,7 +25,10 @@ export const initCommand = Command.make(
         defaultModel,
       )
 
-      const result = yield* d.spinner("Initializing...", InitProject.init(selectedModel))
+      const result = yield* d.spinner(
+        "Initializing...",
+        Effect.flatMap(InitProject, (svc) => svc.init(selectedModel)),
+      )
 
       yield* d.json(result)
       yield* d.log(`Created .pix/config.json with model "${selectedModel}".`, "success")
@@ -33,10 +36,5 @@ export const initCommand = Command.make(
         "Add `.pix` to your `.gitignore` file to avoid committing the index.",
         "Reminder",
       )
-    }).pipe(
-      Effect.catchTags({
-        ConfigError: reportError,
-        DiskFullError: reportError,
-      }),
-    ),
+    }).pipe(Effect.catch(reportError)),
 )

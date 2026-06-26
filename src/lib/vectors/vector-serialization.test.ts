@@ -21,8 +21,8 @@ describe("serializeVectors", () => {
 
   it("fails for empty embeddings", () =>
     Effect.gen(function* () {
-      const result = yield* Effect.either(serializeVectors([]))
-      expect(result._tag).toBe("Left")
+      const result = yield* Effect.result(serializeVectors([]))
+      expect(result._tag).toBe("Failure")
     }).pipe(Effect.runPromise))
 
   it("uses correct byte size", () =>
@@ -35,14 +35,14 @@ describe("serializeVectors", () => {
   it("fails when embedding dims are inconsistent", () =>
     Effect.gen(function* () {
       const embeddings = [makeEmbedding([1, 2, 3], 3), makeEmbedding([4, 5], 2)]
-      const result = yield* Effect.either(serializeVectors(embeddings))
-      expect(result._tag).toBe("Left")
+      const result = yield* Effect.result(serializeVectors(embeddings))
+      expect(result._tag).toBe("Failure")
     }).pipe(Effect.runPromise))
 
   it("fails when vector length does not match dims", () =>
     Effect.gen(function* () {
       const embeddings = [makeEmbedding([1, 2, 3], 3), makeEmbedding([4, 5, 6], 2)]
-      const result = yield* Effect.either(serializeVectors(embeddings))
-      expect(result._tag).toBe("Left")
+      const result = yield* Effect.result(serializeVectors(embeddings))
+      expect(result._tag).toBe("Failure")
     }).pipe(Effect.runPromise))
 })

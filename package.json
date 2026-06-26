@@ -53,11 +53,9 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.4.0",
-    "@effect/cli": "^0.75.1",
-    "@effect/platform": "^0.96.1",
-    "@effect/platform-node": "^0.106.0",
+    "@effect/platform-node": "^4.0.0-beta.90",
     "@huggingface/transformers": "^4.2.0",
-    "effect": "^3.21.2",
+    "effect": "^4.0.0-beta.90",
     "ignore": "^7.0.5"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
-import { FileSystem } from "@effect/platform"
 import { Effect, Layer, Option, Schema } from "effect"
+import { FileSystem } from "effect/FileSystem"
 
 import { ConfigSchema, DEFAULT_CONFIG } from "../domain/config.js"
 import type { Config } from "../domain/config.js"
@@ -27,8 +27,8 @@ const structurallyHeal = (
   content: string,
 ): Effect.Effect<Config, ConfigMalformedError | ConfigValidationError> =>
   Effect.gen(function* () {
-    const parsed = yield* Schema.decodeUnknown(
-      Schema.parseJson(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+    const parsed = yield* Schema.decodeUnknownEffect(
+      Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)),
     )(content).pipe(
       Effect.mapError(
         (cause) =>
@@ -91,7 +91,7 @@ const listModelIds = (registry: typeof ModelRegistry.Service): Effect.Effect<rea
 
 /** Read file, structural heal, coupled validation. Returns config + all conflicts. */
 const readAndHeal = (
-  fs: typeof FileSystem.FileSystem.Service,
+  fs: typeof FileSystem.Service,
   registry: typeof ModelRegistry.Service,
 ): Effect.Effect<
   { config: Config; conflicts: ReadonlyArray<HealConflict> },
@@ -115,13 +115,13 @@ const readAndHeal = (
   })
 
 const make = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem
+  const fs = yield* FileSystem
   const registry = yield* ModelRegistry
 
   const writeConfig = (config: Config): Effect.Effect<void, ConfigError | DiskFullError> =>
     Effect.gen(function* () {
-      const encodeJson = Schema.parseJson(ConfigSchema, { space: 2 })
-      const configJson = yield* Schema.encode(encodeJson)(config).pipe(
+      const encodeJson = Schema.fromJsonString(ConfigSchema)
+      const configJson = yield* Schema.encodeEffect(encodeJson)(config).pipe(
         Effect.mapError((e) => new ConfigError({ message: "Failed to encode config", cause: e })),
       )
       yield* withConfigError(
@@ -181,7 +181,7 @@ const make = Effect.gen(function* () {
   const configExists = (): Effect.Effect<boolean> =>
     Effect.gen(function* () {
       return yield* fs.exists(CONFIG_PATH)
-    }).pipe(Effect.catchAll(() => Effect.succeed(false)))
+    }).pipe(Effect.catch(() => Effect.succeed(false)))
 
   return { writeConfig, readConfig, readConfigWithConflicts, healConfig, configExists } as const
 })

@@ -5,7 +5,9 @@ const K1 = 1.5
 const B = 0.75
 
 const buildTermFreqs = (tokens: string[]): Record<string, number> => {
-  const tf: Record<string, number> = {}
+  // Object.create(null) avoids prototype-chain collision with tokens like "constructor".
+  // Plain {}["constructor"] returns Object (function, truthy), breaking dictionary init.
+  const tf: Record<string, number> = Object.create(null)
   for (const t of tokens) {
     tf[t] = (tf[t] ?? 0) + 1
   }
@@ -16,8 +18,10 @@ export const buildBm25Index = (
   texts: readonly { readonly index: number; readonly text: string }[],
 ): Bm25Index => {
   const chunkLengths: number[] = []
-  const docFreqs: Record<string, number> = {}
-  const chunkTfs: Record<string, [number, number][]> = {}
+  // Object.create(null) — same reason as buildTermFreqs: tokens like "constructor" shadow
+  // Object.prototype and would break dictionary init with plain {}.
+  const docFreqs: Record<string, number> = Object.create(null)
+  const chunkTfs: Record<string, [number, number][]> = Object.create(null)
 
   for (const { index, text } of texts) {
     const tokens = tokenize(text)
@@ -26,7 +30,11 @@ export const buildBm25Index = (
     const tf = buildTermFreqs(tokens)
     for (const [term, freq] of Object.entries(tf)) {
       docFreqs[term] = (docFreqs[term] ?? 0) + 1
-      const entries = (chunkTfs[term] ??= [])
+      let entries = chunkTfs[term]
+      if (!entries) {
+        entries = []
+        chunkTfs[term] = entries
+      }
       entries.push([index, freq])
     }
   }

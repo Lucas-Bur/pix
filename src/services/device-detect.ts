@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Ref } from "effect"
+import { Context, Effect, Layer, Ref, Result } from "effect"
 
 import type { DeviceType } from "../domain/device.js"
 import { ModelLoadError } from "../domain/errors.js"
@@ -28,7 +28,7 @@ const tryDevice = (
   )
 
 /** Service for detecting the best available compute device. */
-export class DeviceDetection extends Context.Tag("DeviceDetection")<
+export class DeviceDetection extends Context.Service<
   DeviceDetection,
   {
     /**
@@ -45,7 +45,7 @@ export class DeviceDetection extends Context.Tag("DeviceDetection")<
       dtype: string,
     ) => Effect.Effect<readonly DeviceType[], never>
   }
->() {}
+>()("DeviceDetection") {}
 
 const make = Effect.gen(function* () {
   const { pipeline } = yield* Effect.tryPromise(() =>
@@ -61,7 +61,7 @@ const make = Effect.gen(function* () {
 
       for (const device of DEVICE_PRIORITY) {
         const result = yield* tryDevice(model, dtype, device, () => Promise.resolve(pipeline)).pipe(
-          Effect.catchAll((e) =>
+          Effect.catch((e) =>
             Ref.set(lastError, e).pipe(
               Effect.flatMap(() => Effect.succeed<DeviceType | undefined>(undefined)),
             ),
@@ -87,9 +87,9 @@ const make = Effect.gen(function* () {
       const working: DeviceType[] = []
       for (const device of DEVICE_PRIORITY) {
         const result = yield* tryDevice(model, dtype, device, () => Promise.resolve(pipeline)).pipe(
-          Effect.either,
+          Effect.result,
         )
-        if (result._tag === "Right") {
+        if (Result.isSuccess(result)) {
           working.push(device)
         }
       }

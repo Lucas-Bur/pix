@@ -72,7 +72,7 @@ interface HealPlan {
 }
 
 /** Port for reading/writing `.pix/config.json`. */
-export class ConfigStore extends Context.Tag("ConfigStore")<
+export class ConfigStore extends Context.Service<
   ConfigStore,
   {
     /** Read and heal config in memory. Fails on unhealable conflicts (unknown model). */
@@ -87,12 +87,12 @@ export class ConfigStore extends Context.Tag("ConfigStore")<
     readonly writeConfig: (config: Config) => Effect.Effect<void, ConfigError | DiskFullError>
     readonly configExists: () => Effect.Effect<boolean>
   }
->() {}
+>()("ConfigStore") {}
 
 // === Scanner Port ===
 
 /** Port for discovering files to index. */
-export class Scanner extends Context.Tag("Scanner")<
+export class Scanner extends Context.Service<
   Scanner,
   {
     /**
@@ -105,23 +105,23 @@ export class Scanner extends Context.Tag("Scanner")<
       ignoreGitignore?: boolean,
     ) => Effect.Effect<ScanResult, never>
   }
->() {}
+>()("Scanner") {}
 
 // === ContentExtractor Port ===
 
 /** Port for extracting text content from files. */
-export class ContentExtractor extends Context.Tag("ContentExtractor")<
+export class ContentExtractor extends Context.Service<
   ContentExtractor,
   {
     /** Extract text from a file. Fails with AllProcessorErrors if the format is unsupported. */
     readonly extract: (file: string) => Effect.Effect<string, AllProcessorErrors>
   }
->() {}
+>()("ContentExtractor") {}
 
 // === Chunker Port ===
 
 /** Port for splitting source text into chunks for embedding. */
-export class Chunker extends Context.Tag("Chunker")<
+export class Chunker extends Context.Service<
   Chunker,
   {
     /** Chunk raw text with a logical file path. Used by ContentExtractor after text extraction. */
@@ -130,7 +130,7 @@ export class Chunker extends Context.Tag("Chunker")<
       file: string,
     ) => Effect.Effect<readonly Chunk[], ChunkerError>
   }
->() {}
+>()("Chunker") {}
 
 // === Embedder Port ===
 
@@ -151,7 +151,7 @@ export interface BoundEmbedder {
 }
 
 /** Port for creating vector embeddings from text. */
-export class Embedder extends Context.Tag("Embedder")<
+export class Embedder extends Context.Service<
   Embedder,
   {
     /** Embed a single text. Fails with ModelLoadError or InferenceError. */
@@ -169,7 +169,7 @@ export class Embedder extends Context.Tag("Embedder")<
       cfg: EmbedderDeviceConfig,
     ) => Effect.Effect<BoundEmbedder, ModelLoadError>
   }
->() {}
+>()("Embedder") {}
 
 // === IndexStore Port ===
 
@@ -264,7 +264,7 @@ export interface SearchResponse {
 }
 
 /** Port for persisting chunks and embeddings and querying the index. */
-export class IndexStore extends Context.Tag("IndexStore")<
+export class IndexStore extends Context.Service<
   IndexStore,
   {
     /** Initialize transactional staging: clean stale temp files and reset accumulators. */
@@ -302,7 +302,7 @@ export class IndexStore extends Context.Tag("IndexStore")<
     /** Delete all index data (chunks + vectors) and return what was freed. */
     readonly reset: () => Effect.Effect<ResetResult, StoreError | DiskFullError>
   }
->() {}
+>()("IndexStore") {}
 
 // === Display Port ===
 
@@ -382,4 +382,4 @@ export interface DisplayService {
 }
 
 /** Port for all CLI output — human interactive, JSON, and file audit trail. */
-export class Display extends Context.Tag("Display")<Display, DisplayService>() {}
+export class Display extends Context.Service<Display, DisplayService>()("Display") {}

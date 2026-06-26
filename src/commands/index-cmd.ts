@@ -1,5 +1,5 @@
-import { Command, Options } from "@effect/cli"
 import { Effect, Option } from "effect"
+import { Command, Flag } from "effect/unstable/cli"
 
 import { IndexProject } from "../application/index-project.js"
 import type { IndexResult } from "../application/index-project.js"
@@ -7,44 +7,33 @@ import { Display } from "../domain/ports.js"
 import type { IndexOptions } from "../domain/ports.js"
 import { reportError } from "../lib/errors/error-format.js"
 
-const batchSizeOption = Options.integer("batch-size").pipe(Options.withAlias("b"), Options.optional)
-
-const chunkConcurrencyOption = Options.integer("chunk-concurrency").pipe(
-  Options.withAlias("c"),
-  Options.optional,
-)
-
-const skipExtensionsOption = Options.text("skip-extensions").pipe(
-  Options.withAlias("s"),
-  Options.repeated,
-)
-
-const ignorePathOption = Options.text("ignore-path").pipe(Options.repeated)
-
-const ignorePathsOption = Options.text("ignore-paths").pipe(Options.repeated)
-
-const ignoreGitignoreOption = Options.boolean("ignore-gitignore").pipe(Options.withDefault(false))
-
-const splitCsv = (values: ReadonlyArray<string>): string[] =>
-  values.flatMap((v) =>
-    v
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0),
-  )
+const splitCsv = (value: string): string[] =>
+  value
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
 
 const buildIndexOptions = (args: {
   batchSize: Option.Option<number>
   chunkConcurrency: Option.Option<number>
-  skipExtensions: ReadonlyArray<string>
-  ignorePath: ReadonlyArray<string>
-  ignorePaths: ReadonlyArray<string>
+  skipExtensions: Option.Option<string>
+  ignorePath: Option.Option<string>
+  ignorePaths: Option.Option<string>
   ignoreGitignore: boolean
 }): IndexOptions => {
-  const cliSkipExtensions = splitCsv(args.skipExtensions)
+  const cliSkipExtensions = Option.match(args.skipExtensions, {
+    onNone: () => [] as string[],
+    onSome: splitCsv,
+  })
   const cliIgnorePaths = [
-    ...args.ignorePath.map((s) => s.trim()).filter((s) => s.length > 0),
-    ...splitCsv(args.ignorePaths),
+    ...Option.match(args.ignorePath, {
+      onNone: () => [] as string[],
+      onSome: (v) => [v.trim()].filter((s) => s.length > 0),
+    }),
+    ...Option.match(args.ignorePaths, {
+      onNone: () => [] as string[],
+      onSome: splitCsv,
+    }),
   ]
 
   const batchSize =
@@ -82,19 +71,19 @@ const emitIndexResult = (d: typeof Display.Service, result: IndexResult): Effect
 export const indexCommand = Command.make(
   "index",
   {
-    json: Options.boolean("json").pipe(Options.withDefault(false)),
-    batchSize: batchSizeOption,
-    chunkConcurrency: chunkConcurrencyOption,
-    skipExtensions: skipExtensionsOption,
-    ignorePath: ignorePathOption,
-    ignorePaths: ignorePathsOption,
-    ignoreGitignore: ignoreGitignoreOption,
+    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
+    batchSize: Flag.integer("batch-size").pipe(Flag.withAlias("b"), Flag.optional),
+    chunkConcurrency: Flag.integer("chunk-concurrency").pipe(Flag.withAlias("c"), Flag.optional),
+    skipExtensions: Flag.string("skip-extensions").pipe(Flag.withAlias("s"), Flag.optional),
+    ignorePath: Flag.string("ignore-path").pipe(Flag.optional),
+    ignorePaths: Flag.string("ignore-paths").pipe(Flag.optional),
+    ignoreGitignore: Flag.boolean("ignore-gitignore").pipe(Flag.withDefault(false)),
   },
   ({ batchSize, chunkConcurrency, skipExtensions, ignorePath, ignorePaths, ignoreGitignore }) =>
     Effect.gen(function* () {
       const d = yield* Display
 
-      const options = buildIndexOptions({
+      const opts = buildIndexOptions({
         batchSize,
         chunkConcurrency,
         skipExtensions,
@@ -103,8 +92,11 @@ export const indexCommand = Command.make(
         ignoreGitignore,
       })
 
-      const result = yield* d.spinner("Indexing project...", IndexProject.index(options))
+      const result = yield* d.spinner(
+        "Indexing project...",
+        IndexProject.use((svc) => svc.index(opts)),
+      )
 
       yield* emitIndexResult(d, result)
-    }).pipe(Effect.catchAll(reportError)),
+    }).pipe(Effect.catch(reportError)),
 )

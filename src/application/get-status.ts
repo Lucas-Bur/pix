@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Context, Effect, Layer } from "effect"
 
 import type { ChunkValidationError, StoreError } from "../domain/errors.js"
 import { IndexStore } from "../domain/ports.js"
@@ -15,16 +15,22 @@ export interface StatusResult {
 }
 
 /** Use case: get index statistics. Depends on IndexStore via Effect tag. */
-export class GetStatus extends Effect.Service<GetStatus>()("GetStatus", {
-  accessors: true,
-  effect: Effect.gen(function* () {
-    const store = yield* IndexStore
+export class GetStatus extends Context.Service<
+  GetStatus,
+  {
+    readonly getStatus: () => Effect.Effect<StatusResult, StoreError>
+  }
+>()("GetStatus") {}
 
-    const getStatus = (): Effect.Effect<StatusResult, StoreError> =>
-      Effect.gen(function* () {
-        return yield* store.getStatus()
-      })
+const make = Effect.gen(function* () {
+  const store = yield* IndexStore
 
-    return { getStatus }
-  }),
-}) {}
+  const getStatus = (): Effect.Effect<StatusResult, StoreError> =>
+    Effect.gen(function* () {
+      return yield* store.getStatus()
+    })
+
+  return { getStatus } as const
+})
+
+export const GetStatusLive = Layer.effect(GetStatus, make)

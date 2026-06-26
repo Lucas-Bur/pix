@@ -46,7 +46,7 @@ const hybridLayer = testLayer({ embedderLayer: nonZeroEmbedder })
 
 test("QueryProject.queryProject returns empty results when no index exists", () =>
   Effect.gen(function* () {
-    const result = yield* QueryProject.queryProject("test", { topK: 5 })
+    const result = yield* (yield* QueryProject).queryProject("test", { topK: 5 })
     expect(result).toEqual({ results: [], validationErrors: [] })
   }).pipe(Effect.provide(testLayer({})), Effect.scoped))
 
@@ -81,7 +81,7 @@ test("QueryProject.queryProject returns hybrid-ranked results via RRF", () =>
       [makeEmbedding(0.1), makeEmbedding(0.1)],
     )
 
-    const { results } = yield* QueryProject.queryProject("handleRequest", { topK: 5 })
+    const { results } = yield* (yield* QueryProject).queryProject("handleRequest", { topK: 5 })
     expect(results.length).toBeGreaterThan(0)
     expect(results[0].file).toBe("/src/handler.ts")
   }).pipe(Effect.provide(hybridLayer), Effect.scoped))
@@ -101,7 +101,7 @@ test("QueryProject.queryProject respects ignorePaths with hybrid search", () =>
       [makeEmbedding(0.1), makeEmbedding(0.1)],
     )
 
-    const { results } = yield* QueryProject.queryProject("handleRequest", {
+    const { results } = yield* (yield* QueryProject).queryProject("handleRequest", {
       topK: 5,
       ignorePaths: ["**/ignore*"],
     })
@@ -124,7 +124,7 @@ test("QueryProject.queryProject respects onlyPaths with hybrid search", () =>
       [makeEmbedding(0.1), makeEmbedding(0.1)],
     )
 
-    const { results } = yield* QueryProject.queryProject("handleRequest", {
+    const { results } = yield* (yield* QueryProject).queryProject("handleRequest", {
       topK: 5,
       onlyPaths: ["/src/**"],
     })
@@ -147,14 +147,13 @@ test("QueryProject.queryProject fails with ModelMismatchError when config model 
       contents: { ".pix/config.json": configWithDifferentModel },
     })
 
-    const exit = yield* Effect.exit(QueryProject.queryProject("handleRequest", { topK: 5 })).pipe(
-      Effect.provide(mismatchLayer),
-      Effect.scoped,
-    )
+    const exit = yield* Effect.exit(
+      (yield* QueryProject).queryProject("handleRequest", { topK: 5 }),
+    ).pipe(Effect.provide(mismatchLayer), Effect.scoped)
 
     expect(Exit.isFailure(exit)).toBe(true)
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause)
+      const failure = Cause.findErrorOption(exit.cause)
       expect(failure._tag).toBe("Some")
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ModelMismatchError)

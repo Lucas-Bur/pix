@@ -1,8 +1,8 @@
 import { styleText } from "node:util"
 
 import * as clack from "@clack/prompts"
-import { FileSystem } from "@effect/platform"
 import { Effect, Layer, Ref, Exit } from "effect"
+import { FileSystem } from "effect/FileSystem"
 
 import { InteractiveError } from "../domain/errors.js"
 import {
@@ -66,7 +66,7 @@ const updateProgressBar = (
   })
 
 const dismissSpinnerAndStop = (
-  fs: FileSystem.FileSystem,
+  fs: FileSystem,
   activeRef: Ref.Ref<ActiveInteractive>,
   handleRef: Ref.Ref<ClackHandle | null>,
   lastSpinnerMsg: Ref.Ref<string>,
@@ -85,7 +85,7 @@ const dismissSpinnerAndStop = (
   })
 
 const runWithProgressBar = <A, E, R>(
-  fs: FileSystem.FileSystem,
+  fs: FileSystem,
   opts: ProgressOptions,
   effect: Effect.Effect<A, E, R>,
   activeRef: Ref.Ref<ActiveInteractive>,
@@ -116,7 +116,7 @@ const runWithProgressBar = <A, E, R>(
 export const ClackDisplayLive = Layer.effect(
   Display,
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+    const fs = yield* FileSystem
     const activeRef = yield* Ref.make<ActiveInteractive>(null)
     const handleRef = yield* Ref.make<ClackHandle | null>(null)
     const lastSpinnerMsg = yield* Ref.make<string>("")

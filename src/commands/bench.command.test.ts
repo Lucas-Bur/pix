@@ -61,19 +61,19 @@ test("pix bench --batch-sizes parses comma-separated values", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix bench --apply throughput sets profile", () => {
+test("pix bench --profile throughput sets profile", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
-    yield* run(["bench", "--json", "--apply", "throughput"])
+    yield* run(["bench", "--json", "--profile", "throughput"])
     const data = yield* assertJsonData(ref)
     expect(data.profile).toBe("throughput")
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix bench --apply cold sets profile", () => {
+test("pix bench --profile cold sets profile", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
-    yield* run(["bench", "--json", "--apply", "cold"])
+    yield* run(["bench", "--json", "--profile", "cold"])
     const data = yield* assertJsonData(ref)
     expect(data.profile).toBe("cold")
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
@@ -104,10 +104,10 @@ test("pix bench --batch-sizes with negative numbers fails", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix bench --apply throughput applies config and logs success", () => {
+test("pix bench --profile throughput applies config and logs success", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
-    yield* run(["bench", "--apply", "throughput"])
+    yield* run(["bench", "--profile", "throughput"])
     const entries = yield* Ref.get(ref)
     const logEntries = entries.filter((e) => e._tag === "log")
     const appliedEntry = logEntries.find((e) => e.message.includes("Applied"))
@@ -115,10 +115,10 @@ test("pix bench --apply throughput applies config and logs success", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix bench --apply cold applies config", () => {
+test("pix bench --profile cold applies config", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
-    yield* run(["bench", "--apply", "cold"])
+    yield* run(["bench", "--profile", "cold"])
     const entries = yield* Ref.get(ref)
     const logEntries = entries.filter((e) => e._tag === "log")
     const appliedEntry = logEntries.find((e) => e.message.includes("Applied"))
@@ -126,7 +126,7 @@ test("pix bench --apply cold applies config", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix bench without --apply (balanced default) does not apply config", () => {
+test("pix bench without --profile (balanced default) does not apply config", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["bench"])
