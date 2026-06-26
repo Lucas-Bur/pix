@@ -1,4 +1,3 @@
-import { MemoryFileSystem } from "effect-memfs"
+import { layerWith, type FileTree } from "@lucas-bur/effect-memfs"
 
-export const memoryFsLayer = ((contents?: MemoryFileSystem.Contents) =>
-  MemoryFileSystem.layerWith(contents ?? {})) as any
+export const memoryFsLayer = (contents?: FileTree) => layerWith(contents ?? {})

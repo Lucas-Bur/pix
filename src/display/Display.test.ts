@@ -1,5 +1,5 @@
+import { layerWith } from "@lucas-bur/effect-memfs"
 import { Effect, Layer, Ref } from "effect"
-import { MemoryFileSystem } from "effect-memfs"
 import { FileSystem } from "effect/FileSystem"
 import { describe, expect, it } from "vite-plus/test"
 
@@ -195,8 +195,7 @@ describe("SilentDisplay", () => {
 })
 
 describe("JsonDisplay file logging", () => {
-  const makeJsonDisplayLayer = () =>
-    JsonDisplayLive.pipe(Layer.provide(MemoryFileSystem.layerWith({})))
+  const makeJsonDisplayLayer = () => JsonDisplayLive.pipe(Layer.provide(layerWith({})))
 
   const readLogEntries = () =>
     Effect.gen(function* () {

@@ -1,5 +1,5 @@
+import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Exit, Layer, Ref } from "effect"
-import type { MemoryFileSystem } from "effect-memfs"
 import { Command } from "effect/unstable/cli"
 import { expect } from "vite-plus/test"
 
@@ -34,7 +34,7 @@ export const expectLogEntry = (
     }),
   )
 
-export const indexFixtures: MemoryFileSystem.Contents = {
+export const indexFixtures: FileTree = {
   ".pix/config.json": TEST_CONFIG_JSON,
   ".pix/index-meta.json": JSON.stringify({
     dtype: "fp32",

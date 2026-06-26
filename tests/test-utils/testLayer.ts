@@ -1,5 +1,5 @@
+import { layerWith, type FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Layer } from "effect"
-import { MemoryFileSystem } from "effect-memfs"
 import { FileSystem } from "effect/FileSystem"
 
 import { BenchProjectLive } from "../../src/application/bench-project.js"
@@ -17,7 +17,7 @@ import { IndexStoreLive } from "../../src/services/index-store.js"
 import { ModelRegistryLive } from "../../src/services/models.js"
 
 export interface TestLayerOptions {
-  readonly contents?: MemoryFileSystem.Contents
+  readonly contents?: FileTree
   readonly scannerLayer?: Layer.Layer<Scanner, never, FileSystem>
   readonly embedderLayer?: Layer.Layer<Embedder, never, FileSystem>
   readonly configStoreLayer?: Layer.Layer<ConfigStore, never, FileSystem>
@@ -57,7 +57,7 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
  * Builds the full application layer for integration testing. Replaces real FileSystem with
  * in-memory variant and mocks Scanner + Embedder. Mirrors the layer structure in `src/index.ts`.
  */
-export const testLayer = ((opts: TestLayerOptions = {}) => {
+export const testLayer = (opts: TestLayerOptions = {}) => {
   const {
     contents = {},
     scannerLayer,
@@ -68,7 +68,7 @@ export const testLayer = ((opts: TestLayerOptions = {}) => {
     cleanStore,
   } = opts
 
-  const memFs = MemoryFileSystem.layerWith(contents)
+  const memFs = layerWith(contents)
 
   const servicesLayer = Layer.mergeAll(
     configStoreLayer ?? ConfigStoreLive,
@@ -120,4 +120,4 @@ export const testLayer = ((opts: TestLayerOptions = {}) => {
   }
 
   return withConsole
-}) as any
+}

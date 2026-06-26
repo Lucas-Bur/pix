@@ -1,12 +1,11 @@
+import { layerWith, type FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Result } from "effect"
-import { MemoryFileSystem } from "effect-memfs"
 import { FileSystem } from "effect/FileSystem"
 import { expect, test } from "vite-plus/test"
 
 import { ensureDirExists, withFsError, withReadError, withConfigError } from "./fs-error.js"
 
-const memFsLayer = (contents?: MemoryFileSystem.Contents) =>
-  MemoryFileSystem.layerWith(contents ?? {})
+const memFsLayer = (contents?: FileTree) => layerWith(contents ?? {})
 
 const expectErrorResult = <A extends { _tag: string; message: string; path?: string }>(
   result: Result.Result<never, A>,

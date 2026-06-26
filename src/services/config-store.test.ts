@@ -1,5 +1,5 @@
+import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Layer, Result } from "effect"
-import { MemoryFileSystem } from "effect-memfs"
 import { expect, test } from "vite-plus/test"
 
 const expectLeft = <A>(result: Result.Result<unknown, A>): A => {
@@ -13,7 +13,7 @@ import { DEFAULT_CONFIG } from "../domain/config.ts"
 import { ConfigStore, ConfigStoreLive } from "./config-store.ts"
 import { ModelRegistryLive } from "./models.ts"
 
-const makeLayer = (contents?: MemoryFileSystem.Contents) =>
+const makeLayer = (contents?: FileTree) =>
   Layer.provideMerge(
     Layer.provideMerge(ConfigStoreLive, memoryFsLayer(contents ?? {})),
     ModelRegistryLive,

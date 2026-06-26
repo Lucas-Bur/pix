@@ -1,5 +1,5 @@
+import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Ref } from "effect"
-import type { MemoryFileSystem } from "effect-memfs"
 import { expect, test } from "vite-plus/test"
 
 import {
@@ -17,7 +17,7 @@ import { queryCommand } from "./query.js"
 
 const run = runCommand(queryCommand)
 
-const runQuery = (args: string[], contents: MemoryFileSystem.Contents = indexFixtures) => {
+const runQuery = (args: string[], contents: FileTree = indexFixtures) => {
   const { ref, layer } = silentDisplay()
   return {
     ref,
@@ -80,7 +80,7 @@ test("pix query --json clamps --top below minimum to 1", () => {
 })
 
 test("pix query --json clamps --top above maximum to 100", () => {
-  const largeFixtures: MemoryFileSystem.Contents = {
+  const largeFixtures: FileTree = {
     ".pix/config.json": TEST_CONFIG_JSON,
     ".pix/chunks.jsonl": Array.from({ length: 150 }, (_, i) =>
       makeChunkJson({
