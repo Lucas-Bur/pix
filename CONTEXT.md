@@ -333,7 +333,7 @@ Returns all files found during FS walk, applying `.gitignore` rules (unless `ign
 
 ### Config
 
-Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip. New fields: `embedder.batchSize` (default 16), `ignoreGitignore` (default false). Updated `ignoredPaths` defaults: removed `.agents`, `.claude`, `.github`; added `.vite-hooks`, `.fallow`.
+Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip. New fields: `embedder.batchSize` (default 16), `ignoreGitignore` (default false). Updated `ignoredPaths` defaults: removed `.agents`, `.github`; added `.vite-hooks`, `.fallow`.
 
 ### Extension→Processor mapping (Phase 2+)
 
