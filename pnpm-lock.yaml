@@ -12,25 +12,19 @@ importers:
 
   .:
     dependencies:
-      '@clack/prompts':
-        specifier: ^1.4.0
-        version: 1.4.0
-      '@effect/platform-node':
-        specifier: ^4.0.0-beta.90
-        version: 4.0.0-beta.90(effect@4.0.0-beta.90)(ioredis@5.11.1)
       '@huggingface/transformers':
         specifier: ^4.2.0
         version: 4.2.0
-      effect:
-        specifier: ^4.0.0-beta.90
-        version: 4.0.0-beta.90
-      ignore:
-        specifier: ^7.0.5
-        version: 7.0.5
     devDependencies:
+      '@clack/prompts':
+        specifier: ^1.4.0
+        version: 1.4.0
       '@effect/language-service':
         specifier: ^0.85.1
         version: 0.85.1
+      '@effect/platform-node':
+        specifier: ^4.0.0-beta.90
+        version: 4.0.0-beta.90(effect@4.0.0-beta.90)(ioredis@5.11.1)
       '@lucas-bur/effect-memfs':
         specifier: ^0.2.0
         version: 0.2.0(effect@4.0.0-beta.90)(tslib@2.8.1)
@@ -43,9 +37,15 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.6
         version: 4.1.6(vitest@4.1.6)
+      effect:
+        specifier: ^4.0.0-beta.90
+        version: 4.0.0-beta.90
       fallow:
         specifier: ^2.65.0
         version: 2.65.0
+      ignore:
+        specifier: ^7.0.5
+        version: 7.0.5
       typescript:
         specifier: ^6.0.2
         version: 6.0.3

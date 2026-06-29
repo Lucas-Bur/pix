@@ -4,7 +4,6 @@ import { Layer } from "effect"
 import { ChunkerLive } from "../services/chunker.js"
 import { ContentExtractorLive } from "../services/content-extractor.js"
 import { ScannerLive } from "../services/scanner.js"
-import { ConfigLayer } from "./config-layer.js"
 import { EmbedderLayer } from "./embedder-layer.js"
 import { IndexStoreLayer } from "./index-store-layer.js"
 
@@ -17,5 +16,5 @@ export const FullInfraLayer = Layer.mergeAll(
   EmbedderLayer,
   ScannerLive.pipe(Layer.provide(NodeServices.layer)),
   ContentExtractorLive.pipe(Layer.provide(NodeServices.layer)),
-  ChunkerLive.pipe(Layer.provide(Layer.merge(ConfigLayer, NodeServices.layer))),
+  ChunkerLive.pipe(Layer.provide(NodeServices.layer)),
 )

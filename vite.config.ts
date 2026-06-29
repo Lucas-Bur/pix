@@ -5,9 +5,11 @@ export default defineConfig({
     entry: ["src/index.ts"],
     format: ["esm"],
     dts: false,
+    minify: true,
     banner: { js: "#!/usr/bin/env node" },
-    // shims: true,
-    // exports: true,
+    deps: {
+      neverBundle: ["@huggingface/transformers"],
+    },
   },
   test: {
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],

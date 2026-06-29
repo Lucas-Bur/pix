@@ -52,19 +52,19 @@
     "pix": ""
   },
   "dependencies": {
-    "@clack/prompts": "^1.4.0",
-    "@effect/platform-node": "^4.0.0-beta.90",
-    "@huggingface/transformers": "^4.2.0",
-    "effect": "^4.0.0-beta.90",
-    "ignore": "^7.0.5"
+    "@huggingface/transformers": "^4.2.0"
   },
   "devDependencies": {
+    "@clack/prompts": "^1.4.0",
     "@effect/language-service": "^0.85.1",
+    "@effect/platform-node": "^4.0.0-beta.90",
     "@lucas-bur/effect-memfs": "^0.2.0",
     "@types/node": "^25.5.0",
     "@typescript/native-preview": "7.0.0-dev.20260328.1",
     "@vitest/coverage-v8": "^4.1.6",
+    "effect": "^4.0.0-beta.90",
     "fallow": "^2.65.0",
+    "ignore": "^7.0.5",
     "typescript": "^6.0.2",
     "vite-plus": "^0.1.14"
   },

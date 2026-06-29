@@ -7,6 +7,7 @@ import type { Config } from "../domain/config.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import { ChunkerError } from "../domain/errors.js"
 import { ConfigStore, Chunker } from "../domain/ports.js"
+import { ConfigStoreLive } from "./config-store.js"
 export { Chunker }
 
 const buildChunks = (file: string, content: string, config: Config): Chunk[] => {
@@ -64,4 +65,4 @@ const make = Effect.gen(function* () {
   return { chunkText } as const
 })
 
-export const ChunkerLive = Layer.effect(Chunker, make)
+export const ChunkerLive = Layer.provideMerge(Layer.effect(Chunker, make), ConfigStoreLive)
