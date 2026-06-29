@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.2](https://github.com/Lucas-Bur/pix/compare/pix-v0.18.1...pix-v0.18.2) (2026-06-29)
+
+
+### Performance Improvements
+
+* split layers per-command for 16x faster startup ([255f20e](https://github.com/Lucas-Bur/pix/commit/255f20e1ccdf485c50bd3f4de455629a4d8441f4))
+
 ## [0.18.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.18.0...pix-v0.18.1) (2026-06-26)
 
 
