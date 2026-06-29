@@ -22,6 +22,18 @@ describe("bm25", () => {
       expect(index.chunkLengths).toEqual([])
       expect(index.avgChunkLength).toBe(0)
     })
+
+    it("uses unique-token count for chunk length, not total tokens", () => {
+      const index = buildBm25Index(
+        makeTexts("return return return function handleRequest", "single chunk"),
+      )
+      // Chunk 0 tokenises to 6 tokens ("return", "return", "return",
+      // "function", "handle", "request") but only 4 are unique.
+      // Chunk 1 has 2 unique tokens ("single", "chunk").
+      expect(index.chunkLengths).toEqual([4, 2])
+      // avgdl is the mean of per-chunk unique-token counts: (4 + 2) / 2 = 3.
+      expect(index.avgChunkLength).toBe(3)
+    })
   })
 
   describe("rankBm25", () => {
