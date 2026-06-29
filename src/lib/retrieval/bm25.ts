@@ -25,7 +25,17 @@ export const buildBm25Index = (
 
   for (const { index, text } of texts) {
     const tokens = tokenize(text)
-    chunkLengths[index] = tokens.length
+    // Chunk length = count of *unique* tokens, not total tokens. Code
+    // chunks have heavy structural repetition (keywords like `function`/
+    // `return`, brackets, semicolons), so total-token length penalises
+    // long, normal functions with many statements even when their
+    // vocabulary coverage is high. Unique-token count reflects coverage
+    // and is the right length metric for code retrieval.
+    //
+    // Deliberate deviation from the Lucene/Elasticsearch convention
+    // (which uses total tokens). Rationale: we index source code, where
+    // syntactic scaffolding dominates raw token volume.
+    chunkLengths[index] = new Set(tokens).size
 
     const tf = buildTermFreqs(tokens)
     for (const [term, freq] of Object.entries(tf)) {
