@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.19.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.18.2...pix-v0.19.0) (2026-06-30)
+
+
+### Features
+
+* **indexer:** extract identifiers per chunk and persist with index ([1585fc0](https://github.com/Lucas-Bur/pix/commit/1585fc04925ab9562ef8a2082d54e887d0fb0309))
+* **parsing:** add extension registry as single source of truth ([22d40b4](https://github.com/Lucas-Bur/pix/commit/22d40b430d381ecfd9c0aa5c0efcfb6c35c78c8c))
+* **parsing:** add extractIdentifiers walker for tree-sitter ASTs ([fb4e860](https://github.com/Lucas-Bur/pix/commit/fb4e8600612e355415ce81fd92837caa0bee04f9))
+* **parsing:** add Identifier domain type and TypeScript mapKind ([464fc1e](https://github.com/Lucas-Bur/pix/commit/464fc1e9414115935e1e46569e8f1c7b2aa3a900))
+* **parsing:** add splitCamelCase for identifier constituent extraction ([11c6a41](https://github.com/Lucas-Bur/pix/commit/11c6a417cf14604f673ed71a4b32bbd97c9c5c40))
+* **query:** add identity and camelCase channels to RRF fusion ([e71efc3](https://github.com/Lucas-Bur/pix/commit/e71efc38f291b67833c39bed09c9550e7a770161))
+* **retrieval:** add buildIdentifierIndex pure function ([0d0ceae](https://github.com/Lucas-Bur/pix/commit/0d0ceae930c1f7c2d9ba6df6769cd7080a84a1cf))
+* **retrieval:** add identity and camelCase scoring channels ([7df9e05](https://github.com/Lucas-Bur/pix/commit/7df9e05d9b304ef73cc6ceb7866a9f2711c034a2))
+* **services:** add IdentifierExtractor port and live layer ([e98149f](https://github.com/Lucas-Bur/pix/commit/e98149fb59f95db7390549761e97ee1b26feec1d))
+* **services:** dispatch parser by file extension in IdentifierExtractor ([e23b0eb](https://github.com/Lucas-Bur/pix/commit/e23b0eb66eefe1df4394bd923f64610932159f9e))
+* **services:** persist identifier index in .pix/identifiers.json ([fe5687f](https://github.com/Lucas-Bur/pix/commit/fe5687fc759614ef66754c3dbdcb59ccc588ffa9))
+
+
+### Bug Fixes
+
+* **bm25:** use unique-token count for chunk length ([5207490](https://github.com/Lucas-Bur/pix/commit/5207490196c2aabf09ab4747c78973a24d3328f8)), closes [#128](https://github.com/Lucas-Bur/pix/issues/128)
+* **retrieval:** harden identifier index, dedup camelcase hits, filter empty RRF channels ([3282dd9](https://github.com/Lucas-Bur/pix/commit/3282dd9453788992d7d3447c7866d00d38a4609c))
+* **tests:** respect skipExtensions, assert chunk content, narrow skipProcessor ([7eec0f5](https://github.com/Lucas-Bur/pix/commit/7eec0f567f79301ca2ea940a3921933db6690ff1))
+
 ## [0.18.2](https://github.com/Lucas-Bur/pix/compare/pix-v0.18.1...pix-v0.18.2) (2026-06-29)
 
 
