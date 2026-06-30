@@ -125,12 +125,19 @@ const make = Effect.gen(function* () {
       const config = yield* configStore.readConfig()
       const eff = mergeConfig({}, config)
       const extensionRegistry = buildExtensionRegistry(eff.skipExtensions)
+      const skippedSet = new Set(eff.skipExtensions)
 
       yield* d.updateInteractive("Scanning project files...")
       const scanResult = yield* scanner.scanFiles(eff.ignoredPaths, eff.ignoreGitignore)
 
       const knownFiles = scanResult.files.filter((file) => {
+        // buildExtensionRegistry materializes skipped extensions as entries
+        // (with a fail-fast processor), so a presence check is no longer
+        // enough to distinguish "known" from "user-skipped". Filter the
+        // skip set explicitly so the benchmark corpus matches the real
+        // indexing corpus.
         const ext = getExtension(file)
+        if (skippedSet.has(ext)) return false
         return extensionRegistry[ext] !== undefined
       })
 

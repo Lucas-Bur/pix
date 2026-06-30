@@ -42,6 +42,7 @@ interface FileClassification {
 const classifyFiles = (
   files: readonly string[],
   extensionRegistry: Record<string, unknown>,
+  skipExtensions: ReadonlySet<string>,
 ): FileClassification => {
   const knownFiles: string[] = []
   const skippedFiles: string[] = []
@@ -49,6 +50,14 @@ const classifyFiles = (
 
   for (const file of files) {
     const ext = getExtension(file)
+    // buildExtensionRegistry materializes skipped extensions as entries
+    // (with a fail-fast processor). A presence check on the registry is
+    // therefore no longer enough to distinguish "known to pix" from
+    // "user explicitly skipped". Filter the skip set first.
+    if (skipExtensions.has(ext)) {
+      skippedFiles.push(file)
+      continue
+    }
     const entry = extensionRegistry[ext]
     if (!entry) {
       unknownExtensions.add(ext)
@@ -138,6 +147,7 @@ const make = Effect.gen(function* () {
       const { knownFiles, skippedFiles, unknownExtensions } = classifyFiles(
         scanResult.files,
         extensionRegistry,
+        new Set(eff.skipExtensions),
       )
 
       const skipped = yield* Ref.make<readonly SkippedEntry[]>(

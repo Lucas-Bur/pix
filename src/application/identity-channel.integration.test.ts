@@ -64,13 +64,14 @@ describe("identity channel end-to-end", () => {
         topK: 5,
       })
 
-      const fileRanks = results.map((r) => r.file)
-      const exampleRank = fileRanks.indexOf("src/example.ts")
-      const otherRank = fileRanks.indexOf("src/other.ts")
-      // example is present and ranks above other (which may or may not be in the results)
-      expect(exampleRank).toBe(0)
+      // Assert on the actual ranked chunk content, not just the file -- a file
+      // can produce multiple chunks (or change shape) and we want to verify the
+      // *definition* chunk is at the top, not just any chunk from the same file.
+      const definitionRank = results.findIndex((r) => r.text.includes("class DtypeMismatchError"))
+      const otherRank = results.findIndex((r) => r.file === "src/other.ts")
+      expect(definitionRank).toBe(0)
       if (otherRank !== -1) {
-        expect(exampleRank).toBeLessThan(otherRank)
+        expect(definitionRank).toBeLessThan(otherRank)
       }
     }).pipe(Effect.provide(integrationLayer), Effect.scoped))
 

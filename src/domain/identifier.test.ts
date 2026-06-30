@@ -15,6 +15,7 @@ describe("Identifier domain type", () => {
   })
 
   it("accepts the three language-agnostic kinds: function, type, value", () => {
+    // Compile-time check: only these three strings are assignable to IdentifierKind.
     const kinds: IdentifierKind[] = ["function", "type", "value"]
     expect(kinds).toHaveLength(3)
   })
