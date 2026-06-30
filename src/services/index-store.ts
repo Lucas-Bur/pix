@@ -6,11 +6,16 @@ import type { Chunk, Embedding } from "../domain/chunk.js"
 import type { EmbeddingDtype, IndexMeta } from "../domain/dtype.js"
 import { DtypeMismatchError, IndexMetaSchema, VectorDecodeError } from "../domain/dtype.js"
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
+import type { IdentifierIndexMaps } from "../domain/identifier-index.js"
 import { ConfigStore, IndexStore } from "../domain/ports.js"
 import type { Bm25Index, ChunkEntry, IndexStats, SearchData } from "../domain/ports.js"
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/errors/fs-error.js"
 import { buildBm25Index } from "../lib/retrieval/bm25.js"
+import {
+  deserializeIdentifierIndex,
+  serializeIdentifierIndex,
+} from "../lib/retrieval/identifier-index.js"
 import { serializeVectors } from "../lib/vectors/vector-serialization.js"
 import { ConfigStoreLive } from "./config-store.js"
 
@@ -22,6 +27,7 @@ const CHUNKS_FILE = `${STORE_DIR}/chunks.jsonl`
 const VECTORS_FILE = `${STORE_DIR}/vectors.bin`
 const META_FILE = `${STORE_DIR}/index-meta.json`
 const BM25_FILE = `${STORE_DIR}/bm25.json`
+const IDENTIFIERS_FILE = `${STORE_DIR}/identifiers.json`
 
 /** Pre-built Schema instance for chunk encode/decode. */
 const parseJsonChunk = Schema.fromJsonString(ChunkSchema)
@@ -92,6 +98,7 @@ const make = Effect.gen(function* () {
   const vectorsTemp = `${VECTORS_FILE}.tmp`
   const metaTemp = `${META_FILE}.tmp`
   const bm25Temp = `${BM25_FILE}.tmp`
+  const identifiersTemp = `${IDENTIFIERS_FILE}.tmp`
   const seenFiles = yield* Ref.make<Set<string>>(new Set())
   const statsAccumulator = yield* Ref.make<IndexStats>({
     chunks: 0,
@@ -270,6 +277,17 @@ const make = Effect.gen(function* () {
       if (vectorsExists) {
         yield* withFsError(fs.remove(vectorsTemp), "clean stale vectors temp", vectorsTemp)
       }
+      const identifiersExists = yield* withFsError(
+        fs.exists(identifiersTemp),
+        "check identifiers temp",
+      )
+      if (identifiersExists) {
+        yield* withFsError(
+          fs.remove(identifiersTemp),
+          "clean stale identifiers temp",
+          identifiersTemp,
+        )
+      }
     })
 
   const storeBatch = (
@@ -314,6 +332,18 @@ const make = Effect.gen(function* () {
       }))
     })
 
+  const storeIdentifierIndex = (
+    maps: IdentifierIndexMaps,
+  ): Effect.Effect<void, StoreError | DiskFullError> =>
+    Effect.gen(function* () {
+      const json = serializeIdentifierIndex(maps)
+      yield* withFsError(
+        fs.writeFile(identifiersTemp, Buffer.from(json)),
+        "write identifiers temp",
+        identifiersTemp,
+      )
+    })
+
   const storeCommit = (): Effect.Effect<IndexStats, StoreError | DiskFullError> =>
     Effect.gen(function* () {
       const config = yield* configStore
@@ -349,6 +379,11 @@ const make = Effect.gen(function* () {
 
       yield* withFsError(fs.rename(metaTemp, META_FILE), "commit index meta", META_FILE)
       yield* withFsError(fs.rename(bm25Temp, BM25_FILE), "commit bm25 index", BM25_FILE)
+      yield* withFsError(
+        fs.rename(identifiersTemp, IDENTIFIERS_FILE),
+        "commit identifiers",
+        IDENTIFIERS_FILE,
+      )
       yield* withFsError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
       yield* withFsError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
 
@@ -373,6 +408,7 @@ const make = Effect.gen(function* () {
       yield* removeTempIfExists(vectorsTemp, "vectors temp")
       yield* removeTempIfExists(metaTemp, "index meta temp")
       yield* removeTempIfExists(bm25Temp, "bm25 temp")
+      yield* removeTempIfExists(identifiersTemp, "identifiers temp")
     })
 
   const parseChunkEntries = (
@@ -407,6 +443,31 @@ const make = Effect.gen(function* () {
 
   const loadBm25Index = (): Effect.Effect<Bm25Index, StoreError> => loadBm25(fs, BM25_FILE)
 
+  /**
+   * Load the identifier index from disk. Returns empty maps if the file is missing (the index
+   * predates this feature or the user disabled identifier extraction) so the query can still run --
+   * the identity and camelCase scorers will just produce empty results.
+   */
+  const loadIdentifierIndex = (): Effect.Effect<IdentifierIndexMaps, StoreError> =>
+    Effect.gen(function* () {
+      const exists = yield* withReadError(fs.exists(IDENTIFIERS_FILE), "check identifiers file")
+      if (!exists) return { exact: {}, split: {} }
+      const content = yield* withReadError(
+        fs.readFileString(IDENTIFIERS_FILE),
+        "read identifiers",
+        IDENTIFIERS_FILE,
+      )
+      return yield* Effect.try({
+        try: () => deserializeIdentifierIndex(content),
+        catch: (cause) =>
+          new StoreError({
+            message: `Corrupted ${IDENTIFIERS_FILE} -- index may be damaged. Run pix reset and re-index.`,
+            path: IDENTIFIERS_FILE,
+            cause,
+          }),
+      })
+    })
+
   const loadSearchData = (): Effect.Effect<
     SearchData,
     StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
@@ -415,7 +476,8 @@ const make = Effect.gen(function* () {
       const { chunkLines, vectors, dims } = yield* loadIndex()
       const { entries, malformedLines } = parseChunkEntries(chunkLines, vectors, dims)
       const bm25Index = yield* loadBm25Index()
-      return { entries, bm25Index, malformedLines }
+      const identifierIndex = yield* loadIdentifierIndex()
+      return { entries, bm25Index, identifierIndex, malformedLines }
     })
 
   const emptyStatus = {
@@ -490,17 +552,19 @@ const make = Effect.gen(function* () {
       const vectors = yield* removeIfExists(VECTORS_FILE, "vectors")
       const meta = yield* removeIfExists(META_FILE, "index meta")
       const bm25 = yield* removeIfExists(BM25_FILE, "bm25 index")
+      const identifiers = yield* removeIfExists(IDENTIFIERS_FILE, "identifiers")
 
       return {
         deletedChunks: chunks.deleted,
         deletedVectors: vectors.deleted,
-        freedBytes: chunks.freed + vectors.freed + meta.freed + bm25.freed,
+        freedBytes: chunks.freed + vectors.freed + meta.freed + bm25.freed + identifiers.freed,
       }
     })
 
   return {
     storeBegin,
     storeBatch,
+    storeIdentifierIndex,
     storeCommit,
     storeAbort,
     loadSearchData,

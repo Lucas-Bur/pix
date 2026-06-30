@@ -21,6 +21,7 @@ import type {
   InferenceError,
   AllProcessorErrors,
 } from "./errors.js"
+import type { IdentifierIndexMaps } from "./identifier-index.js"
 import type { Identifier } from "./identifier.js"
 
 // === Index options ===
@@ -223,6 +224,11 @@ export interface ChunkEntry {
 export interface SearchData {
   readonly entries: readonly ChunkEntry[]
   readonly bm25Index: Bm25Index
+  /**
+   * Identifier index for the identity and camelCase scoring channels. Empty maps if the file is
+   * missing.
+   */
+  readonly identifierIndex: IdentifierIndexMaps
   readonly malformedLines: number
 }
 
@@ -297,11 +303,19 @@ export class IndexStore extends Context.Service<
       chunks: readonly Chunk[],
       embeddings: readonly Embedding[],
     ) => Effect.Effect<void, StoreError | DiskFullError>
+    /**
+     * Stage the identifier index for commit. Writes to a temp file; the final rename happens in
+     * `storeCommit`. Caller invokes once after collecting all identifiers from the indexer's chunk
+     * stream.
+     */
+    readonly storeIdentifierIndex: (
+      maps: IdentifierIndexMaps,
+    ) => Effect.Effect<void, StoreError | DiskFullError>
     /** Commit staged data to final index files atomically and return accumulated stats. */
     readonly storeCommit: () => Effect.Effect<IndexStats, StoreError | DiskFullError>
     /** Abort staging and clean up temp files without committing. */
     readonly storeAbort: () => Effect.Effect<void, StoreError>
-    /** Load all index data needed for hybrid search (chunks + vectors + BM25 stats). */
+    /** Load all index data needed for hybrid search (chunks + vectors + BM25 + identifiers). */
     readonly loadSearchData: () => Effect.Effect<
       SearchData,
       StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError

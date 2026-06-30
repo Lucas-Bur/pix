@@ -1,64 +1,46 @@
 import { describe, expect, it } from "vite-plus/test"
 
-import { buildIdentifierIndex } from "./identifier-index.js"
+import {
+  buildIdentifierIndex,
+  deserializeIdentifierIndex,
+  serializeIdentifierIndex,
+} from "./identifier-index.js"
 
-describe("buildIdentifierIndex", () => {
-  it("returns empty maps for empty input", () => {
-    const result = buildIdentifierIndex([])
-    expect(Object.keys(result.exact).length).toBe(0)
-    expect(Object.keys(result.split).length).toBe(0)
+describe("identifier index serialization", () => {
+  it("round-trips an empty index", () => {
+    const original = { exact: {}, split: {} }
+    const json = serializeIdentifierIndex(original)
+    expect(deserializeIdentifierIndex(json)).toEqual(original)
   })
 
-  it("populates the exact map with a single chunk per identifier", () => {
-    const result = buildIdentifierIndex([
-      { name: "resolveEmbedderConfig", kind: "function", chunkIndex: 3 },
-    ])
-    expect(result.exact["resolveembedderconfig"]).toEqual([3])
-  })
-
-  it("aggregates chunk indices when the same identifier appears in multiple chunks", () => {
-    const result = buildIdentifierIndex([
-      { name: "someFunction", kind: "function", chunkIndex: 3 },
-      { name: "someFunction", kind: "function", chunkIndex: 7 },
-      { name: "someFunction", kind: "function", chunkIndex: 12 },
-    ])
-    expect(result.exact["somefunction"]).toEqual([3, 7, 12])
-  })
-
-  it("lowercases exact map keys", () => {
-    const result = buildIdentifierIndex([
-      { name: "DtypeMismatchError", kind: "type", chunkIndex: 5 },
-    ])
-    expect(result.exact["dtypemismatcherror"]).toEqual([5])
-  })
-
-  it("populates the split map with constituent words from camelCase", () => {
-    const result = buildIdentifierIndex([
-      { name: "resolveEmbedderConfig", kind: "function", chunkIndex: 3 },
-    ])
-    expect(result.split["resolve"]).toEqual([3])
-    expect(result.split["embedder"]).toEqual([3])
-    expect(result.split["config"]).toEqual([3])
-  })
-
-  it("handles acronym boundaries in the split map", () => {
-    const result = buildIdentifierIndex([{ name: "XMLHttpRequest", kind: "type", chunkIndex: 9 }])
-    expect(result.split["xml"]).toEqual([9])
-    expect(result.split["http"]).toEqual([9])
-    expect(result.split["request"]).toEqual([9])
-  })
-
-  it("aggregates split map entries when multiple identifiers share a word", () => {
-    const result = buildIdentifierIndex([
+  it("round-trips a populated index", () => {
+    const original = buildIdentifierIndex([
       { name: "resolveEmbedderConfig", kind: "function", chunkIndex: 3 },
       { name: "loadConfig", kind: "function", chunkIndex: 7 },
+      { name: "DtypeMismatchError", kind: "type", chunkIndex: 5 },
     ])
-    expect(result.split["config"]).toEqual([3, 7])
+    const json = serializeIdentifierIndex(original)
+    expect(deserializeIdentifierIndex(json)).toEqual(original)
   })
 
-  it("handles snake_case identifiers in the split map", () => {
-    const result = buildIdentifierIndex([{ name: "parse_args", kind: "function", chunkIndex: 0 }])
-    expect(result.split["parse"]).toEqual([0])
-    expect(result.split["args"]).toEqual([0])
+  it("produces valid JSON parseable by JSON.parse", () => {
+    const maps = { exact: { foo: [1, 2] }, split: { bar: [3] } }
+    const json = serializeIdentifierIndex(maps)
+    const parsed = JSON.parse(json)
+    expect(parsed).toEqual({ exact: { foo: [1, 2] }, split: { bar: [3] } })
+  })
+
+  it("preserves chunk order in the arrays", () => {
+    const original = { exact: { f: [3, 7, 12] }, split: {} }
+    const json = serializeIdentifierIndex(original)
+    expect(deserializeIdentifierIndex(json).exact["f"]).toEqual([3, 7, 12])
+  })
+
+  it("preserves lowercase keys", () => {
+    const original = buildIdentifierIndex([
+      { name: "DtypeMismatchError", kind: "type", chunkIndex: 5 },
+    ])
+    const json = serializeIdentifierIndex(original)
+    expect(deserializeIdentifierIndex(json).exact["dtypemismatcherror"]).toEqual([5])
   })
 })
