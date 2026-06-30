@@ -52,7 +52,9 @@
     "pix": ""
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0"
+    "@huggingface/transformers": "^4.2.0",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-typescript": "^0.21.2"
   },
   "devDependencies": {
     "@clack/prompts": "^1.4.0",
@@ -80,7 +82,9 @@
       "msgpackr-extract",
       "onnxruntime-node",
       "protobufjs",
-      "sharp"
+      "sharp",
+      "tree-sitter",
+      "tree-sitter-typescript"
     ]
   }
 }
