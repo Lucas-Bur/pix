@@ -17,7 +17,6 @@ import { deepMerge } from "../lib/deep-merge.js"
 import { withConfigError } from "../lib/errors/fs-error.js"
 import { isPlatformReason } from "../lib/errors/platform-error.js"
 import { ModelRegistry, ModelRegistryLive } from "./models.js"
-export { ConfigStore }
 
 const CONFIG_DIR = ".pix"
 const CONFIG_PATH = `${CONFIG_DIR}/config.json`
@@ -156,26 +155,6 @@ const make = Effect.gen(function* () {
       }),
     )
 
-  const readConfigWithConflicts = () =>
-    readAndHeal(fs, registry).pipe(
-      Effect.flatMap(({ config, conflicts }) => {
-        const unhealed = conflicts.filter((c) => !c.healed)
-        if (unhealed.length > 0) {
-          return Effect.fail(
-            new ConfigHealError({
-              conflicts: unhealed.map((c) => ({
-                field: c.field,
-                currentValue: c.currentValue,
-                validOptions: c.validOptions,
-                reason: c.reason,
-              })),
-            }),
-          )
-        }
-        return Effect.succeed({ config, conflicts })
-      }),
-    )
-
   const healConfig = () => readAndHeal(fs, registry)
 
   const configExists = (): Effect.Effect<boolean> =>
@@ -183,7 +162,7 @@ const make = Effect.gen(function* () {
       return yield* fs.exists(CONFIG_PATH)
     }).pipe(Effect.catch(() => Effect.succeed(false)))
 
-  return { writeConfig, readConfig, readConfigWithConflicts, healConfig, configExists } as const
+  return { writeConfig, readConfig, healConfig, configExists } as const
 })
 
 export const ConfigStoreLive = Layer.provideMerge(

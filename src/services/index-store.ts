@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, Ref, Schema } from "effect"
+import { Effect, Exit, Layer, Option, Ref, Schema, Stream } from "effect"
 import { FileSystem } from "effect/FileSystem"
 
 import { ChunkSchema } from "../domain/chunk.js"
@@ -8,7 +8,13 @@ import { DtypeMismatchError, IndexMetaSchema, VectorDecodeError } from "../domai
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
 import type { IdentifierIndexMaps } from "../domain/identifier-index.js"
 import { ConfigStore, IndexStore } from "../domain/ports.js"
-import type { Bm25Index, ChunkEntry, IndexStats, SearchData } from "../domain/ports.js"
+import type {
+  Bm25Index,
+  ChunkEntry,
+  IndexStats,
+  PersistIndexInput,
+  SearchData,
+} from "../domain/ports.js"
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/errors/fs-error.js"
 import { buildBm25Index } from "../lib/retrieval/bm25.js"
@@ -480,14 +486,22 @@ const make = Effect.gen(function* () {
       return { entries, bm25Index, identifierIndex, malformedLines }
     })
 
-  const emptyStatus = {
+  const emptyStatus: {
+    chunks: number
+    files: number
+    model: string
+    lastIndex: number
+    totalLines: number
+    byteSize: number
+    validationErrors: readonly ChunkValidationError[]
+  } = {
     chunks: 0,
     files: 0,
     model: "",
     lastIndex: 0,
     totalLines: 0,
     byteSize: 0,
-    validationErrors: [] as readonly ChunkValidationError[],
+    validationErrors: [],
   }
 
   const buildStatusPayload = (
@@ -561,12 +575,30 @@ const make = Effect.gen(function* () {
       }
     })
 
+  const persistIndex = <E>(
+    input: PersistIndexInput<E>,
+  ): Effect.Effect<IndexStats, StoreError | DiskFullError | E> =>
+    Effect.gen(function* () {
+      yield* storeBegin()
+      const exit = yield* Effect.exit(
+        Effect.gen(function* () {
+          yield* Stream.runForEach(input.chunks, (batch) =>
+            storeBatch(
+              batch.map(([chunk]) => chunk),
+              batch.map(([, embedding]) => embedding),
+            ),
+          )
+          yield* storeIdentifierIndex(input.identifierIndex)
+          return yield* storeCommit()
+        }),
+      )
+      if (Exit.isSuccess(exit)) return exit.value
+      yield* storeAbort()
+      return yield* Effect.failCause(exit.cause)
+    })
+
   return {
-    storeBegin,
-    storeBatch,
-    storeIdentifierIndex,
-    storeCommit,
-    storeAbort,
+    persistIndex,
     loadSearchData,
     getStatus,
     reset,

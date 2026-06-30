@@ -1,14 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/refs/heads/main/schema.json",
-  "production": {
-    "deadCode": true,
-    "health": true,
-    "dupes": true
-  },
-  "duplicates": {
-    "ignore": ["**/*.test.ts", "**/*.test.tsx", "tests/**"]
-  },
-  "health": {
-    "ignore": ["**/*.test.ts", "**/*.test.tsx", "tests/**"]
-  }
+  "production": false,
+  "entry": [
+    "src/index.ts",
+    "tests/scripts/bench-startup.mjs",
+    "tests/scripts/check-dtype-output.mjs"
+  ]
 }

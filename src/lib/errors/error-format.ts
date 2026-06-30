@@ -32,6 +32,13 @@ export interface FormattedError {
   readonly code: string
   readonly message: string
   readonly cause: string
+  /** Optional context fields carried over from the source error when present and string-shaped. */
+  readonly model?: string
+  readonly configModel?: string
+  readonly indexModel?: string
+  readonly file?: string
+  readonly path?: string
+  readonly stack?: string
 }
 
 /**

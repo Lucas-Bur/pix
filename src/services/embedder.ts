@@ -11,10 +11,10 @@ import {
   type EmbedderDeviceConfig,
   type BoundEmbedder,
 } from "../domain/ports.js"
+import { resolveEmbedderConfig } from "../lib/embedder/resolve.js"
 import { ConfigStoreLive } from "./config-store.js"
 import { DeviceDetection, DeviceDetectionLive, type DeviceType } from "./device-detect.js"
 import { MODEL_REGISTRY } from "./models.js"
-export { Embedder }
 
 interface FallbackInfo {
   readonly originalDevice: string
@@ -29,8 +29,7 @@ interface FallbackInfo {
  * `tensor.data` as `Float32Array`, regardless of weight dtype. Quantization is applied to weights
  * only; the forward pass still produces float32 embeddings.
  *
- * Verified experimentally (scripts/check-dtype-output.mjs): fp32 → Float32Array, q8 → Float32Array,
- * q4 → Float32Array
+ * See ADR-0008 for the experimental verification across fp32/q8/q4 weight dtypes.
  */
 const extractF32Data = (tensor: Tensor): Float32Array => tensor.data as Float32Array
 
@@ -138,44 +137,42 @@ const withGpuFallback = (
     return makeEmbedBatch(getCpuExtractor, dims, dtype)
   })
 
-const resolveEmbedderConfig = (
+const resolveEmbedderDeviceConfig = (
   configStore: typeof ConfigStore.Service,
   detection: typeof DeviceDetection.Service,
 ): Effect.Effect<EmbedderDeviceConfig, ModelLoadError> =>
   Effect.gen(function* () {
+    const resolved = yield* resolveEmbedderConfig(configStore)
+    const supportedDtypes = MODEL_REGISTRY[resolved.model]?.dtypes ?? []
+    if (!supportedDtypes.includes(resolved.dtype)) {
+      return yield* new ModelLoadError({
+        message: `Unsupported dtype "${resolved.dtype}" for model "${resolved.model}". Supported: ${supportedDtypes.join(", ")}`,
+        model: resolved.model,
+      })
+    }
+
     const config = yield* configStore
       .readConfig()
       .pipe(Effect.catch(() => Effect.succeed(undefined)))
-
-    const model = config?.embedder.model ?? "Xenova/all-MiniLM-L6-v2"
     const deviceConfig = config?.embedder.device ?? "auto"
-    const dtype = config?.embedder.dtype ?? "fp32"
+    const device =
+      deviceConfig === "auto"
+        ? yield* detection.detect(resolved.model, resolved.dtype)
+        : deviceConfig
 
-    const modelInfo = MODEL_REGISTRY[model]
-    if (!modelInfo) {
-      return yield* new ModelLoadError({
-        message: `Unknown embedding model "${model}". Available: ${Object.keys(MODEL_REGISTRY).join(", ")}`,
-        model,
-      })
+    return {
+      model: resolved.model,
+      device,
+      dtype: resolved.dtype,
+      dims: resolved.dims,
     }
-
-    if (!modelInfo.dtypes.includes(dtype)) {
-      return yield* new ModelLoadError({
-        message: `Unsupported dtype "${dtype}" for model "${model}". Supported: ${modelInfo.dtypes.join(", ")}`,
-        model,
-      })
-    }
-
-    const device = deviceConfig === "auto" ? yield* detection.detect(model, dtype) : deviceConfig
-
-    return { model, device, dtype, dims: modelInfo.dims }
   })
 
 const make = Effect.gen(function* () {
   const configStore = yield* ConfigStore
   const detection = yield* DeviceDetection
   const d = yield* Display
-  const cfg = yield* resolveEmbedderConfig(configStore, detection)
+  const cfg = yield* resolveEmbedderDeviceConfig(configStore, detection)
   const fallbackRef = yield* Ref.make<Option.Option<FallbackInfo>>(Option.none())
   const bound = yield* withGpuFallback(cfg.model, cfg.device, cfg.dtype, cfg.dims, d, fallbackRef)
   const getExtractor = yield* Effect.cached(Effect.succeed(bound))

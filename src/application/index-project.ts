@@ -98,7 +98,7 @@ const classifyAndCollectChunks = (
         .pipe(
           Effect.catch((err) =>
             Ref.update(skipped, (prev) => [...prev, { path: file, reason: err.message }]).pipe(
-              Effect.map(() => [] as DomainChunk[]),
+              Effect.map((): DomainChunk[] => []),
             ),
           ),
         )
@@ -207,33 +207,28 @@ const make = Effect.gen(function* () {
     IndexError
   > =>
     Effect.gen(function* () {
-      yield* indexStore.storeBegin()
-      yield* indexStore.storeIdentifierIndex(identifierIndex)
       const embeddedRef = yield* Ref.make(0)
 
       return yield* d.progress(
         { message: `Embedding ${totalChunks} chunks...`, max: totalChunks },
-        Stream.fromIterable(chunks).pipe(
-          Stream.grouped(ctx.eff.batchSize),
-          Stream.mapEffect((batch: readonly DomainChunk[]) =>
-            Effect.gen(function* () {
-              const texts = batch.map((c: DomainChunk) => c.text)
-              const embeddings = yield* embedder.batch(texts)
-              yield* indexStore.storeBatch(batch, embeddings)
-              const count = yield* Ref.updateAndGet(embeddedRef, (n) => n + batch.length)
-              yield* d.updateInteractive({
-                message: `Embedding ${count} of ${totalChunks} chunks`,
-                setTo: count,
-              })
-            }),
+        indexStore.persistIndex({
+          chunks: Stream.fromIterable(chunks).pipe(
+            Stream.grouped(ctx.eff.batchSize),
+            Stream.mapEffect((batch: readonly DomainChunk[]) =>
+              Effect.gen(function* () {
+                const texts = batch.map((c: DomainChunk) => c.text)
+                const embeddings = yield* embedder.batch(texts)
+                const count = yield* Ref.updateAndGet(embeddedRef, (n) => n + batch.length)
+                yield* d.updateInteractive({
+                  message: `Embedding ${count} of ${totalChunks} chunks`,
+                  setTo: count,
+                })
+                return batch.map((chunk, i) => [chunk, embeddings[i]!] as const)
+              }),
+            ),
           ),
-          Stream.runDrain,
-          Effect.matchEffect({
-            onSuccess: () => indexStore.storeCommit(),
-            onFailure: (err) =>
-              indexStore.storeAbort().pipe(Effect.ignore, Effect.andThen(Effect.fail(err))),
-          }),
-        ),
+          identifierIndex,
+        }),
       )
     })
 

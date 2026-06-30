@@ -24,14 +24,13 @@ type MockExtractor = (input: string | string[]) => Promise<{
   dims: number[]
 }>
 
-const makeMockExtractor = (): MockExtractor =>
-  vi.fn((input: string | string[]) => {
+const makeMockExtractor = (): MockExtractor => {
+  const fn = vi.fn(async (input: string | string[]) => {
     const n = Array.isArray(input) ? input.length : 1
-    return Promise.resolve({
-      data: new Float32Array(n * DIMS),
-      dims: [n, DIMS],
-    })
-  }) as unknown as MockExtractor
+    return { data: new Float32Array(n * DIMS), dims: [n, DIMS] }
+  })
+  return fn
+}
 
 const buildLayer = (configJson: string) => {
   const { ref, layer: displayLayer } = silentDisplay()
@@ -180,7 +179,9 @@ describe("OnnxEmbedder config validation", () => {
         }),
       )
       expect(error).toBeInstanceOf(ModelLoadError)
-      expect((error as ModelLoadError).model).toBe("unknown/model")
+      if (error instanceof ModelLoadError) {
+        expect(error.model).toBe("unknown/model")
+      }
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
@@ -201,7 +202,9 @@ describe("OnnxEmbedder config validation", () => {
         }),
       )
       expect(error).toBeInstanceOf(ModelLoadError)
-      expect((error as ModelLoadError).message).toContain("q4")
+      if (error instanceof ModelLoadError) {
+        expect(error.message).toContain("q4")
+      }
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 })

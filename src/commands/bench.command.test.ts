@@ -4,11 +4,14 @@ import { expect, test } from "vite-plus/test"
 import { runCommand } from "../../tests/test-utils/command.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import type { DisplayEntry } from "../display/entries.js"
 import { benchCommand } from "./bench.js"
 
 const run = runCommand(benchCommand)
 
-const assertJsonData = (entries: Ref.Ref<readonly any[]>): Effect.Effect<Record<string, unknown>> =>
+const assertJsonData = (
+  entries: Ref.Ref<ReadonlyArray<DisplayEntry>>,
+): Effect.Effect<Record<string, unknown>> =>
   Effect.gen(function* () {
     const list = yield* Ref.get(entries)
     expect(list[0]._tag).toBe("json")

@@ -88,15 +88,7 @@ export const assertCommandError = <E, R>(
     }
   })
 
-type FailingMethod =
-  | "storeBegin"
-  | "storeBatch"
-  | "storeIdentifierIndex"
-  | "storeCommit"
-  | "storeAbort"
-  | "loadSearchData"
-  | "getStatus"
-  | "reset"
+type FailingMethod = "persistIndex" | "loadSearchData" | "getStatus" | "reset"
 
 /** Create an IndexStore layer where one method fails and all others succeed. */
 export const makeFailingIndexStore = (
@@ -106,15 +98,10 @@ export const makeFailingIndexStore = (
   const failEffect = Effect.fail(new StoreError({ message }))
 
   return Layer.succeed(IndexStore, {
-    storeBegin: () => (failingMethod === "storeBegin" ? failEffect : Effect.void),
-    storeBatch: () => (failingMethod === "storeBatch" ? failEffect : Effect.void),
-    storeIdentifierIndex: () =>
-      failingMethod === "storeIdentifierIndex" ? failEffect : Effect.void,
-    storeCommit: () =>
-      failingMethod === "storeCommit"
+    persistIndex: () =>
+      failingMethod === "persistIndex"
         ? failEffect
         : Effect.succeed({ chunks: 0, files: 0, totalLines: 0, byteSize: 0 }),
-    storeAbort: () => (failingMethod === "storeAbort" ? failEffect : Effect.void),
     loadSearchData: () =>
       failingMethod === "loadSearchData"
         ? failEffect
@@ -167,8 +154,6 @@ export const makeFailingConfigStore = (
   const fail = Effect.fail(new ConfigError({ message }))
   return Layer.succeed(ConfigStore, {
     readConfig: () => (method === "readConfig" ? fail : Effect.succeed(DEFAULT_CONFIG)),
-    readConfigWithConflicts: () =>
-      method === "readConfig" ? fail : Effect.succeed({ config: DEFAULT_CONFIG, conflicts: [] }),
     healConfig: () =>
       method === "healConfig" ? fail : Effect.succeed({ config: DEFAULT_CONFIG, conflicts: [] }),
     writeConfig: () => (method === "writeConfig" ? fail : Effect.void),

@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Stream } from "effect"
 import { FileSystem } from "effect/FileSystem"
 import { expect, test } from "vite-plus/test"
 
@@ -6,6 +6,7 @@ import { makeChunk, makeEmbedding } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { GetStatus } from "../application/get-status.js"
+import { StoreError } from "../domain/errors.js"
 import { IndexStore } from "../domain/ports.js"
 import { IndexStoreLive } from "./index-store.js"
 
@@ -17,9 +18,15 @@ const storeFixture = (
 ) =>
   Effect.gen(function* () {
     const store = yield* IndexStore
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
+    yield* store.persistIndex({
+      chunks: Stream.fromIterable(chunks).pipe(
+        Stream.map(
+          (chunk, i) => [chunk, embeddings[i]!] as [typeof chunk, (typeof embeddings)[number]],
+        ),
+        Stream.map((pair) => [pair] as const),
+      ),
+      identifierIndex: { exact: {}, split: {} },
+    })
     return store
   })
 
@@ -43,7 +50,7 @@ test("IndexStore.reset returns 0/0/false when no index exists", () =>
     expect(resetResult.freedBytes).toBe(0)
   }).pipe(Effect.provide(Layer.provideMerge(IndexStoreLive, memoryFsLayer({}))), Effect.scoped))
 
-test("IndexStore.store writes chunks and vectors to index files", () =>
+test("IndexStore.persistIndex writes chunks and vectors to index files", () =>
   Effect.gen(function* () {
     const store = yield* storeFixture([makeChunk()], [makeEmbedding()])
     const status = yield* store.getStatus()
@@ -62,7 +69,7 @@ test("IndexStore.reset deletes index files when they exist", () =>
     expect(result.freedBytes).toBeGreaterThan(0)
   }).pipe(Effect.provide(isLayer), Effect.scoped))
 
-test("IndexStore.store works when .pix directory already exists", () =>
+test("IndexStore.persistIndex works when .pix directory already exists", () =>
   Effect.gen(function* () {
     const store = yield* storeFixture([makeChunk()], [makeEmbedding()])
     const status = yield* store.getStatus()
@@ -91,7 +98,7 @@ test("IndexStore.getStatus handles chunks.jsonl with malformed lines", () =>
     expect(status.validationErrors[0].message).toContain("malformed")
   }).pipe(Effect.provide(isLayer), Effect.scoped))
 
-test("IndexStore.storeCommit writes bm25.json", () =>
+test("IndexStore.persistIndex writes bm25.json", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem
     yield* storeFixture([makeChunk()], [makeEmbedding()])
@@ -128,33 +135,49 @@ test("IndexStore.reset deletes bm25.json", () =>
 
 test("IndexStore.loadSearchData fails when bm25.json is missing", () =>
   Effect.gen(function* () {
-    const store = yield* IndexStore
-    yield* store.storeBegin()
-    yield* store.storeBatch([makeChunk()], [makeEmbedding()])
-    yield* store.storeCommit()
-
+    yield* storeFixture([makeChunk()], [makeEmbedding()])
     const fs = yield* FileSystem
     yield* fs.remove(".pix/bm25.json")
-
+    const store = yield* IndexStore
     const result = yield* Effect.result(store.loadSearchData())
     expect(result._tag).toBe("Failure")
   }).pipe(Effect.provide(isLayer), Effect.scoped))
 
-test("IndexStore.storeCommit cleans up tmp files when commit fails", () =>
+test("IndexStore.persistIndex aborts and cleans up when stream errors mid-write", () =>
   Effect.gen(function* () {
     const store = yield* IndexStore
     const fs = yield* FileSystem
-    yield* store.storeBegin()
-    const result = yield* Effect.result(store.storeCommit())
+
+    const okBatch: ReadonlyArray<
+      readonly [ReturnType<typeof makeChunk>, ReturnType<typeof makeEmbedding>]
+    > = [[makeChunk(), makeEmbedding()]]
+    const failingStream: Stream.Stream<typeof okBatch, StoreError> = Stream.fromEffect(
+      Effect.succeed(okBatch),
+    ).pipe(
+      Stream.concat(
+        Stream.fromEffect(Effect.fail(new StoreError({ message: "embedder crashed mid-batch" }))),
+      ),
+    )
+
+    const result = yield* Effect.result(
+      store.persistIndex({
+        chunks: failingStream,
+        identifierIndex: { exact: {}, split: {} },
+      }),
+    )
     expect(result._tag).toBe("Failure")
+
     const chunksTmpExists = yield* fs.exists(".pix/chunks.jsonl.tmp")
     const vectorsTmpExists = yield* fs.exists(".pix/vectors.bin.tmp")
     const metaTmpExists = yield* fs.exists(".pix/index-meta.json.tmp")
     const bm25TmpExists = yield* fs.exists(".pix/bm25.json.tmp")
+    const identifiersTmpExists = yield* fs.exists(".pix/identifiers.json.tmp")
     expect(chunksTmpExists).toBe(false)
     expect(vectorsTmpExists).toBe(false)
     expect(metaTmpExists).toBe(false)
     expect(bm25TmpExists).toBe(false)
+    expect(identifiersTmpExists).toBe(false)
+
     const chunksExists = yield* fs.exists(".pix/chunks.jsonl")
     const vectorsExists = yield* fs.exists(".pix/vectors.bin")
     expect(chunksExists).toBe(false)

@@ -11,7 +11,6 @@ import type {
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type { Config } from "../domain/config.js"
-import type { EmbeddingDtype } from "../domain/dtype.js"
 import type {
   AllConfigErrors,
   ChunkerError,
@@ -21,12 +20,12 @@ import type {
 import { ConfigError, ModelLoadError } from "../domain/errors.js"
 import { Display, Embedder, type EmbedderDeviceConfig } from "../domain/ports.js"
 import { ConfigStore, Scanner, Chunker, ContentExtractor } from "../domain/ports.js"
-import { computeRecommendations } from "../lib/bench/format.js"
+import { computeRecommendations, computeRecommendation } from "../lib/bench/format.js"
 import { getExtension } from "../lib/config/extension.js"
 import { mergeConfig } from "../lib/config/validation.js"
+import { resolveEmbedderConfig } from "../lib/embedder/resolve.js"
 import { buildExtensionRegistry } from "../lib/registry.js"
 import { DeviceDetection } from "../services/device-detect.js"
-import { MODEL_REGISTRY } from "../services/models.js"
 
 type CorpusError = AllConfigErrors | ChunkerError | AllProcessorErrors | DiskFullError
 
@@ -57,41 +56,6 @@ const cycleChunks = (chunks: readonly DomainChunk[], needed: number): DomainChun
 const totalWork = (opts: BenchOptions): number => {
   const maxBatch = Math.max(...opts.batchSizes)
   return opts.warmup * maxBatch + opts.measureBatches * maxBatch
-}
-
-const computeRecommendation = (
-  measurements: readonly BenchMeasurement[],
-  profile: "throughput" | "cold" | "balanced",
-): BenchRecommendation | null => {
-  const ok = measurements.filter((m) => m.status === "ok")
-  if (ok.length === 0) return null
-
-  let best: BenchMeasurement
-  if (profile === "throughput") {
-    best = ok.reduce((a, b) => (a.warmChunksPerSec > b.warmChunksPerSec ? a : b))
-  } else if (profile === "cold") {
-    best = ok.reduce((a, b) => (a.coldLatencyMs < b.coldLatencyMs ? a : b))
-  } else {
-    const maxCold = Math.max(...ok.map((m) => m.coldLatencyMs))
-    const minCold = Math.min(...ok.map((m) => m.coldLatencyMs))
-    const maxWarm = Math.max(...ok.map((m) => m.warmChunksPerSec))
-    const minWarm = Math.min(...ok.map((m) => m.warmChunksPerSec))
-
-    const coldRange = maxCold - minCold || 1
-    const warmRange = maxWarm - minWarm || 1
-
-    best = ok.reduce((best, m) => {
-      const coldScore = 1 - (m.coldLatencyMs - minCold) / coldRange
-      const warmScore = (m.warmChunksPerSec - minWarm) / warmRange
-      const score = 0.7 * coldScore + 0.3 * warmScore
-      const bestColdScore = 1 - (best.coldLatencyMs - minCold) / coldRange
-      const bestWarmScore = (best.warmChunksPerSec - minWarm) / warmRange
-      const bestScore = 0.7 * bestColdScore + 0.3 * bestWarmScore
-      return score > bestScore ? m : best
-    })
-  }
-
-  return { device: best.device, batchSize: best.batchSize, profile }
 }
 
 type BenchError = CorpusError | ModelLoadError
@@ -184,26 +148,6 @@ const make = Effect.gen(function* () {
       }
     })
 
-  const getEmbedderConfig = (): Effect.Effect<
-    { model: string; dtype: EmbeddingDtype; dims: number },
-    ModelLoadError
-  > =>
-    Effect.gen(function* () {
-      const config = yield* configStore
-        .readConfig()
-        .pipe(Effect.catch(() => Effect.succeed(undefined)))
-      const model = config?.embedder.model ?? "Xenova/all-MiniLM-L6-v2"
-      const dtype = (config?.embedder.dtype ?? "fp32") as EmbeddingDtype
-      const modelInfo = MODEL_REGISTRY[model]
-      if (!modelInfo) {
-        return yield* new ModelLoadError({
-          message: `Unknown embedding model "${model}"`,
-          model,
-        })
-      }
-      return { model, dtype, dims: modelInfo.dims }
-    })
-
   const measureColdStart = (
     devCfg: EmbedderDeviceConfig,
     corpus: Corpus,
@@ -286,8 +230,6 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  type BenchError = CorpusError | ModelLoadError
-
   const bench = (opts: BenchOptions): Effect.Effect<BenchResult, BenchError> =>
     Effect.gen(function* () {
       const corpus = yield* prepareCorpus(opts)
@@ -302,7 +244,7 @@ const make = Effect.gen(function* () {
         }
       }
 
-      const ecfg = yield* getEmbedderConfig()
+      const ecfg = yield* resolveEmbedderConfig(configStore)
       const availableDevices = yield* detection.detectAll(ecfg.model, ecfg.dtype)
 
       if (availableDevices.length === 0) {

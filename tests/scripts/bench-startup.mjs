@@ -4,7 +4,7 @@ import { resolve, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const ROOT = resolve(__dirname, "..")
+const ROOT = resolve(__dirname, "../..")
 const PIX = resolve(ROOT, "dist/index.mjs")
 const LOG = resolve(ROOT, "bench-results.log")
 const RUNS = 5

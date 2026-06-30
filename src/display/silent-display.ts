@@ -52,21 +52,21 @@ export const SilentDisplayLive = (
             }),
       ]),
 
-    select: <T>(
+    select: (
       message: string,
-      options: ReadonlyArray<{ readonly value: T; readonly label: string }>,
-      defaultValue?: T,
-    ): Effect.Effect<T, InteractiveError> =>
+      options: ReadonlyArray<{ readonly value: string; readonly label: string }>,
+      defaultValue?: string,
+    ): Effect.Effect<string, InteractiveError> =>
       Effect.gen(function* () {
         yield* Ref.update(ref, (entries) => [
           ...entries,
           DisplayEntry.select({
             message,
             options: options.map((o) => o.label),
-            defaultValue: defaultValue as string | undefined,
+            defaultValue,
           }),
         ])
-        if (selectValue !== undefined) return selectValue as T
+        if (selectValue !== undefined) return selectValue
         if (defaultValue !== undefined) return defaultValue
         return yield* new InteractiveError({ message: "No default value for select" })
       }),

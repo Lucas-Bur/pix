@@ -2,7 +2,8 @@ import { Effect, Layer } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
-import { Scanner, ScannerLive } from "./scanner.ts"
+import { Scanner } from "../domain/ports.js"
+import { ScannerLive } from "./scanner.ts"
 
 const fixtures = {
   "src/commands/init.ts": "export const init = () => {}",

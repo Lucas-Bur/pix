@@ -1,4 +1,5 @@
 import { Context, Effect } from "effect"
+import type { Stream } from "effect"
 
 import type { Chunk, Embedding } from "./chunk.js"
 import type { Config } from "./config.js"
@@ -79,8 +80,6 @@ export class ConfigStore extends Context.Service<
   {
     /** Read and heal config in memory. Fails on unhealable conflicts (unknown model). */
     readonly readConfig: () => Effect.Effect<Config, AllConfigErrors>
-    /** Read and heal config, returning conflicts for warning. Fails on unhealable conflicts. */
-    readonly readConfigWithConflicts: () => Effect.Effect<HealPlan, AllConfigErrors>
     /** Read and heal config, returning a full plan with all conflicts (including unhealed). */
     readonly healConfig: () => Effect.Effect<
       HealPlan,
@@ -291,32 +290,30 @@ export interface SearchResponse {
   readonly validationErrors: readonly ChunkValidationError[]
 }
 
+/** One batch of `(chunk, embedding)` pairs handed to `IndexStore.persistIndex`. */
+export type ChunkBatch = ReadonlyArray<readonly [Chunk, Embedding]>
+
+/** Input handed to `IndexStore.persistIndex` — a stream of batches plus the identifier index. */
+export interface PersistIndexInput<E = never> {
+  /** Stream of chunk/embedding batches. Drained lazily; each batch is persisted as it arrives. */
+  readonly chunks: Stream.Stream<ChunkBatch, E>
+  /** Identifier index for the four-channel hybrid retrieval. */
+  readonly identifierIndex: IdentifierIndexMaps
+}
+
 /** Port for persisting chunks and embeddings and querying the index. */
 export class IndexStore extends Context.Service<
   IndexStore,
   {
-    /** Initialize transactional staging: clean stale temp files and reset accumulators. */
-    readonly storeBegin: () => Effect.Effect<void, StoreError | DiskFullError>
     /**
-     * Append a batch of chunks and embeddings to staging temp files. Called per batch during
-     * streaming; sequential with no interleaving.
+     * Persist a complete index: stream chunk/embedding batches, then atomically commit to
+     * `chunks.jsonl`, `vectors.bin`, `index-meta.json`, `bm25.json`, and `identifiers.json`. The
+     * adapter owns the begin/batch/commit/abort lifecycle internally — temp files are cleaned up on
+     * any failure (stream error, batch write error, commit error). Returns final stats on success.
      */
-    readonly storeBatch: (
-      chunks: readonly Chunk[],
-      embeddings: readonly Embedding[],
-    ) => Effect.Effect<void, StoreError | DiskFullError>
-    /**
-     * Stage the identifier index for commit. Writes to a temp file; the final rename happens in
-     * `storeCommit`. Caller invokes once after collecting all identifiers from the indexer's chunk
-     * stream.
-     */
-    readonly storeIdentifierIndex: (
-      maps: IdentifierIndexMaps,
-    ) => Effect.Effect<void, StoreError | DiskFullError>
-    /** Commit staged data to final index files atomically and return accumulated stats. */
-    readonly storeCommit: () => Effect.Effect<IndexStats, StoreError | DiskFullError>
-    /** Abort staging and clean up temp files without committing. */
-    readonly storeAbort: () => Effect.Effect<void, StoreError>
+    readonly persistIndex: <E>(
+      input: PersistIndexInput<E>,
+    ) => Effect.Effect<IndexStats, StoreError | DiskFullError | E>
     /** Load all index data needed for hybrid search (chunks + vectors + BM25 + identifiers). */
     readonly loadSearchData: () => Effect.Effect<
       SearchData,
@@ -409,11 +406,15 @@ export interface DisplayService {
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, R>
   readonly updateInteractive: (payload: DisplayUpdatePayload) => Effect.Effect<void>
-  readonly select: <T>(
+  /**
+   * Interactive single-select prompt. Returns the selected option's value as a string; clack
+   * symbol-cancel is reported as an `InteractiveError` failure.
+   */
+  readonly select: (
     message: string,
-    options: ReadonlyArray<SelectOption<T>>,
-    defaultValue?: T,
-  ) => Effect.Effect<T, InteractiveError>
+    options: ReadonlyArray<SelectOption<string>>,
+    defaultValue?: string,
+  ) => Effect.Effect<string, InteractiveError>
   readonly json: (data: unknown) => Effect.Effect<void>
 }
 
