@@ -28,12 +28,12 @@ const make = Effect.gen(function* () {
     fs.readDirectory(dir).pipe(
       Effect.map((entries) => ({ entries, skipped: null })),
       Effect.catch((error) =>
-        Effect.succeed({
-          entries: [] as string[],
+        Effect.succeed<{ entries: string[]; skipped: SkippedEntry }>({
+          entries: [],
           skipped: {
             path: dir,
             reason: `Could not read directory: ${String(error)}`,
-          } satisfies SkippedEntry,
+          },
         }),
       ),
     )
@@ -214,4 +214,3 @@ const make = Effect.gen(function* () {
 })
 
 export const ScannerLive = Layer.effect(Scanner, make)
-export { Scanner }

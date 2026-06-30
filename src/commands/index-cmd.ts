@@ -22,16 +22,16 @@ const buildIndexOptions = (args: {
   ignoreGitignore: boolean
 }): IndexOptions => {
   const cliSkipExtensions = Option.match(args.skipExtensions, {
-    onNone: () => [] as string[],
+    onNone: (): string[] => [],
     onSome: splitCsv,
   })
   const cliIgnorePaths = [
     ...Option.match(args.ignorePath, {
-      onNone: () => [] as string[],
+      onNone: (): string[] => [],
       onSome: (v) => [v.trim()].filter((s) => s.length > 0),
     }),
     ...Option.match(args.ignorePaths, {
-      onNone: () => [] as string[],
+      onNone: (): string[] => [],
       onSome: splitCsv,
     }),
   ]

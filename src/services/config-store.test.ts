@@ -10,7 +10,8 @@ const expectLeft = <A>(result: Result.Result<unknown, A>): A => {
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { DEFAULT_CONFIG } from "../domain/config.ts"
-import { ConfigStore, ConfigStoreLive } from "./config-store.ts"
+import { ConfigStore } from "../domain/ports.js"
+import { ConfigStoreLive } from "./config-store.ts"
 import { ModelRegistryLive } from "./models.ts"
 
 const makeLayer = (contents?: FileTree) =>
@@ -164,10 +165,10 @@ test("readConfig heals unsupported dtype with model defaultDtype", () =>
     ),
   ))
 
-test("readConfigWithConflicts returns healed dtype as a conflict", () =>
+test("healConfig returns healed dtype as a conflict", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = yield* store.readConfigWithConflicts()
+    const result = yield* store.healConfig()
     expect(result.config.embedder.dtype).toBe("fp32")
     expect(result.conflicts).toHaveLength(1)
     expect(result.conflicts[0].field).toBe("embedder.dtype")

@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer } from "effect"
+import { Cause, Effect, Exit, Layer, Stream } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { makeChunk, makeEmbedding, makeConfigJson } from "../../tests/test-utils/fixtures.js"
@@ -56,9 +56,12 @@ const indexFixture = (
 ) =>
   Effect.gen(function* () {
     const store = yield* IndexStore
-    yield* store.storeBegin()
-    yield* store.storeBatch(chunks, embeddings)
-    yield* store.storeCommit()
+    yield* store.persistIndex({
+      chunks: Effect.succeed(chunks.map((chunk, i) => [chunk, embeddings[i]!] as const)).pipe(
+        Stream.fromEffect,
+      ),
+      identifierIndex: { exact: {}, split: {} },
+    })
   })
 
 test("QueryProject.queryProject returns hybrid-ranked results via RRF", () =>

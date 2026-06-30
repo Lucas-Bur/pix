@@ -206,29 +206,26 @@ export const ClackDisplayLive = Layer.effect(
           }
         }),
 
-      select: <T>(
+      select: (
         message: string,
-        options: ReadonlyArray<{ readonly value: T; readonly label: string }>,
-        defaultValue?: T,
-      ): Effect.Effect<T, InteractiveError> =>
+        options: ReadonlyArray<{ readonly value: string; readonly label: string }>,
+        defaultValue?: string,
+      ): Effect.Effect<string, InteractiveError> =>
         Effect.gen(function* () {
           yield* appendLogEntry(fs, { type: "select", message })
           const result = yield* Effect.tryPromise({
             try: () =>
               clack.select({
                 message,
-                options: options.map((o) => ({
-                  value: o.value as unknown as string,
-                  label: o.label,
-                })),
-                initialValue: defaultValue as unknown as string | undefined,
-              }) as Promise<unknown>,
+                options: options.map((o) => ({ value: o.value, label: o.label })),
+                initialValue: defaultValue,
+              }),
             catch: () => new InteractiveError({ message: `Selection cancelled: ${message}` }),
           })
           if (typeof result === "symbol") {
             return yield* new InteractiveError({ message: `Selection cancelled: ${message}` })
           }
-          return result as T
+          return result
         }),
 
       json: () => appendLogEntry(fs, { type: "json" }),

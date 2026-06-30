@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit } from "effect"
+import { Effect, Exit } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { makeFailingIndexStore } from "../../tests/test-utils/command.js"
@@ -10,8 +10,7 @@ import { ConfigStore } from "../domain/ports.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { IndexProject } from "./index-project.js"
 
-const makeConfig = (overrides: Record<string, unknown> = {}): string =>
-  makeConfigJson(overrides as Record<string, unknown> & Partial<Config>)
+const makeConfig = (overrides: Partial<Config> = {}): string => makeConfigJson(overrides)
 
 const sourceFile = `import { Effect } from "effect"
 // Line 2 - ${"padding ".repeat(50)}
@@ -84,7 +83,7 @@ test("IndexProject.index propagates errors from IndexStore", () =>
         testLayer({
           contents: fixtures,
           scannerLayer: ScannerLive,
-          indexStoreLayer: makeFailingIndexStore("storeBatch"),
+          indexStoreLayer: makeFailingIndexStore("persistIndex"),
         }),
       ),
     )
@@ -92,8 +91,10 @@ test("IndexProject.index propagates errors from IndexStore", () =>
     expect(Exit.isFailure(exit)).toBe(true)
     if (Exit.isFailure(exit)) {
       expect(exit.cause.reasons[0]._tag).toBe("Fail")
-      const failReason = exit.cause.reasons[0] as Cause.Fail<StoreError>
-      expect(failReason.error).toBeInstanceOf(StoreError)
+      const failReason = exit.cause.reasons[0]
+      if (failReason._tag === "Fail") {
+        expect(failReason.error).toBeInstanceOf(StoreError)
+      }
     }
   }))
 

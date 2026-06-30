@@ -27,7 +27,7 @@ export const computeRecommendations = (
   return lines
 }
 
-const computeRecommendation = (
+export const computeRecommendation = (
   measurements: readonly BenchMeasurement[],
   profile: BenchProfile,
 ): BenchRecommendation | null => {

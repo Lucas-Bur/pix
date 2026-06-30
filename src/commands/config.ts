@@ -53,7 +53,7 @@ export const healCommand = Command.make(
 
       let resolved = plan.config
       for (let i = 0; i < plan.conflicts.length; i++) {
-        resolved = applyChoice(resolved, plan.conflicts[i].field, choices[i] as string)
+        resolved = applyChoice(resolved, plan.conflicts[i].field, choices[i])
       }
 
       yield* store.writeConfig(resolved)

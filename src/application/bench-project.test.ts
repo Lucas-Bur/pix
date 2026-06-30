@@ -685,7 +685,9 @@ describe("BenchProject error and edge cases", () => {
     return Effect.gen(function* () {
       const error = yield* Effect.flip((yield* BenchProject).bench(defaultBenchOpts))
       expect(error).toBeInstanceOf(ModelLoadError)
-      expect((error as ModelLoadError).model).toBe("unknown/model")
+      if (error instanceof ModelLoadError) {
+        expect(error.model).toBe("unknown/model")
+      }
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 

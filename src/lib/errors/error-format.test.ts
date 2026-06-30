@@ -92,12 +92,12 @@ test("formatError maps ExtractionFailed to EXTRACTION_FAILED", () => {
 test("formatError extracts model context field", () => {
   const result = formatError({ _tag: "InferenceError", message: "failed", model: "llama-3" })
   expect(result.code).toBe("INFERENCE_ERROR")
-  expect((result as unknown as Record<string, unknown>).model).toBe("llama-3")
+  expect(result.model).toBe("llama-3")
 })
 
 test("formatError extracts file context field", () => {
   const result = formatError({ _tag: "StoreError", message: "read failed", file: "data.bin" })
-  expect((result as unknown as Record<string, unknown>).file).toBe("data.bin")
+  expect(result.file).toBe("data.bin")
 })
 
 test("formatError extracts path context field", () => {
@@ -106,12 +106,12 @@ test("formatError extracts path context field", () => {
     message: "missing",
     path: "/pix.toml",
   })
-  expect((result as unknown as Record<string, unknown>).path).toBe("/pix.toml")
+  expect(result.path).toBe("/pix.toml")
 })
 
 test("formatError extracts stack context field", () => {
   const result = formatError({ _tag: "StoreError", message: "crash", stack: "at line 42" })
-  expect((result as unknown as Record<string, unknown>).stack).toBe("at line 42")
+  expect(result.stack).toBe("at line 42")
 })
 
 test("formatError extracts multiple context fields", () => {
@@ -121,7 +121,6 @@ test("formatError extracts multiple context fields", () => {
     model: "llama-3",
     file: "vectors.bin",
   })
-  const r = result as unknown as Record<string, unknown>
-  expect(r.model).toBe("llama-3")
-  expect(r.file).toBe("vectors.bin")
+  expect(result.model).toBe("llama-3")
+  expect(result.file).toBe("vectors.bin")
 })

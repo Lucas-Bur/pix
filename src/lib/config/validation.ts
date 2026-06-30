@@ -49,11 +49,20 @@ const formatSchemaMessage = (error: Schema.SchemaError): string => {
 /** Clamp a number to be at least `min`. Returns the clamped value. */
 const clampPositive = (value: number, min = 1): number => Math.max(min, value)
 
+/**
+ * Decode an unknown value against a schema, converting schema-level errors into the project's
+ * `ConfigValidationError` so callers see a single failure type.
+ *
+ * The cast narrows the third type parameter from `unknown` (what `decodeUnknownEffect` returns for
+ * a generic schema) to `never`: at runtime the schema's decoding needs no services, and the Effect
+ * produced here has no requirement. This is the standard pattern for `Schema.decodeUnknownEffect`
+ * callers in this codebase; see also `mergeConfig`.
+ */
 export const decodeObjectWithErrors = <A>(
   schema: Schema.Schema<A>,
   value: unknown,
 ): Effect.Effect<A, ConfigValidationError> =>
-  (Schema.decodeUnknownEffect(schema)(value) as Effect.Effect<A, Schema.SchemaError>).pipe(
+  (Schema.decodeUnknownEffect(schema)(value) as Effect.Effect<A, Schema.SchemaError, never>).pipe(
     Effect.mapError(
       (error: Schema.SchemaError) =>
         new ConfigValidationError({

@@ -55,6 +55,12 @@ const makeIgnoreFilter = (patterns: readonly string[]): PathFilter | null =>
 const makeOnlyFilter = (patterns: readonly string[]): PathFilter | null =>
   patterns.length > 0 ? buildIgnoreFilter(patterns) : null
 
+/**
+ * Apply `--ignore` and `--only` path filters to ranked search results. Both filters are deny/allow
+ * lists with gitignore-style patterns; `ignorePaths` removes matches, `onlyPaths` keeps only
+ * matches. When both are active, a result must survive `ignorePaths` AND pass `onlyPaths`. When
+ * neither is set, the input is returned unchanged (as a fresh array — never the same reference).
+ */
 export const filterResults = (
   results: readonly SearchResult[],
   options: SearchOptions | undefined,

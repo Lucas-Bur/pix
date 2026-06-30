@@ -2,7 +2,6 @@ import { Data } from "effect"
 
 import type { DisplaySeverity } from "../domain/ports.js"
 
-/** Union of all display entries recorded by SilentDisplay for test assertions */
 export type DisplayEntry = Data.TaggedEnum<{
   readonly intro: { readonly title: string }
   readonly outro: { readonly message: string }
