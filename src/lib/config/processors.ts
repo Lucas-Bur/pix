@@ -7,7 +7,7 @@ export type FileProcessor = (
   file: string,
 ) => Effect.Effect<string, ExtractionFailed | UnsupportedFormat, FileSystem>
 
-const identityProcessor: FileProcessor = (file) =>
+export const identityProcessor: FileProcessor = (file) =>
   FileSystem.pipe(
     Effect.flatMap((fs) => fs.readFileString(file)),
     Effect.mapError(
@@ -20,7 +20,7 @@ const identityProcessor: FileProcessor = (file) =>
     ),
   )
 
-const skipProcessor = (extension: string) => {
+export const skipProcessor = (extension: string) => {
   const error = new UnsupportedFormat({
     message: `Unsupported file type: ${extension}`,
     extension,
