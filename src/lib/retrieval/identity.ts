@@ -1,10 +1,11 @@
+import type { IdentifierIndexMaps } from "../../domain/identifier-index.js"
 import type { RankedChunk } from "../../domain/ports.js"
 
 /**
- * Index data consumed by the identity and camelCase scoring channels. Maps a lowercased identifier
- * name (or constituent word) to the chunks where it appears.
+ * Re-exported alias for the scorer's input shape. Defined in domain (Record-based for direct JSON
+ * serialization), used by both rankIdentity and rankCamelCase.
  */
-export type IdentifierIndex = ReadonlyMap<string, readonly number[]>
+export type IdentifierIndex = IdentifierIndexMaps
 
 /**
  * Score chunks by exact identifier-name match.
@@ -18,7 +19,7 @@ export type IdentifierIndex = ReadonlyMap<string, readonly number[]>
  */
 export const rankIdentity = (queryText: string, index: IdentifierIndex): readonly RankedChunk[] => {
   if (queryText === "") return []
-  const chunks = index.get(queryText.toLowerCase())
+  const chunks = index.exact[queryText.toLowerCase()]
   if (chunks === undefined) return []
   return chunks.map((chunkIndex) => ({ chunkIndex, score: 1.0 }))
 }
