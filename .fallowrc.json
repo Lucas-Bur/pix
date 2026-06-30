@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/fallow.schema.json",
+  "production": {
+    "deadCode": true,
+    "health": true,
+    "dupes": true
+  },
+  "duplicates": {
+    "ignore": [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "tests/**"
+    ]
+  },
+  "health": {
+    "ignore": [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "tests/**"
+    ]
+  }
+}
