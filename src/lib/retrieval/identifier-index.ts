@@ -28,31 +28,40 @@ export const deserializeIdentifierIndex = (content: string): IdentifierIndexMaps
  *
  * Returns plain Record shapes (not ReadonlyMap) for direct JSON serialization at the storage
  * boundary.
+ *
+ * Implementation notes:
+ *
+ * - Uses `Object.create(null)` for the accumulator maps so names like `constructor` or `__proto__`
+ *   don't collide with inherited Object.prototype members (which would return the `Object`
+ *   constructor or `Object.prototype.toString` and crash the lookup).
+ * - Uses `Set<number>` per name to deduplicate chunk indices. The same identifier can appear in
+ *   multiple identifiers in the same chunk (or be re-extracted from overlapping chunks), and the
+ *   scorers expect a flat set of unique chunks per name.
  */
 export const buildIdentifierIndex = (identifiers: readonly Identifier[]): IdentifierIndexMaps => {
-  const exact: Record<string, number[]> = {}
-  const split: Record<string, number[]> = {}
+  const exact = Object.create(null) as Record<string, Set<number>>
+  const split = Object.create(null) as Record<string, Set<number>>
+
+  const add = (index: Record<string, Set<number>>, key: string, chunkIndex: number): void => {
+    const bucket = index[key] ?? new Set<number>()
+    bucket.add(chunkIndex)
+    index[key] = bucket
+  }
 
   for (const id of identifiers) {
-    // exact map
     const name = id.name.toLowerCase()
-    const exactList = exact[name]
-    if (exactList === undefined) {
-      exact[name] = [id.chunkIndex]
-    } else {
-      exactList.push(id.chunkIndex)
-    }
+    add(exact, name, id.chunkIndex)
 
-    // split map -- one entry per constituent word
     for (const word of splitIdentifier(id.name)) {
-      const splitList = split[word]
-      if (splitList === undefined) {
-        split[word] = [id.chunkIndex]
-      } else {
-        splitList.push(id.chunkIndex)
-      }
+      add(split, word, id.chunkIndex)
     }
   }
 
-  return { exact, split }
+  const toRecord = (m: Record<string, Set<number>>): Record<string, readonly number[]> => {
+    const out: Record<string, number[]> = {}
+    for (const k of Object.keys(m)) out[k] = [...m[k]!]
+    return out
+  }
+
+  return { exact: toRecord(exact), split: toRecord(split) }
 }
