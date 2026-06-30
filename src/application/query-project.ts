@@ -198,15 +198,16 @@ const make = Effect.gen(function* () {
 
       const entryMap = new Map(entries.map((e) => [e.index, e]))
       const weights = routeQuery(queryText)
-      const results = fuseResults(
-        [
-          { list: identityRanks, weight: weights.identity },
-          { list: camelcaseRanks, weight: weights.camelcase },
-          { list: lexicalRanks, weight: weights.bm25 },
-          { list: denseRanks, weight: weights.dense },
-        ],
-        entryMap,
-      )
+      // Only pass channels that produced hits -- otherwise their weight still
+      // gets included in the sum that normalizes rel, and absent channels
+      // would lower rel even when BM25 + Dense had strong matches.
+      const channels = [
+        { list: identityRanks, weight: weights.identity },
+        { list: camelcaseRanks, weight: weights.camelcase },
+        { list: lexicalRanks, weight: weights.bm25 },
+        { list: denseRanks, weight: weights.dense },
+      ].filter((channel) => channel.list.length > 0)
+      const results = channels.length === 0 ? [] : fuseResults(channels, entryMap)
       const filtered = filterResults(results, options)
 
       const topK = options?.topK

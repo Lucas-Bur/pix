@@ -66,4 +66,23 @@ describe("extractIdentifiers", () => {
       { name: "greet", kind: "function", chunkIndex: 0 },
     ])
   })
+
+  it("extracts individual bound names from object destructuring", () => {
+    const parser = setupParser()
+    const result = extractIdentifiers(parser, typescriptMapKind, "const { foo, bar: baz } = obj", 0)
+    // `foo` is a shorthand property identifier, `bar: baz` is a pair (value=baz).
+    expect(result).toEqual([
+      { name: "foo", kind: "value", chunkIndex: 0 },
+      { name: "baz", kind: "value", chunkIndex: 0 },
+    ])
+  })
+
+  it("extracts individual bound names from array destructuring", () => {
+    const parser = setupParser()
+    const result = extractIdentifiers(parser, typescriptMapKind, "const [first, second] = arr", 0)
+    expect(result).toEqual([
+      { name: "first", kind: "value", chunkIndex: 0 },
+      { name: "second", kind: "value", chunkIndex: 0 },
+    ])
+  })
 })

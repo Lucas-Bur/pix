@@ -23,7 +23,11 @@ export const rankCamelCase = (
   for (const word of words) {
     const chunks = index.split[word]
     if (chunks === undefined) continue
-    for (const chunkIndex of chunks) {
+    // Deduplicate per query word: the index stores the same chunkIndex
+    // multiple times when several identifiers in the same chunk share a
+    // constituent word, but a single query term should contribute at most
+    // one hit per chunk.
+    for (const chunkIndex of new Set(chunks)) {
       scores.set(chunkIndex, (scores.get(chunkIndex) ?? 0) + 1)
     }
   }
