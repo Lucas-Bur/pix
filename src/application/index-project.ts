@@ -15,8 +15,8 @@ import {
   type IndexOptions,
 } from "../domain/ports.js"
 import { getExtension, getFileExtension, getFilename } from "../lib/config/extension.js"
-import { buildProcessorMap } from "../lib/config/processors.js"
 import { mergeConfig } from "../lib/config/validation.js"
+import { buildExtensionRegistry } from "../lib/registry.js"
 import type { StatusResult } from "./get-status.js"
 
 export interface IndexResult {
@@ -37,7 +37,7 @@ interface FileClassification {
 
 const classifyFiles = (
   files: readonly string[],
-  processorMap: Record<string, unknown>,
+  extensionRegistry: Record<string, unknown>,
 ): FileClassification => {
   const knownFiles: string[] = []
   const skippedFiles: string[] = []
@@ -45,8 +45,8 @@ const classifyFiles = (
 
   for (const file of files) {
     const ext = getExtension(file)
-    const proc = processorMap[ext]
-    if (!proc) {
+    const entry = extensionRegistry[ext]
+    if (!entry) {
       unknownExtensions.add(ext)
       skippedFiles.push(file)
     } else {
@@ -125,14 +125,14 @@ const make = Effect.gen(function* () {
       }
       const config = yield* configStore.readConfig()
       const eff = mergeConfig(opts, config)
-      const processorMap = buildProcessorMap(eff.skipExtensions)
+      const extensionRegistry = buildExtensionRegistry(eff.skipExtensions)
 
       yield* d.updateInteractive("Scanning source files...")
       const scanResult = yield* scanner.scanFiles(eff.ignoredPaths, eff.ignoreGitignore)
 
       const { knownFiles, skippedFiles, unknownExtensions } = classifyFiles(
         scanResult.files,
-        processorMap,
+        extensionRegistry,
       )
 
       const skipped = yield* Ref.make<readonly SkippedEntry[]>(

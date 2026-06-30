@@ -23,8 +23,8 @@ import { Display, Embedder, type EmbedderDeviceConfig } from "../domain/ports.js
 import { ConfigStore, Scanner, Chunker, ContentExtractor } from "../domain/ports.js"
 import { computeRecommendations } from "../lib/bench/format.js"
 import { getExtension } from "../lib/config/extension.js"
-import { buildProcessorMap } from "../lib/config/processors.js"
 import { mergeConfig } from "../lib/config/validation.js"
+import { buildExtensionRegistry } from "../lib/registry.js"
 import { DeviceDetection } from "../services/device-detect.js"
 import { MODEL_REGISTRY } from "../services/models.js"
 
@@ -124,14 +124,14 @@ const make = Effect.gen(function* () {
       }
       const config = yield* configStore.readConfig()
       const eff = mergeConfig({}, config)
-      const processorMap = buildProcessorMap(eff.skipExtensions)
+      const extensionRegistry = buildExtensionRegistry(eff.skipExtensions)
 
       yield* d.updateInteractive("Scanning project files...")
       const scanResult = yield* scanner.scanFiles(eff.ignoredPaths, eff.ignoreGitignore)
 
       const knownFiles = scanResult.files.filter((file) => {
         const ext = getExtension(file)
-        return processorMap[ext] !== undefined
+        return extensionRegistry[ext] !== undefined
       })
 
       if (knownFiles.length === 0) {
