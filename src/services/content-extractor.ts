@@ -5,17 +5,17 @@ import { UnsupportedFormat } from "../domain/errors.js"
 import type { AllProcessorErrors } from "../domain/errors.js"
 import { ContentExtractor } from "../domain/ports.js"
 import { getExtension } from "../lib/config/extension.js"
-import { buildProcessorMap } from "../lib/config/processors.js"
+import { buildExtensionRegistry } from "../lib/registry.js"
 
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem
-  const processorMap = buildProcessorMap([])
+  const registry = buildExtensionRegistry([])
 
   const extract = (file: string): Effect.Effect<string, AllProcessorErrors> => {
     const ext = getExtension(file)
 
-    const processor = processorMap[ext]
-    if (!processor) {
+    const entry = registry[ext]
+    if (!entry) {
       return Effect.fail(
         new UnsupportedFormat({
           message: `No processor for extension: ${ext}`,
@@ -23,7 +23,7 @@ const make = Effect.gen(function* () {
         }),
       )
     }
-    return processor(file).pipe(Effect.provideService(FileSystem, fs))
+    return entry.processor(file).pipe(Effect.provideService(FileSystem, fs))
   }
 
   return { extract } as const
