@@ -21,7 +21,7 @@ export const rankCamelCase = (
 
   const scores = new Map<number, number>()
   for (const word of words) {
-    const chunks = index.get(word)
+    const chunks = index.split[word]
     if (chunks === undefined) continue
     for (const chunkIndex of chunks) {
       scores.set(chunkIndex, (scores.get(chunkIndex) ?? 0) + 1)
