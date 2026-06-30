@@ -3,6 +3,8 @@ import { Context, Effect, Layer, Ref, Stream } from "effect"
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type { IndexError, AllProcessorErrors, ChunkerError } from "../domain/errors.js"
+import type { IdentifierIndexMaps } from "../domain/identifier-index.js"
+import type { Identifier } from "../domain/identifier.js"
 import { Display } from "../domain/ports.js"
 import {
   ConfigStore,
@@ -11,12 +13,14 @@ import {
   Embedder,
   IndexStore,
   ContentExtractor,
+  IdentifierExtractor,
   type SkippedEntry,
   type IndexOptions,
 } from "../domain/ports.js"
 import { getExtension, getFileExtension, getFilename } from "../lib/config/extension.js"
 import { mergeConfig } from "../lib/config/validation.js"
 import { buildExtensionRegistry } from "../lib/registry.js"
+import { buildIdentifierIndex } from "../lib/retrieval/identifier-index.js"
 import type { StatusResult } from "./get-status.js"
 
 export interface IndexResult {
@@ -109,6 +113,7 @@ const make = Effect.gen(function* () {
   const indexStore = yield* IndexStore
   const d = yield* Display
   const extractor = yield* ContentExtractor
+  const identifierExtractor = yield* IdentifierExtractor
 
   interface IndexContext {
     readonly eff: ReturnType<typeof mergeConfig>
@@ -164,16 +169,35 @@ const make = Effect.gen(function* () {
       return yield* classifyAndCollectChunks(ctx.knownFiles, extractor, chunker, ctx.skipped)
     })
 
+  /**
+   * Walk all chunks and extract code identifiers via the IdentifierExtractor. Re-parses each chunk
+   * independently (the chunker's overlap means the same identifier can appear in multiple chunks --
+   * the build step aggregates those occurrences into the maps).
+   */
+  const extractIdentifiersForChunks = (
+    chunks: readonly DomainChunk[],
+  ): Effect.Effect<IdentifierIndexMaps, never> =>
+    Effect.gen(function* () {
+      const all: Identifier[] = []
+      for (const chunk of chunks) {
+        const ids = yield* identifierExtractor.extractIdentifiers(chunk.text, chunk.idx)
+        for (const id of ids) all.push(id)
+      }
+      return buildIdentifierIndex(all)
+    })
+
   const embedAndPersistChunks = (
     ctx: IndexContext,
     chunks: DomainChunk[],
     totalChunks: number,
+    identifierIndex: IdentifierIndexMaps,
   ): Effect.Effect<
     { chunks: number; files: number; totalLines: number; byteSize: number },
     IndexError
   > =>
     Effect.gen(function* () {
       yield* indexStore.storeBegin()
+      yield* indexStore.storeIdentifierIndex(identifierIndex)
       const embeddedRef = yield* Ref.make(0)
 
       return yield* d.progress(
@@ -242,7 +266,13 @@ const make = Effect.gen(function* () {
         return yield* emptyIndexResult(d, ctx.skipped, ctx.start)
       }
 
-      const stats = yield* embedAndPersistChunks(ctx, phase1.chunks, phase1.totalChunks)
+      const identifierIndex = yield* extractIdentifiersForChunks(phase1.chunks)
+      const stats = yield* embedAndPersistChunks(
+        ctx,
+        phase1.chunks,
+        phase1.totalChunks,
+        identifierIndex,
+      )
       return yield* buildIndexResult(stats, ctx.skipped, ctx.start)
     })
 
