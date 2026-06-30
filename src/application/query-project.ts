@@ -21,7 +21,9 @@ import type {
 } from "../domain/ports.js"
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
 import { rankBm25 } from "../lib/retrieval/bm25.js"
+import { rankCamelCase } from "../lib/retrieval/camelcase.js"
 import { rankDense } from "../lib/retrieval/dense.js"
+import { rankIdentity } from "../lib/retrieval/identity.js"
 import { K, rrfFuse } from "../lib/retrieval/rrf.js"
 import { tokenize } from "../lib/retrieval/tokenize.js"
 
@@ -67,14 +69,41 @@ export const filterResults = (
   })
 }
 
+// RRF channel weights for the four scoring paths. Tuned heuristically --
+// the identity channel carries the strongest signal (exact name match),
+// camelcase is a softer constituent-word match, and BM25 / Dense retain
+// their existing roles. Adjust here to rebalance the fusion.
+const WEIGHT_IDENTITY = 3.0
+const WEIGHT_CAMELCASE = 1.5
+const WEIGHT_BM25 = 1.0
+const WEIGHT_DENSE = 1.0
+
 const SHORT_QUERY_MAX = 2
 const LONG_QUERY_MIN = 8
 
-const routeQuery = (queryText: string): { bm25: number; dense: number } => {
+const routeQuery = (
+  queryText: string,
+): {
+  readonly identity: number
+  readonly camelcase: number
+  readonly bm25: number
+  readonly dense: number
+} => {
   const count = tokenize(queryText).length
-  if (count <= SHORT_QUERY_MAX) return { bm25: 1.5, dense: 0.5 }
-  if (count >= LONG_QUERY_MIN) return { bm25: 0.5, dense: 1.5 }
-  return { bm25: 1.0, dense: 1.0 }
+  // Identity and camelcase stay constant -- they're a function of the
+  // query's *content*, not its *length*.
+  if (count <= SHORT_QUERY_MAX) {
+    return { identity: WEIGHT_IDENTITY, camelcase: WEIGHT_CAMELCASE, bm25: 1.5, dense: 0.5 }
+  }
+  if (count >= LONG_QUERY_MIN) {
+    return { identity: WEIGHT_IDENTITY, camelcase: WEIGHT_CAMELCASE, bm25: 0.5, dense: 1.5 }
+  }
+  return {
+    identity: WEIGHT_IDENTITY,
+    camelcase: WEIGHT_CAMELCASE,
+    bm25: WEIGHT_BM25,
+    dense: WEIGHT_DENSE,
+  }
 }
 
 const fuseResults = (
@@ -153,7 +182,7 @@ const make = Effect.gen(function* () {
           indexModel: status.model,
         })
       }
-      const { entries, bm25Index, malformedLines } = yield* store.loadSearchData()
+      const { entries, bm25Index, identifierIndex, malformedLines } = yield* store.loadSearchData()
       if (entries.length === 0) {
         return {
           results: [],
@@ -164,11 +193,15 @@ const make = Effect.gen(function* () {
 
       const lexicalRanks = rankBm25(queryText, bm25Index)
       const denseRanks = rankDense(embedding.vector, entries)
+      const identityRanks = rankIdentity(queryText, identifierIndex)
+      const camelcaseRanks = rankCamelCase(queryText, identifierIndex)
 
       const entryMap = new Map(entries.map((e) => [e.index, e]))
       const weights = routeQuery(queryText)
       const results = fuseResults(
         [
+          { list: identityRanks, weight: weights.identity },
+          { list: camelcaseRanks, weight: weights.camelcase },
           { list: lexicalRanks, weight: weights.bm25 },
           { list: denseRanks, weight: weights.dense },
         ],
