@@ -28,57 +28,50 @@ export const extractIdentifiers = (
   const tree = parser.parse(text)
   const identifiers: Identifier[] = []
 
-  const collectBoundNames = (node: Parser.SyntaxNode, names: string[]): void => {
+  /**
+   * Recursively collect the names bound by a destructuring pattern. Returns an empty array for
+   * patterns that bind nothing (e.g. `[]`, `{}`).
+   */
+  const collectBoundNames = (node: Parser.SyntaxNode): readonly string[] => {
     switch (node.type) {
       case "identifier":
       case "shorthand_property_identifier_pattern":
-        names.push(node.text)
-        return
+        return [node.text]
       case "object_pattern":
       case "array_pattern":
       case "rest_pattern":
-        for (let i = 0; i < node.namedChildCount; i++) {
-          const child = node.namedChild(i)
-          if (child !== null) collectBoundNames(child, names)
-        }
-        return
+        return node.namedChildren.flatMap((c) => (c === null ? [] : collectBoundNames(c)))
       case "pair_pattern":
-      case "pair":
-        // { key: value } -- the binding is the value, not the key
-        {
-          const value = node.childForFieldName("value")
-          if (value !== null) collectBoundNames(value, names)
-        }
-        return
-      case "assignment_pattern":
-        // { x = 1 } -- the binding is the left side, default lives on the right
-        {
-          const left = node.childForFieldName("left")
-          if (left !== null) collectBoundNames(left, names)
-        }
-        return
+      case "pair": {
+        const value = node.childForFieldName("value")
+        return value === null ? [] : collectBoundNames(value)
+      }
+      case "assignment_pattern": {
+        const left = node.childForFieldName("left")
+        return left === null ? [] : collectBoundNames(left)
+      }
       default:
-        names.push(node.text)
+        return [node.text]
     }
+  }
+
+  /**
+   * Extract the bound names for a matched node. For most declaration types this is the `name` field
+   * as a single string; for `variable_declarator` the `name` field can be a destructuring pattern,
+   * in which case we descend and emit one identifier per name.
+   */
+  const extractNames = (node: Parser.SyntaxNode): readonly string[] => {
+    const nameNode = node.childForFieldName("name")
+    if (nameNode === null) return []
+    if (node.type === "variable_declarator") return collectBoundNames(nameNode)
+    return [nameNode.text]
   }
 
   const walk = (node: Parser.SyntaxNode): void => {
     const kind = mapKind[node.type]
     if (kind !== undefined) {
-      if (node.type === "variable_declarator") {
-        const nameNode = node.childForFieldName("name")
-        if (nameNode !== null) {
-          const names: string[] = []
-          collectBoundNames(nameNode, names)
-          for (const name of names) {
-            identifiers.push({ name, kind, chunkIndex })
-          }
-        }
-      } else {
-        const nameNode = node.childForFieldName("name")
-        if (nameNode !== null) {
-          identifiers.push({ name: nameNode.text, kind, chunkIndex })
-        }
+      for (const name of extractNames(node)) {
+        identifiers.push({ name, kind, chunkIndex })
       }
     }
     for (let i = 0; i < node.namedChildCount; i++) {

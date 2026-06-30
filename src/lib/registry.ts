@@ -1,4 +1,3 @@
-import { Option } from "effect"
 import Parser from "tree-sitter"
 import TypeScript from "tree-sitter-typescript"
 
@@ -6,14 +5,14 @@ import { identityProcessor, skipProcessor, type FileProcessor } from "./config/p
 
 /**
  * Per-extension behavior. Single source of truth for what we do with a file based on its extension:
- * read text via `processor`, and optionally extract identifiers via `parser` (None for extensions
+ * read text via `processor`, and optionally extract identifiers via `parser` (null for extensions
  * we don't have an AST grammar for, or that aren't worth parsing -- text, config, binary).
  */
 export interface ExtensionEntry {
   /** Reads file content as text. Fails for unsupported/binary formats. */
   readonly processor: FileProcessor
-  /** AST parser for identifier extraction. None = skip parsing. */
-  readonly parser: Option.Option<Parser>
+  /** AST parser for identifier extraction. null = skip parsing. */
+  readonly parser: Parser | null
 }
 
 /** Tree-sitter parser pre-configured with the TypeScript grammar (no JSX). For .ts and .js. */
@@ -36,58 +35,57 @@ export const TSX_PARSER: Parser = (() => {
  * language).
  *
  * For TypeScript-flavored extensions the parser is pre-configured. Other code extensions (Python,
- * Rust, Go, ...) carry Option.none() until a tree-sitter grammar is installed and a parser is wired
- * in.
+ * Rust, Go, ...) carry null until a tree-sitter grammar is installed and a parser is wired in.
  */
 const DEFAULT_EXTENSION_REGISTRY: Record<string, ExtensionEntry> = {
   // TypeScript-flavored. tree-sitter-typescript exposes two separate grammars:
   // `typescript` (strict TS, used for .ts and .js) and `tsx` (TS with JSX, for .tsx and .jsx).
-  ".ts": { processor: identityProcessor, parser: Option.some(TYPESCRIPT_PARSER) },
-  ".tsx": { processor: identityProcessor, parser: Option.some(TSX_PARSER) },
-  ".js": { processor: identityProcessor, parser: Option.some(TYPESCRIPT_PARSER) },
-  ".jsx": { processor: identityProcessor, parser: Option.some(TSX_PARSER) },
+  ".ts": { processor: identityProcessor, parser: TYPESCRIPT_PARSER },
+  ".tsx": { processor: identityProcessor, parser: TSX_PARSER },
+  ".js": { processor: identityProcessor, parser: TYPESCRIPT_PARSER },
+  ".jsx": { processor: identityProcessor, parser: TSX_PARSER },
   // Other code -- parser: None until a tree-sitter package is added
-  ".py": { processor: identityProcessor, parser: Option.none() },
-  ".rs": { processor: identityProcessor, parser: Option.none() },
-  ".go": { processor: identityProcessor, parser: Option.none() },
-  ".java": { processor: identityProcessor, parser: Option.none() },
-  ".c": { processor: identityProcessor, parser: Option.none() },
-  ".cpp": { processor: identityProcessor, parser: Option.none() },
-  ".h": { processor: identityProcessor, parser: Option.none() },
-  ".hpp": { processor: identityProcessor, parser: Option.none() },
+  ".py": { processor: identityProcessor, parser: null },
+  ".rs": { processor: identityProcessor, parser: null },
+  ".go": { processor: identityProcessor, parser: null },
+  ".java": { processor: identityProcessor, parser: null },
+  ".c": { processor: identityProcessor, parser: null },
+  ".cpp": { processor: identityProcessor, parser: null },
+  ".h": { processor: identityProcessor, parser: null },
+  ".hpp": { processor: identityProcessor, parser: null },
   // Config / data -- no AST extraction
-  ".json": { processor: identityProcessor, parser: Option.none() },
-  ".yaml": { processor: identityProcessor, parser: Option.none() },
-  ".yml": { processor: identityProcessor, parser: Option.none() },
-  ".toml": { processor: identityProcessor, parser: Option.none() },
-  ".xml": { processor: identityProcessor, parser: Option.none() },
-  ".csv": { processor: identityProcessor, parser: Option.none() },
+  ".json": { processor: identityProcessor, parser: null },
+  ".yaml": { processor: identityProcessor, parser: null },
+  ".yml": { processor: identityProcessor, parser: null },
+  ".toml": { processor: identityProcessor, parser: null },
+  ".xml": { processor: identityProcessor, parser: null },
+  ".csv": { processor: identityProcessor, parser: null },
   // Docs
-  ".md": { processor: identityProcessor, parser: Option.none() },
-  ".mdx": { processor: identityProcessor, parser: Option.none() },
-  ".txt": { processor: identityProcessor, parser: Option.none() },
-  ".rst": { processor: identityProcessor, parser: Option.none() },
+  ".md": { processor: identityProcessor, parser: null },
+  ".mdx": { processor: identityProcessor, parser: null },
+  ".txt": { processor: identityProcessor, parser: null },
+  ".rst": { processor: identityProcessor, parser: null },
   // Web
-  ".html": { processor: identityProcessor, parser: Option.none() },
-  ".css": { processor: identityProcessor, parser: Option.none() },
-  ".scss": { processor: identityProcessor, parser: Option.none() },
-  ".less": { processor: identityProcessor, parser: Option.none() },
-  ".sql": { processor: identityProcessor, parser: Option.none() },
-  ".graphql": { processor: identityProcessor, parser: Option.none() },
+  ".html": { processor: identityProcessor, parser: null },
+  ".css": { processor: identityProcessor, parser: null },
+  ".scss": { processor: identityProcessor, parser: null },
+  ".less": { processor: identityProcessor, parser: null },
+  ".sql": { processor: identityProcessor, parser: null },
+  ".graphql": { processor: identityProcessor, parser: null },
   // Shell / scripts
-  ".sh": { processor: identityProcessor, parser: Option.none() },
-  ".bash": { processor: identityProcessor, parser: Option.none() },
-  ".ps1": { processor: identityProcessor, parser: Option.none() },
-  ".bat": { processor: identityProcessor, parser: Option.none() },
-  ".cmake": { processor: identityProcessor, parser: Option.none() },
-  ".dockerfile": { processor: identityProcessor, parser: Option.none() },
-  dockerfile: { processor: identityProcessor, parser: Option.none() },
+  ".sh": { processor: identityProcessor, parser: null },
+  ".bash": { processor: identityProcessor, parser: null },
+  ".ps1": { processor: identityProcessor, parser: null },
+  ".bat": { processor: identityProcessor, parser: null },
+  ".cmake": { processor: identityProcessor, parser: null },
+  ".dockerfile": { processor: identityProcessor, parser: null },
+  dockerfile: { processor: identityProcessor, parser: null },
   // Config files (no leading dot)
-  makefile: { processor: identityProcessor, parser: Option.none() },
-  gemfile: { processor: identityProcessor, parser: Option.none() },
+  makefile: { processor: identityProcessor, parser: null },
+  gemfile: { processor: identityProcessor, parser: null },
   // Lock files
-  ".lock": { processor: identityProcessor, parser: Option.none() },
-  lock: { processor: identityProcessor, parser: Option.none() },
+  ".lock": { processor: identityProcessor, parser: null },
+  lock: { processor: identityProcessor, parser: null },
 }
 
 /**
@@ -102,7 +100,7 @@ export const buildExtensionRegistry = (
   for (const ext of skipExtensions) {
     registry[ext] = {
       processor: skipProcessor(ext),
-      parser: Option.none(),
+      parser: null,
     }
   }
   return registry
