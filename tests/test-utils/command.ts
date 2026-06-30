@@ -91,6 +91,7 @@ export const assertCommandError = <E, R>(
 type FailingMethod =
   | "storeBegin"
   | "storeBatch"
+  | "storeIdentifierIndex"
   | "storeCommit"
   | "storeAbort"
   | "loadSearchData"
@@ -107,6 +108,8 @@ export const makeFailingIndexStore = (
   return Layer.succeed(IndexStore, {
     storeBegin: () => (failingMethod === "storeBegin" ? failEffect : Effect.void),
     storeBatch: () => (failingMethod === "storeBatch" ? failEffect : Effect.void),
+    storeIdentifierIndex: () =>
+      failingMethod === "storeIdentifierIndex" ? failEffect : Effect.void,
     storeCommit: () =>
       failingMethod === "storeCommit"
         ? failEffect
@@ -118,6 +121,7 @@ export const makeFailingIndexStore = (
         : Effect.succeed({
             entries: [],
             bm25Index: { avgChunkLength: 0, chunkLengths: [], docFreqs: {}, chunkTfs: {} },
+            identifierIndex: { exact: {}, split: {} },
             malformedLines: 0,
           }),
     getStatus: () =>
