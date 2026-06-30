@@ -28,5 +28,5 @@ export const skipProcessor = (extension: string) => {
     message: `Unsupported file type: ${extension}`,
     extension,
   })
-  return (_file: string): Effect.Effect<string, UnsupportedFormat, FileSystem> => Effect.fail(error)
+  return (_file: string): Effect.Effect<string, UnsupportedFormat, never> => Effect.fail(error)
 }
