@@ -21,6 +21,7 @@ import type {
   InferenceError,
   AllProcessorErrors,
 } from "./errors.js"
+import type { Identifier } from "./identifier.js"
 
 // === Index options ===
 
@@ -131,6 +132,25 @@ export class Chunker extends Context.Service<
     ) => Effect.Effect<readonly Chunk[], ChunkerError>
   }
 >()("Chunker") {}
+
+// === IdentifierExtractor Port ===
+
+/** Port for extracting code identifiers from source text. */
+export class IdentifierExtractor extends Context.Service<
+  IdentifierExtractor,
+  {
+    /**
+     * Extract named identifiers (functions, types, values) from a chunk's text via the language's
+     * tree-sitter grammar. Returns the identifier name, language-agnostic kind, and the chunk's
+     * index. Tree-sitter always produces a (possibly partial) parse tree, so this never fails --
+     * malformed input is silently allowed.
+     */
+    readonly extractIdentifiers: (
+      text: string,
+      chunkIndex: number,
+    ) => Effect.Effect<readonly Identifier[], never>
+  }
+>()("IdentifierExtractor") {}
 
 // === Embedder Port ===
 

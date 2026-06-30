@@ -9,10 +9,17 @@ import { InitProjectLive } from "../../src/application/init-project.js"
 import { QueryProjectLive } from "../../src/application/query-project.js"
 import { ResetIndexLive } from "../../src/application/reset-index.js"
 import { Display } from "../../src/domain/ports.js"
-import { ConfigStore, Embedder, IndexStore, Scanner } from "../../src/domain/ports.js"
+import {
+  ConfigStore,
+  Embedder,
+  IdentifierExtractor,
+  IndexStore,
+  Scanner,
+} from "../../src/domain/ports.js"
 import { ChunkerLive } from "../../src/services/chunker.js"
 import { ConfigStoreLive } from "../../src/services/config-store.js"
 import { ContentExtractorLive } from "../../src/services/content-extractor.js"
+import { IdentifierExtractorLive } from "../../src/services/identifier-extractor.js"
 import { IndexStoreLive } from "../../src/services/index-store.js"
 import { ModelRegistryLive } from "../../src/services/models.js"
 
@@ -22,6 +29,7 @@ export interface TestLayerOptions {
   readonly embedderLayer?: Layer.Layer<Embedder, never, FileSystem>
   readonly configStoreLayer?: Layer.Layer<ConfigStore, never, FileSystem>
   readonly indexStoreLayer?: Layer.Layer<IndexStore, never, FileSystem>
+  readonly identifierExtractorLayer?: Layer.Layer<IdentifierExtractor, never, FileSystem>
   readonly displayLayer?: Layer.Layer<Display>
   readonly cleanStore?: boolean
 }
@@ -64,6 +72,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     embedderLayer,
     configStoreLayer,
     indexStoreLayer,
+    identifierExtractorLayer,
     displayLayer,
     cleanStore,
   } = opts
@@ -77,6 +86,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     embedderLayer ?? defaultEmbedderLayer,
     indexStoreLayer ?? IndexStoreLive,
     ContentExtractorLive,
+    identifierExtractorLayer ?? IdentifierExtractorLive,
   )
 
   const chunkerLayer = ChunkerLive.pipe(Layer.provide(servicesLayer))
