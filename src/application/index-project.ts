@@ -172,7 +172,8 @@ const make = Effect.gen(function* () {
   /**
    * Walk all chunks and extract code identifiers via the IdentifierExtractor. Re-parses each chunk
    * independently (the chunker's overlap means the same identifier can appear in multiple chunks --
-   * the build step aggregates those occurrences into the maps).
+   * the build step aggregates those occurrences into the maps). The chunk's file path drives parser
+   * dispatch inside the service.
    */
   const extractIdentifiersForChunks = (
     chunks: readonly DomainChunk[],
@@ -180,7 +181,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const all: Identifier[] = []
       for (const chunk of chunks) {
-        const ids = yield* identifierExtractor.extractIdentifiers(chunk.text, chunk.idx)
+        const ids = yield* identifierExtractor.extractIdentifiers(chunk.file, chunk.text, chunk.idx)
         for (const id of ids) all.push(id)
       }
       return buildIdentifierIndex(all)

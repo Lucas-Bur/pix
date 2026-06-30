@@ -141,12 +141,14 @@ export class IdentifierExtractor extends Context.Service<
   IdentifierExtractor,
   {
     /**
-     * Extract named identifiers (functions, types, values) from a chunk's text via the language's
-     * tree-sitter grammar. Returns the identifier name, language-agnostic kind, and the chunk's
-     * index. Tree-sitter always produces a (possibly partial) parse tree, so this never fails --
-     * malformed input is silently allowed.
+     * Extract named identifiers (functions, types, values) from a chunk via the language's
+     * tree-sitter grammar. The `file` argument drives parser dispatch (TS for `.ts`/`.js`, TSX for
+     * `.tsx`/`.jsx`; non-code extensions return []). Returns the identifier name, language-agnostic
+     * kind, and the chunk's index. Tree-sitter always produces a (possibly partial) parse tree, so
+     * this never fails -- malformed input is silently allowed.
      */
     readonly extractIdentifiers: (
+      file: string,
       text: string,
       chunkIndex: number,
     ) => Effect.Effect<readonly Identifier[], never>
