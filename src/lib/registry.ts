@@ -17,17 +17,17 @@ export interface ExtensionEntry {
 }
 
 /** Tree-sitter parser pre-configured with the TypeScript grammar (no JSX). For .ts and .js. */
-const TYPESCRIPT_PARSER: Option.Option<Parser> = (() => {
+export const TYPESCRIPT_PARSER: Parser = (() => {
   const parser = new Parser()
   parser.setLanguage(TypeScript.typescript)
-  return Option.some(parser)
+  return parser
 })()
 
 /** Tree-sitter parser pre-configured with the TSX grammar (TypeScript with JSX). For .tsx and .jsx. */
-const TSX_PARSER: Option.Option<Parser> = (() => {
+export const TSX_PARSER: Parser = (() => {
   const parser = new Parser()
   parser.setLanguage(TypeScript.tsx)
-  return Option.some(parser)
+  return parser
 })()
 
 /**
@@ -42,10 +42,10 @@ const TSX_PARSER: Option.Option<Parser> = (() => {
 const DEFAULT_EXTENSION_REGISTRY: Record<string, ExtensionEntry> = {
   // TypeScript-flavored. tree-sitter-typescript exposes two separate grammars:
   // `typescript` (strict TS, used for .ts and .js) and `tsx` (TS with JSX, for .tsx and .jsx).
-  ".ts": { processor: identityProcessor, parser: TYPESCRIPT_PARSER },
-  ".tsx": { processor: identityProcessor, parser: TSX_PARSER },
-  ".js": { processor: identityProcessor, parser: TYPESCRIPT_PARSER },
-  ".jsx": { processor: identityProcessor, parser: TSX_PARSER },
+  ".ts": { processor: identityProcessor, parser: Option.some(TYPESCRIPT_PARSER) },
+  ".tsx": { processor: identityProcessor, parser: Option.some(TSX_PARSER) },
+  ".js": { processor: identityProcessor, parser: Option.some(TYPESCRIPT_PARSER) },
+  ".jsx": { processor: identityProcessor, parser: Option.some(TSX_PARSER) },
   // Other code -- parser: None until a tree-sitter package is added
   ".py": { processor: identityProcessor, parser: Option.none() },
   ".rs": { processor: identityProcessor, parser: Option.none() },
