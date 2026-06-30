@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.19.0...pix-v0.20.0) (2026-06-30)
+
+
+### Code Refactoring
+
+* include tests in fallow, restore validation scripts, drop clack generic, reduce type casts ([ae36f61](https://github.com/Lucas-Bur/pix/commit/ae36f6100adbd7dddd0d7a49130d8ced55bd41e4))
+
 ## [0.19.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.18.2...pix-v0.19.0) (2026-06-30)
 
 
