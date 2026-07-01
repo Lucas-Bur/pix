@@ -1,12 +1,12 @@
-import { Effect, Exit } from "effect"
+import { Console, Effect, Exit } from "effect"
 import { expect, test } from "vite-plus/test"
 
 import { makeFailingIndexStore } from "../../tests/test-utils/command.js"
-import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
+import { makeConfigJson, TEST_CONFIG_JSON } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import type { Config } from "../domain/config.js"
 import { StoreError } from "../domain/errors.js"
-import { ConfigStore } from "../domain/ports.js"
+import { ConfigStore, IndexStore } from "../domain/ports.js"
 import { ScannerLive } from "../services/scanner.ts"
 import { IndexProject } from "./index-project.js"
 
@@ -120,6 +120,35 @@ test("IndexProject.index uses custom extensions from config", () =>
         contents: {
           ".pix/config.json": makeConfig(),
           "src/script.py": `# Python script\n${"print('line')\n".repeat(70)}`,
+        },
+        scannerLayer: ScannerLive,
+      }),
+    ),
+    Effect.scoped,
+  ))
+
+test("IndexProject.index assigns global chunk indices to identifiers across files", () =>
+  Effect.gen(function* () {
+    yield* (yield* IndexProject).index()
+    const store = yield* IndexStore
+    const { identifierIndex, entries } = yield* store.loadSearchData()
+
+    expect(entries.length).toBe(2)
+    const alphaIdxs = identifierIndex.exact["alpha"]
+    const betaIdxs = identifierIndex.exact["beta"]
+    expect(alphaIdxs).toBeDefined()
+    expect(betaIdxs).toBeDefined()
+    expect(alphaIdxs.length).toBe(1)
+    expect(betaIdxs.length).toBe(1)
+    expect(alphaIdxs[0]).not.toBe(betaIdxs[0])
+    Effect.runSync(Console.log(alphaIdxs, betaIdxs))
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        contents: {
+          ".pix/config.json": TEST_CONFIG_JSON,
+          "src/idx_a.ts": "export function alpha() { return 1 }",
+          "src/idx_b.ts": "export function beta() { return 2 }",
         },
         scannerLayer: ScannerLive,
       }),

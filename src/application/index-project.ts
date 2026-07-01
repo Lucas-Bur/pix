@@ -184,14 +184,21 @@ const make = Effect.gen(function* () {
    * independently (the chunker's overlap means the same identifier can appear in multiple chunks --
    * the build step aggregates those occurrences into the maps). The chunk's file path drives parser
    * dispatch inside the service.
+   *
+   * The `globalIndex` passed to the extractor is the chunk's position in the `phase1.chunks` array,
+   * NOT `chunk.idx` (which is the per-file chunk position). The identifier scorers look up entries
+   * by their global index in the loaded search data; using `chunk.idx` here would cause per-file
+   * collisions where two different files' chunks (both at per-file `idx 0`) would map to the same
+   * global entry, biasing results toward whichever file was indexed first.
    */
   const extractIdentifiersForChunks = (
     chunks: readonly DomainChunk[],
   ): Effect.Effect<IdentifierIndexMaps, never> =>
     Effect.gen(function* () {
       const all: Identifier[] = []
-      for (const chunk of chunks) {
-        const ids = yield* identifierExtractor.extractIdentifiers(chunk.file, chunk.text, chunk.idx)
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i]
+        const ids = yield* identifierExtractor.extractIdentifiers(chunk.file, chunk.text, i)
         for (const id of ids) all.push(id)
       }
       return buildIdentifierIndex(all)

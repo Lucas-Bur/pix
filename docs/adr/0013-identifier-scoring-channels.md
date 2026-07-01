@@ -30,6 +30,8 @@ Both identifier channels consume a pre-built two-map index persisted in `.pix/id
 
 The map shape uses plain `Record` (not `Map`) for direct JSON serialization at the storage boundary, consistent with `Bm25Index`.
 
+`chunkIndex` here is **global** — the chunk's position in the persisted `chunks.jsonl` array (and equivalently in `phase1.chunks` at index time), NOT the per-file `idx` field the chunker assigns. The query-time scorers resolve `chunkIndex` against `entryMap`, which is keyed by the same global `ChunkEntry.index` (assigned by line position in `chunks.jsonl` during load). Mixing the two scopes silently biases identity/camelcase matches toward whichever file was indexed first, since two different files' chunks (both at per-file `idx 0`) would otherwise collide on global index 0.
+
 `IdentifierKind` is a language-agnostic three-category vocabulary: `"function" | "type" | "value"`. Each tree-sitter grammar's specific node types (e.g. `function_declaration`, `class_declaration`, `variable_declarator`) are mapped onto this vocabulary at extraction time via a per-language `mapKind` table.
 
 The RRF channel layout, query routing, and channel weight definitions live at the top of `src/application/query-project.ts` for visibility and easy hand-tuning.
