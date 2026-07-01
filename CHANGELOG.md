@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.20.0...pix-v0.20.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* **indexer:** use global chunk index for identifier extraction ([77aa146](https://github.com/Lucas-Bur/pix/commit/77aa14606ee9a074a88067f98cf85c26e4e1f4ab))
+
 ## [0.20.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.19.0...pix-v0.20.0) (2026-06-30)
 
 
