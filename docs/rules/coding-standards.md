@@ -14,6 +14,18 @@
 - One command per file: `src/commands/<name>.ts`
 - Co-located tests: `<file>.test.ts` next to source
 
+## Simplicity and Derivation
+
+- Prefer less code over defensive abstraction. Add a helper, factory, interface, or type only when it removes real duplication across current call sites.
+- Do not introduce single-use factories or wrapper helpers around one-liners. Inline direct library calls when that matches nearby code.
+- Keep command files close to the existing command style: declare CLI config, call services/use cases, handle display/errors. Shared behavior belongs in a small sibling module, not by importing one command from another.
+- Derive types from the source of truth instead of writing parallel interfaces. For CLI input, derive from `Command.Command.Config.Infer<typeof config>`. For persisted JSON, derive from `Schema` definitions.
+- At filesystem and process boundaries, validate owned data with `Schema`. Do not hand-roll JSON shape checks when an Effect Schema can define the boundary and provide the type.
+- Avoid maintaining the same option fields in several places. If query flags, alias persistence, and execution need the same fields, expose the smallest shared config/schema and derive the rest.
+- Runtime-only flags such as output mode should stay runtime-only. Do not persist them unless the domain explicitly says they are part of the saved concept.
+- Do not suppress `fallow` findings to make gates pass. Complexity reports are architectural signals and must stay visible unless the code is actually refactored.
+- Before extracting code, apply the deletion test: if deleting the abstraction makes the code clearer and does not duplicate meaningful behavior, the abstraction should not exist.
+
 ## Effect-TS Rules
 
 - Use `Effect.gen` for imperative-style Effect code
@@ -25,6 +37,11 @@
 - Never use `Effect.sync` for file operations — use `Effect.try`/`Effect.tryPromise`
 - Use `return yield*` when yielding errors or interrupts in Effect.gen
 - NEVER use `Effect.log*` — errors must flow through return types or the error channel
+
+- Access services from the Effect environment inside Effect workflows. Pass services as function parameters only for pure helpers or deliberately dependency-free functions.
+- Prefer named reusable effects only when they are reused or clarify a workflow. Do not wrap a single inline operation in a local `() => Effect...` function just to call it once.
+- Use `Effect.fn` for named, reusable workflows where tracing/diagnostics or a stable semantic boundary help. Do not use it as ceremony for trivial one-off local code.
+- If an effect does not need runtime parameters and is used once, inline it. If it needs parameters, a plain function returning `Effect` is fine.
 
 ### Schema Patterns for Effect Schema
 

@@ -87,6 +87,14 @@ init, index, query, status, reset. No incremental indexing, no cloud providers, 
 
 Token-count heuristic adjusting scorer weights before RRF fusion. Short queries (1-2 tokens) boost BM25 weight; long queries (8+ tokens) boost semantic weight. Default: equal weights. Inlined in `src/application/query-project.ts`.
 
+### Query Alias
+
+Named query-only preset stored in `.pix/aliases.json` as a flat map keyed by alias name. Each value contains `queryText` plus query options (`top`, `ignorePath`, `onlyPath`, `contextLines`, `maxCharacters`, and `noContent`). Output modes such as JSON and Clipboard Copy are runtime choices, not part of the alias. `pix run <name>` is the short form for `pix alias run <name>`; both execute the same implementation.
+
+### Clipboard Copy
+
+Runtime output mode that copies all returned query results to the system clipboard without changing search semantics.
+
 ### RankedChunk
 
 Scorer output — ranks all chunks against a query. Shape: `{ chunkIndex: number, score: number }[]` sorted by score descending. Each scorer returns its own ranked list; RRF fuses N lists by rank position.
@@ -350,3 +358,4 @@ Lookup table that decides how each file extension is processed:
 - In-memory search optimization (mmap for large indexes)
 - `.pixignore` as additional blacklist (research needed)
 - Ranking improvements for query results
+- Structured query history in `.pix/history.jsonl` for future alias recommendations. Each entry could record timestamp, query text, options, duration, and result metadata so a future LLM workflow can suggest useful **Query Alias** candidates.

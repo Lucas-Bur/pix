@@ -47,6 +47,9 @@ const main = Effect.gen(function* () {
       return yield* runWith(() =>
         import("./layers/config-heal-layer.js").then((m) => m.ConfigHealLayer),
       )
+    case "alias":
+    case "run":
+      return yield* runWith(() => import("./layers/alias-layer.js").then((m) => m.AliasLayer))
     default:
       return yield* runDefault
   }

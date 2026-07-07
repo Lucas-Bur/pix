@@ -115,7 +115,6 @@ const make = Effect.gen(function* () {
       return { ig, skipped }
     })
 
-  // fallow-ignore-next-line complexity
   const processEntry = (
     entry: string,
     dir: string,

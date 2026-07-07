@@ -10,10 +10,12 @@ import { QueryProjectLive } from "../../src/application/query-project.js"
 import { ResetIndexLive } from "../../src/application/reset-index.js"
 import { Display } from "../../src/domain/ports.js"
 import {
+  Clipboard,
   ConfigStore,
   Embedder,
   IdentifierExtractor,
   IndexStore,
+  QueryAliasStore,
   Scanner,
 } from "../../src/domain/ports.js"
 import { ChunkerLive } from "../../src/services/chunker.js"
@@ -22,6 +24,7 @@ import { ContentExtractorLive } from "../../src/services/content-extractor.js"
 import { IdentifierExtractorLive } from "../../src/services/identifier-extractor.js"
 import { IndexStoreLive } from "../../src/services/index-store.js"
 import { ModelRegistryLive } from "../../src/services/models.js"
+import { QueryAliasStoreLive } from "../../src/services/query-alias-store.js"
 
 export interface TestLayerOptions {
   readonly contents?: FileTree
@@ -30,6 +33,8 @@ export interface TestLayerOptions {
   readonly configStoreLayer?: Layer.Layer<ConfigStore, never, FileSystem>
   readonly indexStoreLayer?: Layer.Layer<IndexStore, never, FileSystem>
   readonly identifierExtractorLayer?: Layer.Layer<IdentifierExtractor, never, FileSystem>
+  readonly clipboardLayer?: Layer.Layer<Clipboard>
+  readonly queryAliasStoreLayer?: Layer.Layer<QueryAliasStore, never, FileSystem>
   readonly displayLayer?: Layer.Layer<Display>
   readonly cleanStore?: boolean
 }
@@ -73,6 +78,8 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     configStoreLayer,
     indexStoreLayer,
     identifierExtractorLayer,
+    clipboardLayer,
+    queryAliasStoreLayer,
     displayLayer,
     cleanStore,
   } = opts
@@ -85,6 +92,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     scannerLayer ?? defaultScannerLayer,
     embedderLayer ?? defaultEmbedderLayer,
     indexStoreLayer ?? IndexStoreLive,
+    queryAliasStoreLayer ?? QueryAliasStoreLive,
     ContentExtractorLive,
     identifierExtractorLayer ?? IdentifierExtractorLive,
   )
@@ -104,7 +112,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
 
   const appLayer = Layer.merge(useCaseLayer.pipe(Layer.provide(infraLayer)), memFs)
 
-  const baseLayers = appLayer
+  const baseLayers = clipboardLayer ? Layer.merge(appLayer, clipboardLayer) : appLayer
   const withConsole = displayLayer ? Layer.merge(baseLayers, displayLayer) : baseLayers
 
   if (cleanStore) {
