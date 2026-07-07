@@ -48,6 +48,14 @@ const runClipboardCommand = (
               cause,
             }),
         ),
+        Effect.timeout("5 seconds"),
+        Effect.catchTag("TimeoutError", () =>
+          Effect.fail(
+            new ClipboardError({
+              message: `Clipboard command "${spec.command}" timed out`,
+            }),
+          ),
+        ),
       )
 
     if (exitCode !== 0) {

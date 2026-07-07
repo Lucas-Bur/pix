@@ -1,9 +1,11 @@
-import { Effect } from "effect"
+import { Effect, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
+import { testClipboard } from "../../tests/test-utils/clipboard.js"
 import {
   assertCommandError,
   expectJsonEntry,
+  expectLogEntry,
   indexFixtures,
   runCommand as makeRunCommand,
 } from "../../tests/test-utils/command.js"
@@ -108,4 +110,37 @@ test("pix run is a short form for pix alias run", () => {
       }
     })
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+})
+
+test("pix alias run with nonexistent alias reports error", () => {
+  const { ref, layer } = silentDisplay()
+  return assertCommandError(runAlias(["alias", "run", "nonexistent"]), ref, "ALIAS_NOT_FOUND").pipe(
+    Effect.provide(testLayer({ displayLayer: layer })),
+  )
+})
+
+test("pix alias run with --copy copies results to clipboard", () => {
+  const { ref: displayRef, layer: displayLayer } = silentDisplay()
+  const { ref: clipboardRef, layer: clipboardLayer } = testClipboard()
+  return Effect.gen(function* () {
+    yield* runAlias(["alias", "add", "auth", "const", "--top", "1"])
+    yield* runAlias(["alias", "run", "auth", "--copy", "--json"])
+
+    const copied = yield* Ref.get(clipboardRef)
+    expect(copied).toContain("/src/")
+    yield* expectLogEntry(displayRef, { severity: "success", messageIncludes: "Copied" })
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer, clipboardLayer })))
+})
+
+test("pix run --copy copies results to clipboard as short form", () => {
+  const { ref: displayRef, layer: displayLayer } = silentDisplay()
+  const { ref: clipboardRef, layer: clipboardLayer } = testClipboard()
+  return Effect.gen(function* () {
+    yield* runAlias(["alias", "add", "auth", "const", "--top", "1"])
+    yield* runTopLevelAlias(["run", "auth", "--copy", "--json"])
+
+    const copied = yield* Ref.get(clipboardRef)
+    expect(copied).toContain("/src/")
+    yield* expectLogEntry(displayRef, { severity: "success", messageIncludes: "Copied" })
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer, clipboardLayer })))
 })

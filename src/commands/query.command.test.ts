@@ -178,6 +178,24 @@ test("pix query --copy copies all returned formatted results", () => {
   })
 })
 
+test("pix query --copy with no results does not copy", () => {
+  const { ref: displayRef, layer: displayLayer } = silentDisplay()
+  const { ref: clipboardRef, layer: clipboardLayer } = testClipboard()
+  return Effect.gen(function* () {
+    yield* run(["query", "--copy", "--top", "2", "no matches at all"]).pipe(
+      Effect.provide(testLayer({ contents: {}, displayLayer, clipboardLayer })),
+    )
+
+    const copied = yield* Ref.get(clipboardRef)
+    expect(copied).toEqual("")
+    const entries = yield* Ref.get(displayRef)
+    const hasCopyLog = entries.some(
+      (e) => e._tag === "log" && e.severity === "success" && e.message.includes("Copied"),
+    )
+    expect(hasCopyLog).toBe(false)
+  })
+})
+
 const assertQueryFilesFiltered = (args: string[], predicate: (file: string) => boolean) => {
   const { ref, effect } = runQuery(["--json", ...args])
   return Effect.gen(function* () {
