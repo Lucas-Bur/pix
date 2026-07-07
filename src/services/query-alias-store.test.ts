@@ -3,6 +3,7 @@ import { FileSystem } from "effect/FileSystem"
 import { expect, test } from "vite-plus/test"
 
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
+import { AliasNotFoundError, AliasStoreError, AliasValidationError } from "../domain/errors.js"
 import { QueryAliasStore } from "../domain/ports.js"
 import { QueryAliasStoreLive } from "./query-alias-store.js"
 
@@ -35,3 +36,38 @@ test("QueryAliasStore.remove deletes an alias from aliases.json", () =>
     yield* store.remove("auth")
     expect(yield* store.list()).toEqual([])
   }).pipe(Effect.provide(aliasLayer())))
+
+test("QueryAliasStore.get returns a saved alias", () =>
+  Effect.gen(function* () {
+    const store = yield* QueryAliasStore
+    yield* store.save("auth", "find auth handlers", { top: 3 })
+    const alias = yield* store.get("auth")
+    expect(alias.name).toBe("auth")
+    expect(alias.queryText).toBe("find auth handlers")
+    expect(alias.options).toEqual({ top: 3 })
+  }).pipe(Effect.provide(aliasLayer())))
+
+test("QueryAliasStore.get fails with AliasNotFoundError for a missing alias", () =>
+  Effect.gen(function* () {
+    const store = yield* QueryAliasStore
+    const error = yield* store.get("nonexistent").pipe(Effect.catch((err) => Effect.succeed(err)))
+    expect(error).toBeInstanceOf(AliasNotFoundError)
+    expect((error as AliasNotFoundError).name).toBe("nonexistent")
+  }).pipe(Effect.provide(aliasLayer())))
+
+test("QueryAliasStore.save rejects invalid alias names", () =>
+  Effect.gen(function* () {
+    const store = yield* QueryAliasStore
+    const error = yield* store
+      .save("bad/name", "query", {})
+      .pipe(Effect.catch((err) => Effect.succeed(err)))
+    expect(error).toBeInstanceOf(AliasValidationError)
+  }).pipe(Effect.provide(aliasLayer())))
+
+test("QueryAliasStore fails with AliasStoreError for corrupted aliases.json", () =>
+  Effect.gen(function* () {
+    const store = yield* QueryAliasStore
+    const error = yield* store.list().pipe(Effect.catch((err) => Effect.succeed(err)))
+    expect(error).toBeInstanceOf(AliasStoreError)
+    expect((error as AliasStoreError).message).toContain("decode")
+  }).pipe(Effect.provide(aliasLayer({ ".pix/aliases.json": "not valid json" }))))

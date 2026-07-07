@@ -57,7 +57,16 @@ const make = Effect.gen(function* () {
   const fs = yield* FileSystem
 
   const readRegistry: Effect.Effect<QueryAliasRegistry, AliasStoreError> = Effect.gen(function* () {
-    const exists = yield* fs.exists(ALIASES_PATH).pipe(Effect.catch(() => Effect.succeed(false)))
+    const exists = yield* fs.exists(ALIASES_PATH).pipe(
+      Effect.mapError(
+        (cause) =>
+          new AliasStoreError({
+            path: ALIASES_PATH,
+            message: "Failed to check aliases.json existence",
+            cause,
+          }),
+      ),
+    )
     if (!exists) return EMPTY_QUERY_ALIAS_REGISTRY
     const content = yield* fs.readFileString(ALIASES_PATH).pipe(
       Effect.mapError(

@@ -42,6 +42,29 @@ const listWithFallback = <T>(
   saved: readonly T[] | undefined,
 ): readonly T[] => (override.length > 0 ? override : (saved ?? []))
 
+const buildAliasOptions = ({
+  top,
+  contextLines,
+  ignorePath,
+  onlyPath,
+  maxCharacters,
+  noContent,
+}: {
+  top: Option.Option<number>
+  contextLines: Option.Option<number>
+  ignorePath: readonly string[]
+  onlyPath: readonly string[]
+  maxCharacters: Option.Option<number>
+  noContent: boolean
+}): Record<string, unknown> => ({
+  ...(Option.isSome(top) && { top: top.value }),
+  ...(Option.isSome(contextLines) && { contextLines: contextLines.value }),
+  ...(ignorePath.length > 0 && { ignorePath: [...ignorePath] }),
+  ...(onlyPath.length > 0 && { onlyPath: [...onlyPath] }),
+  ...(Option.isSome(maxCharacters) && { maxCharacters: maxCharacters.value }),
+  ...(noContent && { noContent: true }),
+})
+
 const toQueryInput = (alias: QueryAlias, flags: AliasRunFlags): QueryCommandInput => ({
   queryText: alias.queryText,
   top: numberWithFallback(flags.top, alias.options.top, DEFAULT_TOP_K),
@@ -65,19 +88,17 @@ const aliasAddCommand = Command.make(
     name: Argument.string("name"),
     queryText: Argument.string("query"),
     ...queryAliasFlags,
+    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
   ({ name, queryText, top, contextLines, ignorePath, onlyPath, maxCharacters, noContent }) =>
     Effect.gen(function* () {
       const d = yield* Display
       const store = yield* QueryAliasStore
-      const alias = yield* store.save(name, queryText, {
-        ...(Option.isSome(top) && { top: top.value }),
-        ...(Option.isSome(contextLines) && { contextLines: contextLines.value }),
-        ...(ignorePath.length > 0 && { ignorePath: [...ignorePath] }),
-        ...(onlyPath.length > 0 && { onlyPath: [...onlyPath] }),
-        ...(Option.isSome(maxCharacters) && { maxCharacters: maxCharacters.value }),
-        ...(noContent && { noContent: true }),
-      })
+      const alias = yield* store.save(
+        name,
+        queryText,
+        buildAliasOptions({ top, contextLines, ignorePath, onlyPath, maxCharacters, noContent }),
+      )
       yield* d.json(alias)
       yield* d.log(`Saved alias "${alias.name}"`, "success")
     }).pipe(Effect.catch(reportError)),
@@ -108,6 +129,7 @@ const aliasRemoveCommand = Command.make(
   "remove",
   {
     name: Argument.string("name"),
+    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
   ({ name }) =>
     Effect.gen(function* () {
