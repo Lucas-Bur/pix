@@ -158,3 +158,28 @@ export class DisplayLogError extends Data.TaggedError("DisplayLogError")<{
   readonly path?: string
   readonly cause?: unknown
 }> {}
+
+/** Copying text to the system clipboard failed. */
+export class ClipboardError extends Data.TaggedError("ClipboardError")<{
+  readonly message: string
+  readonly cause?: unknown
+}> {}
+
+/** Query alias registry operation failed. */
+export class AliasStoreError extends Data.TaggedError("AliasStoreError")<{
+  readonly message: string
+  readonly path?: string
+  readonly cause?: unknown
+}> {}
+
+/** Query alias name or stored data is invalid. */
+export class AliasValidationError extends Data.TaggedError("AliasValidationError")<{
+  readonly message: string
+  readonly name?: string
+}> {}
+
+/** Requested query alias does not exist. */
+export class AliasNotFoundError extends Data.TaggedError("AliasNotFoundError")<{
+  readonly message: string
+  readonly name: string
+}> {}

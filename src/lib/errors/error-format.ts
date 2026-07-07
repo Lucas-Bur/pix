@@ -23,6 +23,10 @@ const errorCodes: Record<string, string> = {
   DtypeMismatchError: "DTYPE_MISMATCH",
   VectorDecodeError: "VECTOR_DECODE_ERROR",
   DisplayLogError: "DISPLAY_LOG_ERROR",
+  ClipboardError: "CLIPBOARD_ERROR",
+  AliasStoreError: "ALIAS_STORE_ERROR",
+  AliasValidationError: "ALIAS_VALIDATION_ERROR",
+  AliasNotFoundError: "ALIAS_NOT_FOUND",
   UnsupportedFormat: "UNSUPPORTED_FORMAT",
   ExtractionFailed: "EXTRACTION_FAILED",
 }

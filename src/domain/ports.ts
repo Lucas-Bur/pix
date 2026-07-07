@@ -8,6 +8,10 @@ import type { EmbeddingDtype } from "./dtype.js"
 import type { DtypeMismatchError, VectorDecodeError } from "./dtype.js"
 import type {
   AllConfigErrors,
+  ClipboardError,
+  AliasNotFoundError,
+  AliasStoreError,
+  AliasValidationError,
   ChunkValidationError,
   ConfigError,
   ConfigMalformedError,
@@ -24,6 +28,7 @@ import type {
 } from "./errors.js"
 import type { IdentifierIndexMaps } from "./identifier-index.js"
 import type { Identifier } from "./identifier.js"
+import type { QueryAlias, QueryAliasOptions } from "./query-alias.js"
 
 // === Index options ===
 
@@ -336,6 +341,42 @@ export class IndexStore extends Context.Service<
     readonly reset: () => Effect.Effect<ResetResult, StoreError | DiskFullError>
   }
 >()("IndexStore") {}
+
+// === Clipboard Port ===
+
+/** Port for copying text to the system clipboard. */
+export class Clipboard extends Context.Service<
+  Clipboard,
+  {
+    /** Copy text to the active system clipboard. */
+    readonly copy: (text: string) => Effect.Effect<void, ClipboardError>
+  }
+>()("Clipboard") {}
+
+// === QueryAliasStore Port ===
+
+/** Port for persisting named query aliases in `.pix/aliases.json`. */
+export class QueryAliasStore extends Context.Service<
+  QueryAliasStore,
+  {
+    /** Save or replace a query alias. */
+    readonly save: (
+      name: string,
+      queryText: string,
+      options: QueryAliasOptions,
+    ) => Effect.Effect<QueryAlias, AliasStoreError | AliasValidationError>
+    /** List all aliases sorted by name. */
+    readonly list: () => Effect.Effect<readonly QueryAlias[], AliasStoreError>
+    /** Load a query alias by name. */
+    readonly get: (
+      name: string,
+    ) => Effect.Effect<QueryAlias, AliasStoreError | AliasValidationError | AliasNotFoundError>
+    /** Remove a query alias by name. */
+    readonly remove: (
+      name: string,
+    ) => Effect.Effect<void, AliasStoreError | AliasValidationError | AliasNotFoundError>
+  }
+>()("QueryAliasStore") {}
 
 // === Display Port ===
 

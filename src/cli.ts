@@ -3,6 +3,7 @@ import { createRequire } from "node:module"
 import { Effect } from "effect"
 import { Command } from "effect/unstable/cli"
 
+import { aliasCommand, runAliasShortcutCommand } from "./commands/alias.js"
 import { benchCommand } from "./commands/bench.js"
 import { configCommand } from "./commands/config.js"
 import { indexCommand } from "./commands/index-cmd.ts"
@@ -33,6 +34,8 @@ const pix = rootCommand.pipe(
     resetCommand,
     benchCommand,
     configCommand,
+    aliasCommand,
+    runAliasShortcutCommand,
   ]),
 )
 

@@ -14,5 +14,5 @@ export function commandLayer<RIn, E, ROut, RInfraOut, EInfra, RInfraIn>(
   useCase: Layer.Layer<ROut, E, RIn>,
   infra: Layer.Layer<RInfraOut, EInfra, RInfraIn>,
 ) {
-  return Layer.merge(useCase.pipe(Layer.provideMerge(infra)), NodeServices.layer)
+  return Layer.mergeAll(useCase.pipe(Layer.provideMerge(infra)), infra, NodeServices.layer)
 }

@@ -2,6 +2,7 @@ import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Ref } from "effect"
 import { expect, test } from "vite-plus/test"
 
+import { testClipboard } from "../../tests/test-utils/clipboard.js"
 import {
   assertCommandError,
   expectJsonEntry,
@@ -156,6 +157,24 @@ test("pix query without --json outputs formatted results", () => {
     expect(entries.some((e) => e._tag === "spinner")).toBe(true)
     expect(entries.some((e) => e._tag === "json")).toBe(true)
     expect(entries.some((e) => e._tag === "text")).toBe(true)
+  })
+})
+
+test("pix query --copy copies all returned formatted results", () => {
+  const { ref: displayRef, layer: displayLayer } = silentDisplay()
+  const { ref: clipboardRef, layer: clipboardLayer } = testClipboard()
+  return Effect.gen(function* () {
+    yield* run(["query", "--copy", "--top", "2", "test"]).pipe(
+      Effect.provide(testLayer({ contents: indexFixtures, displayLayer, clipboardLayer })),
+    )
+
+    const copied = yield* Ref.get(clipboardRef)
+    expect(copied).toContain("#1")
+    expect(copied).toContain("/src/")
+    expect(copied).toContain(":1-")
+    expect(copied).toContain("const")
+    expect(copied).toContain("#2")
+    yield* expectLogEntry(displayRef, { severity: "success", messageIncludes: "Copied 2" })
   })
 })
 
