@@ -1,4 +1,4 @@
-import { Context, Effect } from "effect"
+import { Context, Effect, Option } from "effect"
 import type { Stream } from "effect"
 
 import type { Chunk, Embedding } from "./chunk.js"
@@ -28,6 +28,7 @@ import type {
 } from "./errors.js"
 import type { IdentifierIndexMaps } from "./identifier-index.js"
 import type { Identifier } from "./identifier.js"
+import type { ModelInfo } from "./models.js"
 import type { QueryAlias, QueryAliasOptions } from "./query-alias.js"
 
 // === Index options ===
@@ -94,6 +95,19 @@ export class ConfigStore extends Context.Service<
     readonly configExists: () => Effect.Effect<boolean>
   }
 >()("ConfigStore") {}
+
+// === ModelRegistry Port ===
+
+/** Port for querying embedding model metadata (dtypes, dims, defaults). */
+export class ModelRegistry extends Context.Service<
+  ModelRegistry,
+  {
+    /** Look up model info by HuggingFace model identifier. Returns Option.none if unknown. */
+    readonly get: (id: string) => Effect.Effect<Option.Option<ModelInfo>>
+    /** List all registered model IDs. */
+    readonly list: () => Effect.Effect<readonly string[]>
+  }
+>()("ModelRegistry") {}
 
 // === Scanner Port ===
 
@@ -197,6 +211,22 @@ export class Embedder extends Context.Service<
     ) => Effect.Effect<BoundEmbedder, ModelLoadError>
   }
 >()("Embedder") {}
+
+// === DeviceDetection Port ===
+
+/** Port for detecting available embedding compute devices. */
+export class DeviceDetection extends Context.Service<
+  DeviceDetection,
+  {
+    /** Detect the best available device by attempting model load on each device in priority order. */
+    readonly detect: (model: string, dtype: string) => Effect.Effect<DeviceType, ModelLoadError>
+    /** Test all devices independently and return the working devices in priority order. */
+    readonly detectAll: (
+      model: string,
+      dtype: string,
+    ) => Effect.Effect<readonly DeviceType[], never>
+  }
+>()("DeviceDetection") {}
 
 // === IndexStore Port ===
 

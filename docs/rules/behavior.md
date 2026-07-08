@@ -24,11 +24,9 @@
 ## Hexagonal Architecture (Goal)
 
 - Domain logic in inner layer (pure functions, no dependencies)
-- Ports (interfaces) define what the domain needs
-- Adapters (outer layer) implement ports (e.g., FileSystem adapter)
+- Ports (`Context.Tag` in `src/domain/ports.ts`) define what the application needs
+- Adapters (`src/services/`) implement ports as `Effect.Layer`
 - Dependency injection via Effect layers
 - Current state:
-  - [ ] `ConfigError` is a tagged error (good)
-  - [ ] `FileSystem` from `@effect/platform` (good - adapter)
-  - [ ] Need to extract domain logic from `store.ts`
-  - [ ] Need ports for: storage, embedding, scanning
+  - Ports exist for: ConfigStore, Scanner, ContentExtractor, Chunker, IdentifierExtractor, Embedder, IndexStore, Display, Clipboard, QueryAliasStore, ModelRegistry, DeviceDetection
+  - Each port has at least one live adapter; most have a test/fake adapter too

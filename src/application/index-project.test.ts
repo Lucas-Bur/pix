@@ -7,7 +7,7 @@ import { testLayer } from "../../tests/test-utils/testLayer.js"
 import type { Config } from "../domain/config.js"
 import { StoreError } from "../domain/errors.js"
 import { ConfigStore, IndexStore } from "../domain/ports.js"
-import { ScannerLive } from "../services/scanner.ts"
+import { ScannerLive } from "../services/scanner.js"
 import { IndexProject } from "./index-project.js"
 
 const makeConfig = (overrides: Partial<Config> = {}): string => makeConfigJson(overrides)

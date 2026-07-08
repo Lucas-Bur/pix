@@ -11,12 +11,12 @@ import {
   ConfigValidationError,
   DiskFullError,
 } from "../domain/errors.js"
-import { ConfigStore, type HealConflict } from "../domain/ports.js"
+import { ConfigStore, ModelRegistry, type HealConflict } from "../domain/ports.js"
 import { decodeObjectWithErrors } from "../lib/config/validation.js"
 import { deepMerge } from "../lib/deep-merge.js"
 import { withConfigError } from "../lib/errors/fs-error.js"
 import { isPlatformReason } from "../lib/errors/platform-error.js"
-import { ModelRegistry, ModelRegistryLive } from "./models.js"
+import { ModelRegistryLive } from "./models.js"
 
 const CONFIG_DIR = ".pix"
 const CONFIG_PATH = `${CONFIG_DIR}/config.json`

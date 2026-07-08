@@ -5,7 +5,7 @@ import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import type { Embedding } from "../domain/chunk.js"
 import { Embedder } from "../domain/ports.js"
-import { OnnxEmbedderLive } from "./embedder.ts"
+import { OnnxEmbedderLive } from "./embedder.js"
 
 const testLayer = Layer.provideMerge(
   OnnxEmbedderLive,

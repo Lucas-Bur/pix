@@ -9,10 +9,10 @@ const expectLeft = <A>(result: Result.Result<unknown, A>): A => {
 }
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
-import { DEFAULT_CONFIG } from "../domain/config.ts"
+import { DEFAULT_CONFIG } from "../domain/config.js"
 import { ConfigStore } from "../domain/ports.js"
-import { ConfigStoreLive } from "./config-store.ts"
-import { ModelRegistryLive } from "./models.ts"
+import { ConfigStoreLive } from "./config-store.js"
+import { ModelRegistryLive } from "./models.js"
 
 const makeLayer = (contents?: FileTree) =>
   Layer.provideMerge(

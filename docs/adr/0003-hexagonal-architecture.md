@@ -23,8 +23,8 @@ Pure TypeScript — no Effect, no I/O, no infrastructure dependencies. Contains:
 
 - **Entities**: `Config`, `Chunk` — structured data with identity
 - **Value objects**: `Embedding` — identified by value, immutable
-- **Ports**: `Context.Tag` interfaces defining what the application needs: `ConfigStore`, `Scanner`, `Chunker`, `Embedder`, `IndexStore`
-- **Error types**: `ConfigError` — typed error for the domain
+- **Ports**: `Context.Tag` interfaces in `src/domain/ports.ts` defining what the application needs: `ConfigStore`, `Scanner`, `Chunker`, `ContentExtractor`, `IdentifierExtractor`, `Embedder`, `IndexStore`, `Display`, `Clipboard`, `QueryAliasStore`, `ModelRegistry`, `DeviceDetection`
+- **Error types**: `AllConfigErrors`, `ModelLoadError`, `InferenceError`, `ChunkerError`, `StoreError`, `ClipboardError`, `InteractiveError`
 
 ### Application Layer (`src/application/`)
 

@@ -3,7 +3,7 @@ import { expect, test } from "vite-plus/test"
 
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { Scanner } from "../domain/ports.js"
-import { ScannerLive } from "./scanner.ts"
+import { ScannerLive } from "./scanner.js"
 
 const fixtures = {
   "src/commands/init.ts": "export const init = () => {}",

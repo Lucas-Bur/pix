@@ -26,7 +26,7 @@ Deep-merge user config onto `DEFAULT_CONFIG` before schema decode. Missing field
 
 ### Coupled validation via ModelRegistry port
 
-Introduce `ModelRegistry` as a `Context.Tag` port (`src/services/models.ts`) with `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. `ConfigStoreLive` depends on it via `yield* ModelRegistry`. `ModelInfo` gains a `defaultDtype` field for auto-healing unsupported dtypes.
+Introduce `ModelRegistry` as a `Context.Tag` port (`src/domain/ports.ts`) with `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. The live adapter lives in `src/services/models.ts`. `ConfigStoreLive` depends on it via `yield* ModelRegistry`. `ModelInfo` gains a `defaultDtype` field for auto-healing unsupported dtypes.
 
 Two outcomes:
 

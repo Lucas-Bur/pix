@@ -5,7 +5,7 @@ import { expect, test } from "vite-plus/test"
 
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { Chunker } from "../domain/ports.js"
-import { ChunkerLive } from "./chunker.ts"
+import { ChunkerLive } from "./chunker.js"
 import { ConfigStoreLive } from "./config-store.js"
 
 const fixtureFile = `import { Effect } from "effect"

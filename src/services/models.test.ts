@@ -1,7 +1,8 @@
 import { Effect, Option } from "effect"
 import { expect, test } from "vite-plus/test"
 
-import { ModelRegistry, ModelRegistryLive } from "./models.js"
+import { ModelRegistry } from "../domain/ports.js"
+import { ModelRegistryLive } from "./models.js"
 
 test("ModelRegistryLive returns ModelInfo for known model with defaultDtype", () =>
   Effect.gen(function* () {

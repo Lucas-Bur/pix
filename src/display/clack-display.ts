@@ -12,7 +12,6 @@ import {
   type DisplayProgressOptions as ProgressOptions,
   type DisplayUpdatePayload,
 } from "../domain/ports.js"
-import { formatTable } from "../lib/display/table.js"
 import {
   type ActiveInteractive,
   clearActive,
@@ -24,6 +23,7 @@ import {
   updateProgressValue,
 } from "./interactive-state.js"
 import { appendLogEntry, updatePayloadLog } from "./logging.js"
+import { formatTable } from "./table.js"
 
 const severityToClack: Record<DisplaySeverity, (message: string) => void> = {
   info: clack.log.info,

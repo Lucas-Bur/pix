@@ -2,9 +2,8 @@ import { Effect } from "effect"
 import { Command, Flag } from "effect/unstable/cli"
 
 import { InitProject } from "../application/init-project.js"
-import { Display } from "../domain/ports.js"
+import { Display, ModelRegistry } from "../domain/ports.js"
 import { reportError } from "../lib/errors/error-format.js"
-import { ModelRegistry } from "../services/models.js"
 
 /** CLI command: pix init [--json] */
 export const initCommand = Command.make(

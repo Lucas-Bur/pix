@@ -33,11 +33,15 @@ Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable). Produ
 
 ### ModelRegistry
 
-Port (`Context.Tag` in `src/services/models.ts`) for querying embedding model metadata: dimensions, supported dtypes, default dtype, description. `ModelRegistryLive` wraps the static `MODEL_REGISTRY` record; test layers can inject a restricted fake registry to exercise coupled-validation edge cases. Two methods: `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. Follows the "two adapters = real seam" principle (live + test).
+Port (`Context.Tag` in `src/domain/ports.ts`) for querying embedding model metadata: dimensions, supported dtypes, default dtype, description. `ModelRegistryLive` in `src/services/models.ts` wraps the static `MODEL_REGISTRY` record from `src/domain/models.ts`; test layers can inject a restricted fake registry to exercise coupled-validation edge cases. Two methods: `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. Follows the "two adapters = real seam" principle (live + test).
 
 ### ModelInfo
 
-Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtypes` (supported quantizations), `defaultDtype` (used when healing an unsupported dtype), `description`. Lives in `src/services/models.ts`.
+Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtypes` (supported quantizations), `defaultDtype` (used when healing an unsupported dtype), `description`. Lives in `src/domain/models.ts` with the static `MODEL_REGISTRY`.
+
+### DeviceDetection
+
+Port (`Context.Tag` in `src/domain/ports.ts`) for detecting the best available compute device for embedding inference. Two methods: `detect(model, dtype) → DeviceType` (probes devices in priority order, returns first that loads the model) and `detectAll(model, dtype) → readonly DeviceType[]` (tests each device independently). The live adapter in `src/services/device-detect.ts` loads HuggingFace transformers with a GPU→CPU fallback chain (cuda → dml → coreml → webgpu → wasm → cpu). Used by `Embedder` for auto-detect and by `BenchProject` to enumerate available devices.
 
 ### Config Healing
 

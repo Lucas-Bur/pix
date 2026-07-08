@@ -5,5 +5,101 @@
     "src/index.ts",
     "tests/scripts/bench-startup.mjs",
     "tests/scripts/check-dtype-output.mjs"
-  ]
+  ],
+  "boundaries": {
+    "zones": [
+      { "name": "tests", "patterns": ["tests/**", "src/**/*.test.ts"] },
+      { "name": "composition", "patterns": ["src/index.ts", "src/cli.ts"] },
+      { "name": "domain", "patterns": ["src/domain/**"] },
+      {
+        "name": "lib-core",
+        "patterns": [
+          "src/lib/bench/**",
+          "src/lib/config/**",
+          "src/lib/deep-merge.ts",
+          "src/lib/parsing/**",
+          "src/lib/registry.ts",
+          "src/lib/retrieval/**",
+          "src/lib/vectors/**"
+        ]
+      },
+      { "name": "lib-errors", "patterns": ["src/lib/errors/**"] },
+      { "name": "lib-formatting", "patterns": ["src/lib/formatting/**"] },
+      { "name": "lib-embedder", "patterns": ["src/lib/embedder/**"] },
+      { "name": "display", "patterns": ["src/display/**"] },
+      { "name": "services", "patterns": ["src/services/**"] },
+      { "name": "application", "patterns": ["src/application/**"] },
+      { "name": "layers", "patterns": ["src/layers/**"] },
+      { "name": "commands", "patterns": ["src/commands/**"] }
+    ],
+    "rules": [
+      {
+        "from": "tests",
+        "allow": [
+          "domain",
+          "lib-core",
+          "lib-errors",
+          "lib-formatting",
+          "lib-embedder",
+          "display",
+          "services",
+          "application",
+          "layers",
+          "commands",
+          "composition"
+        ]
+      },
+      {
+        "from": "composition",
+        "allow": [
+          "domain",
+          "lib-core",
+          "lib-errors",
+          "lib-formatting",
+          "lib-embedder",
+          "display",
+          "services",
+          "application",
+          "layers",
+          "commands"
+        ]
+      },
+      { "from": "domain", "allow": [] },
+      { "from": "lib-core", "allow": ["domain"] },
+      { "from": "lib-errors", "allow": ["domain", "lib-core"] },
+      { "from": "lib-formatting", "allow": ["domain", "lib-core", "lib-errors"] },
+      { "from": "lib-embedder", "allow": ["domain", "lib-core"] },
+      { "from": "display", "allow": ["domain", "lib-errors"] },
+      { "from": "services", "allow": ["domain", "lib-core", "lib-errors", "lib-embedder"] },
+      {
+        "from": "application",
+        "allow": ["domain", "lib-core", "lib-errors", "lib-formatting", "lib-embedder"]
+      },
+      {
+        "from": "layers",
+        "allow": [
+          "domain",
+          "lib-core",
+          "lib-errors",
+          "lib-formatting",
+          "lib-embedder",
+          "display",
+          "services",
+          "application"
+        ]
+      },
+      {
+        "from": "commands",
+        "allow": [
+          "domain",
+          "lib-core",
+          "lib-errors",
+          "lib-formatting",
+          "display",
+          "application",
+          "layers"
+        ]
+      }
+    ]
+  }
 }

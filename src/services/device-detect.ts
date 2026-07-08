@@ -1,9 +1,8 @@
-import { Context, Effect, Layer, Ref, Result } from "effect"
+import { Effect, Layer, Ref, Result } from "effect"
 
 import type { DeviceType } from "../domain/device.js"
 import { ModelLoadError } from "../domain/errors.js"
-
-export type { DeviceType } from "../domain/device.js"
+import { DeviceDetection } from "../domain/ports.js"
 
 const DEVICE_PRIORITY: readonly DeviceType[] = ["cuda", "dml", "coreml", "webgpu", "wasm", "cpu"]
 
@@ -26,26 +25,6 @@ const tryDevice = (
         }),
     ),
   )
-
-/** Service for detecting the best available compute device. */
-export class DeviceDetection extends Context.Service<
-  DeviceDetection,
-  {
-    /**
-     * Detect the best available device by attempting model load on each device in priority order:
-     * cuda → dml → coreml → webgpu → wasm → cpu. Returns the first device that succeeds.
-     */
-    readonly detect: (model: string, dtype: string) => Effect.Effect<DeviceType, ModelLoadError>
-    /**
-     * Test all devices and return the list of working ones. Each device is tested independently
-     * (model is loaded fresh per device). Returns devices in priority order.
-     */
-    readonly detectAll: (
-      model: string,
-      dtype: string,
-    ) => Effect.Effect<readonly DeviceType[], never>
-  }
->()("DeviceDetection") {}
 
 const make = Effect.gen(function* () {
   const { pipeline } = yield* Effect.tryPromise(() =>

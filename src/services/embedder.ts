@@ -2,10 +2,13 @@ import type { FeatureExtractionPipeline, Tensor } from "@huggingface/transformer
 import { Effect, Layer, Ref, Option, Result } from "effect"
 
 import type { Embedding } from "../domain/chunk.js"
+import type { DeviceType } from "../domain/device.js"
 import type { EmbeddingDtype } from "../domain/dtype.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
+import { MODEL_REGISTRY } from "../domain/models.js"
 import {
   ConfigStore,
+  DeviceDetection,
   Display,
   Embedder,
   type EmbedderDeviceConfig,
@@ -13,8 +16,7 @@ import {
 } from "../domain/ports.js"
 import { resolveEmbedderConfig } from "../lib/embedder/resolve.js"
 import { ConfigStoreLive } from "./config-store.js"
-import { DeviceDetection, DeviceDetectionLive, type DeviceType } from "./device-detect.js"
-import { MODEL_REGISTRY } from "./models.js"
+import { DeviceDetectionLive } from "./device-detect.js"
 
 interface FallbackInfo {
   readonly originalDevice: string

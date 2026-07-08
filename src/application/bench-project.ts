@@ -18,14 +18,13 @@ import type {
   DiskFullError,
 } from "../domain/errors.js"
 import { ConfigError, ModelLoadError } from "../domain/errors.js"
-import { Display, Embedder, type EmbedderDeviceConfig } from "../domain/ports.js"
+import { DeviceDetection, Display, Embedder, type EmbedderDeviceConfig } from "../domain/ports.js"
 import { ConfigStore, Scanner, Chunker, ContentExtractor } from "../domain/ports.js"
 import { computeRecommendations, computeRecommendation } from "../lib/bench/format.js"
 import { getExtension } from "../lib/config/extension.js"
 import { mergeConfig } from "../lib/config/validation.js"
 import { resolveEmbedderConfig } from "../lib/embedder/resolve.js"
 import { buildExtensionRegistry } from "../lib/registry.js"
-import { DeviceDetection } from "../services/device-detect.js"
 
 type CorpusError = AllConfigErrors | ChunkerError | AllProcessorErrors | DiskFullError
 

@@ -2,8 +2,8 @@ import { Effect } from "effect"
 
 import type { EmbeddingDtype } from "../../domain/dtype.js"
 import { ModelLoadError } from "../../domain/errors.js"
+import { MODEL_REGISTRY } from "../../domain/models.js"
 import type { ConfigStore } from "../../domain/ports.js"
-import { MODEL_REGISTRY } from "../../services/models.js"
 
 /** Resolved embedder model + dtype + dims, as a value object (not an Effect). */
 export interface ResolvedEmbedderConfig {

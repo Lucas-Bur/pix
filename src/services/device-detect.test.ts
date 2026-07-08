@@ -3,7 +3,8 @@ import { Effect } from "effect"
 import { describe, expect, test, vi, beforeEach } from "vite-plus/test"
 
 import { ModelLoadError } from "../domain/errors.js"
-import { DeviceDetection, DeviceDetectionLive } from "./device-detect.js"
+import { DeviceDetection } from "../domain/ports.js"
+import { DeviceDetectionLive } from "./device-detect.js"
 
 vi.mock("@huggingface/transformers", () => ({
   pipeline: vi.fn(),
