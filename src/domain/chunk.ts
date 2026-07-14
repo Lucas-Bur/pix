@@ -9,6 +9,8 @@ export const ChunkSchema = Schema.Struct({
   file: Schema.String,
   startLine: Schema.Number,
   endLine: Schema.Number,
+  startOffset: Schema.Number,
+  endOffset: Schema.Number,
   text: Schema.String,
   contextBefore: Schema.Union([Schema.String, Schema.Null]),
   contextAfter: Schema.Union([Schema.String, Schema.Null]),

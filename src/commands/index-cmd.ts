@@ -60,6 +60,10 @@ const emitIndexResult = (d: typeof Display.Service, result: IndexResult): Effect
       totalLines: result.status.totalLines,
       byteSize: result.status.byteSize,
       durationMs: result.durationMs,
+      cacheHits: result.cacheHits,
+      cacheMisses: result.cacheMisses,
+      reusedFiles: result.reusedFiles,
+      processedFiles: result.processedFiles,
       ...(result.embedderFallback && { embedderFallback: result.embedderFallback }),
     })
 

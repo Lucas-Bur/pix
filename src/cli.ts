@@ -5,6 +5,7 @@ import { Command } from "effect/unstable/cli"
 
 import { aliasCommand, runAliasShortcutCommand } from "./commands/alias.js"
 import { benchCommand } from "./commands/bench.js"
+import { cacheCommand } from "./commands/cache.js"
 import { configCommand } from "./commands/config.js"
 import { indexCommand } from "./commands/index-cmd.js"
 import { initCommand } from "./commands/init.js"
@@ -36,6 +37,7 @@ const pix = rootCommand.pipe(
     configCommand,
     aliasCommand,
     runAliasShortcutCommand,
+    cacheCommand,
   ]),
 )
 

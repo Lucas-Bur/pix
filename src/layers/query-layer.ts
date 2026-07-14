@@ -1,18 +1,14 @@
 import { NodeServices } from "@effect/platform-node"
 import { Layer } from "effect"
 
+import { IndexProjectLive } from "../application/index-project.js"
 import { QueryProjectLive } from "../application/query-project.js"
 import { ClipboardLive } from "../services/clipboard.js"
 import { commandLayer } from "./command-layer.js"
-import { EmbedderLayer } from "./embedder-layer.js"
-import { IndexStoreLayer } from "./index-store-layer.js"
+import { FullInfraLayer } from "./full-infra-layer.js"
 
 /** Layer for `pix query`: `QueryProject` use case + `IndexStore` + `Embedder` infra. */
 export const QueryLayer = commandLayer(
-  QueryProjectLive,
-  Layer.mergeAll(
-    IndexStoreLayer,
-    EmbedderLayer,
-    ClipboardLive.pipe(Layer.provide(NodeServices.layer)),
-  ),
+  Layer.merge(QueryProjectLive, IndexProjectLive),
+  Layer.mergeAll(FullInfraLayer, ClipboardLive.pipe(Layer.provide(NodeServices.layer))),
 )

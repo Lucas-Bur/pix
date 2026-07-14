@@ -22,8 +22,24 @@ class AstChunkingError extends Data.TaggedError("AstChunkingError")<{
 const chunkId = (file: string, location: string): string =>
   crypto.createHash("sha1").update(`${file}:${location}`).digest("hex").slice(0, 12)
 
+const lineStartOffsets = (content: string): readonly number[] => {
+  const offsets = [0]
+  for (let index = 0; index < content.length; index++) {
+    if (content[index] === "\n") offsets.push(index + 1)
+  }
+  return offsets
+}
+
+const endOffsetForLine = (
+  endLine: number,
+  lines: readonly string[],
+  offsets: readonly number[],
+  contentLength: number,
+): number => (endLine < lines.length ? offsets[endLine]! - 1 : contentLength)
+
 const buildLineChunks = (file: string, content: string, config: Config): Chunk[] => {
   const lines = content.split("\n")
+  const offsets = lineStartOffsets(content)
   const chunks: Chunk[] = []
 
   let idx = 0
@@ -46,6 +62,8 @@ const buildLineChunks = (file: string, content: string, config: Config): Chunk[]
         file,
         startLine,
         endLine,
+        startOffset: offsets[startLine - 1]!,
+        endOffset: endOffsetForLine(endLine, lines, offsets, content.length),
         text,
         contextBefore: contextBefore || null,
         contextAfter: contextAfter || null,
@@ -75,6 +93,8 @@ const makeAstChunk = (
   idx: number,
   file: string,
   lines: readonly string[],
+  offsets: readonly number[],
+  contentLength: number,
   config: Config,
 ): Chunk => {
   const firstNode = nodes[0]
@@ -96,6 +116,8 @@ const makeAstChunk = (
     file,
     startLine,
     endLine,
+    startOffset: offsets[startLine - 1]!,
+    endOffset: endOffsetForLine(endLine, lines, offsets, contentLength),
     text: lines.slice(startLine - 1, endLine).join("\n"),
     contextBefore: lines.slice(contextBeforeStart, startLine - 1).join("\n") || null,
     contextAfter: lines.slice(endLine, contextAfterEnd).join("\n") || null,
@@ -165,8 +187,11 @@ const collectAstChunks = (
   if (tree.rootNode.hasError) return Option.none()
 
   const lines = content.split("\n")
+  const offsets = lineStartOffsets(content)
   const groups = packAstUnits(collectAstUnits(tree.rootNode), config.chunkLines)
-  const chunks = groups.map((nodes, idx) => makeAstChunk(nodes, idx, file, lines, config))
+  const chunks = groups.map((nodes, idx) =>
+    makeAstChunk(nodes, idx, file, lines, offsets, content.length, config),
+  )
 
   return chunks.length === 0 ? Option.none() : Option.some(chunks)
 }

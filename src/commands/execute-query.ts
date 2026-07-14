@@ -1,5 +1,6 @@
 import { Effect, Option } from "effect"
 
+import { IndexProject } from "../application/index-project.js"
 import { QueryProject } from "../application/query-project.js"
 import { Clipboard, Display } from "../domain/ports.js"
 import type { SearchOptions, SearchResponse } from "../domain/ports.js"
@@ -14,6 +15,8 @@ const buildSearchOptions = (
   top: number,
   ignorePath: readonly string[],
   onlyPath: readonly string[],
+  contextLines: number,
+  noContent: boolean,
 ): { options: SearchOptions; clamped: boolean; rawValue: number } => {
   const clamped = clampTopK(top, MIN_TOP_K, MAX_TOP_K)
   return {
@@ -21,6 +24,8 @@ const buildSearchOptions = (
       topK: clamped.value,
       ...(ignorePath.length > 0 && { ignorePaths: [...ignorePath] }),
       ...(onlyPath.length > 0 && { onlyPaths: [...onlyPath] }),
+      contextLines,
+      noContent,
     },
     clamped: clamped.clamped,
     rawValue: top,
@@ -66,12 +71,14 @@ export const executeQuery = ({
 }: QueryCommandInput) =>
   Effect.gen(function* () {
     const d = yield* Display
+    const indexService = yield* IndexProject
+    yield* d.spinner("Refreshing index...", indexService.index())
 
     const {
       options: searchOptions,
       clamped,
       rawValue,
-    } = buildSearchOptions(top, ignorePath, onlyPath)
+    } = buildSearchOptions(top, ignorePath, onlyPath, contextLines, noContent)
 
     if (clamped) {
       yield* d.log(`topK clamped from ${rawValue} to ${searchOptions.topK}`, "warn")

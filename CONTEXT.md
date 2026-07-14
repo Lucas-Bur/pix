@@ -13,14 +13,14 @@ Pre-computed BM25 statistics stored in `.pix/bm25.json`: average chunk length, p
 ### Chunk
 
 A piece of source code produced by the chunker. One chunk = N lines of code with overlap.
-Stored as one line in `chunks.jsonl`. Maximum size guided by 60 lines (configurable `chunkLines`), with `overlapLines` lines overlapping between consecutive chunks.
+Stored as metadata only in one `chunks.jsonl` line. Source text remains in the source file and is loaded only for selected query results. Maximum size is guided by 60 lines (configurable `chunkLines`), with `overlapLines` lines overlapping between consecutive line chunks.
 Line-chunk ID = `sha1(file:startLine).slice(0, 12)`. AST-chunk IDs also include the node's
 start/end row and column so distinct declarations on one line cannot collide.
 Minimum chunk size: 20 characters (configurable `minChunkChars`).
 
 ### ChunkEntry
 
-Raw data loaded from the index and passed to scorers at query time. Contains chunk text, vector, file location, and context lines. Shape: `{ index, file, startLine, endLine, text, vector, contextBefore, contextAfter }`.
+Raw data loaded from the index and passed to scorers at query time. Contains chunk identity, exact source range, content hash, vector, and file location; no source text or context.
 
 ### Config
 
@@ -79,14 +79,14 @@ Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, ap
 
 ### IndexStore
 
-Reads/writes the `.pix/` directory: `config.json`, `chunks.jsonl`, `vectors.bin`, `index-meta.json`, `bm25.json`.
+Reads/writes the `.pix/` directory: `config.json`, metadata-only `chunks.jsonl`, `files.jsonl`, `vectors.bin`, `index-meta.json`, `bm25.json`, `identifiers.json`, and `embedding-cache.jsonl`.
 `vectors.bin` = flat typed array, row-major, `n × dims` elements, encoded per `dtype` (`fp32` | `fp16` | `q8` | `q4`).
 `index-meta.json` = index metadata: schema version, dtype, dims, model ID, last index timestamp.
 BM25 index built at index time, survives Phase 3 text removal.
 
-### MVP Scope
+### Core Scope
 
-init, index, query, status, reset. No incremental indexing, no cloud providers, no GUI.
+init, incremental index, self-refreshing query, status, reset, and explicit embedding-cache clearing. No cloud providers or GUI.
 
 ### Query Routing
 
@@ -257,10 +257,11 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 ### CLI Commands
 
 - `pix init` — Create `.pix/config.json`. Prompts for model selection (human mode); `--json` uses default model.
-- `pix index` — Scan, chunk, embed, store (full re-index). Two-phase pipeline: Phase 1 (extract + chunk, spinner), Phase 2 (embed + store, progress bar). CLI flags override config: `--batch-size`, `--chunk-concurrency`, `--skip-extensions`, `--ignore-path`/`--ignore-paths`, `--ignore-gitignore`. Uses spinner for Phase 1, progress bar for Phase 2.
-- `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content]` — Semantic search via cosine similarity. `--ignore-path`/`--only-path` filter by file path (gitignore patterns, repeatable). `--max-characters` caps output character budget. `--no-content` returns `file:line` references only (no text) — useful for agents that read files themselves.
+- `pix index` — Incrementally refresh the index. Unchanged files reuse chunk metadata, vectors, BM25 terms, and identifier postings; changed chunks use the embedding cache before inference.
+- `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content]` — Ensure the index is fresh, then run hybrid search. Missing indexes, source changes, and model/dtype changes are repaired automatically. Source text loads only after top-K selection; `--no-content` performs no source reads.
 - `pix status` — Show index statistics
 - `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
+- `pix cache clear` — Delete the content-addressed embedding cache.
 - `pix config heal` — Validate and repair `.pix/config.json`. Structural heal (fill missing fields from defaults) + coupled validation (model registry check). Prompts for each conflict in human mode; `--json` mode auto-applies defaults for healed conflicts, fails with `ConfigHealError` for unhealed conflicts.
 
 All commands support `--json` for agent-ready structured output on stdout. Single JSON object emitted at end of successful operations (e.g. `{ chunks, files, totalLines, byteSize, durationMs }`). Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent).
@@ -309,11 +310,9 @@ Future: AST-based preprocessing as optional enhancement.
 
 Users add extensions to `skipExtensions` in `config.json` to opt out of indexing (e.g. `.pdf`, `.mp4`). The domain processor map provides the base mapping; config entries swap processors to skip. `.gitignore` provides additional filtering. Future research: `.pixignore` for project-specific exclusions.
 
-### Context lines in chunks.jsonl
+### Lazy source text and context
 
-The chunker populates `contextBefore` and `contextAfter` on each chunk using the configured `overlapLines` value. These are serialized into `chunks.jsonl` at index time for instant retrieval. The first chunk's `contextBefore` and the last chunk's `contextAfter` are empty strings.
-Phase 3 (index freshness via mtime cache) will switch to live-fetch from source files,
-removing both `text` and `context` fields from stored chunks.
+`chunks.jsonl` stores no source text or context. Query ranks metadata and vectors first, then reads exact source offsets and requested context only for selected top-K results. The chunk content hash verifies that displayed source produced the ranked embedding. See ADR-0017.
 
 ### Multi-core search readiness
 
@@ -359,7 +358,6 @@ Lookup table that decides how each file extension is processed:
 - **Known binary extensions** (`.pdf`, `.mp4`, `.jpg`, `.zip`, `.exe`, etc.) → Skip with info log; unknown/unrecognized extensions trigger a warning. Future Phase 2+ converts to text first (e.g. PDF→text extraction, MP4→Whisper transcription)
 - **Future: AST preprocessing** — for languages where AST yields better embeddings than raw text
 - **Future: Extension→Processor mapping** — lookup table that decides how each file extension is processed
-- Incremental indexing via mtime cache or file hash (Phase 3) — `--force` flag will flip default behavior; MVP always full-reindexes
 - Multi-model support (OpenAI, Mistral, OpenRouter)
 - Top-K retrieval to limit result set size
 - Token/character limits for chunk boundaries

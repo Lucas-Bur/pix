@@ -1,4 +1,5 @@
 import { Console, Effect, Exit } from "effect"
+import { FileSystem } from "effect/FileSystem"
 import { expect, test } from "vite-plus/test"
 
 import { makeFailingIndexStore } from "../../tests/test-utils/command.js"
@@ -9,6 +10,7 @@ import { StoreError } from "../domain/errors.js"
 import { ConfigStore, IndexStore } from "../domain/ports.js"
 import { ScannerLive } from "../services/scanner.js"
 import { IndexProject } from "./index-project.js"
+import { QueryProject } from "./query-project.js"
 
 const makeConfig = (overrides: Partial<Config> = {}): string => makeConfigJson(overrides)
 
@@ -71,6 +73,48 @@ test("IndexProject.index scans, chunks, embeds, and stores", () =>
     expect(result.status.chunks).toBeGreaterThan(0)
     expect(result.status.files).toBe(2)
     expect(result.status.totalLines).toBeGreaterThan(0)
+  }).pipe(
+    Effect.provide(testLayer({ contents: fixtures, scannerLayer: ScannerLive })),
+    Effect.scoped,
+  ))
+
+test("IndexProject.index performs no embedding or commit when all files are unchanged", () =>
+  Effect.gen(function* () {
+    const index = yield* IndexProject
+    const first = yield* index.index()
+    const second = yield* index.index()
+
+    expect(first.processedFiles).toBe(2)
+    expect(first.cacheMisses).toBe(first.status.chunks)
+    expect(second.reusedFiles).toBe(2)
+    expect(second.processedFiles).toBe(0)
+    expect(second.cacheHits).toBe(0)
+    expect(second.cacheMisses).toBe(0)
+  }).pipe(
+    Effect.provide(testLayer({ contents: fixtures, scannerLayer: ScannerLive })),
+    Effect.scoped,
+  ))
+
+test("IndexProject.index handles changed, deleted, and renamed files", () =>
+  Effect.gen(function* () {
+    const index = yield* IndexProject
+    const fs = yield* FileSystem
+    yield* index.index()
+
+    yield* fs.writeFileString("src/a.ts", `${sourceFile}\nexport const changed = true`)
+    yield* fs.remove("src/b.ts")
+    yield* fs.writeFileString("src/renamed.ts", sourceFile)
+    const result = yield* index.index()
+
+    expect(result.status.files).toBe(2)
+    expect(result.processedFiles).toBe(2)
+    expect(result.cacheHits).toBeGreaterThan(0)
+    const query = yield* (yield* QueryProject).queryProject("createConfig", {
+      topK: 10,
+      noContent: true,
+    })
+    expect(query.results.some((entry) => entry.file.endsWith("renamed.ts"))).toBe(true)
+    expect(query.results.some((entry) => entry.file.endsWith("b.ts"))).toBe(false)
   }).pipe(
     Effect.provide(testLayer({ contents: fixtures, scannerLayer: ScannerLive })),
     Effect.scoped,

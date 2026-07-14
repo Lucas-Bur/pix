@@ -5,7 +5,7 @@ import type { Chunk, Embedding } from "./chunk.js"
 import type { Config } from "./config.js"
 import type { DeviceType } from "./device.js"
 import type { EmbeddingDtype } from "./dtype.js"
-import type { DtypeMismatchError, VectorDecodeError } from "./dtype.js"
+import type { DtypeMismatchError, IndexMeta, VectorDecodeError } from "./dtype.js"
 import type {
   AllConfigErrors,
   ClipboardError,
@@ -27,6 +27,7 @@ import type {
 } from "./errors.js"
 import type { IdentifierIndexMaps } from "./identifier-index.js"
 import type { Identifier } from "./identifier.js"
+import type { FileManifestEntry, StoredChunk } from "./index-data.js"
 import type { ModelInfo } from "./models.js"
 import type { QueryAlias, QueryAliasOptions } from "./query-alias.js"
 
@@ -51,8 +52,15 @@ export interface SkippedEntry {
 
 /** Result of a file scan: discovered files and entries that were skipped. */
 export interface ScanResult {
-  readonly files: readonly string[]
+  readonly files: readonly ScannedFile[]
   readonly skipped: readonly SkippedEntry[]
+}
+
+/** Source file discovered with cheap freshness metadata from the same directory walk. */
+export interface ScannedFile {
+  readonly path: string
+  readonly mtimeMs: number
+  readonly size: number
 }
 
 // === ConfigStore Port ===
@@ -243,13 +251,15 @@ export interface RankedChunk {
 /** Raw chunk data loaded from the index for passing to scorers at query time. */
 export interface ChunkEntry {
   readonly index: number
+  readonly id: string
+  readonly idx: number
   readonly file: string
   readonly startLine: number
   readonly endLine: number
-  readonly text: string
+  readonly startOffset: number
+  readonly endOffset: number
+  readonly contentHash: string
   readonly vector: Float32Array
-  readonly contextBefore: string | null
-  readonly contextAfter: string | null
 }
 
 /** All index data needed at query time for hybrid search. */
@@ -278,6 +288,10 @@ export interface SearchOptions {
    * filtering.
    */
   readonly onlyPaths?: readonly string[]
+  /** Number of live source lines to load before and after each selected result. */
+  readonly contextLines?: number
+  /** Skip source hydration and return metadata-only results. */
+  readonly noContent?: boolean
 }
 
 /** A single search result from a semantic query. Results are sorted by similarity score descending. */
@@ -292,8 +306,8 @@ export interface SearchResult {
   readonly startLine: number
   /** 1-based end line (inclusive) of the chunk in the source file. */
   readonly endLine: number
-  /** The chunk's source text (may be truncated when --max-characters is used). */
-  readonly text: string
+  /** The chunk's source text, or null when metadata-only output was requested. */
+  readonly text: string | null
   /** Lines immediately preceding the chunk. Null when not requested or when truncated. */
   readonly contextBefore: string | null
   /** Lines immediately following the chunk. Null when not requested or when truncated. */
@@ -322,7 +336,7 @@ export interface SearchResponse {
 }
 
 /** One batch of `(chunk, embedding)` pairs handed to `IndexStore.persistIndex`. */
-export type ChunkBatch = ReadonlyArray<readonly [Chunk, Embedding]>
+export type ChunkBatch = ReadonlyArray<readonly [StoredChunk, Embedding]>
 
 /** Input handed to `IndexStore.persistIndex` — a stream of batches plus the identifier index. */
 export interface PersistIndexInput<E = never> {
@@ -330,6 +344,45 @@ export interface PersistIndexInput<E = never> {
   readonly chunks: Stream.Stream<ChunkBatch, E>
   /** Identifier index for the four-channel hybrid retrieval. */
   readonly identifierIndex: IdentifierIndexMaps
+  /** Complete BM25 index for retained and newly processed chunks. */
+  readonly bm25Index: Bm25Index
+  /** Source observations committed atomically with this index snapshot. */
+  readonly files: readonly FileManifestEntry[]
+  /** Vector dimensions recorded even when the index contains no chunks. */
+  readonly dims: number
+  /** Vector storage dtype recorded even when the index contains no chunks. */
+  readonly dtype: EmbeddingDtype
+}
+
+/** Decoded embedding retained across index runs by content and embedding contract. */
+export interface CachedEmbedding {
+  readonly contentHash: string
+  readonly model: string
+  readonly embedding: Embedding
+}
+
+/** Committed index data used to plan an incremental refresh. */
+export interface IndexSnapshot extends SearchData {
+  readonly meta: IndexMeta
+  readonly files: readonly FileManifestEntry[]
+}
+
+/** Exact persisted range requested for lazy source hydration. */
+export interface SourceRequest {
+  readonly file: string
+  readonly startLine: number
+  readonly endLine: number
+  readonly startOffset: number
+  readonly endOffset: number
+  readonly contentHash: string
+  readonly contextLines: number
+}
+
+/** Source text and context loaded after ranking selects a result. */
+export interface SourceContent {
+  readonly text: string
+  readonly contextBefore: string | null
+  readonly contextAfter: string | null
 }
 
 /** Port for persisting chunks and embeddings and querying the index. */
@@ -350,6 +403,14 @@ export class IndexStore extends Context.Service<
       SearchData,
       StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
     >
+    /** Load and verify source text for one selected chunk. */
+    readonly loadSource: (request: SourceRequest) => Effect.Effect<SourceContent, StoreError>
+    /** Load all valid content-addressed embeddings. Missing cache returns an empty list. */
+    readonly loadEmbeddingCache: () => Effect.Effect<readonly CachedEmbedding[], StoreError>
+    /** Remove the optional embedding cache without touching the committed index. */
+    readonly clearEmbeddingCache: () => Effect.Effect<boolean, StoreError | DiskFullError>
+    /** Load the committed snapshot without comparing it to current config. */
+    readonly loadIndexSnapshot: () => Effect.Effect<Option.Option<IndexSnapshot>, StoreError>
     /** Return index statistics: chunk/file counts, model, last index time, etc. */
     readonly getStatus: () => Effect.Effect<
       {
