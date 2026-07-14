@@ -111,10 +111,7 @@ export const makeFailingIndexStore = (
             identifierIndex: { exact: {}, split: {} },
             malformedLines: 0,
           }),
-    loadSource: () =>
-      failingMethod === "loadSearchData"
-        ? failEffect
-        : Effect.succeed({ text: "", contextBefore: null, contextAfter: null }),
+    loadSource: () => Effect.succeed({ text: "", contextBefore: null, contextAfter: null }),
     loadEmbeddingCache: () => Effect.succeed([]),
     clearEmbeddingCache: () => Effect.succeed(false),
     loadIndexSnapshot: () => Effect.succeed(Option.none()),

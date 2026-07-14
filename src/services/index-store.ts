@@ -17,6 +17,7 @@ import type {
   Bm25Index,
   CachedEmbedding,
   ChunkEntry,
+  IndexSnapshot,
   IndexStats,
   PersistIndexInput,
   SearchData,
@@ -607,17 +608,7 @@ const make = Effect.gen(function* () {
       )
     })
 
-  const loadIndexSnapshot = (): Effect.Effect<
-    Option.Option<{
-      entries: readonly ChunkEntry[]
-      bm25Index: Bm25Index
-      identifierIndex: IdentifierIndexMaps
-      malformedLines: number
-      meta: IndexMeta
-      files: readonly FileManifestEntry[]
-    }>,
-    StoreError
-  > =>
+  const loadIndexSnapshot = (): Effect.Effect<Option.Option<IndexSnapshot>, StoreError> =>
     Effect.gen(function* () {
       const exists = yield* checkIndexExists()
       if (!exists) return Option.none()
@@ -649,6 +640,7 @@ const make = Effect.gen(function* () {
           path: request.file,
         })
       }
+      const stripCarriageReturn = (line: string): string => line.replace(/\r$/u, "")
       const lines = source.split("\n")
       const beforeStart = Math.max(0, request.startLine - 1 - request.contextLines)
       const afterEnd = Math.min(lines.length, request.endLine + request.contextLines)
@@ -657,9 +649,10 @@ const make = Effect.gen(function* () {
         contextBefore:
           lines
             .slice(beforeStart, request.startLine - 1)
-            .join("\n")
-            .replace(/\r$/u, "") || null,
-        contextAfter: lines.slice(request.endLine, afterEnd).join("\n").replace(/\r$/u, "") || null,
+            .map(stripCarriageReturn)
+            .join("\n") || null,
+        contextAfter:
+          lines.slice(request.endLine, afterEnd).map(stripCarriageReturn).join("\n") || null,
       }
     })
 
