@@ -4,6 +4,8 @@ import { ChunkSchema, type Chunk, type Embedding } from "../../src/domain/chunk.
 import { ConfigSchema } from "../../src/domain/config.js"
 import type { Config } from "../../src/domain/config.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
+import type { StoredChunk } from "../../src/domain/index-data.js"
+import { contentHash } from "../../src/lib/content-hash.js"
 import { deepMerge } from "./merge.js"
 
 type DeepPartial<T> = {
@@ -16,6 +18,8 @@ const DEFAULT_CHUNK: Chunk = {
   file: "/test/file.md",
   startLine: 1,
   endLine: 1,
+  startOffset: 0,
+  endOffset: 12,
   text: "test content",
   contextBefore: null,
   contextAfter: null,
@@ -38,6 +42,8 @@ export const makeChunk = (overrides?: Partial<Chunk>): Chunk => {
     file: "/test.ts",
     startLine: 1,
     endLine: 2,
+    startOffset: 0,
+    endOffset: 5,
     text: "hello",
     contextBefore: null,
     contextAfter: null,
@@ -50,3 +56,18 @@ export const makeEmbedding = (fill: number = 0.1): Embedding => ({
   dims: 384,
   dtype: "fp32" as const,
 })
+
+/** Build persisted chunk metadata from a working chunk fixture. */
+export const makeStoredChunk = (overrides?: Partial<Chunk>): StoredChunk => {
+  const chunk = makeChunk(overrides)
+  return {
+    id: chunk.id,
+    idx: chunk.idx,
+    file: chunk.file,
+    startLine: chunk.startLine,
+    endLine: chunk.endLine,
+    startOffset: chunk.startOffset,
+    endOffset: chunk.endOffset,
+    contentHash: contentHash(chunk.text),
+  }
+}

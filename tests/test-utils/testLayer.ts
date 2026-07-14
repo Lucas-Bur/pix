@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect"
 import { FileSystem } from "effect/FileSystem"
 
 import { BenchProjectLive } from "../../src/application/bench-project.js"
+import { ClearEmbeddingCacheLive } from "../../src/application/clear-embedding-cache.js"
 import { GetStatusLive } from "../../src/application/get-status.js"
 import { IndexProjectLive } from "../../src/application/index-project.js"
 import { InitProjectLive } from "../../src/application/init-project.js"
@@ -108,6 +109,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     IndexProjectLive,
     ResetIndexLive,
     BenchProjectLive,
+    ClearEmbeddingCacheLive,
   )
 
   const appLayer = Layer.merge(useCaseLayer.pipe(Layer.provide(infraLayer)), memFs)

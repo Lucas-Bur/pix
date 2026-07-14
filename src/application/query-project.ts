@@ -29,6 +29,12 @@ import { tokenize } from "../lib/retrieval/tokenize.js"
 
 type PathFilter = { ignores(path: string): boolean }
 
+interface RankedResult extends SearchResult {
+  readonly startOffset: number
+  readonly endOffset: number
+  readonly contentHash: string
+}
+
 /** Normalize an absolute or relative path to a forward-slash relative path for the `ignore` package. */
 const normalizeForIgnore = (p: string): string => {
   const normalized = p.replace(/\\/g, "/")
@@ -61,10 +67,10 @@ const makeOnlyFilter = (patterns: readonly string[]): PathFilter | null =>
  * matches. When both are active, a result must survive `ignorePaths` AND pass `onlyPaths`. When
  * neither is set, the input is returned unchanged (as a fresh array — never the same reference).
  */
-export const filterResults = (
-  results: readonly SearchResult[],
+export const filterResults = <T extends Pick<SearchResult, "file">>(
+  results: readonly T[],
   options: SearchOptions | undefined,
-): SearchResult[] => {
+): T[] => {
   const ignoreFilter = makeIgnoreFilter(options?.ignorePaths ?? [])
   const onlyFilter = makeOnlyFilter(options?.onlyPaths ?? [])
   if (!ignoreFilter && !onlyFilter) return [...results]
@@ -115,13 +121,13 @@ const routeQuery = (
 const fuseResults = (
   channels: readonly { readonly list: readonly RankedChunk[]; readonly weight: number }[],
   entryMap: Map<number, ChunkEntry>,
-): SearchResult[] => {
+): RankedResult[] => {
   const sumWeights = channels.reduce((a, c) => a + c.weight, 0)
   const fused = rrfFuse(
     channels.map((c) => c.list),
     channels.map((c) => c.weight),
   )
-  const results: SearchResult[] = []
+  const results: RankedResult[] = []
   for (const { chunkIndex, score } of fused) {
     const entry = entryMap.get(chunkIndex)
     if (!entry) continue
@@ -131,9 +137,12 @@ const fuseResults = (
       file: entry.file,
       startLine: entry.startLine,
       endLine: entry.endLine,
-      text: entry.text,
-      contextBefore: entry.contextBefore,
-      contextAfter: entry.contextAfter,
+      startOffset: entry.startOffset,
+      endOffset: entry.endOffset,
+      contentHash: entry.contentHash,
+      text: null,
+      contextBefore: null,
+      contextAfter: null,
     })
   }
   return results
@@ -222,8 +231,24 @@ const make = Effect.gen(function* () {
           ? filtered.slice(0, Math.max(0, Math.min(Math.floor(topK), filtered.length)))
           : filtered
 
+      const hydratedResults = options?.noContent
+        ? finalResults
+        : yield* Effect.forEach(finalResults, (result) =>
+            store
+              .loadSource({
+                file: result.file,
+                startLine: result.startLine,
+                endLine: result.endLine,
+                startOffset: result.startOffset,
+                endOffset: result.endOffset,
+                contentHash: result.contentHash,
+                contextLines: options?.contextLines ?? 0,
+              })
+              .pipe(Effect.map((source) => ({ ...result, ...source }))),
+          )
+
       return {
-        results: finalResults,
+        results: hydratedResults,
         validationErrors: buildChunkValidationErrors(malformedLines),
       }
     })

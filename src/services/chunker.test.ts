@@ -326,13 +326,12 @@ effectTest("Chunker groups adjacent Python and Rust AST nodes", () =>
 effectTest("Chunker groups same-line AST nodes without duplicating source", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
-    const chunks = yield* chunker.chunkText(
-      "function first() {} function second() {}",
-      "src/same-line.ts",
-    )
+    const source = "function first() {} function second() {}"
+    const chunks = yield* chunker.chunkText(source, "src/same-line.ts")
 
     expect(chunks).toHaveLength(1)
     expect(chunks[0].text).toBe("function first() {} function second() {}")
+    expect(source.slice(chunks[0].startOffset, chunks[0].endOffset)).toBe(chunks[0].text)
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 

@@ -1,10 +1,16 @@
 import { Cause, Effect, Exit, Layer, Stream } from "effect"
 import { expect, test } from "vite-plus/test"
 
-import { makeChunk, makeEmbedding, makeConfigJson } from "../../tests/test-utils/fixtures.js"
+import {
+  makeChunk,
+  makeEmbedding,
+  makeConfigJson,
+  makeStoredChunk,
+} from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { ModelMismatchError } from "../domain/errors.js"
 import { Embedder, IndexStore } from "../domain/ports.js"
+import { buildBm25Index } from "../lib/retrieval/bm25.js"
 import { QueryProject } from "./query-project.js"
 
 const nonZeroEmbedder = Layer.succeed(Embedder, {
@@ -57,10 +63,14 @@ const indexFixture = (
   Effect.gen(function* () {
     const store = yield* IndexStore
     yield* store.persistIndex({
-      chunks: Effect.succeed(chunks.map((chunk, i) => [chunk, embeddings[i]!] as const)).pipe(
-        Stream.fromEffect,
-      ),
+      chunks: Effect.succeed(
+        chunks.map((chunk, i) => [makeStoredChunk(chunk), embeddings[i]!] as const),
+      ).pipe(Stream.fromEffect),
       identifierIndex: { exact: {}, split: {} },
+      bm25Index: buildBm25Index(chunks.map((chunk, index) => ({ index, text: chunk.text }))),
+      files: [],
+      dims: 384,
+      dtype: "fp32",
     })
   })
 
@@ -84,7 +94,10 @@ test("QueryProject.queryProject returns hybrid-ranked results via RRF", () =>
       [makeEmbedding(0.1), makeEmbedding(0.1)],
     )
 
-    const { results } = yield* (yield* QueryProject).queryProject("handleRequest", { topK: 5 })
+    const { results } = yield* (yield* QueryProject).queryProject("handleRequest", {
+      topK: 5,
+      noContent: true,
+    })
     expect(results.length).toBeGreaterThan(0)
     expect(results[0].file).toBe("/src/handler.ts")
   }).pipe(Effect.provide(hybridLayer), Effect.scoped))
@@ -107,6 +120,7 @@ test("QueryProject.queryProject respects ignorePaths with hybrid search", () =>
     const { results } = yield* (yield* QueryProject).queryProject("handleRequest", {
       topK: 5,
       ignorePaths: ["**/ignore*"],
+      noContent: true,
     })
     expect(results.length).toBe(1)
     expect(results[0].file).toBe("/src/keep.ts")
@@ -130,6 +144,7 @@ test("QueryProject.queryProject respects onlyPaths with hybrid search", () =>
     const { results } = yield* (yield* QueryProject).queryProject("handleRequest", {
       topK: 5,
       onlyPaths: ["/src/**"],
+      noContent: true,
     })
     expect(results.length).toBe(1)
     expect(results[0].file).toBe("/src/keep.ts")

@@ -65,3 +65,39 @@ export const buildIdentifierIndex = (identifiers: readonly Identifier[]): Identi
 
   return { exact: toRecord(exact), split: toRecord(split) }
 }
+
+/** Remap retained identifier postings and merge indexes extracted for new chunks. */
+export const rebuildIdentifierIndex = (
+  previous: IdentifierIndexMaps | null,
+  retainedIndexes: ReadonlyMap<number, number>,
+  added: IdentifierIndexMaps,
+): IdentifierIndexMaps => {
+  const rebuildMap = (
+    oldMap: Readonly<Record<string, readonly number[]>>,
+    addedMap: Readonly<Record<string, readonly number[]>>,
+  ): Record<string, readonly number[]> => {
+    const result: Record<string, Set<number>> = Object.create(null)
+    for (const [name, indexes] of Object.entries(oldMap)) {
+      for (const oldIndex of indexes) {
+        const newIndex = retainedIndexes.get(oldIndex)
+        if (newIndex === undefined) continue
+        const bucket = result[name] ?? new Set<number>()
+        bucket.add(newIndex)
+        result[name] = bucket
+      }
+    }
+    for (const [name, indexes] of Object.entries(addedMap)) {
+      const bucket = result[name] ?? new Set<number>()
+      for (const index of indexes) bucket.add(index)
+      result[name] = bucket
+    }
+    return Object.fromEntries(
+      Object.entries(result).map(([name, indexes]) => [name, [...indexes].sort((a, b) => a - b)]),
+    )
+  }
+
+  return {
+    exact: rebuildMap(previous?.exact ?? {}, added.exact),
+    split: rebuildMap(previous?.split ?? {}, added.split),
+  }
+}

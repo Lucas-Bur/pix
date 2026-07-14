@@ -1,10 +1,13 @@
-import { Context, Effect, Layer, Ref, Stream } from "effect"
+import { Context, Effect, Layer, Option, Ref, Stream } from "effect"
 
-import type { Chunk as DomainChunk } from "../domain/chunk.js"
+import type { Chunk as DomainChunk, Embedding } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
+import type { Config } from "../domain/config.js"
+import type { EmbeddingDtype } from "../domain/dtype.js"
 import type { IndexError, AllProcessorErrors } from "../domain/errors.js"
 import type { IdentifierIndexMaps } from "../domain/identifier-index.js"
 import type { Identifier } from "../domain/identifier.js"
+import type { FileManifestEntry, StoredChunk } from "../domain/index-data.js"
 import { Display } from "../domain/ports.js"
 import {
   ConfigStore,
@@ -14,19 +17,29 @@ import {
   IndexStore,
   ContentExtractor,
   IdentifierExtractor,
+  ModelRegistry,
   type SkippedEntry,
   type IndexOptions,
+  type ScannedFile,
+  type IndexSnapshot,
 } from "../domain/ports.js"
 import { getExtension, getFileExtension, getFilename } from "../lib/config/extension.js"
 import { mergeConfig } from "../lib/config/validation.js"
+import { contentHash } from "../lib/content-hash.js"
+import { embeddingCacheKey } from "../lib/embedding-cache.js"
 import { buildExtensionRegistry } from "../lib/registry.js"
-import { buildIdentifierIndex } from "../lib/retrieval/identifier-index.js"
+import { rebuildBm25Index } from "../lib/retrieval/bm25.js"
+import { buildIdentifierIndex, rebuildIdentifierIndex } from "../lib/retrieval/identifier-index.js"
 import type { StatusResult } from "./get-status.js"
 
 export interface IndexResult {
   readonly success: true
   readonly status: Omit<StatusResult, "model" | "lastIndex">
   readonly durationMs: number
+  readonly cacheHits: number
+  readonly cacheMisses: number
+  readonly reusedFiles: number
+  readonly processedFiles: number
   readonly embedderFallback?: {
     readonly originalDevice: string
     readonly reason: string
@@ -34,34 +47,34 @@ export interface IndexResult {
 }
 
 interface FileClassification {
-  readonly knownFiles: string[]
+  readonly knownFiles: ScannedFile[]
   readonly skippedFiles: string[]
   readonly unknownExtensions: Set<string>
 }
 
 const classifyFiles = (
-  files: readonly string[],
+  files: readonly ScannedFile[],
   extensionRegistry: Record<string, unknown>,
   skipExtensions: ReadonlySet<string>,
 ): FileClassification => {
-  const knownFiles: string[] = []
+  const knownFiles: ScannedFile[] = []
   const skippedFiles: string[] = []
   const unknownExtensions = new Set<string>()
 
   for (const file of files) {
-    const ext = getExtension(file)
+    const ext = getExtension(file.path)
     // buildExtensionRegistry materializes skipped extensions as entries
     // (with a fail-fast processor). A presence check on the registry is
     // therefore no longer enough to distinguish "known to pix" from
     // "user explicitly skipped". Filter the skip set first.
     if (skipExtensions.has(ext)) {
-      skippedFiles.push(file)
+      skippedFiles.push(file.path)
       continue
     }
     const entry = extensionRegistry[ext]
     if (!entry) {
       unknownExtensions.add(ext)
-      skippedFiles.push(file)
+      skippedFiles.push(file.path)
     } else {
       knownFiles.push(file)
     }
@@ -71,32 +84,172 @@ const classifyFiles = (
 }
 
 interface Phase1Result {
-  readonly chunks: DomainChunk[]
+  readonly chunks: PreparedChunk[]
   readonly totalChunks: number
+  readonly files: FileManifestEntry[]
+  readonly reusedFiles: number
+  readonly processedFiles: number
 }
 
+interface PreparedChunk {
+  readonly stored: StoredChunk
+  readonly text: string | null
+  readonly embedding: Embedding | null
+  readonly oldIndex: number | null
+}
+
+const storedChunk = (chunk: DomainChunk): StoredChunk => ({
+  id: chunk.id,
+  idx: chunk.idx,
+  file: chunk.file,
+  startLine: chunk.startLine,
+  endLine: chunk.endLine,
+  startOffset: chunk.startOffset,
+  endOffset: chunk.endOffset,
+  contentHash: contentHash(chunk.text),
+})
+
+/** Result of classifying and optionally processing one scanned source file. */
+interface PreparedFileResult {
+  readonly chunks: readonly PreparedChunk[]
+  readonly manifest: FileManifestEntry | null
+  readonly reused: boolean
+}
+
+/** Dependencies and prior state needed to prepare one scanned file. */
+interface PrepareFileInput {
+  readonly file: ScannedFile
+  readonly previous: FileManifestEntry | undefined
+  readonly previousEntries: IndexSnapshot["entries"]
+  readonly contractMatches: boolean
+  readonly retainedDtype: EmbeddingDtype
+  readonly extractor: typeof ContentExtractor.Service
+  readonly chunker: typeof Chunker.Service
+  readonly skipped: Ref.Ref<readonly SkippedEntry[]>
+}
+
+const retainedFile = (
+  file: ScannedFile,
+  previous: FileManifestEntry,
+  entries: IndexSnapshot["entries"],
+  dtype: EmbeddingDtype,
+): PreparedFileResult => ({
+  manifest: { ...previous, mtimeMs: file.mtimeMs, size: file.size },
+  reused: true,
+  chunks: entries.map((entry) => ({
+    stored: {
+      id: entry.id,
+      idx: entry.idx,
+      file: entry.file,
+      startLine: entry.startLine,
+      endLine: entry.endLine,
+      startOffset: entry.startOffset,
+      endOffset: entry.endOffset,
+      contentHash: entry.contentHash,
+    },
+    text: null,
+    embedding: { vector: entry.vector, dims: entry.vector.length, dtype },
+    oldIndex: entry.index,
+  })),
+})
+
+const prepareFile = ({
+  file,
+  previous,
+  previousEntries,
+  contractMatches,
+  retainedDtype,
+  extractor,
+  chunker,
+  skipped,
+}: PrepareFileInput): Effect.Effect<PreparedFileResult, AllProcessorErrors> =>
+  Effect.gen(function* () {
+    if (
+      previous &&
+      contractMatches &&
+      previous.mtimeMs === file.mtimeMs &&
+      previous.size === file.size
+    ) {
+      return retainedFile(file, previous, previousEntries, retainedDtype)
+    }
+    const result = yield* extractor.extract(file.path).pipe(
+      Effect.map((text) => Option.some(text)),
+      Effect.catch((error) =>
+        Ref.update(skipped, (entries) => [
+          ...entries,
+          { path: file.path, reason: error.message },
+        ]).pipe(Effect.as(Option.none<string>())),
+      ),
+    )
+    if (Option.isNone(result)) return { chunks: [], manifest: null, reused: false }
+    const fileHash = contentHash(result.value)
+    if (previous && contractMatches && previous.contentHash === fileHash) {
+      return retainedFile(file, previous, previousEntries, retainedDtype)
+    }
+    const chunks = yield* chunker.chunkText(result.value, file.path)
+    return {
+      manifest: { file: file.path, mtimeMs: file.mtimeMs, size: file.size, contentHash: fileHash },
+      reused: false,
+      chunks: chunks.map((chunk) => ({
+        stored: storedChunk(chunk),
+        text: chunk.text,
+        embedding: null,
+        oldIndex: null,
+      })),
+    }
+  })
+
 const classifyAndCollectChunks = (
-  knownFiles: string[],
+  knownFiles: ScannedFile[],
   extractor: typeof ContentExtractor.Service,
   chunker: typeof Chunker.Service,
   skipped: Ref.Ref<readonly SkippedEntry[]>,
+  snapshot: Option.Option<IndexSnapshot>,
+  contractMatches: boolean,
+  retainedDtype: EmbeddingDtype,
 ): Effect.Effect<Phase1Result, AllProcessorErrors> =>
   Effect.gen(function* () {
-    const allChunks: DomainChunk[] = []
-    for (const file of knownFiles) {
-      const result = yield* extractor.extract(file).pipe(
-        Effect.map((text) => ({ kind: "ok" as const, file, text })),
-        Effect.catch((err) =>
-          Ref.update(skipped, (prev) => [...prev, { path: file, reason: err.message }]).pipe(
-            Effect.map(() => ({ kind: "skip" as const })),
-          ),
-        ),
-      )
-      if (result.kind !== "ok") continue
-      const chunks = yield* chunker.chunkText(result.text, result.file)
-      allChunks.push(...chunks)
+    const allChunks: PreparedChunk[] = []
+    const files: FileManifestEntry[] = []
+    let reusedFiles = 0
+    let processedFiles = 0
+    const previousFiles = new Map(
+      Option.match(snapshot, { onNone: () => [], onSome: (value) => value.files }).map((file) => [
+        file.file,
+        file,
+      ]),
+    )
+    const previousEntries = new Map<string, IndexSnapshot["entries"]>()
+    if (Option.isSome(snapshot)) {
+      for (const entry of snapshot.value.entries) {
+        previousEntries.set(entry.file, [...(previousEntries.get(entry.file) ?? []), entry])
+      }
     }
-    return { chunks: allChunks, totalChunks: allChunks.length }
+
+    for (const file of [...knownFiles].sort((left, right) => left.path.localeCompare(right.path))) {
+      const previous = previousFiles.get(file.path)
+      const prepared = yield* prepareFile({
+        file,
+        previous,
+        previousEntries: previousEntries.get(file.path) ?? [],
+        contractMatches,
+        retainedDtype,
+        extractor,
+        chunker,
+        skipped,
+      })
+      if (prepared.manifest) files.push(prepared.manifest)
+      allChunks.push(...prepared.chunks)
+      if (prepared.reused) reusedFiles++
+      else if (prepared.manifest) processedFiles++
+    }
+    return {
+      chunks: allChunks,
+      totalChunks: allChunks.length,
+      files,
+      reusedFiles,
+      processedFiles,
+    }
   })
 
 export class IndexProject extends Context.Service<
@@ -115,11 +268,16 @@ const make = Effect.gen(function* () {
   const d = yield* Display
   const extractor = yield* ContentExtractor
   const identifierExtractor = yield* IdentifierExtractor
+  const modelRegistry = yield* ModelRegistry
 
   interface IndexContext {
     readonly eff: ReturnType<typeof mergeConfig>
-    readonly knownFiles: string[]
+    readonly config: Config
+    readonly knownFiles: ScannedFile[]
     readonly skipped: Ref.Ref<readonly SkippedEntry[]>
+    readonly snapshot: Option.Option<IndexSnapshot>
+    readonly contractMatches: boolean
+    readonly dims: number
     readonly start: number
   }
 
@@ -130,6 +288,16 @@ const make = Effect.gen(function* () {
         yield* configStore.writeConfig(DEFAULT_CONFIG)
       }
       const config = yield* configStore.readConfig()
+      const modelInfo = yield* modelRegistry.get(config.embedder.model)
+      const dims = Option.match(modelInfo, { onNone: () => 0, onSome: (info) => info.dims })
+      const snapshot = yield* indexStore.loadIndexSnapshot()
+      const contractMatches = Option.match(snapshot, {
+        onNone: () => false,
+        onSome: ({ meta }) =>
+          meta.model === config.embedder.model &&
+          meta.dtype === config.embedder.dtype &&
+          meta.dims === dims,
+      })
       const eff = mergeConfig(opts, config)
       const extensionRegistry = buildExtensionRegistry(eff.skipExtensions)
 
@@ -158,17 +326,40 @@ const make = Effect.gen(function* () {
         ])
       }
 
-      return { eff, knownFiles, skipped, start: Date.now() }
+      return {
+        eff,
+        config,
+        knownFiles,
+        skipped,
+        snapshot,
+        contractMatches,
+        dims,
+        start: Date.now(),
+      }
     })
 
   const scanAndChunkFiles = (ctx: IndexContext): Effect.Effect<Phase1Result, IndexError> =>
     Effect.gen(function* () {
       if (ctx.knownFiles.length === 0) {
-        return { chunks: [], totalChunks: 0 }
+        return {
+          chunks: [],
+          totalChunks: 0,
+          files: [],
+          reusedFiles: 0,
+          processedFiles: 0,
+        }
       }
 
       yield* d.updateInteractive(`Processing ${ctx.knownFiles.length} files...`)
-      return yield* classifyAndCollectChunks(ctx.knownFiles, extractor, chunker, ctx.skipped)
+      return yield* classifyAndCollectChunks(
+        ctx.knownFiles,
+        extractor,
+        chunker,
+        ctx.skipped,
+        ctx.snapshot,
+        ctx.contractMatches,
+        ctx.config.embedder.dtype,
+      )
     })
 
   /**
@@ -184,55 +375,154 @@ const make = Effect.gen(function* () {
    * global entry, biasing results toward whichever file was indexed first.
    */
   const extractIdentifiersForChunks = (
-    chunks: readonly DomainChunk[],
+    chunks: readonly PreparedChunk[],
+    snapshot: Option.Option<IndexSnapshot>,
   ): Effect.Effect<IdentifierIndexMaps, never> =>
     Effect.gen(function* () {
       const all: Identifier[] = []
+      const retainedIndexes = new Map<number, number>()
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i]
-        const ids = yield* identifierExtractor.extractIdentifiers(chunk.file, chunk.text, i)
+        if (chunk.oldIndex !== null) {
+          retainedIndexes.set(chunk.oldIndex, i)
+          continue
+        }
+        if (chunk.text === null) continue
+        const ids = yield* identifierExtractor.extractIdentifiers(chunk.stored.file, chunk.text, i)
         for (const id of ids) all.push(id)
       }
-      return buildIdentifierIndex(all)
+      return rebuildIdentifierIndex(
+        Option.match(snapshot, { onNone: () => null, onSome: (value) => value.identifierIndex }),
+        retainedIndexes,
+        buildIdentifierIndex(all),
+      )
     })
 
   const embedAndPersistChunks = (
     ctx: IndexContext,
-    chunks: DomainChunk[],
+    chunks: PreparedChunk[],
     totalChunks: number,
     identifierIndex: IdentifierIndexMaps,
+    files: readonly FileManifestEntry[],
+    reusedFiles: number,
+    processedFiles: number,
   ): Effect.Effect<
-    { chunks: number; files: number; totalLines: number; byteSize: number },
+    {
+      chunks: number
+      files: number
+      totalLines: number
+      byteSize: number
+      cacheHits: number
+      cacheMisses: number
+      reusedFiles: number
+      processedFiles: number
+    },
     IndexError
   > =>
     Effect.gen(function* () {
       const embeddedRef = yield* Ref.make(0)
+      const cacheHits = yield* Ref.make(0)
+      const cacheMisses = yield* Ref.make(0)
+      const cached = yield* indexStore.loadEmbeddingCache()
+      const dims = ctx.dims
+      const cache = new Map(
+        cached.map((entry) => [
+          embeddingCacheKey(
+            entry.contentHash,
+            entry.model,
+            entry.embedding.dims,
+            entry.embedding.dtype,
+          ),
+          entry.embedding,
+        ]),
+      )
+      const retainedIndexes = new Map<number, number>()
+      const newTexts: { index: number; text: string }[] = []
+      for (let index = 0; index < chunks.length; index++) {
+        const chunk = chunks[index]!
+        if (chunk.oldIndex !== null) retainedIndexes.set(chunk.oldIndex, index)
+        else if (chunk.text !== null) newTexts.push({ index, text: chunk.text })
+      }
+      const bm25Index = rebuildBm25Index(
+        Option.match(ctx.snapshot, { onNone: () => null, onSome: (value) => value.bm25Index }),
+        retainedIndexes,
+        newTexts,
+        chunks.length,
+      )
 
-      return yield* d.progress(
+      const stats = yield* d.progress(
         { message: `Embedding ${totalChunks} chunks...`, max: totalChunks },
         indexStore.persistIndex({
           chunks: Stream.fromIterable(chunks).pipe(
             Stream.grouped(ctx.eff.batchSize),
-            Stream.mapEffect((batch: readonly DomainChunk[]) =>
+            Stream.mapEffect((batch: readonly PreparedChunk[]) =>
               Effect.gen(function* () {
-                const texts = batch.map((c: DomainChunk) => c.text)
-                const embeddings = yield* embedder.batch(texts)
+                const keys = batch.map((chunk) =>
+                  embeddingCacheKey(
+                    chunk.stored.contentHash,
+                    ctx.config.embedder.model,
+                    dims,
+                    ctx.config.embedder.dtype,
+                  ),
+                )
+                const missingIndexes = keys.flatMap((key, index) =>
+                  batch[index]!.embedding || cache.has(key) ? [] : [index],
+                )
+                const batchCacheHits = keys.filter(
+                  (key, index) => !batch[index]!.embedding && cache.has(key),
+                ).length
+                const embedded =
+                  missingIndexes.length > 0
+                    ? yield* embedder.batch(missingIndexes.map((index) => batch[index]!.text ?? ""))
+                    : []
+                let embeddedIndex = 0
+                const embeddings = keys.map((key, index) => {
+                  const retained = batch[index]!.embedding
+                  if (retained) return retained
+                  const hit = cache.get(key)
+                  if (hit) return hit
+                  const value = embedded[embeddedIndex++]!
+                  cache.set(key, value)
+                  return value
+                })
+                yield* Ref.update(cacheHits, (hits) => hits + batchCacheHits)
+                yield* Ref.update(cacheMisses, (misses) => misses + missingIndexes.length)
                 const count = yield* Ref.updateAndGet(embeddedRef, (n) => n + batch.length)
                 yield* d.updateInteractive({
                   message: `Embedding ${count} of ${totalChunks} chunks`,
                   setTo: count,
                 })
-                return batch.map((chunk, i) => [chunk, embeddings[i]!] as const)
+                return batch.map((chunk, i) => [chunk.stored, embeddings[i]!] as const)
               }),
             ),
           ),
           identifierIndex,
+          bm25Index,
+          files,
+          dims: ctx.dims,
+          dtype: ctx.config.embedder.dtype,
         }),
       )
+      return {
+        ...stats,
+        cacheHits: yield* Ref.get(cacheHits),
+        cacheMisses: yield* Ref.get(cacheMisses),
+        reusedFiles,
+        processedFiles,
+      }
     })
 
   const buildIndexResult = (
-    stats: { chunks: number; files: number; totalLines: number; byteSize: number },
+    stats: {
+      chunks: number
+      files: number
+      totalLines: number
+      byteSize: number
+      cacheHits: number
+      cacheMisses: number
+      reusedFiles: number
+      processedFiles: number
+    },
     skipped: Ref.Ref<readonly SkippedEntry[]>,
     start: number,
   ): Effect.Effect<IndexResult> =>
@@ -258,7 +548,57 @@ const make = Effect.gen(function* () {
           validationErrors: [],
         },
         durationMs: Date.now() - start,
+        cacheHits: stats.cacheHits,
+        cacheMisses: stats.cacheMisses,
+        reusedFiles: stats.reusedFiles,
+        processedFiles: stats.processedFiles,
         embedderFallback: fallbackInfo,
+      }
+    })
+
+  const snapshotIsCurrent = (ctx: IndexContext, phase: Phase1Result): boolean =>
+    Option.match(ctx.snapshot, {
+      onNone: () => false,
+      onSome: (snapshot) => {
+        if (
+          !ctx.contractMatches ||
+          phase.processedFiles > 0 ||
+          snapshot.files.length !== phase.files.length
+        )
+          return false
+        const previous = new Map(snapshot.files.map((file) => [file.file, file]))
+        return phase.files.every((file) => {
+          const old = previous.get(file.file)
+          return (
+            old?.mtimeMs === file.mtimeMs &&
+            old.size === file.size &&
+            old.contentHash === file.contentHash
+          )
+        })
+      },
+    })
+
+  const freshIndexResult = (
+    ctx: IndexContext,
+    phase: Phase1Result,
+  ): Effect.Effect<IndexResult, IndexError> =>
+    Effect.gen(function* () {
+      const status = yield* indexStore.getStatus()
+      yield* d.log("Index already fresh", "success")
+      return {
+        success: true,
+        status: {
+          chunks: status.chunks,
+          files: status.files,
+          totalLines: status.totalLines,
+          byteSize: status.byteSize,
+          validationErrors: status.validationErrors,
+        },
+        durationMs: Date.now() - ctx.start,
+        cacheHits: 0,
+        cacheMisses: 0,
+        reusedFiles: phase.reusedFiles,
+        processedFiles: 0,
       }
     })
 
@@ -267,16 +607,16 @@ const make = Effect.gen(function* () {
       const ctx = yield* prepareIndexContext(opts)
 
       const phase1 = yield* scanAndChunkFiles(ctx)
-      if (phase1.totalChunks === 0) {
-        return yield* emptyIndexResult(d, ctx.skipped, ctx.start)
-      }
-
-      const identifierIndex = yield* extractIdentifiersForChunks(phase1.chunks)
+      if (snapshotIsCurrent(ctx, phase1)) return yield* freshIndexResult(ctx, phase1)
+      const identifierIndex = yield* extractIdentifiersForChunks(phase1.chunks, ctx.snapshot)
       const stats = yield* embedAndPersistChunks(
         ctx,
         phase1.chunks,
         phase1.totalChunks,
         identifierIndex,
+        phase1.files,
+        phase1.reusedFiles,
+        phase1.processedFiles,
       )
       return yield* buildIndexResult(stats, ctx.skipped, ctx.start)
     })
@@ -325,21 +665,6 @@ const buildSkippedLines = (
 
   return lines
 }
-
-const emptyIndexResult = (
-  d: typeof Display.Service,
-  skipped: Ref.Ref<readonly SkippedEntry[]>,
-  start: number,
-): Effect.Effect<IndexResult> =>
-  Effect.gen(function* () {
-    const collected = yield* Ref.get(skipped)
-    yield* displaySkippedNote(d, collected)
-    return {
-      success: true as const,
-      status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0, validationErrors: [] },
-      durationMs: Date.now() - start,
-    }
-  })
 
 const displaySkippedNote = (
   d: typeof Display.Service,

@@ -2,12 +2,13 @@ import { Effect, Layer, Stream } from "effect"
 import { FileSystem } from "effect/FileSystem"
 import { expect, test } from "vite-plus/test"
 
-import { makeChunk, makeEmbedding } from "../../tests/test-utils/fixtures.js"
+import { makeChunk, makeEmbedding, makeStoredChunk } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { GetStatus } from "../application/get-status.js"
 import { StoreError } from "../domain/errors.js"
 import { IndexStore } from "../domain/ports.js"
+import { buildBm25Index } from "../lib/retrieval/bm25.js"
 import { IndexStoreLive } from "./index-store.js"
 
 const isLayer = Layer.provideMerge(IndexStoreLive, memoryFsLayer({}))
@@ -20,12 +21,14 @@ const storeFixture = (
     const store = yield* IndexStore
     yield* store.persistIndex({
       chunks: Stream.fromIterable(chunks).pipe(
-        Stream.map(
-          (chunk, i) => [chunk, embeddings[i]!] as [typeof chunk, (typeof embeddings)[number]],
-        ),
+        Stream.map((chunk, i) => [makeStoredChunk(chunk), embeddings[i]!] as const),
         Stream.map((pair) => [pair] as const),
       ),
       identifierIndex: { exact: {}, split: {} },
+      bm25Index: buildBm25Index(chunks.map((chunk, index) => ({ index, text: chunk.text }))),
+      files: [],
+      dims: 384,
+      dtype: "fp32",
     })
     return store
   })
@@ -58,6 +61,51 @@ test("IndexStore.persistIndex writes chunks and vectors to index files", () =>
     expect(status.files).toBe(1)
     expect(status.totalLines).toBe(1)
   }).pipe(Effect.provide(isLayer), Effect.scoped))
+
+test("IndexStore.persistIndex stores metadata without source text", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem
+    yield* storeFixture([makeChunk()], [makeEmbedding()])
+
+    const stored = yield* fs.readFileString(".pix/chunks.jsonl")
+    expect(stored).not.toContain('"text"')
+    expect(stored).not.toContain("contextBefore")
+    expect(yield* fs.exists(".pix/files.jsonl")).toBe(true)
+  }).pipe(Effect.provide(isLayer), Effect.scoped))
+
+test("IndexStore.clearEmbeddingCache removes persisted embeddings", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem
+    const store = yield* storeFixture([makeChunk()], [makeEmbedding()])
+    expect(yield* fs.exists(".pix/embedding-cache.jsonl")).toBe(true)
+
+    expect(yield* store.clearEmbeddingCache()).toBe(true)
+    expect(yield* fs.exists(".pix/embedding-cache.jsonl")).toBe(false)
+  }).pipe(Effect.provide(isLayer), Effect.scoped))
+
+test("IndexStore.loadSource hydrates only the requested source range", () =>
+  Effect.gen(function* () {
+    const store = yield* storeFixture(
+      [makeChunk({ file: "src/test.ts", text: "hello", startOffset: 0, endOffset: 5 })],
+      [makeEmbedding()],
+    )
+    const source = yield* store.loadSource({
+      file: "src/test.ts",
+      startLine: 1,
+      endLine: 1,
+      startOffset: 0,
+      endOffset: 5,
+      contentHash: makeStoredChunk({ text: "hello" }).contentHash,
+      contextLines: 1,
+    })
+
+    expect(source).toEqual({ text: "hello", contextBefore: null, contextAfter: "world" })
+  }).pipe(
+    Effect.provide(
+      Layer.provideMerge(IndexStoreLive, memoryFsLayer({ "src/test.ts": "hello\nworld" })),
+    ),
+    Effect.scoped,
+  ))
 
 test("IndexStore.reset deletes index files when they exist", () =>
   Effect.gen(function* () {
@@ -148,9 +196,7 @@ test("IndexStore.persistIndex aborts and cleans up when stream errors mid-write"
     const store = yield* IndexStore
     const fs = yield* FileSystem
 
-    const okBatch: ReadonlyArray<
-      readonly [ReturnType<typeof makeChunk>, ReturnType<typeof makeEmbedding>]
-    > = [[makeChunk(), makeEmbedding()]]
+    const okBatch = [[makeStoredChunk(), makeEmbedding()]] as const
     const failingStream: Stream.Stream<typeof okBatch, StoreError> = Stream.fromEffect(
       Effect.succeed(okBatch),
     ).pipe(
@@ -163,6 +209,10 @@ test("IndexStore.persistIndex aborts and cleans up when stream errors mid-write"
       store.persistIndex({
         chunks: failingStream,
         identifierIndex: { exact: {}, split: {} },
+        bm25Index: { avgChunkLength: 0, chunkLengths: [], docFreqs: {}, chunkTfs: {} },
+        files: [],
+        dims: 384,
+        dtype: "fp32",
       }),
     )
     expect(result._tag).toBe("Failure")

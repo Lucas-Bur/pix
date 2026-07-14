@@ -94,7 +94,7 @@ const make = Effect.gen(function* () {
         // enough to distinguish "known" from "user-skipped". Filter the
         // skip set explicitly so the benchmark corpus matches the real
         // indexing corpus.
-        const ext = getExtension(file)
+        const ext = getExtension(file.path)
         if (skippedSet.has(ext)) return false
         return extensionRegistry[ext] !== undefined
       })
@@ -108,7 +108,9 @@ const make = Effect.gen(function* () {
       const allChunks = yield* Stream.fromIterable(knownFiles).pipe(
         Stream.mapEffect(
           (file) =>
-            extractor.extract(file).pipe(Effect.flatMap((text) => chunker.chunkText(text, file))),
+            extractor
+              .extract(file.path)
+              .pipe(Effect.flatMap((text) => chunker.chunkText(text, file.path))),
           { concurrency: eff.concurrency },
         ),
         Stream.flatMap((chunks) => Stream.fromIterable(chunks)),

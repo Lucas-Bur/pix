@@ -14,7 +14,11 @@ import { QueryProject } from "./query-project.js"
  */
 const fixedScannerLayer = (files: readonly string[]) =>
   Layer.succeed(Scanner, {
-    scanFiles: () => Effect.succeed({ files: [...files], skipped: [] }),
+    scanFiles: () =>
+      Effect.succeed({
+        files: files.map((path) => ({ path, mtimeMs: 1, size: 0 })),
+        skipped: [],
+      }),
   })
 
 const fixtures = {
@@ -67,7 +71,7 @@ describe("identity channel end-to-end", () => {
       // Assert on the actual ranked chunk content, not just the file -- a file
       // can produce multiple chunks (or change shape) and we want to verify the
       // *definition* chunk is at the top, not just any chunk from the same file.
-      const definitionRank = results.findIndex((r) => r.text.includes("class DtypeMismatchError"))
+      const definitionRank = results.findIndex((r) => r.text?.includes("class DtypeMismatchError"))
       const otherRank = results.findIndex((r) => r.file === "src/other.ts")
       expect(definitionRank).toBe(0)
       if (otherRank !== -1) {

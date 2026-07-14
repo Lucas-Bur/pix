@@ -1,23 +1,32 @@
 import { Effect, Exit, Layer, Option, Ref, Schema, Stream } from "effect"
 import { FileSystem } from "effect/FileSystem"
 
-import { ChunkSchema } from "../domain/chunk.js"
-import type { Chunk, Embedding } from "../domain/chunk.js"
+import type { Embedding } from "../domain/chunk.js"
 import type { EmbeddingDtype, IndexMeta } from "../domain/dtype.js"
 import { DtypeMismatchError, IndexMetaSchema, VectorDecodeError } from "../domain/dtype.js"
 import { ChunkValidationError, DiskFullError, NoIndexError, StoreError } from "../domain/errors.js"
 import type { IdentifierIndexMaps } from "../domain/identifier-index.js"
+import {
+  EmbeddingCacheEntrySchema,
+  FileManifestEntrySchema,
+  StoredChunkSchema,
+} from "../domain/index-data.js"
+import type { EmbeddingCacheEntry, FileManifestEntry, StoredChunk } from "../domain/index-data.js"
 import { ConfigStore, IndexStore } from "../domain/ports.js"
 import type {
   Bm25Index,
+  CachedEmbedding,
   ChunkEntry,
   IndexStats,
   PersistIndexInput,
   SearchData,
+  SourceContent,
+  SourceRequest,
 } from "../domain/ports.js"
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
+import { contentHash } from "../lib/content-hash.js"
+import { embeddingCacheKey } from "../lib/embedding-cache.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/errors/fs-error.js"
-import { buildBm25Index } from "../lib/retrieval/bm25.js"
 import {
   deserializeIdentifierIndex,
   serializeIdentifierIndex,
@@ -25,7 +34,7 @@ import {
 import { serializeVectors } from "../lib/vectors/vector-serialization.js"
 import { ConfigStoreLive } from "./config-store.js"
 
-const parseChunkLine = (line: string): Effect.Effect<Option.Option<Chunk>> =>
+const parseChunkLine = (line: string): Effect.Effect<Option.Option<StoredChunk>> =>
   Schema.decodeUnknownEffect(parseJsonChunk)(line).pipe(Effect.option)
 
 const STORE_DIR = ".pix"
@@ -34,27 +43,32 @@ const VECTORS_FILE = `${STORE_DIR}/vectors.bin`
 const META_FILE = `${STORE_DIR}/index-meta.json`
 const BM25_FILE = `${STORE_DIR}/bm25.json`
 const IDENTIFIERS_FILE = `${STORE_DIR}/identifiers.json`
+const FILES_FILE = `${STORE_DIR}/files.jsonl`
+const EMBEDDING_CACHE_FILE = `${STORE_DIR}/embedding-cache.jsonl`
 
 /** Pre-built Schema instance for chunk encode/decode. */
-const parseJsonChunk = Schema.fromJsonString(ChunkSchema)
+const parseJsonChunk = Schema.fromJsonString(StoredChunkSchema)
+const encodeFileManifestEntry = Schema.fromJsonString(FileManifestEntrySchema)
+const encodeEmbeddingCacheEntry = Schema.fromJsonString(EmbeddingCacheEntrySchema)
+
+const encodeEmbeddingVector = (vector: Float32Array): string =>
+  Buffer.from(new Uint8Array(vector.buffer, vector.byteOffset, vector.byteLength)).toString(
+    "base64",
+  )
+
+const decodeEmbeddingVector = (encoded: string): Float32Array => {
+  const bytes = Buffer.from(encoded, "base64")
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return new Float32Array(copy.buffer)
+}
 
 const buildAndStoreBm25 = (
   fs: FileSystem,
-  chunksContent: string,
+  bm25Index: Bm25Index,
   bm25Path: string,
 ): Effect.Effect<void, StoreError | DiskFullError> =>
   Effect.gen(function* () {
-    const chunkLines = chunksContent.split("\n").filter((l) => l.trim().length > 0)
-    const texts: { index: number; text: string }[] = []
-    for (let i = 0; i < chunkLines.length; i++) {
-      try {
-        const chunk = Schema.decodeUnknownSync(parseJsonChunk)(chunkLines[i])
-        texts.push({ index: i, text: chunk.text })
-      } catch {
-        // skip malformed lines — bm25 ignores them
-      }
-    }
-    const bm25Index = buildBm25Index(texts)
     const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Bm25IndexSchema))(
       bm25Index,
     ).pipe(
@@ -105,6 +119,8 @@ const make = Effect.gen(function* () {
   const metaTemp = `${META_FILE}.tmp`
   const bm25Temp = `${BM25_FILE}.tmp`
   const identifiersTemp = `${IDENTIFIERS_FILE}.tmp`
+  const filesTemp = `${FILES_FILE}.tmp`
+  const embeddingCacheTemp = `${EMBEDDING_CACHE_FILE}.tmp`
   const seenFiles = yield* Ref.make<Set<string>>(new Set())
   const statsAccumulator = yield* Ref.make<IndexStats>({
     chunks: 0,
@@ -116,6 +132,41 @@ const make = Effect.gen(function* () {
     dims: 384,
     dtype: "fp32",
   })
+  const bm25IndexRef = yield* Ref.make<Bm25Index>({
+    avgChunkLength: 0,
+    chunkLengths: [],
+    docFreqs: {},
+    chunkTfs: {},
+  })
+  const embeddingCache = yield* Ref.make<Map<string, EmbeddingCacheEntry>>(new Map())
+  const cacheModel = yield* Ref.make("")
+
+  const loadEmbeddingCache = (): Effect.Effect<readonly CachedEmbedding[], StoreError> =>
+    Effect.gen(function* () {
+      const exists = yield* withReadError(fs.exists(EMBEDDING_CACHE_FILE), "check embedding cache")
+      if (!exists) return []
+      const content = yield* withReadError(
+        fs.readFileString(EMBEDDING_CACHE_FILE),
+        "read embedding cache",
+        EMBEDDING_CACHE_FILE,
+      )
+      const entries: CachedEmbedding[] = []
+      for (const line of content.split("\n").filter((value) => value.trim().length > 0)) {
+        const decodedResult = yield* Schema.decodeUnknownEffect(encodeEmbeddingCacheEntry)(
+          line,
+        ).pipe(Effect.option)
+        if (Option.isNone(decodedResult)) continue
+        const decoded = decodedResult.value
+        const vector = decodeEmbeddingVector(decoded.vector)
+        if (vector.length !== decoded.dims) continue
+        entries.push({
+          contentHash: decoded.contentHash,
+          model: decoded.model,
+          embedding: { vector, dims: decoded.dims, dtype: decoded.dtype },
+        })
+      }
+      return entries
+    })
 
   /** Count files, total lines, and malformed lines in a single pass. */
   const countChunkStats = (
@@ -129,7 +180,7 @@ const make = Effect.gen(function* () {
         const chunk = yield* parseChunkLine(line)
         if (Option.isSome(chunk)) {
           files.add(chunk.value.file)
-          totalLines += chunk.value.text.split("\n").length
+          totalLines += chunk.value.endLine - chunk.value.startLine + 1
         } else {
           malformedLines++
         }
@@ -274,6 +325,36 @@ const make = Effect.gen(function* () {
       yield* ensureDirExists(fs, STORE_DIR, ".pix directory")
       yield* Ref.set(seenFiles, new Set())
       yield* Ref.set(statsAccumulator, { chunks: 0, files: 0, totalLines: 0, byteSize: 0 })
+      const cached = yield* loadEmbeddingCache()
+      yield* Ref.set(
+        embeddingCache,
+        new Map(
+          cached.map((entry) => [
+            embeddingCacheKey(
+              entry.contentHash,
+              entry.model,
+              entry.embedding.dims,
+              entry.embedding.dtype,
+            ),
+            {
+              contentHash: entry.contentHash,
+              model: entry.model,
+              dims: entry.embedding.dims,
+              dtype: entry.embedding.dtype,
+              vector: encodeEmbeddingVector(entry.embedding.vector),
+            },
+          ]),
+        ),
+      )
+      const config = yield* configStore
+        .readConfig()
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new StoreError({ message: "Failed to read config for embedding cache", cause }),
+          ),
+        )
+      yield* Ref.set(cacheModel, config.embedder.model)
 
       const chunksExists = yield* withFsError(fs.exists(chunksTemp), "check chunks temp")
       if (chunksExists) {
@@ -294,15 +375,40 @@ const make = Effect.gen(function* () {
           identifiersTemp,
         )
       }
+      const filesExists = yield* withFsError(fs.exists(filesTemp), "check files temp")
+      if (filesExists) {
+        yield* withFsError(fs.remove(filesTemp), "clean stale files temp", filesTemp)
+      }
+      const embeddingCacheExists = yield* withFsError(
+        fs.exists(embeddingCacheTemp),
+        "check embedding cache temp",
+      )
+      if (embeddingCacheExists) {
+        yield* withFsError(
+          fs.remove(embeddingCacheTemp),
+          "clean stale embedding cache temp",
+          embeddingCacheTemp,
+        )
+      }
+      yield* withFsError(
+        fs.writeFile(chunksTemp, Buffer.alloc(0)),
+        "create chunks temp",
+        chunksTemp,
+      )
+      yield* withFsError(
+        fs.writeFile(vectorsTemp, Buffer.alloc(0)),
+        "create vectors temp",
+        vectorsTemp,
+      )
     })
 
   const storeBatch = (
-    chunks: readonly Chunk[],
+    chunks: readonly StoredChunk[],
     embeddings: readonly Embedding[],
   ): Effect.Effect<void, StoreError | DiskFullError> =>
     Effect.gen(function* () {
-      const lines = yield* Effect.forEach(chunks, (c) =>
-        Schema.encodeEffect(parseJsonChunk)(c).pipe(
+      const lines = yield* Effect.forEach(chunks, (chunk) =>
+        Schema.encodeEffect(parseJsonChunk)(chunk).pipe(
           Effect.mapError((e) => new StoreError({ message: "Failed to encode chunk", cause: e })),
         ),
       )
@@ -336,6 +442,59 @@ const make = Effect.gen(function* () {
         totalLines: prev.totalLines + batchLines,
         byteSize: prev.byteSize + batchBytes,
       }))
+      const model = yield* Ref.get(cacheModel)
+      yield* Ref.update(embeddingCache, (cache) => {
+        for (let index = 0; index < chunks.length; index++) {
+          const chunk = chunks[index]!
+          const embedding = embeddings[index]!
+          cache.set(embeddingCacheKey(chunk.contentHash, model, embedding.dims, embedding.dtype), {
+            contentHash: chunk.contentHash,
+            model,
+            dims: embedding.dims,
+            dtype: embedding.dtype,
+            vector: encodeEmbeddingVector(embedding.vector),
+          })
+        }
+        return cache
+      })
+    })
+
+  const storeFileManifest = (
+    files: readonly FileManifestEntry[],
+  ): Effect.Effect<void, StoreError | DiskFullError> =>
+    Effect.gen(function* () {
+      const lines = yield* Effect.forEach(files, (file) =>
+        Schema.encodeEffect(encodeFileManifestEntry)(file).pipe(
+          Effect.mapError(
+            (cause) => new StoreError({ message: "Failed to encode file manifest", cause }),
+          ),
+        ),
+      )
+      yield* withFsError(
+        fs.writeFile(filesTemp, Buffer.from(lines.length > 0 ? `${lines.join("\n")}\n` : "")),
+        "write files temp",
+        filesTemp,
+      )
+    })
+
+  const storeEmbeddingCache = (): Effect.Effect<void, StoreError | DiskFullError> =>
+    Effect.gen(function* () {
+      const cache = yield* Ref.get(embeddingCache)
+      const lines = yield* Effect.forEach(cache.values(), (entry) =>
+        Schema.encodeEffect(encodeEmbeddingCacheEntry)(entry).pipe(
+          Effect.mapError(
+            (cause) => new StoreError({ message: "Failed to encode embedding cache", cause }),
+          ),
+        ),
+      )
+      yield* withFsError(
+        fs.writeFile(
+          embeddingCacheTemp,
+          Buffer.from(lines.length > 0 ? `${lines.join("\n")}\n` : ""),
+        ),
+        "write embedding cache temp",
+        embeddingCacheTemp,
+      )
     })
 
   const storeIdentifierIndex = (
@@ -373,12 +532,8 @@ const make = Effect.gen(function* () {
           "write index meta",
           metaTemp,
         )
-        const chunksContent = yield* withReadError(
-          fs.readFileString(chunksTemp),
-          "read chunks for bm25",
-          chunksTemp,
-        )
-        yield* buildAndStoreBm25(fs, chunksContent, bm25Temp)
+        const bm25Index = yield* Ref.get(bm25IndexRef)
+        yield* buildAndStoreBm25(fs, bm25Index, bm25Temp)
       }).pipe(
         Effect.catch((err) => storeAbort().pipe(Effect.ignore, Effect.andThen(Effect.fail(err)))),
       )
@@ -389,6 +544,12 @@ const make = Effect.gen(function* () {
         fs.rename(identifiersTemp, IDENTIFIERS_FILE),
         "commit identifiers",
         IDENTIFIERS_FILE,
+      )
+      yield* withFsError(fs.rename(filesTemp, FILES_FILE), "commit files", FILES_FILE)
+      yield* withFsError(
+        fs.rename(embeddingCacheTemp, EMBEDDING_CACHE_FILE),
+        "commit embedding cache",
+        EMBEDDING_CACHE_FILE,
       )
       yield* withFsError(fs.rename(chunksTemp, CHUNKS_FILE), "commit chunks", CHUNKS_FILE)
       yield* withFsError(fs.rename(vectorsTemp, VECTORS_FILE), "commit vectors", VECTORS_FILE)
@@ -415,6 +576,8 @@ const make = Effect.gen(function* () {
       yield* removeTempIfExists(metaTemp, "index meta temp")
       yield* removeTempIfExists(bm25Temp, "bm25 temp")
       yield* removeTempIfExists(identifiersTemp, "identifiers temp")
+      yield* removeTempIfExists(filesTemp, "files temp")
+      yield* removeTempIfExists(embeddingCacheTemp, "embedding cache temp")
     })
 
   const parseChunkEntries = (
@@ -425,7 +588,7 @@ const make = Effect.gen(function* () {
     const entries: ChunkEntry[] = []
     let malformedLines = 0
     for (let i = 0; i < chunkLines.length; i++) {
-      let chunk: Chunk
+      let chunk: StoredChunk
       try {
         chunk = Schema.decodeUnknownSync(parseJsonChunk)(chunkLines[i])
       } catch {
@@ -435,13 +598,15 @@ const make = Effect.gen(function* () {
       const startIdx = i * dims
       entries.push({
         index: i,
+        id: chunk.id,
+        idx: chunk.idx,
         file: chunk.file,
         startLine: chunk.startLine,
         endLine: chunk.endLine,
-        text: chunk.text,
+        startOffset: chunk.startOffset,
+        endOffset: chunk.endOffset,
+        contentHash: chunk.contentHash,
         vector: vectors.subarray(startIdx, startIdx + dims),
-        contextBefore: chunk.contextBefore,
-        contextAfter: chunk.contextAfter,
       })
     }
     return { entries, malformedLines }
@@ -472,6 +637,80 @@ const make = Effect.gen(function* () {
             cause,
           }),
       })
+    })
+
+  const loadFileManifest = (): Effect.Effect<readonly FileManifestEntry[], StoreError> =>
+    Effect.gen(function* () {
+      const content = yield* withReadError(
+        fs.readFileString(FILES_FILE),
+        "read file manifest",
+        FILES_FILE,
+      )
+      return yield* Effect.forEach(
+        content.split("\n").filter((line) => line.trim().length > 0),
+        (line) =>
+          Schema.decodeUnknownEffect(encodeFileManifestEntry)(line).pipe(
+            Effect.mapError(
+              (cause) => new StoreError({ message: "Corrupted file manifest", cause }),
+            ),
+          ),
+      )
+    })
+
+  const loadIndexSnapshot = (): Effect.Effect<
+    Option.Option<{
+      entries: readonly ChunkEntry[]
+      bm25Index: Bm25Index
+      identifierIndex: IdentifierIndexMaps
+      malformedLines: number
+      meta: IndexMeta
+      files: readonly FileManifestEntry[]
+    }>,
+    StoreError
+  > =>
+    Effect.gen(function* () {
+      const exists = yield* checkIndexExists()
+      if (!exists) return Option.none()
+      const meta = yield* readIndexMeta()
+      if (!meta) return yield* new StoreError({ message: "Index meta file missing" })
+      const { chunkLines, vectors, dims } = yield* loadChunksAndVectors(meta.dims).pipe(
+        Effect.mapError(
+          (cause) => new StoreError({ message: "Failed to decode index snapshot", cause }),
+        ),
+      )
+      const { entries, malformedLines } = parseChunkEntries(chunkLines, vectors, dims)
+      const bm25Index = yield* loadBm25Index()
+      const identifierIndex = yield* loadIdentifierIndex()
+      const files = yield* loadFileManifest()
+      return Option.some({ entries, bm25Index, identifierIndex, malformedLines, meta, files })
+    })
+
+  const loadSource = (request: SourceRequest): Effect.Effect<SourceContent, StoreError> =>
+    Effect.gen(function* () {
+      const source = yield* withReadError(
+        fs.readFileString(request.file),
+        "read selected source",
+        request.file,
+      )
+      const text = source.slice(request.startOffset, request.endOffset)
+      if (contentHash(text) !== request.contentHash) {
+        return yield* new StoreError({
+          message: `Source changed since indexing: ${request.file}. Refresh the index and retry.`,
+          path: request.file,
+        })
+      }
+      const lines = source.split("\n")
+      const beforeStart = Math.max(0, request.startLine - 1 - request.contextLines)
+      const afterEnd = Math.min(lines.length, request.endLine + request.contextLines)
+      return {
+        text,
+        contextBefore:
+          lines
+            .slice(beforeStart, request.startLine - 1)
+            .join("\n")
+            .replace(/\r$/u, "") || null,
+        contextAfter: lines.slice(request.endLine, afterEnd).join("\n").replace(/\r$/u, "") || null,
+      }
     })
 
   const loadSearchData = (): Effect.Effect<
@@ -567,12 +806,20 @@ const make = Effect.gen(function* () {
       const meta = yield* removeIfExists(META_FILE, "index meta")
       const bm25 = yield* removeIfExists(BM25_FILE, "bm25 index")
       const identifiers = yield* removeIfExists(IDENTIFIERS_FILE, "identifiers")
+      const files = yield* removeIfExists(FILES_FILE, "file manifest")
 
       return {
         deletedChunks: chunks.deleted,
         deletedVectors: vectors.deleted,
-        freedBytes: chunks.freed + vectors.freed + meta.freed + bm25.freed + identifiers.freed,
+        freedBytes:
+          chunks.freed + vectors.freed + meta.freed + bm25.freed + identifiers.freed + files.freed,
       }
+    })
+
+  const clearEmbeddingCache = (): Effect.Effect<boolean, StoreError | DiskFullError> =>
+    Effect.gen(function* () {
+      const removed = yield* removeIfExists(EMBEDDING_CACHE_FILE, "embedding cache")
+      return removed.deleted
     })
 
   const persistIndex = <E>(
@@ -580,6 +827,8 @@ const make = Effect.gen(function* () {
   ): Effect.Effect<IndexStats, StoreError | DiskFullError | E> =>
     Effect.gen(function* () {
       yield* storeBegin()
+      yield* Ref.set(bm25IndexRef, input.bm25Index)
+      yield* Ref.set(batchMetaRef, { dims: input.dims, dtype: input.dtype })
       const exit = yield* Effect.exit(
         Effect.gen(function* () {
           yield* Stream.runForEach(input.chunks, (batch) =>
@@ -589,6 +838,8 @@ const make = Effect.gen(function* () {
             ),
           )
           yield* storeIdentifierIndex(input.identifierIndex)
+          yield* storeFileManifest(input.files)
+          yield* storeEmbeddingCache()
           return yield* storeCommit()
         }),
       )
@@ -600,6 +851,10 @@ const make = Effect.gen(function* () {
   return {
     persistIndex,
     loadSearchData,
+    loadSource,
+    loadEmbeddingCache,
+    clearEmbeddingCache,
+    loadIndexSnapshot,
     getStatus,
     reset,
   } as const

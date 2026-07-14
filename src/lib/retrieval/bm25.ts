@@ -55,6 +55,69 @@ export const buildBm25Index = (
   return { avgChunkLength, chunkLengths, docFreqs, chunkTfs }
 }
 
+const remapRetainedBm25 = (
+  previous: Bm25Index | null,
+  retainedIndexes: ReadonlyMap<number, number>,
+  chunkLengths: number[],
+  docFreqs: Record<string, number>,
+  chunkTfs: Record<string, [number, number][]>,
+): void => {
+  if (!previous) return
+  for (const [oldIndex, newIndex] of retainedIndexes) {
+    chunkLengths[newIndex] = previous.chunkLengths[oldIndex] ?? 0
+  }
+  for (const [term, postings] of Object.entries(previous.chunkTfs)) {
+    for (const [oldIndex, frequency] of postings) {
+      const newIndex = retainedIndexes.get(oldIndex)
+      if (newIndex === undefined) continue
+      const target = chunkTfs[term] ?? []
+      target.push([newIndex, frequency])
+      chunkTfs[term] = target
+      docFreqs[term] = (docFreqs[term] ?? 0) + 1
+    }
+  }
+}
+
+const addNewBm25Documents = (
+  newTexts: readonly { readonly index: number; readonly text: string }[],
+  chunkLengths: number[],
+  docFreqs: Record<string, number>,
+  chunkTfs: Record<string, [number, number][]>,
+): void => {
+  const added = buildBm25Index(newTexts)
+  for (const { index } of newTexts) chunkLengths[index] = added.chunkLengths[index] ?? 0
+  for (const [term, postings] of Object.entries(added.chunkTfs)) {
+    const target = chunkTfs[term] ?? []
+    target.push(...postings.map(([index, frequency]) => [index, frequency] as [number, number]))
+    target.sort((a, b) => a[0] - b[0])
+    chunkTfs[term] = target
+    docFreqs[term] = (docFreqs[term] ?? 0) + postings.length
+  }
+}
+
+/** Remap retained BM25 documents and add newly tokenized documents into one complete index. */
+export const rebuildBm25Index = (
+  previous: Bm25Index | null,
+  retainedIndexes: ReadonlyMap<number, number>,
+  newTexts: readonly { readonly index: number; readonly text: string }[],
+  documentCount: number,
+): Bm25Index => {
+  const chunkLengths = Array.from({ length: documentCount }, () => 0)
+  const docFreqs: Record<string, number> = Object.create(null)
+  const chunkTfs: Record<string, [number, number][]> = Object.create(null)
+
+  remapRetainedBm25(previous, retainedIndexes, chunkLengths, docFreqs, chunkTfs)
+  addNewBm25Documents(newTexts, chunkLengths, docFreqs, chunkTfs)
+
+  const totalTokens = chunkLengths.reduce((sum, length) => sum + length, 0)
+  return {
+    avgChunkLength: documentCount > 0 ? totalTokens / documentCount : 0,
+    chunkLengths,
+    docFreqs,
+    chunkTfs,
+  }
+}
+
 const idf = (docCount: number, df: number): number =>
   Math.log(1 + (docCount - df + 0.5) / (df + 0.5))
 

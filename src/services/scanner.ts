@@ -1,8 +1,8 @@
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Option } from "effect"
 import { FileSystem } from "effect/FileSystem"
 import ignore from "ignore"
 
-import type { ScanResult, SkippedEntry } from "../domain/ports.js"
+import type { ScanResult, ScannedFile, SkippedEntry } from "../domain/ports.js"
 import { Scanner } from "../domain/ports.js"
 
 const make = Effect.gen(function* () {
@@ -121,8 +121,8 @@ const make = Effect.gen(function* () {
     ig: ReturnType<typeof ignore>,
     cwd: string,
   ): Effect.Effect<
-    | { files: string[]; skipped: SkippedEntry[]; recurse?: false }
-    | { files: string[]; skipped: SkippedEntry[]; recurse: true },
+    | { files: ScannedFile[]; skipped: SkippedEntry[]; recurse?: false }
+    | { files: ScannedFile[]; skipped: SkippedEntry[]; recurse: true },
     never
   > =>
     Effect.gen(function* () {
@@ -157,7 +157,16 @@ const make = Effect.gen(function* () {
             skipped: [{ path: fullPath, reason: `Ignored by config pattern: ${relativePath}` }],
           }
         }
-        return { files: [fullPath], skipped: [] }
+        return {
+          files: [
+            {
+              path: fullPath,
+              mtimeMs: Option.getOrElse(info.mtime, () => new Date(0)).getTime(),
+              size: Number(info.size),
+            },
+          ],
+          skipped: [],
+        }
       }
 
       return { files: [], skipped: [] }
@@ -167,11 +176,11 @@ const make = Effect.gen(function* () {
     dir: string,
     ig: ReturnType<typeof ignore>,
     cwd: string,
-  ): Effect.Effect<{ files: string[]; skipped: SkippedEntry[] }, never> =>
+  ): Effect.Effect<{ files: ScannedFile[]; skipped: SkippedEntry[] }, never> =>
     Effect.gen(function* () {
       const result = yield* readDirectoryWithSkip(dir)
 
-      let files: string[] = []
+      let files: ScannedFile[] = []
       const skipped: SkippedEntry[] = []
       if (result.skipped) skipped.push(result.skipped)
 

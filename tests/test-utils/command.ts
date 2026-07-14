@@ -1,5 +1,5 @@
 import type { FileTree } from "@lucas-bur/effect-memfs"
-import { Effect, Exit, Layer, Ref } from "effect"
+import { Effect, Exit, Layer, Option, Ref } from "effect"
 import { Command } from "effect/unstable/cli"
 import { expect } from "vite-plus/test"
 
@@ -111,6 +111,13 @@ export const makeFailingIndexStore = (
             identifierIndex: { exact: {}, split: {} },
             malformedLines: 0,
           }),
+    loadSource: () =>
+      failingMethod === "loadSearchData"
+        ? failEffect
+        : Effect.succeed({ text: "", contextBefore: null, contextAfter: null }),
+    loadEmbeddingCache: () => Effect.succeed([]),
+    clearEmbeddingCache: () => Effect.succeed(false),
+    loadIndexSnapshot: () => Effect.succeed(Option.none()),
     getStatus: () =>
       failingMethod === "getStatus"
         ? failEffect

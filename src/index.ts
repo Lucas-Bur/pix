@@ -24,13 +24,14 @@ const runWith = <RIn, E, ROut>(load: () => Promise<Layer.Layer<ROut, E, RIn>>) =
   })
 
 const subcommand = process.argv[2]
+const routedSubcommand = subcommand === "run" ? "alias" : subcommand
 const wantsHelp = process.argv.some((a) => a === "--help" || a === "-h")
 
 const main = Effect.gen(function* () {
   if (wantsHelp || subcommand === undefined) {
     return yield* runDefault
   }
-  switch (subcommand) {
+  switch (routedSubcommand) {
     case "status":
       return yield* runWith(() => import("./layers/status-layer.js").then((m) => m.StatusLayer))
     case "reset":
@@ -47,8 +48,9 @@ const main = Effect.gen(function* () {
       return yield* runWith(() =>
         import("./layers/config-heal-layer.js").then((m) => m.ConfigHealLayer),
       )
+    case "cache":
+      return yield* runWith(() => import("./layers/cache-layer.js").then((m) => m.CacheLayer))
     case "alias":
-    case "run":
       return yield* runWith(() => import("./layers/alias-layer.js").then((m) => m.AliasLayer))
     default:
       return yield* runDefault

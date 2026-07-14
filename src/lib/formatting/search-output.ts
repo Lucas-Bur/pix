@@ -20,7 +20,7 @@ export const formatResult = (result: SearchResult, rank: number, noContent = fal
   }
   const contextBefore = result.contextBefore ? `\n${result.contextBefore}` : ""
   const contextAfter = result.contextAfter ? `\n${result.contextAfter}` : ""
-  return `${prefix}${formatResultMetadata(result)} (rel: ${result.rel.toFixed(3)})${contextBefore}\n${result.text}${contextAfter}`
+  return `${prefix}${formatResultMetadata(result)} (rel: ${result.rel.toFixed(3)})${contextBefore}\n${result.text ?? ""}${contextAfter}`
 }
 
 /** Build optional content fields for a single JSON output entry. */
@@ -31,7 +31,7 @@ const buildContentFields = (
 ): Record<string, unknown> => {
   if (noContent) return {}
   return {
-    text: r.text,
+    text: r.text ?? "",
     ...(ctxLines > 0 && r.contextBefore && { contextBefore: r.contextBefore }),
     ...(ctxLines > 0 && r.contextAfter && { contextAfter: r.contextAfter }),
   }
@@ -69,7 +69,8 @@ export const applyCharBudget = (
   for (const result of results) {
     const indicator = " [...]"
     const metadata = `${formatResultMetadata(result)}\n`
-    const formatted = `${metadata}${result.text}${result.contextBefore ? `\n${result.contextBefore}` : ""}${result.contextAfter ? `\n${result.contextAfter}` : ""}`
+    const text = result.text ?? ""
+    const formatted = `${metadata}${text}${result.contextBefore ? `\n${result.contextBefore}` : ""}${result.contextAfter ? `\n${result.contextAfter}` : ""}`
     const chars = formatted.length
 
     if (chars <= remaining) {
@@ -78,7 +79,7 @@ export const applyCharBudget = (
     } else {
       const textBudget = remaining - metadata.length - indicator.length
       if (textBudget <= 0) break
-      const truncated = result.text.slice(0, textBudget)
+      const truncated = text.slice(0, textBudget)
       budgeted.push({
         ...result,
         text: `${truncated}${indicator}`,
