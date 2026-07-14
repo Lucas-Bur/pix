@@ -29,6 +29,7 @@ const storeFixture = (
       files: [],
       dims: 384,
       dtype: "fp32",
+      embeddingCache: [],
     })
     return store
   })
@@ -213,6 +214,7 @@ test("IndexStore.persistIndex aborts and cleans up when stream errors mid-write"
         files: [],
         dims: 384,
         dtype: "fp32",
+        embeddingCache: [],
       }),
     )
     expect(result._tag).toBe("Failure")

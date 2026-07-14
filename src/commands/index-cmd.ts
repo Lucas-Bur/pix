@@ -60,6 +60,7 @@ const emitIndexResult = (d: typeof Display.Service, result: IndexResult): Effect
       totalLines: result.status.totalLines,
       byteSize: result.status.byteSize,
       durationMs: result.durationMs,
+      refresh: result.refresh,
       cacheHits: result.cacheHits,
       cacheMisses: result.cacheMisses,
       reusedFiles: result.reusedFiles,

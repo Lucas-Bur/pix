@@ -20,8 +20,10 @@ atomic commit behavior from ADR-0006.
 - Reuse unchanged chunk metadata, vectors, BM25 terms, and identifier postings. Added and changed
   files are extracted and chunked; deleted files are omitted. Renamed content may reuse embeddings
   through its chunk content hash.
-- Cache embeddings in `.pix/embedding-cache.jsonl`. Cache identity includes chunk content hash,
-  model, dimensions, and dtype. Cache entries remain until `pix cache clear` explicitly removes them.
+- Use active `vectors.bin` entries as the primary embedding cache. Store only displaced historical
+  embeddings in `.pix/embedding-cache.jsonl`; never duplicate active vectors there. Cache identity
+  includes chunk content hash, model, dimensions, and dtype. Historical entries remain until
+  `pix cache clear` explicitly removes them.
 - `pix query` first ensures the index is fresh. Missing indexes, source changes, and embedding-contract
   changes are repaired automatically before ranking. A failed refresh leaves the previous committed
   snapshot untouched and fails the query.
@@ -47,6 +49,7 @@ for unchanged files.
 
 - Normal query latency includes a source scan and may include indexing or model download work.
 - `pix index` remains useful for deliberate pre-warming but is not required before query.
-- The embedding cache can grow until explicitly cleared.
+- The historical embedding cache can grow until explicitly cleared, but active vectors occupy only
+  `vectors.bin`.
 - Existing indexes must be deleted and rebuilt after upgrading to this storage shape.
 - Query memory no longer scales with total persisted source text.

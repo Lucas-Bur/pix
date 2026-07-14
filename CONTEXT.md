@@ -32,6 +32,10 @@ Structurally healed on read: missing fields are filled from `DEFAULT_CONFIG` via
 Component that turns text into vectors. Uses ONNX runtime with configurable dtype (`fp32` | `fp16` | `q8` | `q4`). Default model: `Xenova/all-MiniLM-L6-v2` (384 dims).
 Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable). Produces `Embedding` values with `dtype` field matching the configured quantization.
 
+### Embedding Cache
+
+Content-addressed reuse for embeddings displaced from the active index. Active vectors live only in `vectors.bin` and are reused directly from the current snapshot. `.pix/embedding-cache.jsonl` stores historical non-active vectors keyed by exact embedded-text hash, model, dimensions, and dtype. `pix cache clear` removes this history; it does not remove active vectors.
+
 ### ModelRegistry
 
 Port (`Context.Tag` in `src/domain/ports.ts`) for querying embedding model metadata: dimensions, supported dtypes, default dtype, description. `ModelRegistryLive` in `src/services/models.ts` wraps the static `MODEL_REGISTRY` record from `src/domain/models.ts`; test layers can inject a restricted fake registry to exercise coupled-validation edge cases. Two methods: `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. Follows the "two adapters = real seam" principle (live + test).

@@ -85,8 +85,10 @@ test("IndexProject.index performs no embedding or commit when all files are unch
     const second = yield* index.index()
 
     expect(first.processedFiles).toBe(2)
+    expect(first.refresh).toBe("full")
     expect(first.cacheMisses).toBe(first.status.chunks)
     expect(second.reusedFiles).toBe(2)
+    expect(second.refresh).toBe("none")
     expect(second.processedFiles).toBe(0)
     expect(second.cacheHits).toBe(0)
     expect(second.cacheMisses).toBe(0)
@@ -107,6 +109,7 @@ test("IndexProject.index handles changed, deleted, and renamed files", () =>
     const result = yield* index.index()
 
     expect(result.status.files).toBe(2)
+    expect(result.refresh).toBe("incremental")
     expect(result.processedFiles).toBe(2)
     expect(result.cacheHits).toBeGreaterThan(0)
     const query = yield* (yield* QueryProject).queryProject("createConfig", {
@@ -117,6 +120,25 @@ test("IndexProject.index handles changed, deleted, and renamed files", () =>
     expect(query.results.some((entry) => entry.file.endsWith("b.ts"))).toBe(false)
   }).pipe(
     Effect.provide(testLayer({ contents: fixtures, scannerLayer: ScannerLive })),
+    Effect.scoped,
+  ))
+
+test("IndexProject keeps only displaced embeddings in the historical cache", () =>
+  Effect.gen(function* () {
+    const index = yield* IndexProject
+    const fs = yield* FileSystem
+    yield* index.index()
+    expect(yield* fs.readFileString(".pix/embedding-cache.jsonl")).toBe("")
+
+    yield* fs.writeFileString("src/a.ts", `${sourceFile}\nexport const changed = true`)
+    yield* index.index()
+    expect((yield* fs.readFileString(".pix/embedding-cache.jsonl")).length).toBeGreaterThan(0)
+
+    yield* fs.writeFileString("src/a.ts", sourceFile)
+    const reverted = yield* index.index()
+    expect(reverted.cacheHits).toBeGreaterThan(0)
+  }).pipe(
+    Effect.provide(testLayer({ contents: { "src/a.ts": sourceFile }, scannerLayer: ScannerLive })),
     Effect.scoped,
   ))
 

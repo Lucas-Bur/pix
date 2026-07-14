@@ -172,47 +172,6 @@ effectTest("Chunker.chunkText returns empty array for empty text", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker populates contextBefore and contextAfter around each chunk", () =>
-  Effect.gen(function* () {
-    const chunker = yield* Chunker
-    const lines = Array.from({ length: 80 }, (_, i) => `Line ${i + 1} - some content here`)
-    const text = lines.join("\n")
-    const chunks = yield* chunker.chunkText(text, "docs/test.md")
-    expect(chunks.length).toBeGreaterThanOrEqual(2)
-
-    const second = chunks[1]
-    expect(second.contextBefore).not.toBeNull()
-    const beforeLines = second.contextBefore!.split("\n")
-    expect(beforeLines.length).toBeGreaterThan(0)
-    expect(beforeLines[0]).toContain("Line 41")
-
-    const first = chunks[0]
-    expect(first.contextAfter).not.toBeNull()
-    const afterLines = first.contextAfter!.split("\n")
-    expect(afterLines.length).toBeGreaterThan(0)
-    expect(afterLines[0]).toContain("Line 61")
-
-    expect(first.file).toBe("docs/test.md")
-    expect(first.startLine).toBe(1)
-  }).pipe(Effect.provide(testLayer), Effect.scoped),
-)
-
-effectTest("Chunker first chunk has no contextBefore, last chunk has no contextAfter", () =>
-  Effect.gen(function* () {
-    const chunker = yield* Chunker
-    const lines = Array.from({ length: 5 }, (_, i) => `Line ${i + 1}`)
-    const text = lines.join("\n")
-    const chunks = yield* chunker.chunkText(text, "docs/short.md")
-    expect(chunks.length).toBeGreaterThanOrEqual(1)
-
-    const first = chunks[0]
-    expect(first.contextBefore).toBeNull()
-
-    const last = chunks[chunks.length - 1]
-    expect(last.contextAfter).toBeNull()
-  }).pipe(Effect.provide(testLayer), Effect.scoped),
-)
-
 effectTest("Chunker groups adjacent AST nodes within chunkLines", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
@@ -251,7 +210,6 @@ effectTest("Chunker embeds leading docs and comments inside declarations", () =>
     expect(chunks[0].startLine).toBe(1)
     expect(chunks[0].endLine).toBe(5)
     expect(chunks[0].text).toBe(source)
-    expect(chunks[0].contextBefore).toBeNull()
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 

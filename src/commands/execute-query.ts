@@ -37,11 +37,19 @@ const renderResults = (
   response: SearchResponse,
   ctxLines: number,
   noContent: boolean,
+  indexRefresh: {
+    readonly kind: "full" | "incremental" | "none"
+    readonly processedFiles: number
+    readonly reusedFiles: number
+    readonly cacheHits: number
+    readonly cacheMisses: number
+  },
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     const { results, validationErrors } = response
 
     yield* d.json({
+      indexRefresh,
       results: toJsonOutput(results, ctxLines, noContent),
       ...(validationErrors.length > 0 && { validationErrors }),
     })
@@ -72,7 +80,7 @@ export const executeQuery = ({
   Effect.gen(function* () {
     const d = yield* Display
     const indexService = yield* IndexProject
-    yield* d.spinner("Refreshing index...", indexService.index())
+    const indexResult = yield* indexService.index()
 
     const {
       options: searchOptions,
@@ -100,5 +108,11 @@ export const executeQuery = ({
       yield* d.log(`Copied ${finalResults.length} result(s) to clipboard`, "success")
     }
 
-    yield* renderResults(d, { ...searchResponse, results: finalResults }, contextLines, noContent)
+    yield* renderResults(d, { ...searchResponse, results: finalResults }, contextLines, noContent, {
+      kind: indexResult.refresh,
+      processedFiles: indexResult.processedFiles,
+      reusedFiles: indexResult.reusedFiles,
+      cacheHits: indexResult.cacheHits,
+      cacheMisses: indexResult.cacheMisses,
+    })
   })

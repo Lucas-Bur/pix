@@ -1,16 +1,11 @@
 import { Schema } from "effect"
 
+import { ChunkLocationSchema } from "./chunk.js"
 import { EmbeddingDtypeSchema } from "./dtype.js"
 
 /** Runtime schema for chunk metadata persisted without source text. */
 export const StoredChunkSchema = Schema.Struct({
-  id: Schema.String,
-  idx: Schema.Number,
-  file: Schema.String,
-  startLine: Schema.Number,
-  endLine: Schema.Number,
-  startOffset: Schema.Number,
-  endOffset: Schema.Number,
+  ...ChunkLocationSchema.fields,
   contentHash: Schema.String,
 })
 
@@ -36,6 +31,3 @@ export const EmbeddingCacheEntrySchema = Schema.Struct({
   dtype: EmbeddingDtypeSchema,
   vector: Schema.String,
 })
-
-/** Persisted embedding cache record inferred from EmbeddingCacheEntrySchema. */
-export type EmbeddingCacheEntry = typeof EmbeddingCacheEntrySchema.Type
