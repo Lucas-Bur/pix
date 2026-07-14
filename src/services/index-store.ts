@@ -11,7 +11,7 @@ import {
   FileManifestEntrySchema,
   StoredChunkSchema,
 } from "../domain/index-data.js"
-import type { EmbeddingCacheEntry, FileManifestEntry, StoredChunk } from "../domain/index-data.js"
+import type { FileManifestEntry, StoredChunk } from "../domain/index-data.js"
 import { ConfigStore, IndexStore } from "../domain/ports.js"
 import type {
   Bm25Index,
@@ -25,7 +25,6 @@ import type {
 } from "../domain/ports.js"
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
 import { contentHash } from "../lib/content-hash.js"
-import { embeddingCacheKey } from "../lib/embedding-cache.js"
 import { ensureDirExists, withFsError, withReadError } from "../lib/errors/fs-error.js"
 import {
   deserializeIdentifierIndex,
@@ -138,9 +137,6 @@ const make = Effect.gen(function* () {
     docFreqs: {},
     chunkTfs: {},
   })
-  const embeddingCache = yield* Ref.make<Map<string, EmbeddingCacheEntry>>(new Map())
-  const cacheModel = yield* Ref.make("")
-
   const loadEmbeddingCache = (): Effect.Effect<readonly CachedEmbedding[], StoreError> =>
     Effect.gen(function* () {
       const exists = yield* withReadError(fs.exists(EMBEDDING_CACHE_FILE), "check embedding cache")
@@ -325,37 +321,6 @@ const make = Effect.gen(function* () {
       yield* ensureDirExists(fs, STORE_DIR, ".pix directory")
       yield* Ref.set(seenFiles, new Set())
       yield* Ref.set(statsAccumulator, { chunks: 0, files: 0, totalLines: 0, byteSize: 0 })
-      const cached = yield* loadEmbeddingCache()
-      yield* Ref.set(
-        embeddingCache,
-        new Map(
-          cached.map((entry) => [
-            embeddingCacheKey(
-              entry.contentHash,
-              entry.model,
-              entry.embedding.dims,
-              entry.embedding.dtype,
-            ),
-            {
-              contentHash: entry.contentHash,
-              model: entry.model,
-              dims: entry.embedding.dims,
-              dtype: entry.embedding.dtype,
-              vector: encodeEmbeddingVector(entry.embedding.vector),
-            },
-          ]),
-        ),
-      )
-      const config = yield* configStore
-        .readConfig()
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new StoreError({ message: "Failed to read config for embedding cache", cause }),
-          ),
-        )
-      yield* Ref.set(cacheModel, config.embedder.model)
-
       const chunksExists = yield* withFsError(fs.exists(chunksTemp), "check chunks temp")
       if (chunksExists) {
         yield* withFsError(fs.remove(chunksTemp), "clean stale chunks temp", chunksTemp)
@@ -442,21 +407,6 @@ const make = Effect.gen(function* () {
         totalLines: prev.totalLines + batchLines,
         byteSize: prev.byteSize + batchBytes,
       }))
-      const model = yield* Ref.get(cacheModel)
-      yield* Ref.update(embeddingCache, (cache) => {
-        for (let index = 0; index < chunks.length; index++) {
-          const chunk = chunks[index]!
-          const embedding = embeddings[index]!
-          cache.set(embeddingCacheKey(chunk.contentHash, model, embedding.dims, embedding.dtype), {
-            contentHash: chunk.contentHash,
-            model,
-            dims: embedding.dims,
-            dtype: embedding.dtype,
-            vector: encodeEmbeddingVector(embedding.vector),
-          })
-        }
-        return cache
-      })
     })
 
   const storeFileManifest = (
@@ -477,11 +427,18 @@ const make = Effect.gen(function* () {
       )
     })
 
-  const storeEmbeddingCache = (): Effect.Effect<void, StoreError | DiskFullError> =>
+  const storeEmbeddingCache = (
+    cache: readonly CachedEmbedding[],
+  ): Effect.Effect<void, StoreError | DiskFullError> =>
     Effect.gen(function* () {
-      const cache = yield* Ref.get(embeddingCache)
-      const lines = yield* Effect.forEach(cache.values(), (entry) =>
-        Schema.encodeEffect(encodeEmbeddingCacheEntry)(entry).pipe(
+      const lines = yield* Effect.forEach(cache, (entry) =>
+        Schema.encodeEffect(encodeEmbeddingCacheEntry)({
+          contentHash: entry.contentHash,
+          model: entry.model,
+          dims: entry.embedding.dims,
+          dtype: entry.embedding.dtype,
+          vector: encodeEmbeddingVector(entry.embedding.vector),
+        }).pipe(
           Effect.mapError(
             (cause) => new StoreError({ message: "Failed to encode embedding cache", cause }),
           ),
@@ -597,15 +554,8 @@ const make = Effect.gen(function* () {
       }
       const startIdx = i * dims
       entries.push({
+        ...chunk,
         index: i,
-        id: chunk.id,
-        idx: chunk.idx,
-        file: chunk.file,
-        startLine: chunk.startLine,
-        endLine: chunk.endLine,
-        startOffset: chunk.startOffset,
-        endOffset: chunk.endOffset,
-        contentHash: chunk.contentHash,
         vector: vectors.subarray(startIdx, startIdx + dims),
       })
     }
@@ -839,7 +789,7 @@ const make = Effect.gen(function* () {
           )
           yield* storeIdentifierIndex(input.identifierIndex)
           yield* storeFileManifest(input.files)
-          yield* storeEmbeddingCache()
+          yield* storeEmbeddingCache(input.embeddingCache)
           return yield* storeCommit()
         }),
       )

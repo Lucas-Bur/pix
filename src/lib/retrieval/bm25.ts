@@ -88,7 +88,7 @@ const addNewBm25Documents = (
   for (const { index } of newTexts) chunkLengths[index] = added.chunkLengths[index] ?? 0
   for (const [term, postings] of Object.entries(added.chunkTfs)) {
     const target = chunkTfs[term] ?? []
-    target.push(...postings.map(([index, frequency]) => [index, frequency] as [number, number]))
+    for (const [index, frequency] of postings) target.push([index, frequency])
     target.sort((a, b) => a[0] - b[0])
     chunkTfs[term] = target
     docFreqs[term] = (docFreqs[term] ?? 0) + postings.length

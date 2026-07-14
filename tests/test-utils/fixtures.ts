@@ -21,8 +21,6 @@ const DEFAULT_CHUNK: Chunk = {
   startOffset: 0,
   endOffset: 12,
   text: "test content",
-  contextBefore: null,
-  contextAfter: null,
 }
 
 export const makeConfigJson = (overrides?: DeepPartial<Config>): string =>
@@ -45,8 +43,6 @@ export const makeChunk = (overrides?: Partial<Chunk>): Chunk => {
     startOffset: 0,
     endOffset: 5,
     text: "hello",
-    contextBefore: null,
-    contextAfter: null,
   }
   return { ...base, ...overrides }
 }
@@ -60,14 +56,9 @@ export const makeEmbedding = (fill: number = 0.1): Embedding => ({
 /** Build persisted chunk metadata from a working chunk fixture. */
 export const makeStoredChunk = (overrides?: Partial<Chunk>): StoredChunk => {
   const chunk = makeChunk(overrides)
+  const { text, ...location } = chunk
   return {
-    id: chunk.id,
-    idx: chunk.idx,
-    file: chunk.file,
-    startLine: chunk.startLine,
-    endLine: chunk.endLine,
-    startOffset: chunk.startOffset,
-    endOffset: chunk.endOffset,
-    contentHash: contentHash(chunk.text),
+    ...location,
+    contentHash: contentHash(text),
   }
 }

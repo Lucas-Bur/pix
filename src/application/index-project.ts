@@ -22,6 +22,7 @@ import {
   type IndexOptions,
   type ScannedFile,
   type IndexSnapshot,
+  type CachedEmbedding,
 } from "../domain/ports.js"
 import { getExtension, getFileExtension, getFilename } from "../lib/config/extension.js"
 import { mergeConfig } from "../lib/config/validation.js"
@@ -34,6 +35,7 @@ import type { StatusResult } from "./get-status.js"
 
 export interface IndexResult {
   readonly success: true
+  readonly refresh: "full" | "incremental" | "none"
   readonly status: Omit<StatusResult, "model" | "lastIndex">
   readonly durationMs: number
   readonly cacheHits: number
@@ -98,15 +100,9 @@ interface PreparedChunk {
   readonly oldIndex: number | null
 }
 
-const storedChunk = (chunk: DomainChunk): StoredChunk => ({
-  id: chunk.id,
-  idx: chunk.idx,
-  file: chunk.file,
-  startLine: chunk.startLine,
-  endLine: chunk.endLine,
-  startOffset: chunk.startOffset,
-  endOffset: chunk.endOffset,
-  contentHash: contentHash(chunk.text),
+const storedChunk = ({ text, ...location }: DomainChunk): StoredChunk => ({
+  ...location,
+  contentHash: contentHash(text),
 })
 
 /** Result of classifying and optionally processing one scanned source file. */
@@ -136,20 +132,11 @@ const retainedFile = (
 ): PreparedFileResult => ({
   manifest: { ...previous, mtimeMs: file.mtimeMs, size: file.size },
   reused: true,
-  chunks: entries.map((entry) => ({
-    stored: {
-      id: entry.id,
-      idx: entry.idx,
-      file: entry.file,
-      startLine: entry.startLine,
-      endLine: entry.endLine,
-      startOffset: entry.startOffset,
-      endOffset: entry.endOffset,
-      contentHash: entry.contentHash,
-    },
+  chunks: entries.map(({ index, vector, ...stored }) => ({
+    stored,
     text: null,
-    embedding: { vector: entry.vector, dims: entry.vector.length, dtype },
-    oldIndex: entry.index,
+    embedding: { vector, dims: vector.length, dtype },
+    oldIndex: index,
   })),
 })
 
@@ -350,7 +337,7 @@ const make = Effect.gen(function* () {
         }
       }
 
-      yield* d.updateInteractive(`Processing ${ctx.knownFiles.length} files...`)
+      yield* d.updateInteractive(`Checking ${ctx.knownFiles.length} files for changes...`)
       return yield* classifyAndCollectChunks(
         ctx.knownFiles,
         extractor,
@@ -425,17 +412,51 @@ const make = Effect.gen(function* () {
       const cacheMisses = yield* Ref.make(0)
       const cached = yield* indexStore.loadEmbeddingCache()
       const dims = ctx.dims
-      const cache = new Map(
-        cached.map((entry) => [
+      const available = new Map<string, CachedEmbedding>()
+      for (const entry of cached) {
+        available.set(
           embeddingCacheKey(
             entry.contentHash,
             entry.model,
             entry.embedding.dims,
             entry.embedding.dtype,
           ),
-          entry.embedding,
-        ]),
-      )
+          entry,
+        )
+      }
+      if (Option.isSome(ctx.snapshot)) {
+        for (const entry of ctx.snapshot.value.entries) {
+          const cachedEntry: CachedEmbedding = {
+            contentHash: entry.contentHash,
+            model: ctx.snapshot.value.meta.model,
+            embedding: {
+              vector: entry.vector,
+              dims: ctx.snapshot.value.meta.dims,
+              dtype: ctx.snapshot.value.meta.dtype,
+            },
+          }
+          available.set(
+            embeddingCacheKey(
+              cachedEntry.contentHash,
+              cachedEntry.model,
+              cachedEntry.embedding.dims,
+              cachedEntry.embedding.dtype,
+            ),
+            cachedEntry,
+          )
+        }
+      }
+      const historicalCache = new Map(available)
+      for (const chunk of chunks) {
+        historicalCache.delete(
+          embeddingCacheKey(
+            chunk.stored.contentHash,
+            ctx.config.embedder.model,
+            dims,
+            ctx.config.embedder.dtype,
+          ),
+        )
+      }
       const retainedIndexes = new Map<number, number>()
       const newTexts: { index: number; text: string }[] = []
       for (let index = 0; index < chunks.length; index++) {
@@ -451,7 +472,7 @@ const make = Effect.gen(function* () {
       )
 
       const stats = yield* d.progress(
-        { message: `Embedding ${totalChunks} chunks...`, max: totalChunks },
+        { message: `Writing index with ${totalChunks} chunks...`, max: totalChunks },
         indexStore.persistIndex({
           chunks: Stream.fromIterable(chunks).pipe(
             Stream.grouped(ctx.eff.batchSize),
@@ -466,10 +487,10 @@ const make = Effect.gen(function* () {
                   ),
                 )
                 const missingIndexes = keys.flatMap((key, index) =>
-                  batch[index]!.embedding || cache.has(key) ? [] : [index],
+                  batch[index]!.embedding || available.has(key) ? [] : [index],
                 )
                 const batchCacheHits = keys.filter(
-                  (key, index) => !batch[index]!.embedding && cache.has(key),
+                  (key, index) => !batch[index]!.embedding && available.has(key),
                 ).length
                 const embedded =
                   missingIndexes.length > 0
@@ -479,17 +500,21 @@ const make = Effect.gen(function* () {
                 const embeddings = keys.map((key, index) => {
                   const retained = batch[index]!.embedding
                   if (retained) return retained
-                  const hit = cache.get(key)
-                  if (hit) return hit
+                  const hit = available.get(key)
+                  if (hit) return hit.embedding
                   const value = embedded[embeddedIndex++]!
-                  cache.set(key, value)
+                  available.set(key, {
+                    contentHash: batch[index]!.stored.contentHash,
+                    model: ctx.config.embedder.model,
+                    embedding: value,
+                  })
                   return value
                 })
                 yield* Ref.update(cacheHits, (hits) => hits + batchCacheHits)
                 yield* Ref.update(cacheMisses, (misses) => misses + missingIndexes.length)
                 const count = yield* Ref.updateAndGet(embeddedRef, (n) => n + batch.length)
                 yield* d.updateInteractive({
-                  message: `Embedding ${count} of ${totalChunks} chunks`,
+                  message: `Writing ${count} of ${totalChunks} chunks`,
                   setTo: count,
                 })
                 return batch.map((chunk, i) => [chunk.stored, embeddings[i]!] as const)
@@ -501,6 +526,7 @@ const make = Effect.gen(function* () {
           files,
           dims: ctx.dims,
           dtype: ctx.config.embedder.dtype,
+          embeddingCache: [...historicalCache.values()],
         }),
       )
       return {
@@ -522,24 +548,33 @@ const make = Effect.gen(function* () {
       cacheMisses: number
       reusedFiles: number
       processedFiles: number
+      refresh: "full" | "incremental"
     },
     skipped: Ref.Ref<readonly SkippedEntry[]>,
     start: number,
   ): Effect.Effect<IndexResult> =>
     Effect.gen(function* () {
-      const collected = yield* Ref.get(skipped)
-      yield* displaySkippedNote(d, collected)
+      if (stats.refresh === "full") {
+        const collected = yield* Ref.get(skipped)
+        yield* displaySkippedNote(d, collected)
+      }
 
       const durationSec = ((Date.now() - start) / 1000).toFixed(1)
+      const activity =
+        stats.refresh === "full"
+          ? `Indexed ${stats.chunks} chunks from ${stats.files} files`
+          : `Refreshed ${stats.processedFiles} file(s), reused ${stats.reusedFiles}`
+      yield* d.log(`${activity} in ${durationSec}s`, "success")
       yield* d.log(
-        `Indexed ${stats.chunks} chunks from ${stats.files} files in ${durationSec}s`,
-        "success",
+        `Embeddings: ${stats.cacheMisses} computed, ${stats.cacheHits} cache hit(s)`,
+        "info",
       )
 
       const fallbackInfo = yield* embedder.getFallbackInfo()
 
       return {
         success: true as const,
+        refresh: stats.refresh,
         status: {
           chunks: stats.chunks,
           files: stats.files,
@@ -584,9 +619,13 @@ const make = Effect.gen(function* () {
   ): Effect.Effect<IndexResult, IndexError> =>
     Effect.gen(function* () {
       const status = yield* indexStore.getStatus()
-      yield* d.log("Index already fresh", "success")
+      yield* d.log(
+        `Index already fresh (${status.files} files, ${status.chunks} chunks)`,
+        "success",
+      )
       return {
         success: true,
+        refresh: "none",
         status: {
           chunks: status.chunks,
           files: status.files,
@@ -604,9 +643,14 @@ const make = Effect.gen(function* () {
 
   const index = (opts: IndexOptions = {}): Effect.Effect<IndexResult, IndexError> =>
     Effect.gen(function* () {
-      const ctx = yield* prepareIndexContext(opts)
-
-      const phase1 = yield* scanAndChunkFiles(ctx)
+      const { ctx, phase1 } = yield* d.spinner(
+        "Checking source files...",
+        Effect.gen(function* () {
+          const ctx = yield* prepareIndexContext(opts)
+          const phase1 = yield* scanAndChunkFiles(ctx)
+          return { ctx, phase1 }
+        }),
+      )
       if (snapshotIsCurrent(ctx, phase1)) return yield* freshIndexResult(ctx, phase1)
       const identifierIndex = yield* extractIdentifiersForChunks(phase1.chunks, ctx.snapshot)
       const stats = yield* embedAndPersistChunks(
@@ -618,7 +662,14 @@ const make = Effect.gen(function* () {
         phase1.reusedFiles,
         phase1.processedFiles,
       )
-      return yield* buildIndexResult(stats, ctx.skipped, ctx.start)
+      return yield* buildIndexResult(
+        {
+          ...stats,
+          refresh: Option.isSome(ctx.snapshot) ? "incremental" : "full",
+        },
+        ctx.skipped,
+        ctx.start,
+      )
     })
 
   return { index } as const

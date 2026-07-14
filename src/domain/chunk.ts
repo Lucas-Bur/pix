@@ -2,8 +2,8 @@ import { Schema } from "effect"
 
 import type { EmbeddingDtype } from "./dtype.js"
 
-/** Runtime schema for persisted/searchable chunk entries. */
-export const ChunkSchema = Schema.Struct({
+/** Shared source-location fields for working and persisted chunks. */
+export const ChunkLocationSchema = Schema.Struct({
   id: Schema.String,
   idx: Schema.Number,
   file: Schema.String,
@@ -11,9 +11,12 @@ export const ChunkSchema = Schema.Struct({
   endLine: Schema.Number,
   startOffset: Schema.Number,
   endOffset: Schema.Number,
+})
+
+/** Runtime schema for a working chunk before source text is removed for persistence. */
+export const ChunkSchema = Schema.Struct({
+  ...ChunkLocationSchema.fields,
   text: Schema.String,
-  contextBefore: Schema.Union([Schema.String, Schema.Null]),
-  contextAfter: Schema.Union([Schema.String, Schema.Null]),
 })
 
 /** Domain chunk type inferred from ChunkSchema. */

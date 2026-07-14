@@ -71,6 +71,7 @@ const indexFixture = (
       files: [],
       dims: 384,
       dtype: "fp32",
+      embeddingCache: [],
     })
   })
 

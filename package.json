@@ -48,8 +48,7 @@
     "lint:fallow:health": "fallow health --format badge",
     "lint:fallow:agent": "fallow --format json",
     "fallow": "fallow",
-    "prepublishOnly": "vp run build",
-    "pix": ""
+    "prepublishOnly": "vp run build"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

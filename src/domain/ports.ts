@@ -352,6 +352,8 @@ export interface PersistIndexInput<E = never> {
   readonly dims: number
   /** Vector storage dtype recorded even when the index contains no chunks. */
   readonly dtype: EmbeddingDtype
+  /** Historical embeddings not already present in the active vectors file. */
+  readonly embeddingCache: readonly CachedEmbedding[]
 }
 
 /** Decoded embedding retained across index runs by content and embedding contract. */

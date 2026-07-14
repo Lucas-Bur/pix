@@ -51,11 +51,6 @@ const buildLineChunks = (file: string, content: string, config: Config): Chunk[]
     const text = chunkLines.join("\n")
 
     if (text.length >= config.minChunkChars) {
-      const contextBeforeStart = Math.max(0, startLine - 1 - config.overlapLines)
-      const contextBefore = lines.slice(contextBeforeStart, startLine - 1).join("\n")
-      const contextAfterEnd = Math.min(lines.length, endLine + config.overlapLines)
-      const contextAfter = lines.slice(endLine, contextAfterEnd).join("\n")
-
       chunks.push({
         id: chunkId(file, String(startLine)),
         idx,
@@ -65,8 +60,6 @@ const buildLineChunks = (file: string, content: string, config: Config): Chunk[]
         startOffset: offsets[startLine - 1]!,
         endOffset: endOffsetForLine(endLine, lines, offsets, content.length),
         text,
-        contextBefore: contextBefore || null,
-        contextAfter: contextAfter || null,
       })
       idx++
     }
@@ -95,14 +88,11 @@ const makeAstChunk = (
   lines: readonly string[],
   offsets: readonly number[],
   contentLength: number,
-  config: Config,
 ): Chunk => {
   const firstNode = nodes[0]
   const lastNode = nodes[nodes.length - 1]
   const startLine = firstNode.startPosition.row + 1
   const endLine = lastNode.endPosition.row + 1
-  const contextBeforeStart = Math.max(0, startLine - 1 - config.overlapLines)
-  const contextAfterEnd = Math.min(lines.length, endLine + config.overlapLines)
   const location = [
     firstNode.startPosition.row,
     firstNode.startPosition.column,
@@ -119,8 +109,6 @@ const makeAstChunk = (
     startOffset: offsets[startLine - 1]!,
     endOffset: endOffsetForLine(endLine, lines, offsets, contentLength),
     text: lines.slice(startLine - 1, endLine).join("\n"),
-    contextBefore: lines.slice(contextBeforeStart, startLine - 1).join("\n") || null,
-    contextAfter: lines.slice(endLine, contextAfterEnd).join("\n") || null,
   }
 }
 
@@ -190,7 +178,7 @@ const collectAstChunks = (
   const offsets = lineStartOffsets(content)
   const groups = packAstUnits(collectAstUnits(tree.rootNode), config.chunkLines)
   const chunks = groups.map((nodes, idx) =>
-    makeAstChunk(nodes, idx, file, lines, offsets, content.length, config),
+    makeAstChunk(nodes, idx, file, lines, offsets, content.length),
   )
 
   return chunks.length === 0 ? Option.none() : Option.some(chunks)
