@@ -16,7 +16,6 @@ const errorCodes: Record<string, string> = {
   NoIndexError: "NO_INDEX",
   DiskFullError: "DISK_FULL",
   StoreError: "STORE_ERROR",
-  ChunkerError: "CHUNK_ERROR",
   ModelLoadError: "MODEL_LOAD_ERROR",
   InferenceError: "INFERENCE_ERROR",
   ModelMismatchError: "MODEL_MISMATCH",

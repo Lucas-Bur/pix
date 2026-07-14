@@ -21,7 +21,6 @@ import type {
   InteractiveError,
   NoIndexError,
   StoreError,
-  ChunkerError,
   ModelLoadError,
   InferenceError,
   AllProcessorErrors,
@@ -145,10 +144,7 @@ export class Chunker extends Context.Service<
   Chunker,
   {
     /** Chunk raw text with a logical file path. Used by ContentExtractor after text extraction. */
-    readonly chunkText: (
-      text: string,
-      file: string,
-    ) => Effect.Effect<readonly Chunk[], ChunkerError>
+    readonly chunkText: (text: string, file: string) => Effect.Effect<readonly Chunk[]>
   }
 >()("Chunker") {}
 

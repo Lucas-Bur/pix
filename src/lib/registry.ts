@@ -1,41 +1,44 @@
 import Parser from "tree-sitter"
+import Python from "tree-sitter-python"
+import Rust from "tree-sitter-rust"
 import TypeScript from "tree-sitter-typescript"
 
 import { identityProcessor, skipProcessor, type FileProcessor } from "./config/processors.js"
 
 /**
  * Per-extension behavior. Single source of truth for what we do with a file based on its extension:
- * read text via `processor`, and optionally extract identifiers via `parser` (null for extensions
- * we don't have an AST grammar for, or that aren't worth parsing -- text, config, binary).
+ * read text via `processor`, and optionally parse its AST for chunking and identifier extraction
+ * (null for extensions without a grammar, or that aren't worth parsing -- text, config, binary).
  */
 export interface ExtensionEntry {
   /** Reads file content as text. Fails for unsupported/binary formats. */
   readonly processor: FileProcessor
-  /** AST parser for identifier extraction. null = skip parsing. */
+  /** AST parser for chunking and identifier extraction. null = use line chunking. */
   readonly parser: Parser | null
 }
 
-/** Tree-sitter parser pre-configured with the TypeScript grammar (no JSX). For .ts and .js. */
-export const TYPESCRIPT_PARSER: Parser = (() => {
+const createParser = (language: unknown): Parser => {
   const parser = new Parser()
-  parser.setLanguage(TypeScript.typescript)
+  parser.setLanguage(language)
   return parser
-})()
+}
+
+/** Tree-sitter parser pre-configured with the TypeScript grammar (no JSX). For .ts and .js. */
+export const TYPESCRIPT_PARSER = createParser(TypeScript.typescript)
 
 /** Tree-sitter parser pre-configured with the TSX grammar (TypeScript with JSX). For .tsx and .jsx. */
-export const TSX_PARSER: Parser = (() => {
-  const parser = new Parser()
-  parser.setLanguage(TypeScript.tsx)
-  return parser
-})()
+export const TSX_PARSER = createParser(TypeScript.tsx)
+
+const PYTHON_PARSER = createParser(Python)
+const RUST_PARSER = createParser(Rust)
 
 /**
  * Default mapping of file extension -> behavior. Used as the base for `buildExtensionRegistry` and
  * as the single place to add a new language (one entry per file extension, one parser per
  * language).
  *
- * For TypeScript-flavored extensions the parser is pre-configured. Other code extensions (Python,
- * Rust, Go, ...) carry null until a tree-sitter grammar is installed and a parser is wired in.
+ * TypeScript, Python, and Rust extensions have pre-configured parsers. Other code extensions carry
+ * null until a tree-sitter grammar is installed and wired in.
  */
 const DEFAULT_EXTENSION_REGISTRY: Record<string, ExtensionEntry> = {
   // TypeScript-flavored. tree-sitter-typescript exposes two separate grammars:
@@ -44,9 +47,9 @@ const DEFAULT_EXTENSION_REGISTRY: Record<string, ExtensionEntry> = {
   ".tsx": { processor: identityProcessor, parser: TSX_PARSER },
   ".js": { processor: identityProcessor, parser: TYPESCRIPT_PARSER },
   ".jsx": { processor: identityProcessor, parser: TSX_PARSER },
-  // Other code -- parser: None until a tree-sitter package is added
-  ".py": { processor: identityProcessor, parser: null },
-  ".rs": { processor: identityProcessor, parser: null },
+  ".py": { processor: identityProcessor, parser: PYTHON_PARSER },
+  ".rs": { processor: identityProcessor, parser: RUST_PARSER },
+  // Other code -- parser: null until a tree-sitter package is added
   ".go": { processor: identityProcessor, parser: null },
   ".java": { processor: identityProcessor, parser: null },
   ".c": { processor: identityProcessor, parser: null },

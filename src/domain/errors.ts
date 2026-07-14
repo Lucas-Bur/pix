@@ -75,13 +75,6 @@ export class StoreError extends Data.TaggedError("StoreError")<{
 
 // === Processing errors ===
 
-/** Source file could not be read during chunking (binary, permissions, encoding). */
-export class ChunkerError extends Data.TaggedError("ChunkerError")<{
-  readonly message: string
-  readonly file: string
-  readonly cause?: unknown
-}> {}
-
 /** Embedding model could not be downloaded or loaded. */
 export class ModelLoadError extends Data.TaggedError("ModelLoadError")<{
   readonly message: string
@@ -144,7 +137,6 @@ export type AllProcessorErrors = UnsupportedFormat | ExtractionFailed
 /** All errors that can arise during indexing. */
 export type IndexError =
   | AllConfigErrors
-  | ChunkerError
   | AllEmbedderErrors
   | AllProcessorErrors
   | StoreError

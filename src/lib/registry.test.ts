@@ -36,11 +36,10 @@ describe("buildExtensionRegistry", () => {
     expect(registry[".yaml"]?.parser).toBeNull()
   })
 
-  it("does not provide a parser for other code languages until wired in", () => {
+  it("provides parsers for Python and Rust", () => {
     const registry = buildExtensionRegistry([])
-    // Python/Rust/Go are known code but no tree-sitter package installed yet
-    expect(registry[".py"]?.parser).toBeNull()
-    expect(registry[".rs"]?.parser).toBeNull()
+    expect(registry[".py"]?.parser).not.toBeNull()
+    expect(registry[".rs"]?.parser).not.toBeNull()
     expect(registry[".go"]?.parser).toBeNull()
   })
 

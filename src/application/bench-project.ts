@@ -11,12 +11,7 @@ import type {
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type { Config } from "../domain/config.js"
-import type {
-  AllConfigErrors,
-  ChunkerError,
-  AllProcessorErrors,
-  DiskFullError,
-} from "../domain/errors.js"
+import type { AllConfigErrors, AllProcessorErrors, DiskFullError } from "../domain/errors.js"
 import { ConfigError, ModelLoadError } from "../domain/errors.js"
 import { DeviceDetection, Display, Embedder, type EmbedderDeviceConfig } from "../domain/ports.js"
 import { ConfigStore, Scanner, Chunker, ContentExtractor } from "../domain/ports.js"
@@ -26,7 +21,7 @@ import { mergeConfig } from "../lib/config/validation.js"
 import { resolveEmbedderConfig } from "../lib/embedder/resolve.js"
 import { buildExtensionRegistry } from "../lib/registry.js"
 
-type CorpusError = AllConfigErrors | ChunkerError | AllProcessorErrors | DiskFullError
+type CorpusError = AllConfigErrors | AllProcessorErrors | DiskFullError
 
 const COLD_START_BATCH_SIZE = 16
 

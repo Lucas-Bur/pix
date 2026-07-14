@@ -2,7 +2,7 @@ import { Context, Effect, Layer, Ref, Stream } from "effect"
 
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
-import type { IndexError, AllProcessorErrors, ChunkerError } from "../domain/errors.js"
+import type { IndexError, AllProcessorErrors } from "../domain/errors.js"
 import type { IdentifierIndexMaps } from "../domain/identifier-index.js"
 import type { Identifier } from "../domain/identifier.js"
 import { Display } from "../domain/ports.js"
@@ -80,7 +80,7 @@ const classifyAndCollectChunks = (
   extractor: typeof ContentExtractor.Service,
   chunker: typeof Chunker.Service,
   skipped: Ref.Ref<readonly SkippedEntry[]>,
-): Effect.Effect<Phase1Result, AllProcessorErrors | ChunkerError> =>
+): Effect.Effect<Phase1Result, AllProcessorErrors> =>
   Effect.gen(function* () {
     const allChunks: DomainChunk[] = []
     for (const file of knownFiles) {
@@ -93,15 +93,7 @@ const classifyAndCollectChunks = (
         ),
       )
       if (result.kind !== "ok") continue
-      const chunks = yield* chunker
-        .chunkText(result.text, result.file)
-        .pipe(
-          Effect.catch((err) =>
-            Ref.update(skipped, (prev) => [...prev, { path: file, reason: err.message }]).pipe(
-              Effect.map((): DomainChunk[] => []),
-            ),
-          ),
-        )
+      const chunks = yield* chunker.chunkText(result.text, result.file)
       allChunks.push(...chunks)
     }
     return { chunks: allChunks, totalChunks: allChunks.length }
