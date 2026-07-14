@@ -59,17 +59,6 @@ const buildLineChunks = (file: string, content: string, config: Config): Chunk[]
   return chunks
 }
 
-const appendLeadingComment = (
-  comments: readonly Parser.SyntaxNode[],
-  node: Parser.SyntaxNode,
-): readonly Parser.SyntaxNode[] => {
-  const previous = comments[comments.length - 1]
-  if (previous === undefined || node.startPosition.row - previous.endPosition.row <= 1) {
-    return [...comments, node]
-  }
-  return [node]
-}
-
 const commentsAttachedTo = (
   comments: readonly Parser.SyntaxNode[],
   node: Parser.SyntaxNode,
@@ -119,13 +108,25 @@ const collectAstUnits = (root: Parser.SyntaxNode): readonly (readonly Parser.Syn
 
   for (const node of root.namedChildren) {
     if (node.type.includes("comment")) {
-      leadingComments = appendLeadingComment(leadingComments, node)
+      const previous = leadingComments[leadingComments.length - 1]
+      if (previous !== undefined && node.startPosition.row - previous.endPosition.row > 1) {
+        units.push([...leadingComments])
+        leadingComments = [node]
+      } else {
+        leadingComments = [...leadingComments, node]
+      }
       continue
     }
 
-    units.push([...commentsAttachedTo(leadingComments, node), node])
+    const attachedComments = commentsAttachedTo(leadingComments, node)
+    if (leadingComments.length > 0 && attachedComments.length === 0) {
+      units.push([...leadingComments])
+    }
+    units.push([...attachedComments, node])
     leadingComments = []
   }
+
+  if (leadingComments.length > 0) units.push([...leadingComments])
 
   return units
 }

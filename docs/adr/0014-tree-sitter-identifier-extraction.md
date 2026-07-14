@@ -29,7 +29,7 @@ Adopt [tree-sitter](https://tree-sitter.github.io/tree-sitter/) as the parsing e
 
 The dependency is installed in `dependencies` (not `devDependencies`) because `pix index` invokes the parser at runtime. The native binary is platform-specific (linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64, win32-ia32) and shipped via the package's `prebuilds/` directory — users do not need a C++ toolchain to install pix.
 
-Identifier extraction scope remains **TypeScript only**. ADR-0016 later added Python and Rust parsers to the extension registry for AST-aware chunking; language-specific identifier maps remain future work.
+Identifier extraction uses the **TypeScript grammar**, including JavaScript, TSX, and JSX extensions. ADR-0016 later added Python and Rust parsers to the extension registry for AST-aware chunking; their language-specific identifier maps remain future work.
 
 Identifier extraction is implemented in `src/lib/parsing/identifier-extractor.ts` as a pure function: `extractIdentifiers(parser, mapKind, text, chunkIndex) → readonly Identifier[]`. The per-language `mapKind` table (e.g. `typescriptMapKind` in `src/lib/parsing/typescript.ts`) maps tree-sitter node types onto the language-agnostic `IdentifierKind` vocabulary. The Effect port is `IdentifierExtractor` with one method, `extractIdentifiers(text, chunkIndex) → Effect<readonly Identifier[], never>`.
 
