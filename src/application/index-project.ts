@@ -51,6 +51,7 @@ export interface IndexResult {
 interface FileClassification {
   readonly knownFiles: ScannedFile[]
   readonly skippedFiles: string[]
+  readonly unknownFiles: string[]
   readonly unknownExtensions: Set<string>
 }
 
@@ -61,6 +62,7 @@ const classifyFiles = (
 ): FileClassification => {
   const knownFiles: ScannedFile[] = []
   const skippedFiles: string[] = []
+  const unknownFiles: string[] = []
   const unknownExtensions = new Set<string>()
 
   for (const file of files) {
@@ -76,13 +78,13 @@ const classifyFiles = (
     const entry = extensionRegistry[ext]
     if (!entry) {
       unknownExtensions.add(ext)
-      skippedFiles.push(file.path)
+      unknownFiles.push(file.path)
     } else {
       knownFiles.push(file)
     }
   }
 
-  return { knownFiles, skippedFiles, unknownExtensions }
+  return { knownFiles, skippedFiles, unknownFiles, unknownExtensions }
 }
 
 interface Phase1Result {
@@ -194,6 +196,7 @@ const classifyAndCollectChunks = (
   snapshot: Option.Option<IndexSnapshot>,
   contractMatches: boolean,
   retainedDtype: EmbeddingDtype,
+  concurrency: number,
 ): Effect.Effect<Phase1Result, AllProcessorErrors> =>
   Effect.gen(function* () {
     const allChunks: PreparedChunk[] = []
@@ -213,18 +216,23 @@ const classifyAndCollectChunks = (
       }
     }
 
-    for (const file of [...knownFiles].sort((left, right) => left.path.localeCompare(right.path))) {
-      const previous = previousFiles.get(file.path)
-      const prepared = yield* prepareFile({
-        file,
-        previous,
-        previousEntries: previousEntries.get(file.path) ?? [],
-        contractMatches,
-        retainedDtype,
-        extractor,
-        chunker,
-        skipped,
-      })
+    const sortedFiles = [...knownFiles].sort((left, right) => left.path.localeCompare(right.path))
+    const preparedFiles = yield* Effect.forEach(
+      sortedFiles,
+      (file) =>
+        prepareFile({
+          file,
+          previous: previousFiles.get(file.path),
+          previousEntries: previousEntries.get(file.path) ?? [],
+          contractMatches,
+          retainedDtype,
+          extractor,
+          chunker,
+          skipped,
+        }),
+      { concurrency },
+    )
+    for (const prepared of preparedFiles) {
       if (prepared.manifest) files.push(prepared.manifest)
       allChunks.push(...prepared.chunks)
       if (prepared.reused) reusedFiles++
@@ -291,7 +299,7 @@ const make = Effect.gen(function* () {
       yield* d.updateInteractive("Scanning source files...")
       const scanResult = yield* scanner.scanFiles(eff.ignoredPaths, eff.ignoreGitignore)
 
-      const { knownFiles, skippedFiles, unknownExtensions } = classifyFiles(
+      const { knownFiles, unknownFiles, unknownExtensions } = classifyFiles(
         scanResult.files,
         extensionRegistry,
         new Set(eff.skipExtensions),
@@ -306,7 +314,7 @@ const make = Effect.gen(function* () {
       if (unknownExtensions.size > 0) {
         yield* Ref.update(skipped, (prev) => [
           ...prev,
-          ...skippedFiles.map((f) => ({
+          ...unknownFiles.map((f) => ({
             path: f,
             reason: "unknown extension",
           })),
@@ -346,6 +354,7 @@ const make = Effect.gen(function* () {
         ctx.snapshot,
         ctx.contractMatches,
         ctx.config.embedder.dtype,
+        ctx.eff.concurrency,
       )
     })
 
@@ -486,32 +495,44 @@ const make = Effect.gen(function* () {
                     ctx.config.embedder.dtype,
                   ),
                 )
-                const missingIndexes = keys.flatMap((key, index) =>
-                  batch[index]!.embedding || available.has(key) ? [] : [index],
-                )
-                const batchCacheHits = keys.filter(
+                const missingByKey = new Map<string, PreparedChunk>()
+                for (let index = 0; index < keys.length; index++) {
+                  const key = keys[index]!
+                  const chunk = batch[index]!
+                  if (!chunk.embedding && !available.has(key) && !missingByKey.has(key)) {
+                    missingByKey.set(key, chunk)
+                  }
+                }
+                const existingCacheHits = keys.filter(
                   (key, index) => !batch[index]!.embedding && available.has(key),
                 ).length
+                const duplicateCacheHits =
+                  keys.filter((_, index) => !batch[index]!.embedding).length -
+                  existingCacheHits -
+                  missingByKey.size
+                const missing = [...missingByKey.entries()]
                 const embedded =
-                  missingIndexes.length > 0
-                    ? yield* embedder.batch(missingIndexes.map((index) => batch[index]!.text ?? ""))
+                  missing.length > 0
+                    ? yield* embedder.batch(missing.map(([, chunk]) => chunk.text ?? ""))
                     : []
-                let embeddedIndex = 0
+                for (let index = 0; index < missing.length; index++) {
+                  const [key, chunk] = missing[index]!
+                  available.set(key, {
+                    contentHash: chunk.stored.contentHash,
+                    model: ctx.config.embedder.model,
+                    embedding: embedded[index]!,
+                  })
+                }
                 const embeddings = keys.map((key, index) => {
                   const retained = batch[index]!.embedding
                   if (retained) return retained
-                  const hit = available.get(key)
-                  if (hit) return hit.embedding
-                  const value = embedded[embeddedIndex++]!
-                  available.set(key, {
-                    contentHash: batch[index]!.stored.contentHash,
-                    model: ctx.config.embedder.model,
-                    embedding: value,
-                  })
-                  return value
+                  return available.get(key)!.embedding
                 })
-                yield* Ref.update(cacheHits, (hits) => hits + batchCacheHits)
-                yield* Ref.update(cacheMisses, (misses) => misses + missingIndexes.length)
+                yield* Ref.update(
+                  cacheHits,
+                  (hits) => hits + existingCacheHits + duplicateCacheHits,
+                )
+                yield* Ref.update(cacheMisses, (misses) => misses + missing.length)
                 const count = yield* Ref.updateAndGet(embeddedRef, (n) => n + batch.length)
                 yield* d.updateInteractive({
                   message: `Writing ${count} of ${totalChunks} chunks`,
@@ -665,7 +686,7 @@ const make = Effect.gen(function* () {
       return yield* buildIndexResult(
         {
           ...stats,
-          refresh: Option.isSome(ctx.snapshot) ? "incremental" : "full",
+          refresh: !ctx.contractMatches || Option.isNone(ctx.snapshot) ? "full" : "incremental",
         },
         ctx.skipped,
         ctx.start,
