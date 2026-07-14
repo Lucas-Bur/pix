@@ -14,7 +14,8 @@ Pre-computed BM25 statistics stored in `.pix/bm25.json`: average chunk length, p
 
 A piece of source code produced by the chunker. One chunk = N lines of code with overlap.
 Stored as one line in `chunks.jsonl`. Maximum size guided by 60 lines (configurable `chunkLines`), with `overlapLines` lines overlapping between consecutive chunks.
-Chunk-ID = `sha1(file:startLine).slice(0, 12)`.
+Line-chunk ID = `sha1(file:startLine).slice(0, 12)`. AST-chunk IDs also include the node's
+start/end row and column so distinct declarations on one line cannot collide.
 Minimum chunk size: 20 characters (configurable `minChunkChars`).
 
 ### ChunkEntry
@@ -337,7 +338,10 @@ Domain error type for content extraction failures. Tagged variants: `Unsupported
 
 ### Chunker
 
-Now exposes two methods: `chunkFile(file)` reads file then delegates to `chunkText(text, file)`. `chunkText(text, file)` is the pure chunking logic, called by both the identity processor and future transforms. All extraction flows through `chunkText` before embedding.
+`chunkText(text, file)` resolves the file extension through the shared extension registry. TypeScript,
+JavaScript, TSX, JSX, Python, and Rust use tree-sitter top-level AST nodes as indivisible semantic units, greedily packed into chunks spanning at most `chunkLines`. A single larger node remains whole.
+Parserless extensions and malformed ASTs fall back to the configured line chunker. AST parsing is a
+best-effort optimization: foreign parser failures are normalized internally and never skip indexable text.
 
 ### Scanner
 

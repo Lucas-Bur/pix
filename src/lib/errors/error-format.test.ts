@@ -44,7 +44,6 @@ test("formatError maps new error tags correctly", () => {
   expect(formatError({ _tag: "NoIndexError", message: "no index" }).code).toBe("NO_INDEX")
   expect(formatError({ _tag: "DiskFullError", message: "full" }).code).toBe("DISK_FULL")
   expect(formatError({ _tag: "StoreError", message: "io" }).code).toBe("STORE_ERROR")
-  expect(formatError({ _tag: "ChunkerError", message: "chunk" }).code).toBe("CHUNK_ERROR")
   expect(formatError({ _tag: "ModelLoadError", message: "load" }).code).toBe("MODEL_LOAD_ERROR")
   expect(formatError({ _tag: "InferenceError", message: "infer" }).code).toBe("INFERENCE_ERROR")
 })

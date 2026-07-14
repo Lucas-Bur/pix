@@ -18,7 +18,7 @@ The naive option is regex: `/\b(?:function|class|interface|type|enum|const|let|v
 
 These edge cases are common enough in real code that a regex-based extractor would produce visibly wrong rankings for some queries. A full AST-based extractor is needed.
 
-Issue #83 ("AST-aware chunking with tree-sitter") was opened for a related but larger goal: chunk at AST boundaries (function/class level) instead of line-based. That work was deferred to keep MVP scope small. We are now adopting tree-sitter for a _narrower_ purpose — identifier extraction only — and deferring AST-aware chunking to a future issue.
+Issue #83 ("AST-aware chunking with tree-sitter") was opened for a related but larger goal: chunk at AST boundaries (function/class level) instead of line-based. That work was initially deferred to keep MVP scope small and was later adopted by ADR-0016.
 
 ## Decision
 
@@ -29,7 +29,7 @@ Adopt [tree-sitter](https://tree-sitter.github.io/tree-sitter/) as the parsing e
 
 The dependency is installed in `dependencies` (not `devDependencies`) because `pix index` invokes the parser at runtime. The native binary is platform-specific (linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64, win32-ia32) and shipped via the package's `prebuilds/` directory — users do not need a C++ toolchain to install pix.
 
-MVP scope: **TypeScript only**. Other languages (Python, Rust, Go) carry `parser: None` in the extension registry until their tree-sitter package is installed and a parser is wired in. The `Parser` field in `ExtensionEntry` is `Option<Parser>` specifically to support this staged rollout.
+Identifier extraction scope remains **TypeScript only**. ADR-0016 later added Python and Rust parsers to the extension registry for AST-aware chunking; language-specific identifier maps remain future work.
 
 Identifier extraction is implemented in `src/lib/parsing/identifier-extractor.ts` as a pure function: `extractIdentifiers(parser, mapKind, text, chunkIndex) → readonly Identifier[]`. The per-language `mapKind` table (e.g. `typescriptMapKind` in `src/lib/parsing/typescript.ts`) maps tree-sitter node types onto the language-agnostic `IdentifierKind` vocabulary. The Effect port is `IdentifierExtractor` with one method, `extractIdentifiers(text, chunkIndex) → Effect<readonly Identifier[], never>`.
 
@@ -60,7 +60,7 @@ Tree-sitter is the best trade-off: handles all the edge cases, works across many
 
 - Tree-sitter is now a runtime dependency, adding ~5 MB to the published package (parsers + native binaries per platform, tree-shaken to only what's actually loaded).
 - The extension registry is structured to accommodate additional languages: adding a new one means installing `tree-sitter-<lang>`, adding a `<lang>MapKind` table in `src/lib/parsing/<lang>.ts`, and adding entries to the `DEFAULT_EXTENSION_REGISTRY` for that language's file extensions.
-- Per-chunk parsing is wasteful for overlapping chunks but acceptable for MVP. AST-aware chunking (#83) would let the extractor parse each file once and distribute identifiers to chunks — deferred to a future issue.
-- The `Parser` field of `ExtensionEntry` is `Option<Parser>` rather than `Parser` so that unsupported extensions (text, config, binary) carry `None` and gracefully skip the extraction step. The `IdentifierExtractor` service for MVP always uses the TypeScript parser; per-language services can be added as the language set grows.
+- Per-chunk identifier parsing remains independent from AST-aware chunking. ADR-0016 changed chunk boundaries but did not yet introduce parse-once identifier distribution.
+- The `parser` field of `ExtensionEntry` is `Parser | null`; unsupported extensions carry `null` and use line chunking. `IdentifierExtractor` still maps TypeScript identifiers only.
 - Identifier extraction is performed per chunk at index time. For typical codebases (chunk lines 60, overlap 10) this is on the order of thousands of small parses per index run, which finishes in well under a second on a modern machine. No perceptible index-time regression.
 - The `Identifier` type captures `name`, `kind`, and `chunkIndex`. The `kind` field is language-agnostic (function/type/value). MVP scorers do not differentiate by `kind`; it is captured for future use cases (e.g. "find class definitions only" or "find where this is imported", #85) without re-indexing.
