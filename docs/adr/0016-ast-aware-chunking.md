@@ -22,6 +22,13 @@ native N-API tree-sitter and established the shared extension registry for parse
   available; extraction and storage failures stay in their existing Effect error channels.
 - Keep the persisted `Chunk` schema unchanged. AST chunk IDs include start/end row and column.
 
+## Rationale
+
+Top-level AST nodes preserve semantic declarations without splitting functions or classes. Greedy
+packing avoids the tiny-chunk overhead of one embedding per node, while line fallback keeps every
+supported text format indexable when no parser is available or source is temporarily malformed.
+Reusing the extension registry keeps parser selection in one place.
+
 ## Consequences
 
 AST-supported source receives semantic boundaries without producing tiny embeddings for each import or

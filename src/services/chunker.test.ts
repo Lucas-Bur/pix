@@ -255,6 +255,42 @@ effectTest("Chunker embeds leading docs and comments inside declarations", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
+effectTest("Chunker preserves a detached top-level comment", () =>
+  Effect.gen(function* () {
+    const chunker = yield* Chunker
+    const source = [
+      "// Explains the module rather than the declaration.",
+      "",
+      "function run() {",
+      "  return true",
+      "}",
+    ].join("\n")
+
+    const chunks = yield* chunker.chunkText(source, "src/detached-comment.ts")
+
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0].text).toBe(source)
+  }).pipe(Effect.provide(testLayer), Effect.scoped),
+)
+
+effectTest("Chunker preserves trailing top-level comments", () =>
+  Effect.gen(function* () {
+    const chunker = yield* Chunker
+    const source = [
+      "function run() {",
+      "  return true",
+      "}",
+      "",
+      "// Keep this implementation note.",
+    ].join("\n")
+
+    const chunks = yield* chunker.chunkText(source, "src/trailing-comment.ts")
+
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0].text).toBe(source)
+  }).pipe(Effect.provide(testLayer), Effect.scoped),
+)
+
 effectTest("Chunker keeps an AST node larger than chunkLines intact", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
