@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test"
+import { describe, expect, it } from "@effect/vitest"
 
 import type { SearchResult } from "../domain/ports.js"
 import { filterResults } from "./query-project.js"

@@ -1,4 +1,4 @@
-import { layerWith, type FileTree } from "@lucas-bur/effect-memfs"
+import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Layer } from "effect"
 import { FileSystem } from "effect/FileSystem"
 
@@ -9,23 +9,26 @@ import { IndexProjectLive } from "../../src/application/index-project.js"
 import { InitProjectLive } from "../../src/application/init-project.js"
 import { QueryProjectLive } from "../../src/application/query-project.js"
 import { ResetIndexLive } from "../../src/application/reset-index.js"
-import { Display } from "../../src/domain/ports.js"
 import {
   Clipboard,
   ConfigStore,
+  DeviceDetection,
+  Display,
   Embedder,
   IdentifierExtractor,
   IndexStore,
   QueryAliasStore,
   Scanner,
 } from "../../src/domain/ports.js"
-import { ChunkerLive } from "../../src/services/chunker.js"
+import { ChunkerBase } from "../../src/services/chunker.js"
 import { ConfigStoreLive } from "../../src/services/config-store.js"
 import { ContentExtractorLive } from "../../src/services/content-extractor.js"
 import { IdentifierExtractorLive } from "../../src/services/identifier-extractor.js"
-import { IndexStoreLive } from "../../src/services/index-store.js"
+import { IndexStoreBase } from "../../src/services/index-store.js"
 import { ModelRegistryLive } from "../../src/services/models.js"
 import { QueryAliasStoreLive } from "../../src/services/query-alias-store.js"
+import { memoryFsLayer } from "./memfs.js"
+import { silentDisplay } from "./silentDisplay.js"
 
 export interface TestLayerOptions {
   readonly contents?: FileTree
@@ -37,6 +40,7 @@ export interface TestLayerOptions {
   readonly clipboardLayer?: Layer.Layer<Clipboard>
   readonly queryAliasStoreLayer?: Layer.Layer<QueryAliasStore, never, FileSystem>
   readonly displayLayer?: Layer.Layer<Display>
+  readonly deviceDetectionLayer?: Layer.Layer<DeviceDetection>
   readonly cleanStore?: boolean
 }
 
@@ -67,6 +71,18 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
     }),
 })
 
+const defaultDeviceDetectionLayer = Layer.succeed(DeviceDetection, {
+  detect: () => Effect.succeed("cpu" as const),
+  detectAll: () => Effect.succeed(["cpu"] as const),
+})
+
+const defaultClipboardLayer = Layer.succeed(Clipboard, {
+  copy: () => Effect.void,
+})
+
+const requireClosedLayer = <A, E>(testLayer: Layer.Layer<A, E, never>): Layer.Layer<A, E> =>
+  testLayer
+
 /**
  * Builds the full application layer for integration testing. Replaces real FileSystem with
  * in-memory variant and mocks Scanner + Embedder. Mirrors the layer structure in `src/index.ts`.
@@ -82,25 +98,31 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     clipboardLayer,
     queryAliasStoreLayer,
     displayLayer,
+    deviceDetectionLayer,
     cleanStore,
   } = opts
 
-  const memFs = layerWith(contents)
+  const memFs = requireClosedLayer(memoryFsLayer(contents))
+
+  const selectedConfigStore = configStoreLayer ?? ConfigStoreLive
+  const selectedIndexStore = indexStoreLayer ?? IndexStoreBase
+  const configuredIndexStore = Layer.provideMerge(selectedIndexStore, selectedConfigStore)
+  const configuredChunker = Layer.provideMerge(ChunkerBase, selectedConfigStore)
 
   const servicesLayer = Layer.mergeAll(
-    configStoreLayer ?? ConfigStoreLive,
+    selectedConfigStore,
     ModelRegistryLive,
     scannerLayer ?? defaultScannerLayer,
     embedderLayer ?? defaultEmbedderLayer,
-    indexStoreLayer ?? IndexStoreLive,
+    configuredIndexStore,
     queryAliasStoreLayer ?? QueryAliasStoreLive,
     ContentExtractorLive,
     identifierExtractorLayer ?? IdentifierExtractorLive,
+    deviceDetectionLayer ?? defaultDeviceDetectionLayer,
+    configuredChunker,
   )
 
-  const chunkerLayer = ChunkerLive.pipe(Layer.provide(servicesLayer))
-
-  const infraLayer = Layer.mergeAll(servicesLayer, chunkerLayer).pipe(Layer.provide(memFs))
+  const infraLayer = requireClosedLayer(Layer.provideMerge(servicesLayer, memFs))
 
   const useCaseLayer = Layer.mergeAll(
     InitProjectLive,
@@ -112,10 +134,13 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     ClearEmbeddingCacheLive,
   )
 
-  const appLayer = Layer.merge(useCaseLayer.pipe(Layer.provide(infraLayer)), memFs)
+  const appLayer = Layer.provideMerge(useCaseLayer, infraLayer)
 
-  const baseLayers = clipboardLayer ? Layer.merge(appLayer, clipboardLayer) : appLayer
-  const withConsole = displayLayer ? Layer.merge(baseLayers, displayLayer) : baseLayers
+  const baseLayers = Layer.merge(appLayer, clipboardLayer ?? defaultClipboardLayer)
+  const withDisplay = requireClosedLayer(
+    Layer.provideMerge(baseLayers, displayLayer ?? silentDisplay().layer),
+  )
+  const completeLayer = withDisplay
 
   if (cleanStore) {
     const cleanStoreLayer = Layer.effectDiscard(
@@ -136,8 +161,8 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
         )
       }),
     )
-    return Layer.provideMerge(withConsole, cleanStoreLayer)
+    return requireClosedLayer(Layer.provideMerge(cleanStoreLayer, completeLayer))
   }
 
-  return withConsole
+  return requireClosedLayer(completeLayer)
 }

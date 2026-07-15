@@ -1,5 +1,5 @@
+import { describe, expect, it } from "@effect/vitest"
 import { Effect, Layer } from "effect"
-import { describe, expect, it } from "vite-plus/test"
 
 import { TEST_CONFIG_JSON } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
@@ -47,7 +47,7 @@ const integrationLayer = testLayer({
 })
 
 describe("identity channel end-to-end", () => {
-  it("boosts the chunk that defines DtypeMismatchError to rank #1", () =>
+  it.effect("boosts the chunk that defines DtypeMismatchError to rank #1", () =>
     Effect.gen(function* () {
       yield* (yield* IndexProject).index({})
 
@@ -58,9 +58,10 @@ describe("identity channel end-to-end", () => {
       expect(results.length).toBeGreaterThan(0)
       expect(results[0].file).toBe("src/example.ts")
       expect(results[0].text).toContain("class DtypeMismatchError")
-    }).pipe(Effect.provide(integrationLayer), Effect.scoped))
+    }).pipe(Effect.provide(integrationLayer), Effect.scoped),
+  )
 
-  it("ranks the unrelated chunk below the definition chunk for the same query", () =>
+  it.effect("ranks the unrelated chunk below the definition chunk for the same query", () =>
     Effect.gen(function* () {
       yield* (yield* IndexProject).index({})
 
@@ -77,9 +78,10 @@ describe("identity channel end-to-end", () => {
       if (otherRank !== -1) {
         expect(definitionRank).toBeLessThan(otherRank)
       }
-    }).pipe(Effect.provide(integrationLayer), Effect.scoped))
+    }).pipe(Effect.provide(integrationLayer), Effect.scoped),
+  )
 
-  it("boosts a function definition by its exact name", () =>
+  it.effect("boosts a function definition by its exact name", () =>
     Effect.gen(function* () {
       yield* (yield* IndexProject).index({})
 
@@ -88,9 +90,10 @@ describe("identity channel end-to-end", () => {
       expect(results.length).toBeGreaterThan(0)
       expect(results[0].file).toBe("src/example.ts")
       expect(results[0].text).toContain("function handleRequest")
-    }).pipe(Effect.provide(integrationLayer), Effect.scoped))
+    }).pipe(Effect.provide(integrationLayer), Effect.scoped),
+  )
 
-  it("matches via camelCase split for partial queries", () =>
+  it.effect("matches via camelCase split for partial queries", () =>
     Effect.gen(function* () {
       yield* (yield* IndexProject).index({})
 
@@ -103,5 +106,6 @@ describe("identity channel end-to-end", () => {
 
       expect(results.length).toBeGreaterThan(0)
       expect(results[0].file).toBe("src/example.ts")
-    }).pipe(Effect.provide(integrationLayer), Effect.scoped))
+    }).pipe(Effect.provide(integrationLayer), Effect.scoped),
+  )
 })

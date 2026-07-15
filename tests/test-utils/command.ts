@@ -1,21 +1,33 @@
+import {
+  NodeChildProcessSpawner,
+  NodeCrypto,
+  NodePath,
+  NodeStdio,
+  NodeTerminal,
+} from "@effect/platform-node"
+import { expect } from "@effect/vitest"
 import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Exit, Layer, Option, Ref } from "effect"
 import { Command } from "effect/unstable/cli"
-import { expect } from "vite-plus/test"
 
 import type { DisplayEntry } from "../../src/display/entries.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
 import { ConfigError, ModelLoadError, StoreError } from "../../src/domain/errors.js"
 import type { DisplaySeverity } from "../../src/domain/ports.js"
 import { ConfigStore, Embedder, IndexStore } from "../../src/domain/ports.js"
-import { makeChunkJson, TEST_CONFIG_JSON } from "./fixtures.js"
+import { makeStoredChunk, TEST_CONFIG_JSON } from "./fixtures.js"
+
+const commandPlatformLayer = Layer.provideMerge(
+  NodeChildProcessSpawner.layer,
+  Layer.mergeAll(NodeCrypto.layer, NodePath.layer, NodeStdio.layer, NodeTerminal.layer),
+)
 
 export const runCommand =
   <Name extends string, Input, ContextInput, E, R>(
     command: Command.Command<Name, Input, ContextInput, E, R>,
   ) =>
   (args: string[]) =>
-    Command.runWith(command, { version: "0.0.0" })(args)
+    Command.runWith(command, { version: "0.0.0" })(args).pipe(Effect.provide(commandPlatformLayer))
 
 export const expectLogEntry = (
   ref: Ref.Ref<ReadonlyArray<DisplayEntry>>,
@@ -34,33 +46,70 @@ export const expectLogEntry = (
     }),
   )
 
+const sourceA = "const x = 1\nconst y = 2"
+const sourceB = "export const z = 3"
+
 export const indexFixtures: FileTree = {
   ".pix/config.json": TEST_CONFIG_JSON,
   ".pix/index-meta.json": JSON.stringify({
     dtype: "fp32",
     dims: 384,
-    model: "test-model",
+    model: DEFAULT_CONFIG.embedder.model,
     lastIndex: Date.now(),
   }),
   ".pix/chunks.jsonl": [
-    makeChunkJson({
-      id: "a1",
-      idx: 0,
-      file: "/src/a.ts",
-      startLine: 1,
-      endLine: 2,
-      text: "const x = 1\nconst y = 2",
-    }),
-    makeChunkJson({
-      id: "b1",
-      idx: 1,
-      file: "/src/b.ts",
-      startLine: 1,
-      endLine: 1,
-      text: "export const z = 3",
-    }),
+    JSON.stringify(
+      makeStoredChunk({
+        id: "a1",
+        idx: 0,
+        file: "src/a.ts",
+        startLine: 1,
+        endLine: 2,
+        startOffset: 0,
+        endOffset: sourceA.length,
+        text: sourceA,
+      }),
+    ),
+    JSON.stringify(
+      makeStoredChunk({
+        id: "b1",
+        idx: 1,
+        file: "src/b.ts",
+        startLine: 1,
+        endLine: 1,
+        startOffset: 0,
+        endOffset: sourceB.length,
+        text: sourceB,
+      }),
+    ),
   ].join("\n"),
-  ".pix/vectors.bin": "fake binary content",
+  ".pix/vectors.bin": "\0".repeat(2 * 384 * 4),
+  ".pix/bm25.json": JSON.stringify({
+    avgChunkLength: 4,
+    chunkLengths: [6, 4],
+    docFreqs: { query: 2, search: 2, term: 2, test: 2 },
+    chunkTfs: {
+      query: [
+        [0, 1],
+        [1, 1],
+      ],
+      search: [
+        [0, 1],
+        [1, 1],
+      ],
+      term: [
+        [0, 1],
+        [1, 1],
+      ],
+      test: [
+        [0, 1],
+        [1, 1],
+      ],
+    },
+  }),
+  ".pix/files.jsonl": "",
+  "src/a.ts": sourceA,
+  "src/b.ts": sourceB,
 }
 
 /** Assert that a command effect fails and produces error JSON recorded via SilentDisplay. */

@@ -1,6 +1,6 @@
+import { expect, it } from "@effect/vitest"
 import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Ref } from "effect"
-import { expect, test } from "vite-plus/test"
 
 import { testClipboard } from "../../tests/test-utils/clipboard.js"
 import {
@@ -9,13 +9,20 @@ import {
   indexFixtures,
   runCommand,
 } from "../../tests/test-utils/command.js"
+import { makeChunkJson, makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import { DEFAULT_CONFIG } from "../domain/config.js"
 import { queryCommand } from "./query.js"
 
 const run = runCommand(queryCommand)
+const resultsOf = (data: unknown): readonly Record<string, unknown>[] => {
+  const results = (data as { results?: unknown }).results
+  expect(Array.isArray(results)).toBe(true)
+  return results as readonly Record<string, unknown>[]
+}
 
-test("executeQuery clamps topK above maximum to 100", () => {
+it.effect("executeQuery clamps topK above maximum to 100", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--top", "200", "test"]).pipe(
@@ -23,12 +30,12 @@ test("executeQuery clamps topK above maximum to 100", () => {
     )
     yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
     yield* expectJsonEntry(ref, (data) => {
-      expect(Array.isArray(data)).toBe(true)
+      expect(resultsOf(data).length).toBeLessThanOrEqual(100)
     })
   })
 })
 
-test("executeQuery clamps topK below minimum to 1", () => {
+it.effect("executeQuery clamps topK below minimum to 1", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--top", "0", "test"]).pipe(
@@ -36,15 +43,12 @@ test("executeQuery clamps topK below minimum to 1", () => {
     )
     yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
     yield* expectJsonEntry(ref, (data) => {
-      expect(Array.isArray(data)).toBe(true)
-      if (Array.isArray(data)) {
-        expect(data.length).toBeLessThanOrEqual(1)
-      }
+      expect(resultsOf(data).length).toBeLessThanOrEqual(1)
     })
   })
 })
 
-test("executeQuery --copy writes to clipboard when results exist", () => {
+it.effect("executeQuery --copy writes to clipboard when results exist", () => {
   const { ref: displayRef, layer: displayLayer } = silentDisplay()
   const { ref: clipboardRef, layer: clipboardLayer } = testClipboard()
   return Effect.gen(function* () {
@@ -57,7 +61,7 @@ test("executeQuery --copy writes to clipboard when results exist", () => {
   })
 })
 
-test("executeQuery --copy does not copy when no results exist", () => {
+it.effect("executeQuery --copy does not copy when no results exist", () => {
   const { ref: displayRef, layer: displayLayer } = silentDisplay()
   const { ref: clipboardRef, layer: clipboardLayer } = testClipboard()
   return Effect.gen(function* () {
@@ -74,31 +78,31 @@ test("executeQuery --copy does not copy when no results exist", () => {
   })
 })
 
-test("executeQuery --no-content strips text from results", () => {
+it.effect("executeQuery --no-content strips text from results", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--no-content", "--top", "1", "test"]).pipe(
       Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })),
     )
     yield* expectJsonEntry(ref, (data) => {
-      expect(Array.isArray(data)).toBe(true)
-      if (Array.isArray(data) && data.length > 0) {
-        expect(data[0]).not.toHaveProperty("text")
+      const results = resultsOf(data)
+      if (results.length > 0) {
+        expect(results[0]).not.toHaveProperty("text")
       }
     })
   })
 })
 
-test("executeQuery --max-characters truncates result text", () => {
+it.effect("executeQuery --max-characters truncates result text", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--max-characters", "5", "--top", "1", "test"]).pipe(
       Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })),
     )
     yield* expectJsonEntry(ref, (data) => {
-      expect(Array.isArray(data)).toBe(true)
-      if (Array.isArray(data) && data.length > 0) {
-        const text = data[0].text as string
+      const results = resultsOf(data)
+      if (results.length > 0) {
+        const text = results[0].text as string
         expect(text.length).toBeLessThanOrEqual(5 + 3)
       }
     })
@@ -106,15 +110,15 @@ test("executeQuery --max-characters truncates result text", () => {
 })
 
 const largeFixtures: FileTree = {
-  ".pix/config.json": JSON.stringify({
-    embedder: { provider: "cpu", model: "test-model", dims: 384, dtype: "fp32" },
-    chunk: { maxTokens: 512, overlapTokens: 0 },
-    ignore: { paths: [], gitignore: false },
-    indexing: { batchSize: 10, chunkConcurrency: 2 },
-    model: "claude-sonnet-4-20250514",
+  ".pix/config.json": makeConfigJson(),
+  ".pix/index-meta.json": JSON.stringify({
+    dtype: "fp32",
+    dims: 384,
+    model: DEFAULT_CONFIG.embedder.model,
+    lastIndex: Date.now(),
   }),
   ".pix/chunks.jsonl": Array.from({ length: 150 }, (_, i) =>
-    JSON.stringify({
+    makeChunkJson({
       id: `chunk${i}`,
       idx: i,
       file: `/src/file${i}.ts`,
@@ -123,10 +127,17 @@ const largeFixtures: FileTree = {
       text: `content ${i}`,
     }),
   ).join("\n"),
-  ".pix/vectors.bin": "fake binary content",
+  ".pix/vectors.bin": "\0".repeat(150 * 384 * 4),
+  ".pix/bm25.json": JSON.stringify({
+    avgChunkLength: 2,
+    chunkLengths: Array.from({ length: 150 }, () => 2),
+    docFreqs: { test: 150 },
+    chunkTfs: { test: Array.from({ length: 150 }, (_, index) => [index, 1]) },
+  }),
+  ".pix/files.jsonl": "",
 }
 
-test("executeQuery with topK=200 clamps results", () => {
+it.effect("executeQuery with topK=200 clamps results", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["query", "--json", "--top", "200", "test"]).pipe(
@@ -134,10 +145,7 @@ test("executeQuery with topK=200 clamps results", () => {
     )
     yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
     yield* expectJsonEntry(ref, (data) => {
-      expect(Array.isArray(data)).toBe(true)
-      if (Array.isArray(data)) {
-        expect(data.length).toBeLessThanOrEqual(100)
-      }
+      expect(resultsOf(data).length).toBeLessThanOrEqual(100)
     })
   })
 })

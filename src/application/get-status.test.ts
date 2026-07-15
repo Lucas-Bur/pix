@@ -1,12 +1,18 @@
-import { Effect } from "effect"
-import { expect, test } from "vite-plus/test"
+import { expect, it } from "@effect/vitest"
+import { Effect, Layer } from "effect"
 
-import { indexFixtures } from "../../tests/test-utils/command.js"
-import { makeChunkJson } from "../../tests/test-utils/fixtures.js"
-import { testLayer } from "../../tests/test-utils/testLayer.js"
-import { GetStatus } from "./get-status.js"
+import { IndexStore } from "../domain/ports.js"
+import { GetStatus, GetStatusLive, type StatusResult } from "./get-status.js"
 
-test("GetStatus.getStatus returns index model from index-meta.json", () =>
+const getStatusLayer = (status: StatusResult) =>
+  Layer.provide(
+    GetStatusLive,
+    Layer.mock(IndexStore)({
+      getStatus: () => Effect.succeed(status),
+    }),
+  )
+
+it.effect("GetStatus.getStatus returns index model from index-meta.json", () =>
   Effect.gen(function* () {
     const result = yield* (yield* GetStatus).getStatus()
     expect(result.chunks).toBe(2)
@@ -15,22 +21,20 @@ test("GetStatus.getStatus returns index model from index-meta.json", () =>
     expect(result.totalLines).toBe(3)
   }).pipe(
     Effect.provide(
-      testLayer({
-        contents: {
-          ...indexFixtures,
-          ".pix/index-meta.json": JSON.stringify({
-            dtype: "fp32",
-            dims: 384,
-            model: "test-model",
-            lastIndex: Date.now(),
-          }),
-        },
+      getStatusLayer({
+        chunks: 2,
+        files: 2,
+        model: "test-model",
+        lastIndex: Date.now(),
+        totalLines: 3,
+        byteSize: 19,
+        validationErrors: [],
       }),
     ),
-    Effect.scoped,
-  ))
+  ),
+)
 
-test("GetStatus.getStatus returns empty model when index-meta.json missing", () =>
+it.effect("GetStatus.getStatus returns empty model when index-meta.json missing", () =>
   Effect.gen(function* () {
     const result = yield* (yield* GetStatus).getStatus()
     expect(result.model).toBe("")
@@ -38,21 +42,15 @@ test("GetStatus.getStatus returns empty model when index-meta.json missing", () 
     expect(result.files).toBe(2)
   }).pipe(
     Effect.provide(
-      testLayer({
-        contents: {
-          ".pix/chunks.jsonl": [
-            makeChunkJson({
-              id: "a1",
-              idx: 0,
-              file: "/src/a.ts",
-              startLine: 1,
-              endLine: 2,
-              text: "const x = 1\nconst y = 2",
-            }),
-          ].join("\n"),
-          ".pix/vectors.bin": "",
-        },
+      getStatusLayer({
+        chunks: 2,
+        files: 2,
+        model: "",
+        lastIndex: 0,
+        totalLines: 3,
+        byteSize: 0,
+        validationErrors: [],
       }),
     ),
-    Effect.scoped,
-  ))
+  ),
+)

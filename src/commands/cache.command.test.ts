@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node"
+import { expect, test } from "@effect/vitest"
 import { Effect, Layer } from "effect"
-import { expect, test } from "vite-plus/test"
 
 import { expectJsonEntry, runCommand } from "../../tests/test-utils/command.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
@@ -13,10 +13,7 @@ const run = runCommand(cacheCommand)
 
 test("pix cache clear reports an empty embedding cache", () => {
   const { ref, layer } = silentDisplay()
-  const storeLayer = Layer.provideMerge(
-    IndexStoreLive,
-    memoryFsLayer({ ".pix/embedding-cache.jsonl": "cached" }),
-  )
+  const storeLayer = Layer.provideMerge(IndexStoreLive, memoryFsLayer({}))
   const appLayer = Layer.merge(ClearEmbeddingCacheLive.pipe(Layer.provide(storeLayer)), layer)
   return Effect.runPromise(
     Effect.gen(function* () {

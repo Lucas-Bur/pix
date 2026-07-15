@@ -1,6 +1,7 @@
+import { beforeEach, describe, expect, it } from "@effect/vitest"
 import { pipeline as mockPipeline } from "@huggingface/transformers"
 import { Effect } from "effect"
-import { describe, expect, test, vi, beforeEach } from "vite-plus/test"
+import { vi } from "vitest"
 
 import { ModelLoadError } from "../domain/errors.js"
 import { DeviceDetection } from "../domain/ports.js"
@@ -18,7 +19,7 @@ beforeEach(() => {
 })
 
 describe("DeviceDetection", () => {
-  test("detect returns 'cuda' when cuda succeeds", () =>
+  it.effect("detect returns 'cuda' when cuda succeeds", () =>
     Effect.gen(function* () {
       mockedPipeline.mockResolvedValue({} as any)
 
@@ -31,9 +32,10 @@ describe("DeviceDetection", () => {
         device: "cuda",
         dtype: "fp32",
       })
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 
-  test("detect falls back to 'dml' when cuda fails", () =>
+  it.effect("detect falls back to 'dml' when cuda fails", () =>
     Effect.gen(function* () {
       mockedPipeline.mockRejectedValueOnce(new Error("cuda not available"))
       mockedPipeline.mockResolvedValue({} as any)
@@ -43,9 +45,10 @@ describe("DeviceDetection", () => {
 
       expect(result).toBe("dml")
       expect(mockedPipeline).toHaveBeenCalledTimes(2)
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 
-  test("detect falls back to 'coreml' when cuda and dml fail", () =>
+  it.effect("detect falls back to 'coreml' when cuda and dml fail", () =>
     Effect.gen(function* () {
       mockedPipeline.mockRejectedValueOnce(new Error("cuda not available"))
       mockedPipeline.mockRejectedValueOnce(new Error("dml not available"))
@@ -56,9 +59,10 @@ describe("DeviceDetection", () => {
 
       expect(result).toBe("coreml")
       expect(mockedPipeline).toHaveBeenCalledTimes(3)
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 
-  test("detect falls back to 'cpu' when all GPU devices fail", () =>
+  it.effect("detect falls back to 'cpu' when all GPU devices fail", () =>
     Effect.gen(function* () {
       mockedPipeline.mockRejectedValueOnce(new Error("cuda not available"))
       mockedPipeline.mockRejectedValueOnce(new Error("dml not available"))
@@ -72,9 +76,10 @@ describe("DeviceDetection", () => {
 
       expect(result).toBe("cpu")
       expect(mockedPipeline).toHaveBeenCalledTimes(6)
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 
-  test("detect fails with ModelLoadError when all devices including cpu fail", () =>
+  it.effect("detect fails with ModelLoadError when all devices including cpu fail", () =>
     Effect.gen(function* () {
       mockedPipeline.mockRejectedValue(new Error("device not available"))
 
@@ -82,11 +87,12 @@ describe("DeviceDetection", () => {
       const result = yield* Effect.flip(detection.detect("test-model", "fp32"))
 
       expect(result).toBeInstanceOf(ModelLoadError)
-      expect(result.message).toContain("No device available")
+      expect(result.message).toContain('Failed to load model "test-model" on device "cpu"')
       expect(mockedPipeline).toHaveBeenCalledTimes(6)
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 
-  test("detect error contains cause from last failed device", () =>
+  it.effect("detect error contains cause from last failed device", () =>
     Effect.gen(function* () {
       const cpuError = new Error("cpu failed too")
       mockedPipeline.mockRejectedValue(cpuError)
@@ -95,10 +101,11 @@ describe("DeviceDetection", () => {
       const result = yield* Effect.flip(detection.detect("test-model", "fp32"))
 
       expect(result).toBeInstanceOf(ModelLoadError)
-      expect(result.cause).toBe(cpuError)
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+      expect((result.cause as { cause: unknown }).cause).toBe(cpuError)
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 
-  test("detect uses correct dtype in pipeline options", () =>
+  it.effect("detect uses correct dtype in pipeline options", () =>
     Effect.gen(function* () {
       mockedPipeline.mockResolvedValue({} as any)
 
@@ -109,9 +116,10 @@ describe("DeviceDetection", () => {
         device: "cuda",
         dtype: "q8",
       })
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 
-  test("device priority order is cuda → dml → coreml → webgpu → wasm → cpu", () =>
+  it.effect("device priority order is cuda → dml → coreml → webgpu → wasm → cpu", () =>
     Effect.gen(function* () {
       mockedPipeline.mockRejectedValueOnce(new Error("fail"))
       mockedPipeline.mockRejectedValueOnce(new Error("fail"))
@@ -130,9 +138,10 @@ describe("DeviceDetection", () => {
       expect(calls[3]![2]!.device).toBe("webgpu")
       expect(calls[4]![2]!.device).toBe("wasm")
       expect(calls[5]![2]!.device).toBe("cpu")
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 
-  test("detectAll returns all devices when all succeed", () =>
+  it.effect("detectAll returns all devices when all succeed", () =>
     Effect.gen(function* () {
       mockedPipeline.mockResolvedValue({} as any)
 
@@ -141,9 +150,10 @@ describe("DeviceDetection", () => {
 
       expect(devices).toEqual(["cuda", "dml", "coreml", "webgpu", "wasm", "cpu"])
       expect(mockedPipeline).toHaveBeenCalledTimes(6)
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 
-  test("detectAll returns only working devices when some fail", () =>
+  it.effect("detectAll returns only working devices when some fail", () =>
     Effect.gen(function* () {
       mockedPipeline.mockRejectedValueOnce(new Error("cuda unavailable"))
       mockedPipeline.mockRejectedValueOnce(new Error("dml unavailable"))
@@ -153,9 +163,10 @@ describe("DeviceDetection", () => {
       const devices = yield* detection.detectAll("test-model", "fp32")
 
       expect(devices).toEqual(["coreml", "webgpu", "wasm", "cpu"])
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 
-  test("detectAll returns empty array when all devices fail", () =>
+  it.effect("detectAll returns empty array when all devices fail", () =>
     Effect.gen(function* () {
       mockedPipeline.mockRejectedValue(new Error("all fail"))
 
@@ -164,9 +175,10 @@ describe("DeviceDetection", () => {
 
       expect(devices).toEqual([])
       expect(mockedPipeline).toHaveBeenCalledTimes(6)
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 
-  test("detectAll preserves priority order in results", () =>
+  it.effect("detectAll preserves priority order in results", () =>
     Effect.gen(function* () {
       mockedPipeline.mockResolvedValue({} as any)
 
@@ -181,5 +193,6 @@ describe("DeviceDetection", () => {
       expect(calls[4]![2]!.device).toBe("wasm")
       expect(calls[5]![2]!.device).toBe("cpu")
       expect(devices).toEqual(["cuda", "dml", "coreml", "webgpu", "wasm", "cpu"])
-    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped))
+    }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
+  )
 })

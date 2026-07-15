@@ -1,6 +1,6 @@
+import { describe, expect, it } from "@effect/vitest"
 import Parser from "tree-sitter"
 import TypeScript from "tree-sitter-typescript"
-import { describe, expect, it } from "vite-plus/test"
 
 import { extractIdentifiers } from "./identifier-extractor.js"
 import { typescriptMapKind } from "./typescript.js"

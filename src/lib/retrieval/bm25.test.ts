@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test"
+import { describe, expect, it } from "@effect/vitest"
 
 import { buildBm25Index, rankBm25 } from "./bm25.js"
 

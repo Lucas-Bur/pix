@@ -30,7 +30,7 @@ export const makeChunkJson = (overrides?: DeepPartial<Chunk>): string =>
   JSON.stringify(Schema.decodeUnknownSync(ChunkSchema)(deepMerge(DEFAULT_CHUNK, overrides ?? {})))
 
 export const TEST_CONFIG_JSON = makeConfigJson({
-  embedder: { model: "test-model", device: "auto", dtype: "fp32", batchSize: 16 },
+  embedder: { device: "auto", dtype: "fp32", batchSize: 16 },
 })
 
 export const makeChunk = (overrides?: Partial<Chunk>): Chunk => {

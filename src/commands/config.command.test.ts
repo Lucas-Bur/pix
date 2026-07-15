@@ -1,5 +1,5 @@
+import { expect, it } from "@effect/vitest"
 import { Effect, Ref } from "effect"
-import { expect, test } from "vite-plus/test"
 
 import { assertCommandError, runCommand } from "../../tests/test-utils/command.js"
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
@@ -9,7 +9,7 @@ import { healCommand } from "./config.js"
 
 const run = runCommand(healCommand)
 
-test("pix config heal --json with healthy config emits success", () => {
+it.effect("pix config heal --json with healthy config emits success", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["heal", "--json"])
@@ -36,7 +36,7 @@ test("pix config heal --json with healthy config emits success", () => {
   )
 })
 
-test("pix config heal heals unsupported dtype with default", () => {
+it.effect("pix config heal heals unsupported dtype with default", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["heal"])
@@ -63,7 +63,7 @@ test("pix config heal heals unsupported dtype with default", () => {
   )
 })
 
-test("pix config heal --json fails on unknown model with ConfigHealError", () => {
+it.effect("pix config heal --json fails on unknown model with ConfigHealError", () => {
   const { ref, layer } = silentDisplay()
   return assertCommandError(run(["heal", "--json"]), ref).pipe(
     Effect.provide(

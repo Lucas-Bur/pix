@@ -1,4 +1,4 @@
-import { expect, test } from "vite-plus/test"
+import { expect, test } from "@effect/vitest"
 
 import type { SearchResult } from "../../domain/ports.js"
 import { applyCharBudget, formatBytes } from "./search-output.js"

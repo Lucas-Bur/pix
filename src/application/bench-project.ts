@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Random, Result, Stream } from "effect"
+import { Clock, Context, Effect, Layer, Random, Result, Stream } from "effect"
 
 import type {
   BenchMeasurement,
@@ -25,11 +25,13 @@ type CorpusError = AllConfigErrors | AllProcessorErrors | DiskFullError
 
 const COLD_START_BATCH_SIZE = 16
 
+const elapsedMillis = (start: bigint, end: bigint): number => Number(end - start) / 1_000_000
+
 const fisherYatesShuffle = <A>(arr: readonly A[]): Effect.Effect<A[]> =>
   Effect.gen(function* () {
     const result = [...arr]
     for (let i = result.length - 1; i > 0; i--) {
-      const j = yield* Random.nextIntBetween(0, i + 1)
+      const j = yield* Random.nextIntBetween(0, i)
       const tmp = result[i]
       result[i] = result[j]
       result[j] = tmp
@@ -149,10 +151,11 @@ const make = Effect.gen(function* () {
     corpus: Corpus,
   ): Effect.Effect<{ latencyMs: number; error: string | undefined }, never> =>
     Effect.gen(function* () {
-      const start = Date.now()
+      const start = yield* Clock.currentTimeNanos
       const embedderResult = yield* embedder.createForDevice(devCfg).pipe(Effect.result)
       if (Result.isFailure(embedderResult)) {
-        return { latencyMs: Date.now() - start, error: embedderResult.failure.message }
+        const end = yield* Clock.currentTimeNanos
+        return { latencyMs: elapsedMillis(start, end), error: embedderResult.failure.message }
       }
       const embedderInstance = embedderResult.success
       const batchTexts = corpus.chunks.slice(0, COLD_START_BATCH_SIZE).map((c) => c.text)
@@ -161,10 +164,12 @@ const make = Effect.gen(function* () {
       } else {
         const batchResult = yield* embedderInstance.batch(batchTexts).pipe(Effect.result)
         if (Result.isFailure(batchResult)) {
-          return { latencyMs: Date.now() - start, error: batchResult.failure.message }
+          const end = yield* Clock.currentTimeNanos
+          return { latencyMs: elapsedMillis(start, end), error: batchResult.failure.message }
         }
       }
-      return { latencyMs: Date.now() - start, error: undefined }
+      const end = yield* Clock.currentTimeNanos
+      return { latencyMs: elapsedMillis(start, end), error: undefined }
     }).pipe(Effect.orElseSucceed(() => ({ latencyMs: 0, error: "unexpected error" })))
 
   const measureWarmPath = (
@@ -200,21 +205,23 @@ const make = Effect.gen(function* () {
         }
       }
 
-      const measureStart = Date.now()
+      const measureStart = yield* Clock.currentTimeNanos
       let totalLatency = 0
 
       for (let i = 0; i < measureBatches; i++) {
         const offset = (warmupBatches + i) * batchSize
         const texts = corpus.chunks.slice(offset, offset + batchSize).map((c) => c.text)
-        const batchStart = Date.now()
+        const batchStart = yield* Clock.currentTimeNanos
         const result = yield* embedderInstance.batch(texts).pipe(Effect.result)
         if (Result.isFailure(result)) {
           return { chunksPerSec: 0, latencyPerBatchMs: 0, error: result.failure.message }
         }
-        totalLatency += Date.now() - batchStart
+        const batchEnd = yield* Clock.currentTimeNanos
+        totalLatency += elapsedMillis(batchStart, batchEnd)
       }
 
-      const totalMs = Date.now() - measureStart
+      const measureEnd = yield* Clock.currentTimeNanos
+      const totalMs = Math.max(elapsedMillis(measureStart, measureEnd), 1)
       const chunksPerSec = totalMs > 0 ? (totalChunks / totalMs) * 1000 : 0
       const latencyPerBatchMs = measureBatches > 0 ? totalLatency / measureBatches : 0
 
@@ -284,7 +291,7 @@ const make = Effect.gen(function* () {
               advanceBy: 1,
             })
 
-            const deviceStart = Date.now()
+            const deviceStart = yield* Clock.currentTimeNanos
             const coldResult = yield* measureColdStart(devCfg, corpus)
 
             if (coldResult.error) {
@@ -294,7 +301,7 @@ const make = Effect.gen(function* () {
                 coldLatencyMs: coldResult.latencyMs,
                 warmChunksPerSec: 0,
                 warmLatencyPerBatchMs: 0,
-                totalDurationMs: Date.now() - deviceStart,
+                totalDurationMs: elapsedMillis(deviceStart, yield* Clock.currentTimeNanos),
                 status: "failed",
                 error: coldResult.error ?? null,
               })
@@ -308,7 +315,7 @@ const make = Effect.gen(function* () {
                 advanceBy: 1,
               })
 
-              const batchStart = Date.now()
+              const batchStart = yield* Clock.currentTimeNanos
               const warmResult = yield* measureWarmPath(
                 devCfg,
                 corpus,
@@ -326,7 +333,7 @@ const make = Effect.gen(function* () {
                 coldLatencyMs: coldResult.latencyMs,
                 warmChunksPerSec: warmResult.chunksPerSec,
                 warmLatencyPerBatchMs: warmResult.latencyPerBatchMs,
-                totalDurationMs: Date.now() - batchStart,
+                totalDurationMs: elapsedMillis(batchStart, yield* Clock.currentTimeNanos),
                 status,
                 error: warmResult.error ?? null,
               })

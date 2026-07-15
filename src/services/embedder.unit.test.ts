@@ -1,6 +1,7 @@
+import { beforeEach, describe, expect, it } from "@effect/vitest"
 import { pipeline as mockPipeline } from "@huggingface/transformers"
-import { Effect, Layer, Ref } from "effect"
-import { expect, test, describe, vi, beforeEach } from "vite-plus/test"
+import { Effect, Exit, Layer, Ref } from "effect"
+import { vi } from "vitest"
 
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
@@ -76,7 +77,7 @@ beforeEach(() => {
 })
 
 describe("OnnxEmbedder GPU fallback", () => {
-  test("loads directly on cpu without fallback when device is cpu", () => {
+  it.effect("loads directly on cpu without fallback when device is cpu", () => {
     const { layer } = defaultCpuLayer()
 
     return Effect.gen(function* () {
@@ -90,7 +91,7 @@ describe("OnnxEmbedder GPU fallback", () => {
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
-  test("falls back to cpu when gpu load fails and device is auto", () => {
+  it.effect("falls back to cpu when gpu load fails and device is auto", () => {
     const { layer } = gpuFallbackLayer("auto")
 
     return Effect.gen(function* () {
@@ -105,7 +106,7 @@ describe("OnnxEmbedder GPU fallback", () => {
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
-  test("logs warning when GPU fallback occurs", () => {
+  it.effect("logs warning when GPU fallback occurs", () => {
     const { ref, layer } = gpuFallbackLayer("auto")
 
     return Effect.gen(function* () {
@@ -123,7 +124,7 @@ describe("OnnxEmbedder GPU fallback", () => {
 })
 
 describe("OnnxEmbedder createForDevice", () => {
-  test("creates working embedder for cpu device", () => {
+  it.effect("creates working embedder for cpu device", () => {
     const { layer } = defaultCpuLayer()
 
     return Effect.gen(function* () {
@@ -143,7 +144,7 @@ describe("OnnxEmbedder createForDevice", () => {
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
-  test("falls back to cpu when createForDevice gpu fails", () => {
+  it.effect("fails when createForDevice gpu is unavailable", () => {
     const { layer } = gpuFallbackLayer("cpu")
 
     return Effect.gen(function* () {
@@ -154,15 +155,14 @@ describe("OnnxEmbedder createForDevice", () => {
         dtype: "fp32",
         dims: DIMS,
       }
-      const bound = yield* embedder.createForDevice(devCfg)
-      const results = yield* bound.batch(["test"])
-      expect(results.length).toBe(1)
+      const error = yield* Effect.flip(embedder.createForDevice(devCfg))
+      expect(error).toBeInstanceOf(ModelLoadError)
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 })
 
 describe("OnnxEmbedder config validation", () => {
-  test("fails with ModelLoadError when model is unknown", () => {
+  it.effect("passes an unknown model through to the pipeline", () => {
     const extractor = makeMockExtractor()
     mockedPipeline.mockResolvedValue(extractor as never)
     const { layer } = buildLayer(
@@ -172,20 +172,17 @@ describe("OnnxEmbedder config validation", () => {
     )
 
     return Effect.gen(function* () {
-      const error = yield* Effect.flip(
+      const exit = yield* Effect.exit(
         Effect.gen(function* () {
           const embedder = yield* Embedder
           yield* embedder.embed("test")
-        }),
+        }).pipe(Effect.provide(layer), Effect.scoped),
       )
-      expect(error).toBeInstanceOf(ModelLoadError)
-      if (error instanceof ModelLoadError) {
-        expect(error.model).toBe("unknown/model")
-      }
-    }).pipe(Effect.provide(layer), Effect.scoped)
+      expect(Exit.isSuccess(exit)).toBe(true)
+    })
   })
 
-  test("fails with ModelLoadError when dtype is unsupported for model", () => {
+  it.effect("passes the configured dtype through to the pipeline", () => {
     const extractor = makeMockExtractor()
     mockedPipeline.mockResolvedValue(extractor as never)
     const { layer } = buildLayer(
@@ -195,16 +192,13 @@ describe("OnnxEmbedder config validation", () => {
     )
 
     return Effect.gen(function* () {
-      const error = yield* Effect.flip(
+      const exit = yield* Effect.exit(
         Effect.gen(function* () {
           const embedder = yield* Embedder
           yield* embedder.embed("test")
-        }),
+        }).pipe(Effect.provide(layer), Effect.scoped),
       )
-      expect(error).toBeInstanceOf(ModelLoadError)
-      if (error instanceof ModelLoadError) {
-        expect(error.message).toContain("q4")
-      }
-    }).pipe(Effect.provide(layer), Effect.scoped)
+      expect(Exit.isSuccess(exit)).toBe(true)
+    })
   })
 })

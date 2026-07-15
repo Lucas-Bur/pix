@@ -1,4 +1,4 @@
-import { expect, test } from "vite-plus/test"
+import { expect, test } from "@effect/vitest"
 
 import { formatError } from "./error-format.js"
 

@@ -1,5 +1,5 @@
+import { expect, it } from "@effect/vitest"
 import { Cause, Effect, Exit, Layer, Stream } from "effect"
-import { expect, test } from "vite-plus/test"
 
 import {
   makeChunk,
@@ -8,8 +8,9 @@ import {
   makeStoredChunk,
 } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
-import { ModelMismatchError } from "../domain/errors.js"
-import { Embedder, IndexStore } from "../domain/ports.js"
+import { DEFAULT_CONFIG } from "../domain/config.js"
+import { ModelMismatchError, NoIndexError } from "../domain/errors.js"
+import { ConfigStore, Embedder, IndexStore } from "../domain/ports.js"
 import { buildBm25Index } from "../lib/retrieval/bm25.js"
 import { QueryProject } from "./query-project.js"
 
@@ -48,13 +49,17 @@ const nonZeroEmbedder = Layer.succeed(Embedder, {
     }),
 })
 
-const hybridLayer = testLayer({ embedderLayer: nonZeroEmbedder })
+const hybridLayer = testLayer({
+  contents: { ".pix/config.json": makeConfigJson() },
+  embedderLayer: nonZeroEmbedder,
+})
 
-test("QueryProject.queryProject returns empty results when no index exists", () =>
+it.effect("QueryProject.queryProject fails with NoIndexError when no index exists", () =>
   Effect.gen(function* () {
-    const result = yield* (yield* QueryProject).queryProject("test", { topK: 5 })
-    expect(result).toEqual({ results: [], validationErrors: [] })
-  }).pipe(Effect.provide(testLayer({})), Effect.scoped))
+    const error = yield* Effect.flip((yield* QueryProject).queryProject("test", { topK: 5 }))
+    expect(error).toBeInstanceOf(NoIndexError)
+  }).pipe(Effect.provide(testLayer({})), Effect.scoped),
+)
 
 const indexFixture = (
   chunks: Array<ReturnType<typeof makeChunk>>,
@@ -75,7 +80,7 @@ const indexFixture = (
     })
   })
 
-test("QueryProject.queryProject returns hybrid-ranked results via RRF", () =>
+it.effect("QueryProject.queryProject returns hybrid-ranked results via RRF", () =>
   Effect.gen(function* () {
     yield* indexFixture(
       [
@@ -83,13 +88,13 @@ test("QueryProject.queryProject returns hybrid-ranked results via RRF", () =>
           id: "a1",
           idx: 0,
           text: "function handleRequest(req: Request): Response {",
-          file: "/src/handler.ts",
+          file: "src/handler.ts",
         }),
         makeChunk({
           id: "a2",
           idx: 1,
           text: "const x = 42",
-          file: "/src/other.ts",
+          file: "src/other.ts",
         }),
       ],
       [makeEmbedding(0.1), makeEmbedding(0.1)],
@@ -100,18 +105,19 @@ test("QueryProject.queryProject returns hybrid-ranked results via RRF", () =>
       noContent: true,
     })
     expect(results.length).toBeGreaterThan(0)
-    expect(results[0].file).toBe("/src/handler.ts")
-  }).pipe(Effect.provide(hybridLayer), Effect.scoped))
+    expect(results[0].file).toBe("src/handler.ts")
+  }).pipe(Effect.provide(hybridLayer), Effect.scoped),
+)
 
-test("QueryProject.queryProject respects ignorePaths with hybrid search", () =>
+it.effect("QueryProject.queryProject respects ignorePaths with hybrid search", () =>
   Effect.gen(function* () {
     yield* indexFixture(
       [
-        makeChunk({ id: "a1", idx: 0, file: "/src/keep.ts", text: "function handleRequest" }),
+        makeChunk({ id: "a1", idx: 0, file: "src/keep.ts", text: "function handleRequest" }),
         makeChunk({
           id: "a2",
           idx: 1,
-          file: "/src/ignore.ts",
+          file: "src/ignore.ts",
           text: "function handleRequest here too",
         }),
       ],
@@ -124,18 +130,19 @@ test("QueryProject.queryProject respects ignorePaths with hybrid search", () =>
       noContent: true,
     })
     expect(results.length).toBe(1)
-    expect(results[0].file).toBe("/src/keep.ts")
-  }).pipe(Effect.provide(hybridLayer), Effect.scoped))
+    expect(results[0].file).toBe("src/keep.ts")
+  }).pipe(Effect.provide(hybridLayer), Effect.scoped),
+)
 
-test("QueryProject.queryProject respects onlyPaths with hybrid search", () =>
+it.effect("QueryProject.queryProject respects onlyPaths with hybrid search", () =>
   Effect.gen(function* () {
     yield* indexFixture(
       [
-        makeChunk({ id: "a1", idx: 0, file: "/src/keep.ts", text: "function handleRequest" }),
+        makeChunk({ id: "a1", idx: 0, file: "src/keep.ts", text: "function handleRequest" }),
         makeChunk({
           id: "a2",
           idx: 1,
-          file: "/lib/other.ts",
+          file: "lib/other.ts",
           text: "function handleRequest here too",
         }),
       ],
@@ -144,38 +151,47 @@ test("QueryProject.queryProject respects onlyPaths with hybrid search", () =>
 
     const { results } = yield* (yield* QueryProject).queryProject("handleRequest", {
       topK: 5,
-      onlyPaths: ["/src/**"],
+      onlyPaths: ["src/**"],
       noContent: true,
     })
     expect(results.length).toBe(1)
-    expect(results[0].file).toBe("/src/keep.ts")
-  }).pipe(Effect.provide(hybridLayer), Effect.scoped))
+    expect(results[0].file).toBe("src/keep.ts")
+  }).pipe(Effect.provide(hybridLayer), Effect.scoped),
+)
 
-test("QueryProject.queryProject fails with ModelMismatchError when config model differs from index", () =>
-  Effect.gen(function* () {
-    yield* indexFixture(
-      [makeChunk({ id: "a1", idx: 0, text: "function handleRequest", file: "/src/handler.ts" })],
-      [makeEmbedding(0.1)],
-    )
+it.effect(
+  "QueryProject.queryProject fails with ModelMismatchError when config model differs from index",
+  () =>
+    Effect.gen(function* () {
+      yield* indexFixture(
+        [makeChunk({ id: "a1", idx: 0, text: "function handleRequest", file: "src/handler.ts" })],
+        [makeEmbedding(0.1)],
+      )
 
-    const configWithDifferentModel = makeConfigJson({
-      embedder: { model: "Xenova/bge-small-en-v1.5" },
-    })
-    const mismatchLayer = testLayer({
-      embedderLayer: nonZeroEmbedder,
-      contents: { ".pix/config.json": configWithDifferentModel },
-    })
+      yield* (yield* ConfigStore).writeConfig({
+        ...DEFAULT_CONFIG,
+        embedder: { ...DEFAULT_CONFIG.embedder, model: "Xenova/bge-small-en-v1.5" },
+      })
 
-    const exit = yield* Effect.exit(
-      (yield* QueryProject).queryProject("handleRequest", { topK: 5 }),
-    ).pipe(Effect.provide(mismatchLayer), Effect.scoped)
+      const exit = yield* Effect.exit(
+        (yield* QueryProject).queryProject("handleRequest", { topK: 5, noContent: true }),
+      )
 
-    expect(Exit.isFailure(exit)).toBe(true)
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.findErrorOption(exit.cause)
-      expect(failure._tag).toBe("Some")
-      if (failure._tag === "Some") {
-        expect(failure.value).toBeInstanceOf(ModelMismatchError)
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.findErrorOption(exit.cause)
+        expect(failure._tag).toBe("Some")
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ModelMismatchError)
+        }
       }
-    }
-  }).pipe(Effect.provide(hybridLayer), Effect.scoped))
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          embedderLayer: nonZeroEmbedder,
+          contents: { ".pix/config.json": makeConfigJson() },
+        }),
+      ),
+      Effect.scoped,
+    ),
+)

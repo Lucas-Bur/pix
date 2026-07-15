@@ -1,5 +1,5 @@
+import { expect, it } from "@effect/vitest"
 import { Effect, Ref } from "effect"
-import { expect, test } from "vite-plus/test"
 
 import {
   assertCommandError,
@@ -37,7 +37,7 @@ const runReset = (args: string[], contents: Record<string, string> = fixtures) =
   }
 }
 
-test("pix reset --json deletes index files and reports status", () => {
+it.effect("pix reset --json deletes index files and reports status", () => {
   const { ref, effect } = runReset(["--json"])
   return Effect.gen(function* () {
     yield* effect
@@ -53,7 +53,7 @@ test("pix reset --json deletes index files and reports status", () => {
   })
 })
 
-test("pix reset --json on clean project reports nothing deleted", () => {
+it.effect("pix reset --json on clean project reports nothing deleted", () => {
   const { ref, effect } = runReset(["--json"], {})
   return Effect.gen(function* () {
     yield* effect
@@ -80,11 +80,11 @@ const assertResetLogs = (contents: Record<string, string> = fixtures) => {
   })
 }
 
-test("pix reset without --json logs status entries via Display", () => assertResetLogs())
+it.effect("pix reset without --json logs status entries via Display", () => assertResetLogs())
 
-test("pix reset without --json on clean project shows info", () => assertResetLogs({}))
+it.effect("pix reset without --json on clean project shows info", () => assertResetLogs({}))
 
-test("pix reset --json with failing IndexStore produces error JSON", () => {
+it.effect("pix reset --json with failing IndexStore produces error JSON", () => {
   const { ref, layer } = silentDisplay()
   return assertCommandError(run(["reset", "--json"]), ref).pipe(
     Effect.provide(

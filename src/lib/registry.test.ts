@@ -1,6 +1,6 @@
+import { describe, expect, it } from "@effect/vitest"
 import { Effect, Layer } from "effect"
 import { FileSystem } from "effect/FileSystem"
-import { describe, expect, it } from "vite-plus/test"
 
 import { buildExtensionRegistry } from "./registry.js"
 

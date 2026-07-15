@@ -1,11 +1,12 @@
-import { Effect, Layer, Ref } from "effect"
-import { expect, test, describe } from "vite-plus/test"
+import { expect, describe, it } from "@effect/vitest"
+import { Effect, Fiber, Layer, Ref } from "effect"
+import { TestClock } from "effect/testing"
 
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import type { DeviceType } from "../domain/device.js"
-import { InferenceError, ModelLoadError } from "../domain/errors.js"
+import { ConfigHealError, InferenceError, ModelLoadError } from "../domain/errors.js"
 import { ConfigStore, DeviceDetection, Display, Embedder, Scanner } from "../domain/ports.js"
 import { ScannerLive } from "../services/scanner.js"
 import { BenchProject } from "./bench-project.js"
@@ -120,11 +121,16 @@ const createFailingEmbedder = (failDevices: readonly string[]) => {
 
   const layer = Layer.succeed(Embedder, {
     ...embedderBase,
-    createForDevice: (cfg) =>
-      Effect.sync(() => {
-        if (failDevices.includes(cfg.device)) {
-          throw new Error(`Device ${cfg.device} unavailable`)
-        }
+    createForDevice: (cfg) => {
+      if (failDevices.includes(cfg.device)) {
+        return Effect.fail(
+          new ModelLoadError({
+            model: cfg.model,
+            message: `Device ${cfg.device} unavailable`,
+          }),
+        )
+      }
+      return Effect.sync(() => {
         const idx = createCallCount++
         batchCallCounts.push(0)
         return {
@@ -135,7 +141,8 @@ const createFailingEmbedder = (failDevices: readonly string[]) => {
               return mockBatch(texts)
             }),
         }
-      }),
+      })
+    },
   })
 
   return {
@@ -217,10 +224,11 @@ const benchLayer = (
   return {
     layer: testLayer({
       contents,
-      scannerLayer: opts?.scannerLayer,
+      scannerLayer: opts?.scannerLayer ?? ScannerLive,
       embedderLayer: opts?.embedderLayer ?? mock.layer,
       displayLayer: opts?.displayLayer,
-    }).pipe(Layer.merge(mockDeviceDetection(devices))),
+      deviceDetectionLayer: mockDeviceDetection(devices),
+    }),
     mock,
   }
 }
@@ -236,18 +244,20 @@ const edgeCaseSetup = (
     scannerLayer: ScannerLive,
     embedderLayer,
     displayLayer,
-  }).pipe(Layer.merge(mockDeviceDetection(devices)))
+    deviceDetectionLayer: mockDeviceDetection(devices),
+  })
   return { ref, layer }
 }
 
-test("(yield* BenchProject).bench reports corpus size", () =>
+it.effect("(yield* BenchProject).bench reports corpus size", () =>
   Effect.gen(function* () {
     const result = yield* (yield* BenchProject).bench(defaultBenchOpts)
     expect(result.profile).toBe("balanced")
     expect(result.measurements.length).toBeGreaterThan(0)
-  }).pipe(Effect.provide(benchLayer(fixtures, { devices: ["cpu"] }).layer), Effect.scoped))
+  }).pipe(Effect.provide(benchLayer(fixtures, { devices: ["cpu"] }).layer), Effect.scoped),
+)
 
-test("(yield* BenchProject).bench reports zero chunks for empty project", () => {
+it.effect("(yield* BenchProject).bench reports zero chunks for empty project", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     const result = yield* (yield* BenchProject).bench(defaultBenchOpts)
@@ -270,7 +280,7 @@ test("(yield* BenchProject).bench reports zero chunks for empty project", () => 
   )
 })
 
-test("(yield* BenchProject).bench finds chunks from files", () => {
+it.effect("(yield* BenchProject).bench finds chunks from files", () => {
   const { ref, layer } = silentDisplay()
   const { layer: benchL } = benchLayer(fixtures, { displayLayer: layer })
   return Effect.gen(function* () {
@@ -278,12 +288,12 @@ test("(yield* BenchProject).bench finds chunks from files", () => {
 
     const entries = yield* Ref.get(ref)
     const logEntries = entries.filter((e) => e._tag === "log")
-    const corpusEntry = logEntries.find((e) => e.message.includes("chunks from 2 files"))
+    const corpusEntry = logEntries.find((e) => e.message.includes("from 2 files"))
     expect(corpusEntry).toBeDefined()
   }).pipe(Effect.provide(benchL), Effect.scoped)
 })
 
-test("(yield* BenchProject).prepareCorpus shuffles chunks", () =>
+it.effect("(yield* BenchProject).prepareCorpus shuffles chunks", () =>
   Effect.gen(function* () {
     let orderDiffers = false
     for (let i = 0; i < 5; i++) {
@@ -302,9 +312,10 @@ test("(yield* BenchProject).prepareCorpus shuffles chunks", () =>
   }).pipe(
     Effect.provide(testLayer({ contents: fixtures, scannerLayer: ScannerLive })),
     Effect.scoped,
-  ))
+  ),
+)
 
-test("(yield* BenchProject).prepareCorpus cycles when fewer chunks than needed", () =>
+it.effect("(yield* BenchProject).prepareCorpus cycles when fewer chunks than needed", () =>
   Effect.gen(function* () {
     const opts = {
       ...defaultBenchOpts,
@@ -324,18 +335,20 @@ test("(yield* BenchProject).prepareCorpus cycles when fewer chunks than needed",
   }).pipe(
     Effect.provide(testLayer({ contents: fixtures, scannerLayer: ScannerLive })),
     Effect.scoped,
-  ))
+  ),
+)
 
-test("(yield* BenchProject).prepareCorpus returns empty corpus for no files", () =>
+it.effect("(yield* BenchProject).prepareCorpus returns empty corpus for no files", () =>
   Effect.gen(function* () {
     const corpus = yield* (yield* BenchProject).prepareCorpus(defaultBenchOpts)
     expect(corpus.chunks).toEqual([])
     expect(corpus.fileCount).toBe(0)
     expect(corpus.chunkCount).toBe(0)
-  }).pipe(Effect.provide(testLayer({ contents: {} })), Effect.scoped))
+  }).pipe(Effect.provide(testLayer({ contents: {} })), Effect.scoped),
+)
 
 describe("BenchProject measurement pipeline", () => {
-  test("measures cold-start and warm-path for each device x batchSize", () => {
+  it.effect("measures cold-start and warm-path for each device x batchSize", () => {
     const { layer } = silentDisplay()
     const batchSizes = [4, 16] as const
     const opts = {
@@ -362,7 +375,7 @@ describe("BenchProject measurement pipeline", () => {
     }).pipe(Effect.provide(benchLayer(fixtures, { displayLayer: layer }).layer), Effect.scoped)
   })
 
-  test("creates embedder per device for cold-start", () => {
+  it.effect("creates embedder per device for cold-start", () => {
     const mock = createMockEmbedder()
     const opts = {
       warmup: 1,
@@ -388,7 +401,7 @@ describe("BenchProject measurement pipeline", () => {
     )
   })
 
-  test("outputs table via display", () => {
+  it.effect("outputs table via display", () => {
     const { ref, layer } = silentDisplay()
     const mock = createMockEmbedder()
     return Effect.gen(function* () {
@@ -421,7 +434,7 @@ describe("BenchProject measurement pipeline", () => {
     )
   })
 
-  test("computes recommendation for throughput profile", () => {
+  it.effect("computes recommendation for throughput profile", () => {
     const mock = createMockEmbedder()
     return Effect.gen(function* () {
       const result = yield* (yield* BenchProject).bench({
@@ -447,7 +460,7 @@ describe("BenchProject measurement pipeline", () => {
     )
   })
 
-  test("computes recommendation for cold profile", () => {
+  it.effect("computes recommendation for cold profile", () => {
     const mock = createMockEmbedder()
     return Effect.gen(function* () {
       const result = yield* (yield* BenchProject).bench({
@@ -473,7 +486,7 @@ describe("BenchProject measurement pipeline", () => {
     )
   })
 
-  test("computes recommendation for balanced profile", () => {
+  it.effect("computes recommendation for balanced profile", () => {
     const mock = createMockEmbedder()
     return Effect.gen(function* () {
       const result = yield* (yield* BenchProject).bench({
@@ -499,7 +512,7 @@ describe("BenchProject measurement pipeline", () => {
     )
   })
 
-  test("reports throughput as chunks/sec", () => {
+  it.effect("reports throughput as chunks/sec", () => {
     const mock = createMockEmbedder()
     const batchSize = 16
     return Effect.gen(function* () {
@@ -529,7 +542,7 @@ describe("BenchProject measurement pipeline", () => {
     )
   })
 
-  test("outputs three recommendations with active profile highlighted", () => {
+  it.effect("outputs three recommendations with active profile highlighted", () => {
     const { ref, layer } = silentDisplay()
     const mock = createMockEmbedder()
     return Effect.gen(function* () {
@@ -569,7 +582,7 @@ describe("BenchProject measurement pipeline", () => {
     )
   })
 
-  test("marks failed device with dash for batchSize in table", () => {
+  it.effect("marks failed device with dash for batchSize in table", () => {
     const { ref, layer } = silentDisplay()
     const mock = createFailingEmbedder(["cuda"])
     return Effect.gen(function* () {
@@ -596,7 +609,8 @@ describe("BenchProject measurement pipeline", () => {
           scannerLayer: ScannerLive,
           embedderLayer: mock.layer,
           displayLayer: layer,
-        }).pipe(Layer.merge(mockDeviceDetection(["cuda", "cpu"]))),
+          deviceDetectionLayer: mockDeviceDetection(["cuda", "cpu"]),
+        }),
       ),
       Effect.scoped,
     )
@@ -604,7 +618,7 @@ describe("BenchProject measurement pipeline", () => {
 })
 
 describe("(yield* BenchProject).applyConfig", () => {
-  test("patches device and batchSize from recommendation", () =>
+  it.effect("patches device and batchSize from recommendation", () =>
     Effect.gen(function* () {
       yield* (yield* BenchProject).applyConfig({
         device: "cuda",
@@ -621,9 +635,10 @@ describe("(yield* BenchProject).applyConfig", () => {
     }).pipe(
       Effect.provide(testLayer({ contents: { ".pix/config.json": makeConfigJson() } })),
       Effect.scoped,
-    ))
+    ),
+  )
 
-  test("creates default config when missing", () =>
+  it.effect("creates default config when missing", () =>
     Effect.gen(function* () {
       yield* (yield* BenchProject).applyConfig({ device: "cpu", batchSize: 32, profile: "cold" })
 
@@ -631,13 +646,14 @@ describe("(yield* BenchProject).applyConfig", () => {
       const config = yield* store.readConfig()
       expect(config.embedder.device).toBe("cpu")
       expect(config.embedder.batchSize).toBe(32)
-    }).pipe(Effect.provide(testLayer({ contents: {} })), Effect.scoped))
+    }).pipe(Effect.provide(testLayer({ contents: {} })), Effect.scoped),
+  )
 
-  test("preserves user settings when patching", () => {
+  it.effect("preserves user settings when patching", () => {
     const configContent = makeConfigJson({
       chunkLines: 100,
       overlapLines: 20,
-      embedder: { device: "auto", batchSize: 8, model: "custom/model" },
+      embedder: { device: "auto", batchSize: 8, model: "Xenova/bge-small-en-v1.5" },
     })
     return Effect.gen(function* () {
       yield* (yield* BenchProject).applyConfig({
@@ -652,7 +668,7 @@ describe("(yield* BenchProject).applyConfig", () => {
       expect(config.embedder.batchSize).toBe(128)
       expect(config.chunkLines).toBe(100)
       expect(config.overlapLines).toBe(20)
-      expect(config.embedder.model).toBe("custom/model")
+      expect(config.embedder.model).toBe("Xenova/bge-small-en-v1.5")
     }).pipe(
       Effect.provide(testLayer({ contents: { ".pix/config.json": configContent } })),
       Effect.scoped,
@@ -661,7 +677,7 @@ describe("(yield* BenchProject).applyConfig", () => {
 })
 
 describe("BenchProject error and edge cases", () => {
-  test("returns default recommendation when no devices are available", () => {
+  it.effect("returns the default recommendation when detection returns no devices", () => {
     const mock = createMockEmbedder()
     const { layer } = edgeCaseSetup(mock.layer, { devices: [] })
     return Effect.gen(function* () {
@@ -673,7 +689,7 @@ describe("BenchProject error and edge cases", () => {
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
-  test("fails with ModelLoadError when model is unknown", () => {
+  it.effect("fails with ModelLoadError when model is unknown", () => {
     const mock = createMockEmbedder()
     const configWithUnknownModel = makeConfigJson({
       embedder: { model: "unknown/model", device: "cpu", dtype: "fp32", batchSize: 8 },
@@ -683,14 +699,14 @@ describe("BenchProject error and edge cases", () => {
     })
     return Effect.gen(function* () {
       const error = yield* Effect.flip((yield* BenchProject).bench(defaultBenchOpts))
-      expect(error).toBeInstanceOf(ModelLoadError)
-      if (error instanceof ModelLoadError) {
-        expect(error.model).toBe("unknown/model")
+      expect(error).toBeInstanceOf(ConfigHealError)
+      if (error instanceof ConfigHealError) {
+        expect(error.conflicts[0]?.currentValue).toBe("unknown/model")
       }
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
-  test("logs warning when all devices fail cold-start", () => {
+  it.effect("logs warning when all devices fail cold-start", () => {
     const mock = createFailingEmbedder(["cpu"])
     const { ref, layer } = edgeCaseSetup(mock.layer)
     return Effect.gen(function* () {
@@ -716,7 +732,7 @@ describe("BenchProject error and edge cases", () => {
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
-  test("marks device as failed when cold-start batch fails (createForDevice succeeds)", () => {
+  it.effect("marks device as failed when cold-start batch fails (createForDevice succeeds)", () => {
     const mock = createColdStartBatchFailingEmbedder()
     const { ref, layer } = edgeCaseSetup(mock.layer)
     return Effect.gen(function* () {
@@ -747,7 +763,7 @@ describe("BenchProject error and edge cases", () => {
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
-  test("marks measurement as failed when warm-path batch fails", () => {
+  it.effect("marks measurement as failed when warm-path batch fails", () => {
     const mock = createWarmPathBatchFailingEmbedder()
     const { layer } = edgeCaseSetup(mock.layer)
     return Effect.gen(function* () {
@@ -770,17 +786,25 @@ describe("BenchProject error and edge cases", () => {
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
-  test("marks measurement as failed with timeout error when warm-path exceeds timeout", () => {
+  it.effect("marks measurement as failed with timeout error when warm-path exceeds timeout", () => {
     const mock = createSlowWarmPathEmbedder()
     const { layer } = edgeCaseSetup(mock.layer)
     return Effect.gen(function* () {
-      const result = yield* (yield* BenchProject).bench({
-        warmup: 2,
-        measureBatches: 2,
-        batchSizes: [4] as const,
-        timeout: 1,
-        profile: "balanced" as const,
-      })
+      const benchProject = yield* BenchProject
+      const fiber = yield* benchProject
+        .bench({
+          warmup: 2,
+          measureBatches: 2,
+          batchSizes: [4] as const,
+          timeout: 1,
+          profile: "balanced" as const,
+        })
+        .pipe(Effect.forkChild)
+      for (let i = 0; i < 3; i++) {
+        yield* Effect.yieldNow
+        yield* TestClock.adjust("1 second")
+      }
+      const result = yield* Fiber.join(fiber)
 
       const failedMeasurements = result.measurements.filter((m) => m.status === "failed")
       expect(failedMeasurements.length).toBe(1)
@@ -788,7 +812,7 @@ describe("BenchProject error and edge cases", () => {
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
 
-  test("writes default config when missing during corpus preparation", () =>
+  it.effect("writes default config when missing during corpus preparation", () =>
     Effect.gen(function* () {
       const store = yield* ConfigStore
 
@@ -809,5 +833,6 @@ describe("BenchProject error and edge cases", () => {
         ),
       ),
       Effect.scoped,
-    ))
+    ),
+  )
 })

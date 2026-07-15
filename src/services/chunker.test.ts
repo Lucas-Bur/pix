@@ -1,7 +1,7 @@
 import crypto from "node:crypto"
 
+import { expect, it } from "@effect/vitest"
 import { Effect, Layer } from "effect"
-import { expect, test } from "vite-plus/test"
 
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { Chunker } from "../domain/ports.js"
@@ -92,13 +92,9 @@ const testLayer = Layer.provideMerge(
   memoryFsLayer({}),
 )
 
-const effectTest = <A, E>(name: string, body: () => Effect.Effect<A, E, never>): void => {
-  test(name, () => Effect.runPromise(body()))
-}
-
 const filePath = "src/domain/chunk.ts"
 
-effectTest("Chunker chunks a source file from memory fixture", () =>
+it.effect("Chunker chunks a source file from memory fixture", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const chunks = yield* chunker.chunkText(fixtureFile, filePath)
@@ -113,7 +109,7 @@ effectTest("Chunker chunks a source file from memory fixture", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker computes fallback chunk-ID as sha1(file:startLine).slice(0, 12)", () =>
+it.effect("Chunker computes fallback chunk-ID as sha1(file:startLine).slice(0, 12)", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const fallbackFile = "docs/fixture.md"
@@ -128,7 +124,7 @@ effectTest("Chunker computes fallback chunk-ID as sha1(file:startLine).slice(0, 
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker uses index-based IDs", () =>
+it.effect("Chunker uses index-based IDs", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const chunks = yield* chunker.chunkText(fixtureFile, filePath)
@@ -138,7 +134,7 @@ effectTest("Chunker uses index-based IDs", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker skips chunks shorter than 20 characters", () =>
+it.effect("Chunker skips chunks shorter than 20 characters", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const chunks = yield* chunker.chunkText(fixtureFile, filePath)
@@ -148,7 +144,7 @@ effectTest("Chunker skips chunks shorter than 20 characters", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker.chunkText produces chunks from raw text", () =>
+it.effect("Chunker.chunkText produces chunks from raw text", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const lines = Array.from({ length: 70 }, (_, i) => `Line ${i + 1} - some content here`)
@@ -164,7 +160,7 @@ effectTest("Chunker.chunkText produces chunks from raw text", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker.chunkText returns empty array for empty text", () =>
+it.effect("Chunker.chunkText returns empty array for empty text", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const chunks = yield* chunker.chunkText("", "src/empty.ts")
@@ -172,7 +168,7 @@ effectTest("Chunker.chunkText returns empty array for empty text", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker groups adjacent AST nodes within chunkLines", () =>
+it.effect("Chunker groups adjacent AST nodes within chunkLines", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = [
@@ -193,7 +189,7 @@ effectTest("Chunker groups adjacent AST nodes within chunkLines", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker embeds leading docs and comments inside declarations", () =>
+it.effect("Chunker embeds leading docs and comments inside declarations", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = [
@@ -213,7 +209,7 @@ effectTest("Chunker embeds leading docs and comments inside declarations", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker preserves a detached top-level comment", () =>
+it.effect("Chunker preserves a detached top-level comment", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = [
@@ -231,7 +227,7 @@ effectTest("Chunker preserves a detached top-level comment", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker preserves trailing top-level comments", () =>
+it.effect("Chunker preserves trailing top-level comments", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = [
@@ -249,7 +245,7 @@ effectTest("Chunker preserves trailing top-level comments", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker keeps an AST node larger than chunkLines intact", () =>
+it.effect("Chunker keeps an AST node larger than chunkLines intact", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const body = Array.from({ length: 70 }, (_, index) => `  const value${index} = ${index}`)
@@ -264,7 +260,7 @@ effectTest("Chunker keeps an AST node larger than chunkLines intact", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker groups adjacent Python and Rust AST nodes", () =>
+it.effect("Chunker groups adjacent Python and Rust AST nodes", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const python = yield* chunker.chunkText(
@@ -281,7 +277,7 @@ effectTest("Chunker groups adjacent Python and Rust AST nodes", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker groups same-line AST nodes without duplicating source", () =>
+it.effect("Chunker groups same-line AST nodes without duplicating source", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = "function first() {} function second() {}"
@@ -293,7 +289,7 @@ effectTest("Chunker groups same-line AST nodes without duplicating source", () =
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker does not emit one-line chunks for consecutive imports", () =>
+it.effect("Chunker does not emit one-line chunks for consecutive imports", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = Array.from(
@@ -309,7 +305,7 @@ effectTest("Chunker does not emit one-line chunks for consecutive imports", () =
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-effectTest("Chunker falls back to line chunks for malformed TypeScript", () =>
+it.effect("Chunker falls back to line chunks for malformed TypeScript", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = Array.from({ length: 70 }, (_, index) => `const value${index} =`).join("\n")

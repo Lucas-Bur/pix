@@ -1,5 +1,5 @@
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
-import { describe, expect, it } from "vite-plus/test"
 
 import type { Embedding } from "../../domain/chunk.js"
 import { serializeVectors } from "./vector-serialization.js"

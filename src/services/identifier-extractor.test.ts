@@ -1,5 +1,5 @@
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
-import { describe, expect, it } from "vite-plus/test"
 
 import { IdentifierExtractor } from "../domain/ports.js"
 import { IdentifierExtractorLive } from "./identifier-extractor.js"

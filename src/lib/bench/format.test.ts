@@ -1,4 +1,4 @@
-import { expect, test, describe } from "vite-plus/test"
+import { expect, test, describe } from "@effect/vitest"
 
 import type { BenchMeasurement } from "../../domain/bench.js"
 import { computeRecommendations } from "./format.js"

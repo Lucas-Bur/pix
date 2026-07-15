@@ -221,4 +221,6 @@ const make = Effect.gen(function* () {
   return { chunkText } as const
 })
 
-export const ChunkerLive = Layer.provideMerge(Layer.effect(Chunker, make), ConfigStoreLive)
+export const ChunkerBase = Layer.effect(Chunker, make)
+
+export const ChunkerLive = Layer.provideMerge(ChunkerBase, ConfigStoreLive)

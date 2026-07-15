@@ -803,4 +803,6 @@ const make = Effect.gen(function* () {
   } as const
 })
 
-export const IndexStoreLive = Layer.provideMerge(Layer.effect(IndexStore, make), ConfigStoreLive)
+export const IndexStoreBase = Layer.effect(IndexStore, make)
+
+export const IndexStoreLive = Layer.provideMerge(IndexStoreBase, ConfigStoreLive)

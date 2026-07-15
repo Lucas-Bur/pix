@@ -1,5 +1,5 @@
+import { expect, it } from "@effect/vitest"
 import { Effect, Ref } from "effect"
-import { expect, test } from "vite-plus/test"
 
 import { testClipboard } from "../../tests/test-utils/clipboard.js"
 import {
@@ -16,20 +16,11 @@ import { aliasCommand, runAliasShortcutCommand } from "./alias.js"
 const runAlias = makeRunCommand(aliasCommand)
 const runTopLevelAlias = makeRunCommand(runAliasShortcutCommand)
 
-test("pix alias add writes a query alias and alias list displays it", () => {
+it.effect("pix alias add writes a query alias and alias list displays it", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
-    yield* runAlias([
-      "alias",
-      "add",
-      "auth",
-      "find auth handlers",
-      "--top",
-      "3",
-      "--ignore-path",
-      "dist/**",
-    ])
-    yield* runAlias(["alias", "list", "--json"])
+    yield* runAlias(["add", "auth", "find auth handlers", "--top", "3", "--ignore-path", "dist/**"])
+    yield* runAlias(["list", "--json"])
 
     yield* expectJsonEntry(ref, (data) => {
       expect(Array.isArray(data)).toBe(true)
@@ -45,12 +36,12 @@ test("pix alias add writes a query alias and alias list displays it", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix alias remove deletes a saved query alias", () => {
+it.effect("pix alias remove deletes a saved query alias", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
-    yield* runAlias(["alias", "add", "auth", "find auth handlers"])
-    yield* runAlias(["alias", "remove", "auth"])
-    yield* runAlias(["alias", "list", "--json"])
+    yield* runAlias(["add", "auth", "find auth handlers"])
+    yield* runAlias(["remove", "auth"])
+    yield* runAlias(["list", "--json"])
 
     yield* expectJsonEntry(ref, (data) => {
       expect(data).toEqual([])
@@ -58,20 +49,20 @@ test("pix alias remove deletes a saved query alias", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix alias add rejects invalid alias names", () => {
+it.effect("pix alias add rejects invalid alias names", () => {
   const { ref, layer } = silentDisplay()
   return assertCommandError(
-    runAlias(["alias", "add", "bad/name", "find auth handlers"]),
+    runAlias(["add", "bad/name", "find auth handlers"]),
     ref,
     "ALIAS_VALIDATION_ERROR",
   ).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix alias add accepts command names as query alias names", () => {
+it.effect("pix alias add accepts command names as query alias names", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
-    yield* runAlias(["alias", "add", "query", "find auth handlers"])
-    yield* runAlias(["alias", "list", "--json"])
+    yield* runAlias(["add", "query", "find auth handlers"])
+    yield* runAlias(["list", "--json"])
 
     yield* expectJsonEntry(ref, (data) => {
       expect(Array.isArray(data)).toBe(true)
@@ -82,65 +73,63 @@ test("pix alias add accepts command names as query alias names", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix alias run executes the saved query with runtime overrides", () => {
+it.effect("pix alias run executes the saved query with runtime overrides", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
-    yield* runAlias(["alias", "add", "auth", "const", "--top", "1"])
-    yield* runAlias(["alias", "run", "auth", "--json", "--top", "2"])
+    yield* runAlias(["add", "auth", "test", "--top", "1"])
+    yield* runAlias(["run", "auth", "--json", "--top", "2"])
 
     yield* expectJsonEntry(ref, (data) => {
-      expect(Array.isArray(data)).toBe(true)
-      if (Array.isArray(data)) {
-        expect(data).toHaveLength(2)
-      }
+      expect(data).toMatchObject({ results: expect.any(Array) })
+      const results = (data as { results: readonly unknown[] }).results
+      expect(results).toHaveLength(2)
     })
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
 
-test("pix run is a short form for pix alias run", () => {
+it.effect("pix run is a short form for pix alias run", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
-    yield* runAlias(["alias", "add", "auth", "const", "--top", "1"])
-    yield* runTopLevelAlias(["run", "auth", "--json", "--top", "2"])
+    yield* runAlias(["add", "auth", "test", "--top", "1"])
+    yield* runTopLevelAlias(["auth", "--json", "--top", "2"])
 
     yield* expectJsonEntry(ref, (data) => {
-      expect(Array.isArray(data)).toBe(true)
-      if (Array.isArray(data)) {
-        expect(data).toHaveLength(2)
-      }
+      expect(data).toMatchObject({ results: expect.any(Array) })
+      const results = (data as { results: readonly unknown[] }).results
+      expect(results).toHaveLength(2)
     })
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
 })
 
-test("pix alias run with nonexistent alias reports error", () => {
+it.effect("pix alias run with nonexistent alias reports error", () => {
   const { ref, layer } = silentDisplay()
-  return assertCommandError(runAlias(["alias", "run", "nonexistent"]), ref, "ALIAS_NOT_FOUND").pipe(
+  return assertCommandError(runAlias(["run", "nonexistent"]), ref, "ALIAS_NOT_FOUND").pipe(
     Effect.provide(testLayer({ displayLayer: layer })),
   )
 })
 
-test("pix alias run with --copy copies results to clipboard", () => {
+it.effect("pix alias run with --copy copies results to clipboard", () => {
   const { ref: displayRef, layer: displayLayer } = silentDisplay()
   const { ref: clipboardRef, layer: clipboardLayer } = testClipboard()
   return Effect.gen(function* () {
-    yield* runAlias(["alias", "add", "auth", "const", "--top", "1"])
-    yield* runAlias(["alias", "run", "auth", "--copy", "--json"])
+    yield* runAlias(["add", "auth", "test", "--top", "1"])
+    yield* runAlias(["run", "auth", "--copy", "--json"])
 
     const copied = yield* Ref.get(clipboardRef)
-    expect(copied).toContain("/src/")
+    expect(copied).toContain("src/")
     yield* expectLogEntry(displayRef, { severity: "success", messageIncludes: "Copied" })
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer, clipboardLayer })))
 })
 
-test("pix run --copy copies results to clipboard as short form", () => {
+it.effect("pix run --copy copies results to clipboard as short form", () => {
   const { ref: displayRef, layer: displayLayer } = silentDisplay()
   const { ref: clipboardRef, layer: clipboardLayer } = testClipboard()
   return Effect.gen(function* () {
-    yield* runAlias(["alias", "add", "auth", "const", "--top", "1"])
-    yield* runTopLevelAlias(["run", "auth", "--copy", "--json"])
+    yield* runAlias(["add", "auth", "test", "--top", "1"])
+    yield* runTopLevelAlias(["auth", "--copy", "--json"])
 
     const copied = yield* Ref.get(clipboardRef)
-    expect(copied).toContain("/src/")
+    expect(copied).toContain("src/")
     yield* expectLogEntry(displayRef, { severity: "success", messageIncludes: "Copied" })
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer, clipboardLayer })))
 })

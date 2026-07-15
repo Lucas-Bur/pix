@@ -1,4 +1,4 @@
-import { expect, test, describe } from "vite-plus/test"
+import { expect, test, describe } from "@effect/vitest"
 
 import { formatTable } from "./table.js"
 

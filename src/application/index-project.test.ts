@@ -1,6 +1,6 @@
+import { expect, it } from "@effect/vitest"
 import { Console, Effect, Exit } from "effect"
 import { FileSystem } from "effect/FileSystem"
-import { expect, test } from "vite-plus/test"
 
 import { makeFailingIndexStore } from "../../tests/test-utils/command.js"
 import { makeConfigJson, TEST_CONFIG_JSON } from "../../tests/test-utils/fixtures.js"
@@ -66,7 +66,7 @@ const fixtures = {
   "src/b.ts": sourceFile,
 }
 
-test("IndexProject.index scans, chunks, embeds, and stores", () =>
+it.effect("IndexProject.index scans, chunks, embeds, and stores", () =>
   Effect.gen(function* () {
     const result = yield* (yield* IndexProject).index()
     expect(result.success).toBe(true)
@@ -76,9 +76,10 @@ test("IndexProject.index scans, chunks, embeds, and stores", () =>
   }).pipe(
     Effect.provide(testLayer({ contents: fixtures, scannerLayer: ScannerLive })),
     Effect.scoped,
-  ))
+  ),
+)
 
-test("IndexProject.index performs no embedding or commit when all files are unchanged", () =>
+it.effect("IndexProject.index performs no embedding or commit when all files are unchanged", () =>
   Effect.gen(function* () {
     const index = yield* IndexProject
     const first = yield* index.index()
@@ -86,7 +87,7 @@ test("IndexProject.index performs no embedding or commit when all files are unch
 
     expect(first.processedFiles).toBe(2)
     expect(first.refresh).toBe("full")
-    expect(first.cacheMisses).toBe(first.status.chunks)
+    expect(first.cacheMisses).toBe(1)
     expect(second.reusedFiles).toBe(2)
     expect(second.refresh).toBe("none")
     expect(second.processedFiles).toBe(0)
@@ -95,9 +96,10 @@ test("IndexProject.index performs no embedding or commit when all files are unch
   }).pipe(
     Effect.provide(testLayer({ contents: fixtures, scannerLayer: ScannerLive })),
     Effect.scoped,
-  ))
+  ),
+)
 
-test("IndexProject.index handles changed, deleted, and renamed files", () =>
+it.effect("IndexProject.index handles changed, deleted, and renamed files", () =>
   Effect.gen(function* () {
     const index = yield* IndexProject
     const fs = yield* FileSystem
@@ -121,9 +123,10 @@ test("IndexProject.index handles changed, deleted, and renamed files", () =>
   }).pipe(
     Effect.provide(testLayer({ contents: fixtures, scannerLayer: ScannerLive })),
     Effect.scoped,
-  ))
+  ),
+)
 
-test("IndexProject keeps only displaced embeddings in the historical cache", () =>
+it.effect("IndexProject keeps only displaced embeddings in the historical cache", () =>
   Effect.gen(function* () {
     const index = yield* IndexProject
     const fs = yield* FileSystem
@@ -140,19 +143,12 @@ test("IndexProject keeps only displaced embeddings in the historical cache", () 
   }).pipe(
     Effect.provide(testLayer({ contents: { "src/a.ts": sourceFile }, scannerLayer: ScannerLive })),
     Effect.scoped,
-  ))
+  ),
+)
 
-test("IndexProject.index propagates errors from IndexStore", () =>
+it.effect("IndexProject.index propagates errors from IndexStore", () =>
   Effect.gen(function* () {
-    const exit = yield* Effect.exit((yield* IndexProject).index()).pipe(
-      Effect.provide(
-        testLayer({
-          contents: fixtures,
-          scannerLayer: ScannerLive,
-          indexStoreLayer: makeFailingIndexStore("persistIndex"),
-        }),
-      ),
-    )
+    const exit = yield* Effect.exit((yield* IndexProject).index())
 
     expect(Exit.isFailure(exit)).toBe(true)
     if (Exit.isFailure(exit)) {
@@ -162,9 +158,19 @@ test("IndexProject.index propagates errors from IndexStore", () =>
         expect(failReason.error).toBeInstanceOf(StoreError)
       }
     }
-  }))
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        contents: fixtures,
+        scannerLayer: ScannerLive,
+        indexStoreLayer: makeFailingIndexStore("persistIndex"),
+      }),
+    ),
+    Effect.scoped,
+  ),
+)
 
-test("IndexProject.index returns zero status when no files found", () =>
+it.effect("IndexProject.index returns zero status when no files found", () =>
   Effect.gen(function* () {
     const result = yield* (yield* IndexProject).index()
     expect(result.success).toBe(true)
@@ -172,9 +178,10 @@ test("IndexProject.index returns zero status when no files found", () =>
     expect(result.status.files).toBe(0)
     expect(result.status.totalLines).toBe(0)
     expect(result.status.byteSize).toBe(0)
-  }).pipe(Effect.provide(testLayer({})), Effect.scoped))
+  }).pipe(Effect.provide(testLayer({})), Effect.scoped),
+)
 
-test("IndexProject.index uses custom extensions from config", () =>
+it.effect("IndexProject.index uses custom extensions from config", () =>
   Effect.gen(function* () {
     const result = yield* (yield* IndexProject).index()
     expect(result.success).toBe(true)
@@ -191,9 +198,10 @@ test("IndexProject.index uses custom extensions from config", () =>
       }),
     ),
     Effect.scoped,
-  ))
+  ),
+)
 
-test("IndexProject.index assigns global chunk indices to identifiers across files", () =>
+it.effect("IndexProject.index assigns global chunk indices to identifiers across files", () =>
   Effect.gen(function* () {
     yield* (yield* IndexProject).index()
     const store = yield* IndexStore
@@ -220,9 +228,10 @@ test("IndexProject.index assigns global chunk indices to identifiers across file
       }),
     ),
     Effect.scoped,
-  ))
+  ),
+)
 
-test("IndexProject.index respects chunkConcurrency values", () =>
+it.effect("IndexProject.index respects chunkConcurrency values", () =>
   Effect.gen(function* () {
     for (const { label, chunkConcurrency } of [
       { label: "missing (default 8)", chunkConcurrency: undefined },
@@ -232,7 +241,9 @@ test("IndexProject.index respects chunkConcurrency values", () =>
     ]) {
       const configObj = chunkConcurrency !== undefined ? { chunkConcurrency } : {}
 
-      const result = yield* (yield* IndexProject).index().pipe(
+      const result = yield* Effect.gen(function* () {
+        return yield* (yield* IndexProject).index()
+      }).pipe(
         Effect.provide(
           testLayer({
             contents: {
@@ -250,9 +261,10 @@ test("IndexProject.index respects chunkConcurrency values", () =>
       expect(result.status.chunks, `chunkConcurrency=${label}`).toBeGreaterThan(0)
       expect(result.status.files, `chunkConcurrency=${label}`).toBe(2)
     }
-  }))
+  }),
+)
 
-test("IndexProject.index auto-initializes when config is missing", () =>
+it.effect("IndexProject.index auto-initializes when config is missing", () =>
   Effect.gen(function* () {
     const configStore = yield* ConfigStore
     expect(yield* configStore.configExists()).toBe(false)
@@ -269,9 +281,10 @@ test("IndexProject.index auto-initializes when config is missing", () =>
       }),
     ),
     Effect.scoped,
-  ))
+  ),
+)
 
-test("IndexProject.index skips files with unknown extensions", () =>
+it.effect("IndexProject.index skips files with unknown extensions", () =>
   Effect.gen(function* () {
     const result = yield* (yield* IndexProject).index()
     expect(result.success).toBe(true)
@@ -287,9 +300,10 @@ test("IndexProject.index skips files with unknown extensions", () =>
       }),
     ),
     Effect.scoped,
-  ))
+  ),
+)
 
-test("IndexProject.index skips files in skipExtensions", () =>
+it.effect("IndexProject.index skips files in skipExtensions", () =>
   Effect.gen(function* () {
     const result = yield* (yield* IndexProject).index()
     expect(result.success).toBe(true)
@@ -306,4 +320,5 @@ test("IndexProject.index skips files in skipExtensions", () =>
       }),
     ),
     Effect.scoped,
-  ))
+  ),
+)

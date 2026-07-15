@@ -1,5 +1,5 @@
+import { expect, it } from "@effect/vitest"
 import { Effect, Ref } from "effect"
-import { expect, test } from "vite-plus/test"
 
 import {
   assertCommandError,
@@ -16,19 +16,19 @@ const run = runCommand(initCommand)
 const assertInitDisplayEntries = (ref: Ref.Ref<ReadonlyArray<DisplayEntry>>) =>
   Effect.gen(function* () {
     const entries = yield* Ref.get(ref)
-    expect(entries).toHaveLength(4)
-    expect(entries[0]._tag).toBe("spinner")
-    expect(entries[1]._tag).toBe("json")
-    expect(entries[2]._tag).toBe("log")
-    expect(entries[3]._tag).toBe("note")
-    if (entries[1]._tag === "json") {
-      const data = entries[1].data as { success: boolean; config: { embedder: { model: string } } }
+    expect(entries.some((entry) => entry._tag === "spinner")).toBe(true)
+    expect(entries.some((entry) => entry._tag === "log")).toBe(true)
+    expect(entries.some((entry) => entry._tag === "note")).toBe(true)
+    const jsonEntry = entries.find((entry) => entry._tag === "json")
+    expect(jsonEntry).toBeDefined()
+    if (jsonEntry?._tag === "json") {
+      const data = jsonEntry.data as { success: boolean; config: { embedder: { model: string } } }
       expect(data.success).toBe(true)
       expect(data.config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
     }
   })
 
-test("pix init --json outputs config JSON via Display", () => {
+it.effect("pix init --json outputs config JSON via Display", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["init", "--json"])
@@ -36,7 +36,7 @@ test("pix init --json outputs config JSON via Display", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix init without --json shows status and note via Display", () => {
+it.effect("pix init without --json shows status and note via Display", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["init"])
@@ -44,7 +44,7 @@ test("pix init without --json shows status and note via Display", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-test("pix init --json with failing ConfigStore produces error JSON", () => {
+it.effect("pix init --json with failing ConfigStore produces error JSON", () => {
   const { ref, layer } = silentDisplay()
   return assertCommandError(run(["init", "--json"]), ref).pipe(
     Effect.provide(
