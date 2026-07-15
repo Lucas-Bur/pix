@@ -39,8 +39,11 @@ describe("buildExtensionRegistry", () => {
   it("provides parsers for Python and Rust", () => {
     const registry = buildExtensionRegistry([])
     expect(registry[".py"]?.parser).not.toBeNull()
+    expect(registry[".py"]?.mapKind).toBeDefined()
     expect(registry[".rs"]?.parser).not.toBeNull()
+    expect(registry[".rs"]?.mapKind).toBeDefined()
     expect(registry[".go"]?.parser).toBeNull()
+    expect(registry[".go"]?.mapKind).toBeUndefined()
   })
 
   it("overrides skip extensions to a fail-fast processor and null parser", () => {

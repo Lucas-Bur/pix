@@ -3,7 +3,11 @@ import Python from "tree-sitter-python"
 import Rust from "tree-sitter-rust"
 import TypeScript from "tree-sitter-typescript"
 
+import type { IdentifierKind } from "../domain/identifier.js"
 import { identityProcessor, skipProcessor, type FileProcessor } from "./config/processors.js"
+import { pythonMapKind } from "./parsing/python.js"
+import { rustMapKind } from "./parsing/rust.js"
+import { typescriptMapKind } from "./parsing/typescript.js"
 
 /**
  * Per-extension behavior. Single source of truth for what we do with a file based on its extension:
@@ -15,6 +19,8 @@ export interface ExtensionEntry {
   readonly processor: FileProcessor
   /** AST parser for chunking and identifier extraction. null = use line chunking. */
   readonly parser: Parser | null
+  /** Grammar-specific declaration nodes used for identifier extraction. */
+  readonly mapKind?: Record<string, IdentifierKind>
 }
 
 const createParser = (language: unknown): Parser => {
@@ -24,12 +30,15 @@ const createParser = (language: unknown): Parser => {
 }
 
 /** Tree-sitter parser pre-configured with the TypeScript grammar (no JSX). For .ts and .js. */
-export const TYPESCRIPT_PARSER = createParser(TypeScript.typescript)
+const TYPESCRIPT_PARSER = createParser(TypeScript.typescript)
 
 /** Tree-sitter parser pre-configured with the TSX grammar (TypeScript with JSX). For .tsx and .jsx. */
-export const TSX_PARSER = createParser(TypeScript.tsx)
+const TSX_PARSER = createParser(TypeScript.tsx)
 
+/** Tree-sitter parser pre-configured with the Python grammar. */
 const PYTHON_PARSER = createParser(Python)
+
+/** Tree-sitter parser pre-configured with the Rust grammar. */
 const RUST_PARSER = createParser(Rust)
 
 /**
@@ -43,12 +52,12 @@ const RUST_PARSER = createParser(Rust)
 const DEFAULT_EXTENSION_REGISTRY: Record<string, ExtensionEntry> = {
   // TypeScript-flavored. tree-sitter-typescript exposes two separate grammars:
   // `typescript` (strict TS, used for .ts and .js) and `tsx` (TS with JSX, for .tsx and .jsx).
-  ".ts": { processor: identityProcessor, parser: TYPESCRIPT_PARSER },
-  ".tsx": { processor: identityProcessor, parser: TSX_PARSER },
-  ".js": { processor: identityProcessor, parser: TYPESCRIPT_PARSER },
-  ".jsx": { processor: identityProcessor, parser: TSX_PARSER },
-  ".py": { processor: identityProcessor, parser: PYTHON_PARSER },
-  ".rs": { processor: identityProcessor, parser: RUST_PARSER },
+  ".ts": { processor: identityProcessor, parser: TYPESCRIPT_PARSER, mapKind: typescriptMapKind },
+  ".tsx": { processor: identityProcessor, parser: TSX_PARSER, mapKind: typescriptMapKind },
+  ".js": { processor: identityProcessor, parser: TYPESCRIPT_PARSER, mapKind: typescriptMapKind },
+  ".jsx": { processor: identityProcessor, parser: TSX_PARSER, mapKind: typescriptMapKind },
+  ".py": { processor: identityProcessor, parser: PYTHON_PARSER, mapKind: pythonMapKind },
+  ".rs": { processor: identityProcessor, parser: RUST_PARSER, mapKind: rustMapKind },
   // Other code -- parser: null until a tree-sitter package is added
   ".go": { processor: identityProcessor, parser: null },
   ".java": { processor: identityProcessor, parser: null },

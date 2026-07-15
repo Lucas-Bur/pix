@@ -76,6 +76,35 @@ describe("IdentifierExtractor service", () => {
     expect(result.map((i) => i.name)).toContain("Card")
   })
 
+  it("extracts Python functions and classes", async () => {
+    const result = await withExtractor((svc) =>
+      svc.extractIdentifiers(
+        "example.py",
+        "def parse_value():\n    pass\n\nclass ParsedValue:\n    pass\n",
+        3,
+      ),
+    )
+    expect(result).toEqual([
+      { name: "parse_value", kind: "function", chunkIndex: 3 },
+      { name: "ParsedValue", kind: "type", chunkIndex: 3 },
+    ])
+  })
+
+  it("extracts Rust functions, types, and values", async () => {
+    const result = await withExtractor((svc) =>
+      svc.extractIdentifiers(
+        "example.rs",
+        "fn parse_value() {}\nstruct ParsedValue;\nconst LIMIT: usize = 10;",
+        4,
+      ),
+    )
+    expect(result).toEqual([
+      { name: "parse_value", kind: "function", chunkIndex: 4 },
+      { name: "ParsedValue", kind: "type", chunkIndex: 4 },
+      { name: "LIMIT", kind: "value", chunkIndex: 4 },
+    ])
+  })
+
   it("returns empty for non-code file extensions", async () => {
     const result = await withExtractor((svc) =>
       svc.extractIdentifiers("README.md", "# Markdown heading", 0),
