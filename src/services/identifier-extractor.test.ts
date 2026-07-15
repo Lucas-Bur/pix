@@ -76,17 +76,43 @@ describe("IdentifierExtractor service", () => {
     expect(result.map((i) => i.name)).toContain("Card")
   })
 
-  it("extracts Python functions and classes", async () => {
+  it("extracts Python functions, classes, and type aliases", async () => {
     const result = await withExtractor((svc) =>
       svc.extractIdentifiers(
         "example.py",
-        "def parse_value():\n    pass\n\nclass ParsedValue:\n    pass\n",
+        "def parse_value():\n    pass\n\nclass ParsedValue:\n    pass\n\ntype Value = int\n",
         3,
       ),
     )
     expect(result).toEqual([
       { name: "parse_value", kind: "function", chunkIndex: 3 },
       { name: "ParsedValue", kind: "type", chunkIndex: 3 },
+      { name: "Value", kind: "type", chunkIndex: 3 },
+    ])
+  })
+
+  it("extracts Python value bindings without indexing mutation targets", async () => {
+    const result = await withExtractor((svc) =>
+      svc.extractIdentifiers(
+        "example.py",
+        [
+          "value = 1",
+          "typed: int = 2",
+          "first, second = pair",
+          "[head, *tail] = values",
+          "self.attribute = 3",
+          "items[0] = 4",
+        ].join("\n"),
+        5,
+      ),
+    )
+    expect(result).toEqual([
+      { name: "value", kind: "value", chunkIndex: 5 },
+      { name: "typed", kind: "value", chunkIndex: 5 },
+      { name: "first", kind: "value", chunkIndex: 5 },
+      { name: "second", kind: "value", chunkIndex: 5 },
+      { name: "head", kind: "value", chunkIndex: 5 },
+      { name: "tail", kind: "value", chunkIndex: 5 },
     ])
   })
 

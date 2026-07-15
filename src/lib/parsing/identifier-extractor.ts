@@ -2,6 +2,19 @@ import Parser from "tree-sitter"
 
 import type { Identifier, IdentifierKind } from "../../domain/identifier.js"
 
+const BINDING_NAME_NODE_TYPES = new Set(["identifier", "shorthand_property_identifier_pattern"])
+
+const BINDING_CONTAINER_NODE_TYPES = new Set([
+  "object_pattern",
+  "array_pattern",
+  "rest_pattern",
+  "pattern_list",
+  "list_pattern",
+  "tuple_pattern",
+  "list_splat_pattern",
+  "dictionary_splat_pattern",
+])
+
 /**
  * Walk a tree-sitter syntax tree and extract named identifiers from nodes whose type is in
  * `mapKind`.
@@ -29,18 +42,17 @@ export const extractIdentifiers = (
   const identifiers: Identifier[] = []
 
   /**
-   * Recursively collect the names bound by a destructuring pattern. Returns an empty array for
-   * patterns that bind nothing (e.g. `[]`, `{}`).
+   * Recursively collect names bound by TypeScript or Python destructuring patterns. Mutation
+   * targets such as Python attributes and subscripts return an empty array because they introduce
+   * no name.
    */
   const collectBoundNames = (node: Parser.SyntaxNode): readonly string[] => {
+    if (BINDING_NAME_NODE_TYPES.has(node.type)) return [node.text]
+    if (BINDING_CONTAINER_NODE_TYPES.has(node.type)) {
+      return node.namedChildren.flatMap((child) => (child === null ? [] : collectBoundNames(child)))
+    }
+
     switch (node.type) {
-      case "identifier":
-      case "shorthand_property_identifier_pattern":
-        return [node.text]
-      case "object_pattern":
-      case "array_pattern":
-      case "rest_pattern":
-        return node.namedChildren.flatMap((c) => (c === null ? [] : collectBoundNames(c)))
       case "pair_pattern":
       case "pair": {
         const value = node.childForFieldName("value")
@@ -51,16 +63,24 @@ export const extractIdentifiers = (
         return left === null ? [] : collectBoundNames(left)
       }
       default:
-        return [node.text]
+        return []
     }
   }
 
   /**
-   * Extract the bound names for a matched node. For most declaration types this is the `name` field
-   * as a single string; for `variable_declarator` the `name` field can be a destructuring pattern,
-   * in which case we descend and emit one identifier per name.
+   * Extract the bound names for a matched node. Most declarations use `name`; TypeScript variable
+   * declarators may destructure through `name`, Python assignments bind through `left`, and the
+   * Python grammar exposes a type alias name as its first named child.
    */
   const extractNames = (node: Parser.SyntaxNode): readonly string[] => {
+    if (node.type === "assignment") {
+      const leftNode = node.childForFieldName("left")
+      return leftNode === null ? [] : collectBoundNames(leftNode)
+    }
+    if (node.type === "type_alias_statement") {
+      const aliasNode = node.namedChild(0)
+      return aliasNode === null ? [] : [aliasNode.text]
+    }
     const nameNode = node.childForFieldName("name")
     if (nameNode === null) return []
     if (node.type === "variable_declarator") return collectBoundNames(nameNode)

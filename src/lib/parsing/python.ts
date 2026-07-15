@@ -4,4 +4,6 @@ import type { IdentifierKind } from "../../domain/identifier.js"
 export const pythonMapKind: Record<string, IdentifierKind> = {
   function_definition: "function",
   class_definition: "type",
+  type_alias_statement: "type",
+  assignment: "value",
 }

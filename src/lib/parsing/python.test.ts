@@ -3,9 +3,11 @@ import { describe, expect, it } from "vite-plus/test"
 import { pythonMapKind } from "./python.js"
 
 describe("pythonMapKind", () => {
-  it("maps functions and classes", () => {
+  it("maps functions, classes, and value bindings", () => {
     expect(pythonMapKind.function_definition).toBe("function")
     expect(pythonMapKind.class_definition).toBe("type")
+    expect(pythonMapKind.type_alias_statement).toBe("type")
+    expect(pythonMapKind.assignment).toBe("value")
   })
 
   it("only contains language-agnostic identifier kinds", () => {
