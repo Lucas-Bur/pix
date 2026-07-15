@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.21.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.20.1...pix-v0.21.0) (2026-07-15)
+
+
+### Features
+
+* add AST-aware semantic chunking ([61b560a](https://github.com/Lucas-Bur/pix/commit/61b560a996311c3c0c57db84a698935d9fd5ac34))
+* add incremental self-refreshing index ([09a7da8](https://github.com/Lucas-Bur/pix/commit/09a7da8d9c9a75ac1d84437f10023a418b444f52))
+* add query copy and aliases ([53e25e4](https://github.com/Lucas-Bur/pix/commit/53e25e40408b8081db7fd308de369056fb71380e))
+* extract Python and Rust identifiers ([263fd53](https://github.com/Lucas-Bur/pix/commit/263fd534acd7cb85d4a69f2b3f981e921d214e8e))
+
+
+### Bug Fixes
+
+* address all CodeRabbit review comments on PR [#144](https://github.com/Lucas-Bur/pix/issues/144) ([d7baf5b](https://github.com/Lucas-Bur/pix/commit/d7baf5b315c8e3fb784dc9c2f70a9d3bb254896d))
+* address incremental index review findings ([87c09d3](https://github.com/Lucas-Bur/pix/commit/87c09d381f11d4c265fe3229a2a392f8823cf2fe))
+* extract Python value and type bindings ([b9f5ed1](https://github.com/Lucas-Bur/pix/commit/b9f5ed12cf3853e3ce12d93ed16002696f951377))
+* preserve detached AST comments ([7e09c0f](https://github.com/Lucas-Bur/pix/commit/7e09c0f50873a6245565cb2ca19fa7ef92db717f))
+
 ## [0.20.1](https://github.com/Lucas-Bur/pix/compare/pix-v0.20.0...pix-v0.20.1) (2026-07-01)
 
 
