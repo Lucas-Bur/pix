@@ -10,9 +10,9 @@ import {
   indexSeed,
   runCommand,
 } from "../../tests/test-utils/command.js"
-import { makeConfigJson, makeEmbedding, makeStoredChunk } from "../../tests/test-utils/fixtures.js"
+import { makeConfigJson, makeLargeIndexSeed } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
-import { testLayer, type TestIndexSeed } from "../../tests/test-utils/testLayer.js"
+import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { queryCommand } from "./query.js"
 
 const run = runCommand(queryCommand)
@@ -115,29 +115,7 @@ const largeFixtures: FileTree = {
   ".pix/config.json": makeConfigJson(),
 }
 
-const largeSeed: TestIndexSeed = {
-  chunks: Array.from(
-    { length: 150 },
-    (_, i) =>
-      [
-        makeStoredChunk({
-          id: `chunk${i}`,
-          idx: i,
-          file: `/src/file${i}.ts`,
-          startLine: 1,
-          endLine: 1,
-          text: `content ${i}`,
-        }),
-        makeEmbedding(0),
-      ] as const,
-  ),
-  bm25Index: {
-    avgChunkLength: 2,
-    chunkLengths: Array.from({ length: 150 }, () => 2),
-    docFreqs: { test: 150 },
-    chunkTfs: { test: Array.from({ length: 150 }, (_, index) => [index, 1]) },
-  },
-}
+const largeSeed = makeLargeIndexSeed()
 
 it.effect("executeQuery with topK=200 clamps results", () => {
   const { ref, layer } = silentDisplay()

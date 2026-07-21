@@ -27,7 +27,8 @@ generations. Query also loaded every Float32 vector into JavaScript for exact co
 - Run exact cosine search with sqlite-vector `vector_full_scan` by default. Preserve the JavaScript
   `rankDense` implementation as the correctness oracle.
 - Support `exact`, `auto`, and `turboquant` modes. `auto` uses TurboQuant only at or above
-  `vectorSearch.turboQuantThreshold`; TurboQuant uses four-bit quantization.
+  `vectorSearch.turboQuantThreshold`; TurboQuant uses four-bit quantization. Persist completed
+  quantization state in index metadata so reopened stores reuse sqlite-vector's shared DB state.
 - Keep path filtering after RRF and before top-K selection. Dense scans return the complete positive
   ranking so candidate truncation does not change fusion semantics.
 - `pix reset` deletes active index rows while retaining `embedding_cache`; `pix cache clear` deletes

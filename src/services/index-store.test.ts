@@ -335,6 +335,26 @@ for (const vectorSearch of [
   )
 }
 
+it.effect("IndexStore persists completed TurboQuant builds in index metadata", () =>
+  Effect.gen(function* () {
+    yield* storeFixture([makeChunk()], [makeEmbedding()])
+    const sql = yield* SqlClient.SqlClient
+    const rows = yield* sql<{ readonly quantized: number }>`
+      SELECT quantized FROM index_meta WHERE id = 1
+    `
+    expect(rows[0]?.quantized).toBe(1)
+  }).pipe(
+    Effect.provide(
+      indexStoreLayer({
+        ".pix/config.json": makeConfigJson({
+          vectorSearch: { mode: "turboquant", turboQuantThreshold: 50_000 },
+        }),
+      }),
+    ),
+    Effect.scoped,
+  ),
+)
+
 it.effect("TurboQuant preserves useful dense and fused top-10 recall", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem
