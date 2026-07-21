@@ -82,6 +82,7 @@
     },
     "onlyBuiltDependencies": [
       "@parcel/watcher",
+      "better-sqlite3",
       "fallow",
       "msgpackr-extract",
       "onnxruntime-node",
