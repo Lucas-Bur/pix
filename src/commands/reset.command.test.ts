@@ -1,38 +1,35 @@
 import { expect, it } from "@effect/vitest"
+import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Ref } from "effect"
 
 import {
   assertCommandError,
   expectJsonEntry,
+  indexFixtures,
+  indexSeed,
   makeFailingIndexStore,
   runCommand,
 } from "../../tests/test-utils/command.js"
-import { makeChunkJson, TEST_CONFIG_JSON } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { resetCommand } from "./reset.js"
 
 const run = runCommand(resetCommand)
 
-const fixtures = {
-  ".pix/config.json": TEST_CONFIG_JSON,
-  ".pix/chunks.jsonl": makeChunkJson({
-    id: "a1",
-    idx: 0,
-    file: "/src/a.ts",
-    startLine: 1,
-    endLine: 1,
-    text: "x",
-  }),
-  ".pix/vectors.bin": "binary-data",
-}
+const fixtures = indexFixtures
 
-const runReset = (args: string[], contents: Record<string, string> = fixtures) => {
+const runReset = (args: string[], contents: FileTree = fixtures) => {
   const { ref, layer } = silentDisplay()
   return {
     ref,
     effect: run(["reset", ...args]).pipe(
-      Effect.provide(testLayer({ contents, displayLayer: layer })),
+      Effect.provide(
+        testLayer({
+          contents,
+          displayLayer: layer,
+          indexSeed: contents === fixtures ? indexSeed : undefined,
+        }),
+      ),
     ),
   }
 }
@@ -69,7 +66,7 @@ it.effect("pix reset --json on clean project reports nothing deleted", () => {
   })
 })
 
-const assertResetLogs = (contents: Record<string, string> = fixtures) => {
+const assertResetLogs = (contents: FileTree = fixtures) => {
   const { ref, effect } = runReset([], contents)
   return Effect.gen(function* () {
     yield* effect

@@ -54,7 +54,7 @@ export class InteractiveError extends Data.TaggedError("InteractiveError")<{
 
 // === Index store errors ===
 
-/** Index files (chunks.jsonl, vectors.bin) do not exist. Run pix index first. */
+/** No active SQLite index snapshot exists. Run pix index first. */
 export class NoIndexError extends Data.TaggedError("NoIndexError")<{
   readonly message: string
 }> {}
@@ -90,7 +90,7 @@ export class InferenceError extends Data.TaggedError("InferenceError")<{
 
 // === Chunk validation error ===
 
-/** A chunk line in chunks.jsonl failed schema validation. */
+/** Persisted chunk data failed schema validation. */
 export class ChunkValidationError extends Data.TaggedError("ChunkValidationError")<{
   readonly message: string
   readonly errors: ReadonlyArray<{

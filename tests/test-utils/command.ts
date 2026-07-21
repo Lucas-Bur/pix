@@ -15,7 +15,8 @@ import { DEFAULT_CONFIG } from "../../src/domain/config.js"
 import { ConfigError, ModelLoadError, StoreError } from "../../src/domain/errors.js"
 import type { DisplaySeverity } from "../../src/domain/ports.js"
 import { ConfigStore, Embedder, IndexStore } from "../../src/domain/ports.js"
-import { makeStoredChunk, TEST_CONFIG_JSON } from "./fixtures.js"
+import { makeEmbedding, makeStoredChunk, TEST_CONFIG_JSON } from "./fixtures.js"
+import type { TestIndexSeed } from "./testLayer.js"
 
 const commandPlatformLayer = Layer.provideMerge(
   NodeChildProcessSpawner.layer,
@@ -51,14 +52,14 @@ const sourceB = "export const z = 3"
 
 export const indexFixtures: FileTree = {
   ".pix/config.json": TEST_CONFIG_JSON,
-  ".pix/index-meta.json": JSON.stringify({
-    dtype: "fp32",
-    dims: 384,
-    model: DEFAULT_CONFIG.embedder.model,
-    lastIndex: Date.now(),
-  }),
-  ".pix/chunks.jsonl": [
-    JSON.stringify(
+  "src/a.ts": sourceA,
+  "src/b.ts": sourceB,
+}
+
+/** SQLite snapshot matching {@link indexFixtures}. */
+export const indexSeed: TestIndexSeed = {
+  chunks: [
+    [
       makeStoredChunk({
         id: "a1",
         idx: 0,
@@ -69,8 +70,9 @@ export const indexFixtures: FileTree = {
         endOffset: sourceA.length,
         text: sourceA,
       }),
-    ),
-    JSON.stringify(
+      makeEmbedding(0),
+    ],
+    [
       makeStoredChunk({
         id: "b1",
         idx: 1,
@@ -81,10 +83,10 @@ export const indexFixtures: FileTree = {
         endOffset: sourceB.length,
         text: sourceB,
       }),
-    ),
-  ].join("\n"),
-  ".pix/vectors.bin": "\0".repeat(2 * 384 * 4),
-  ".pix/bm25.json": JSON.stringify({
+      makeEmbedding(0),
+    ],
+  ],
+  bm25Index: {
     avgChunkLength: 4,
     chunkLengths: [6, 4],
     docFreqs: { query: 2, search: 2, term: 2, test: 2 },
@@ -106,10 +108,7 @@ export const indexFixtures: FileTree = {
         [1, 1],
       ],
     },
-  }),
-  ".pix/files.jsonl": "",
-  "src/a.ts": sourceA,
-  "src/b.ts": sourceB,
+  },
 }
 
 /** Assert that a command effect fails and produces error JSON recorded via SilentDisplay. */
@@ -160,6 +159,7 @@ export const makeFailingIndexStore = (
             identifierIndex: { exact: {}, split: {} },
             malformedLines: 0,
           }),
+    searchDense: () => Effect.succeed([]),
     loadSource: () => Effect.succeed({ text: "", contextBefore: null, contextAfter: null }),
     loadEmbeddingCache: () => Effect.succeed([]),
     clearEmbeddingCache: () => Effect.succeed(false),

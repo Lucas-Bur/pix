@@ -1,25 +1,6 @@
-import { Schema } from "effect"
-
 import type { IdentifierIndexMaps } from "../../domain/identifier-index.js"
 import type { Identifier } from "../../domain/identifier.js"
 import { splitIdentifier } from "../parsing/split-identifier.js"
-
-/** Effect Schema for the JSON-serializable form of the identifier index. */
-const IdentifierIndexSchema = Schema.Struct({
-  exact: Schema.Record(Schema.String, Schema.Array(Schema.Number)),
-  split: Schema.Record(Schema.String, Schema.Array(Schema.Number)),
-})
-
-/** Serialize the identifier index maps to a JSON string for .pix/identifiers.json. */
-export const serializeIdentifierIndex = (maps: IdentifierIndexMaps): string =>
-  Schema.encodeSync(Schema.fromJsonString(IdentifierIndexSchema))(maps)
-
-/**
- * Deserialize the JSON contents of .pix/identifiers.json back to the maps shape. Throws on
- * corruption.
- */
-export const deserializeIdentifierIndex = (content: string): IdentifierIndexMaps =>
-  Schema.decodeUnknownSync(Schema.fromJsonString(IdentifierIndexSchema))(content)
 
 /**
  * Build the two-map identifier index from a flat list of extracted identifiers. Aggregates chunk

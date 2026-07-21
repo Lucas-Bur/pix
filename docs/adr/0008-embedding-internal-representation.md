@@ -8,11 +8,11 @@ Accepted
 
 The domain type `Embedding.vector` is `number[]` — provider-agnostic so that any embedder (ONNX, OpenAI, etc.) can satisfy the port. However, the arithmetic layer (cosine similarity, vector encoding/decoding) needs a performant working representation.
 
-Vectors are stored in `vectors.bin` as raw bytes. When loaded for search, they must be decoded into a typed array for SIMD-optimized arithmetic. Although the `dtype` config selects model weight precision (fp32, fp16, q8, q4), ONNX `FeatureExtractionPipeline` always emits `Float32Array` output regardless of weight dtype (see Findings below), so storage is always Float32Array bytes and a single fp32 decode path serves every dtype.
+Vectors are stored as raw Float32 BLOBs in `.pix/index.db`. Although the `dtype` config selects model weight precision (fp32, fp16, q8, q4), ONNX `FeatureExtractionPipeline` always emits `Float32Array` output regardless of weight dtype (see Findings below), so one fp32 storage path serves every dtype.
 
 ## Decision
 
-**Internal working representation is `Float32Array`.** `serializeVectors` writes `Float32Array` bytes to `vectors.bin`; `IndexStore.loadChunksAndVectors` reads them back as a `Float32Array` view over the buffer (with a byte-length guard that fails as `VectorDecodeError` on truncation). `computeCosineSimilarity` operates on `Float32Array`.
+**Internal working representation is `Float32Array`.** A bidirectional Effect Schema transforms aligned arrays to and from SQLite BLOBs, validates byte lengths, and copies sliced views correctly. sqlite-vector consumes those BLOBs directly; `computeCosineSimilarity` remains the JavaScript exact-search oracle.
 
 The embedder adapter converts from its native format (ONNX `Float32Array`, OpenAI `number[]`, etc.) to `number[]` for the domain `Embedding`, then `serializeVectors` lays those values into a contiguous `Float32Array` for storage.
 
@@ -20,7 +20,7 @@ The embedder adapter converts from its native format (ONNX `Float32Array`, OpenA
 
 - **Performance**: `Float32Array` is contiguous memory, SIMD-eligible, and the native format for ONNX, TensorFlow, and every ML runtime. `number[]` is an array of boxed JS objects — 8x memory, no SIMD.
 - **Correctness**: Cosine similarity requires floating-point arithmetic. The output of `FeatureExtractionPipeline` is already float32 regardless of weight dtype (see Findings), so no dequantization step is needed at read time.
-- **No dtype switch at the storage seam**: Because every dtype produces float32 output, `vectors.bin` always contains Float32Array bytes. The `dtype` field in `index-meta.json` is metadata only (used by `DtypeMismatchError` to detect stale indexes after a config change), not a selector between decode paths.
+- **No dtype switch at the storage seam**: Because every dtype produces float32 output, vector BLOBs always contain Float32Array bytes. Persisted dtype remains metadata used by `DtypeMismatchError`, not a selector between decode paths.
 
 ## Consequences
 
@@ -31,8 +31,8 @@ The embedder adapter converts from its native format (ONNX `Float32Array`, OpenA
 ## Code References
 
 - `src/domain/chunk.ts` — `Embedding.vector: number[]` (domain type)
-- `src/services/index-store.ts` — `loadChunksAndVectors` reads `vectors.bin` as `Float32Array`; `serializeVectors` writes it
-- `src/lib/vectors/vector-serialization.ts` — `serializeVectors` (infrastructure, lays embeddings into a contiguous `Float32Array`)
+- `src/services/sqlite-index-store/schema.ts` — bidirectional Float32 BLOB schema
+- `src/services/sqlite-index-store.ts` — validated persistence and native vector search
 - `src/lib/vectors/cosine.ts` — `computeCosineSimilarity(chunkVector: Float32Array, query: Float32Array)` (infrastructure)
 
 ## Findings: ONNX Transformers Output Dtype

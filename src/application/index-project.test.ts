@@ -129,13 +129,14 @@ it.effect("IndexProject.index handles changed, deleted, and renamed files", () =
 it.effect("IndexProject keeps only displaced embeddings in the historical cache", () =>
   Effect.gen(function* () {
     const index = yield* IndexProject
+    const store = yield* IndexStore
     const fs = yield* FileSystem
     yield* index.index()
-    expect(yield* fs.readFileString(".pix/embedding-cache.jsonl")).toBe("")
+    expect(yield* store.loadEmbeddingCache()).toHaveLength(0)
 
     yield* fs.writeFileString("src/a.ts", `${sourceFile}\nexport const changed = true`)
     yield* index.index()
-    expect((yield* fs.readFileString(".pix/embedding-cache.jsonl")).length).toBeGreaterThan(0)
+    expect((yield* store.loadEmbeddingCache()).length).toBeGreaterThan(0)
 
     yield* fs.writeFileString("src/a.ts", sourceFile)
     const reverted = yield* index.index()

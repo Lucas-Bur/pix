@@ -51,7 +51,9 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
+    "@effect/sql-sqlite-node": "4.0.0-beta.90",
     "@huggingface/transformers": "^4.2.0",
+    "@sqliteai/sqlite-vector": "1.0.0",
     "tree-sitter": "^0.21.1",
     "tree-sitter-python": "^0.21.0",
     "tree-sitter-rust": "^0.21.0",

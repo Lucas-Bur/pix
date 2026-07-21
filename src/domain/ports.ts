@@ -234,7 +234,7 @@ export class DeviceDetection extends Context.Service<
 
 // === IndexStore Port ===
 
-/** Pre-built BM25 corpus statistics stored in .pix/bm25.json. */
+/** Pre-built BM25 corpus statistics stored in the SQLite index. */
 export interface Bm25Index {
   readonly avgChunkLength: number
   readonly chunkLengths: readonly number[]
@@ -248,8 +248,8 @@ export interface RankedChunk {
   readonly score: number
 }
 
-/** Raw chunk data loaded from the index for passing to scorers at query time. */
-export interface ChunkEntry {
+/** Chunk metadata shared by retrieval channels and result hydration. */
+export interface ChunkMetadata {
   readonly index: number
   readonly id: string
   readonly idx: number
@@ -259,12 +259,16 @@ export interface ChunkEntry {
   readonly startOffset: number
   readonly endOffset: number
   readonly contentHash: string
+}
+
+/** Chunk metadata plus its vector, loaded only for incremental index planning. */
+export interface ChunkEntry extends ChunkMetadata {
   readonly vector: Float32Array
 }
 
 /** All index data needed at query time for hybrid search. */
 export interface SearchData {
-  readonly entries: readonly ChunkEntry[]
+  readonly entries: readonly ChunkMetadata[]
   readonly bm25Index: Bm25Index
   /**
    * Identifier index for the identity and camelCase scoring channels. Empty maps if the file is
@@ -365,6 +369,7 @@ export interface CachedEmbedding {
 
 /** Committed index data used to plan an incremental refresh. */
 export interface IndexSnapshot extends SearchData {
+  readonly entries: readonly ChunkEntry[]
   readonly meta: IndexMeta
   readonly files: readonly FileManifestEntry[]
 }
@@ -392,10 +397,8 @@ export class IndexStore extends Context.Service<
   IndexStore,
   {
     /**
-     * Persist a complete index: stream chunk/embedding batches, then atomically commit to
-     * `chunks.jsonl`, `vectors.bin`, `index-meta.json`, `bm25.json`, and `identifiers.json`. The
-     * adapter owns the begin/batch/commit/abort lifecycle internally — temp files are cleaned up on
-     * any failure (stream error, batch write error, commit error). Returns final stats on success.
+     * Persist a complete index by draining chunk/embedding batches inside one adapter-owned
+     * transaction. Any failure preserves the previous committed snapshot. Returns final stats.
      */
     readonly persistIndex: <E>(
       input: PersistIndexInput<E>,
@@ -405,6 +408,10 @@ export class IndexStore extends Context.Service<
       SearchData,
       StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
     >
+    /** Rank active chunks through SQLite vector search without loading vectors into JavaScript. */
+    readonly searchDense: (
+      embedding: Embedding,
+    ) => Effect.Effect<readonly RankedChunk[], StoreError | NoIndexError | VectorDecodeError>
     /** Load and verify source text for one selected chunk. */
     readonly loadSource: (request: SourceRequest) => Effect.Effect<SourceContent, StoreError>
     /** Load all valid content-addressed embeddings. Missing cache returns an empty list. */

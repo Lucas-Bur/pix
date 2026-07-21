@@ -13,7 +13,7 @@ import {
 } from "../domain/errors.js"
 import { ConfigStore, Embedder, IndexStore } from "../domain/ports.js"
 import type {
-  ChunkEntry,
+  ChunkMetadata,
   RankedChunk,
   SearchOptions,
   SearchResponse,
@@ -22,7 +22,6 @@ import type {
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
 import { rankBm25 } from "../lib/retrieval/bm25.js"
 import { rankCamelCase } from "../lib/retrieval/camelcase.js"
-import { rankDense } from "../lib/retrieval/dense.js"
 import { rankIdentity } from "../lib/retrieval/identity.js"
 import { K, rrfFuse } from "../lib/retrieval/rrf.js"
 import { tokenize } from "../lib/retrieval/tokenize.js"
@@ -120,7 +119,7 @@ const routeQuery = (
 
 const fuseResults = (
   channels: readonly { readonly list: readonly RankedChunk[]; readonly weight: number }[],
-  entryMap: Map<number, ChunkEntry>,
+  entryMap: Map<number, ChunkMetadata>,
 ): RankedResult[] => {
   const sumWeights = channels.reduce((a, c) => a + c.weight, 0)
   const fused = rrfFuse(
@@ -207,7 +206,7 @@ const make = Effect.gen(function* () {
       const embedding = yield* embedder.embed(queryText)
 
       const lexicalRanks = rankBm25(queryText, bm25Index)
-      const denseRanks = rankDense(embedding.vector, entries)
+      const denseRanks = yield* store.searchDense(embedding)
       const identityRanks = rankIdentity(queryText, identifierIndex)
       const camelcaseRanks = rankCamelCase(queryText, identifierIndex)
 

@@ -14,23 +14,23 @@ Issue #130 (exact-name identity channel) and #131 (camelCase split channel) clos
 
 Extend the RRF fusion from two channels to four by adding two identifier-based scorers, with hardcoded weights exposed as named constants:
 
-| Channel                 | Scorer          | Weight                   | Routing              |
-| ----------------------- | --------------- | ------------------------ | -------------------- |
-| Identity (exact name)   | `rankIdentity`  | `WEIGHT_IDENTITY = 3.0`  | constant             |
-| CamelCase (split match) | `rankCamelCase` | `WEIGHT_CAMELCASE = 1.5` | constant             |
-| BM25 (lexical)          | `rankBm25`      | `0.5` – `1.5`            | by query token count |
-| Dense (semantic)        | `rankDense`     | `0.5` – `1.5`            | by query token count |
+| Channel                 | Scorer               | Weight                   | Routing              |
+| ----------------------- | -------------------- | ------------------------ | -------------------- |
+| Identity (exact name)   | `rankIdentity`       | `WEIGHT_IDENTITY = 3.0`  | constant             |
+| CamelCase (split match) | `rankCamelCase`      | `WEIGHT_CAMELCASE = 1.5` | constant             |
+| BM25 (lexical)          | `rankBm25`           | `0.5` – `1.5`            | by query token count |
+| Dense (semantic)        | SQLite vector search | `0.5` – `1.5`            | by query token count |
 
 `WEIGHT_IDENTITY` and `WEIGHT_CAMELCASE` are constant regardless of query length because they capture _content_ signals (does the query name match an identifier; do the query's constituent words appear in identifier names) rather than _length_ signals. The BM25/Dense rebalance on query length is preserved from ADR-0009.
 
-Both identifier channels consume a pre-built two-map index persisted in `.pix/identifiers.json`:
+Both identifier channels consume a pre-built two-map index persisted in `.pix/index.db`:
 
 - `exact: Map<lowercased name, chunkIndex[]>` — full name match
 - `split: Map<lowercased constituent word, chunkIndex[]>` — per-word match
 
 The map shape uses plain `Record` (not `Map`) for direct JSON serialization at the storage boundary, consistent with `Bm25Index`.
 
-`chunkIndex` here is **global** — the chunk's position in the persisted `chunks.jsonl` array (and equivalently in `phase1.chunks` at index time), NOT the per-file `idx` field the chunker assigns. The query-time scorers resolve `chunkIndex` against `entryMap`, which is keyed by the same global `ChunkEntry.index` (assigned by line position in `chunks.jsonl` during load). Mixing the two scopes silently biases identity/camelcase matches toward whichever file was indexed first, since two different files' chunks (both at per-file `idx 0`) would otherwise collide on global index 0.
+`chunkIndex` here is **global** — the chunk's persisted SQLite `ordinal` (and equivalently its position in `phase1.chunks` at index time), NOT the per-file `idx` field the chunker assigns. The query-time scorers resolve `chunkIndex` against `entryMap`, which is keyed by the same ordinal. Mixing the two scopes silently biases identity/camelcase matches toward whichever file was indexed first, since two different files' chunks (both at per-file `idx 0`) would otherwise collide on global index 0.
 
 `IdentifierKind` is a language-agnostic three-category vocabulary: `"function" | "type" | "value"`. Each tree-sitter grammar's specific node types (e.g. `function_declaration`, `class_declaration`, `variable_declarator`) are mapped onto this vocabulary at extraction time via a per-language `mapKind` table.
 
@@ -48,7 +48,7 @@ The RRF channel layout, query routing, and channel weight definitions live at th
 
 **Why language-agnostic `IdentifierKind` with 3 categories**: Code across languages shares three conceptual categories: callable (function/def/fn/method), type (class/struct/enum/interface/trait), data binding (const/let/var/static). Mapping tree-sitter's per-grammar node types (`function_declaration` vs `function_item` vs `function_definition`) onto this vocabulary at extraction time keeps the storage shape and scorers language-agnostic. The MVP scorers do not differentiate by `kind`; it is captured for future use cases (e.g. "find where this is imported", #85) without re-indexing.
 
-**Why a separate `.pix/identifiers.json` file, not merged into `bm25.json`**: The BM25 index is built from chunk text via `buildBm25Index`. The identifier index is built from parsed ASTs. Their build and read paths are independent. Separate files keep commit windows atomic per concern and give a clean migration path (old indexes without the new file just see empty maps).
+**Why separate persisted payloads**: The BM25 index is built from chunk text via `buildBm25Index`. The identifier index is built from parsed ASTs. Their schemas remain independent even though SQLite commits both payloads atomically.
 
 **Why per-chunk re-parsing, not parse-once-and-distribute**: The chunker uses `overlapLines` so adjacent chunks share content. Naively parsing the whole file once and distributing identifiers to chunks by line number is more efficient but couples the extractor to chunker line geometry. For MVP, re-parsing per chunk is simpler, correctly handles overlap (the same identifier legitimately appears in multiple chunks), and the redundant work is bounded by `overlapLines × chunk count` — negligible for typical codebases.
 
@@ -56,7 +56,7 @@ The RRF channel layout, query routing, and channel weight definitions live at th
 
 - Four-channel fusion produces more competitive rankings; weights are now a first-class tuning surface (the four `const` at the top of `query-project.ts`).
 - Tree-sitter becomes a runtime dependency (deferred decision documented in [ADR-0014](0014-tree-sitter-identifier-extraction.md)).
-- Storage grows by one file (`.pix/identifiers.json`); expected size is small (a few KB per 1000 chunks) and grows linearly with identifier count, not chunk count.
-- Backward-compatibility: indexes built before this feature shipped have no `.pix/identifiers.json`. `loadIdentifierIndex` returns empty maps; the identity and camelCase scorers return `[]`; the query still works via BM25 + Dense. Users re-index once to get the new channels.
+- Identifier storage is small (a few KB per 1000 chunks) and grows linearly with identifier count, not chunk count.
+- Flat-file indexes are rebuilt into SQLite once to obtain the current four-channel data.
 - The `IdentifierKind` field is captured but not consumed by the MVP scorers. Future use cases (e.g. #85 call-graph queries) can filter on it without re-indexing.
 - The four-channel architecture can accommodate additional channels (cross-encoder rerank from #101, future heuristics) without changing the fusion logic.
