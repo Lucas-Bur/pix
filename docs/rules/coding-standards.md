@@ -20,6 +20,8 @@
   generated `dist` files belong in `dependencies`.
 - Native or platform-selected packages must remain external and be verified through an npm tarball
   installed in a clean project.
+- Native dependencies with install scripts, including transitive ones, must be listed in
+  `pnpm.onlyBuiltDependencies` and verified with a forced clean install.
 - Fallow analyses source imports, not Vite+ bundle boundaries, so bundled dev dependencies can appear
   as `dev dependencies used in production`. Do not move them solely to silence that finding. The PR
   regression gate is `vp run lint:fallow:ci`; the full `vp run lint:fallow` remains the health report.
