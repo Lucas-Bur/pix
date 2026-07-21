@@ -48,3 +48,28 @@ export const makeStoredChunk = (overrides?: Partial<Chunk>): StoredChunk => {
     contentHash: contentHash(text),
   }
 }
+
+/** Build a large deterministic index seed for command limit tests. */
+export const makeLargeIndexSeed = (count: number = 150) => ({
+  chunks: Array.from(
+    { length: count },
+    (_, index) =>
+      [
+        makeStoredChunk({
+          id: `chunk${index}`,
+          idx: index,
+          file: `/src/file${index}.ts`,
+          startLine: 1,
+          endLine: 1,
+          text: `content ${index}`,
+        }),
+        makeEmbedding(0),
+      ] as const,
+  ),
+  bm25Index: {
+    avgChunkLength: 2,
+    chunkLengths: Array.from({ length: count }, () => 2),
+    docFreqs: { test: count },
+    chunkTfs: { test: Array.from({ length: count }, (_, index) => [index, 1] as const) },
+  },
+})

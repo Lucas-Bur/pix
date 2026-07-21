@@ -9,7 +9,8 @@ export default Effect.gen(function* () {
       model TEXT NOT NULL,
       dims INTEGER NOT NULL CHECK (dims > 0),
       dtype TEXT NOT NULL,
-      last_index REAL NOT NULL
+      last_index REAL NOT NULL,
+      quantized INTEGER NOT NULL DEFAULT 0 CHECK (quantized IN (0, 1))
     ) STRICT`
 
   yield* sql`CREATE TABLE chunks (

@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, Ref, Schema, Stream } from "effect"
+import { Effect, Layer, Option, Schema, Stream } from "effect"
 import { FileSystem } from "effect/FileSystem"
 import { SqlClient } from "effect/unstable/sql"
 import * as SqlSchema from "effect/unstable/sql/SqlSchema"
@@ -95,13 +95,12 @@ const make = Effect.gen(function* () {
   const fs = yield* FileSystem
   const configStore = yield* ConfigStore
   const sql = yield* SqlClient.SqlClient
-  const quantized = yield* Ref.make(false)
 
   const insertMeta = SqlSchema.void({
     Request: IndexMetaRow.insert,
-    execute: ({ id, model, dims, dtype, lastIndex }) => sql`
-      INSERT INTO index_meta (id, model, dims, dtype, last_index)
-      VALUES (${id}, ${model}, ${dims}, ${dtype}, ${lastIndex})
+    execute: ({ id, model, dims, dtype, lastIndex, quantized }) => sql`
+      INSERT INTO index_meta (id, model, dims, dtype, last_index, quantized)
+      VALUES (${id}, ${model}, ${dims}, ${dtype}, ${lastIndex}, ${quantized})
     `,
   })
 
@@ -149,7 +148,9 @@ const make = Effect.gen(function* () {
   const selectMeta = SqlSchema.findOneOption({
     Request: Schema.Void,
     Result: IndexMetaRow,
-    execute: () => sql`SELECT id, model, dims, dtype, last_index FROM index_meta WHERE id = 1`,
+    execute: () => sql`
+      SELECT id, model, dims, dtype, last_index, quantized FROM index_meta WHERE id = 1
+    `,
   })
 
   const selectChunks = SqlSchema.findAll({
@@ -321,7 +322,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* initializeVectors(dims)
       yield* sql`SELECT vector_quantize('chunks', 'embedding', 'qtype=TURBO,qbits=4')`
-      yield* Ref.set(quantized, true)
+      yield* sql`UPDATE index_meta SET quantized = 1 WHERE id = 1`
     })
 
   const removeLegacyIndexFiles = () =>
@@ -399,6 +400,7 @@ const make = Effect.gen(function* () {
           dims: input.dims,
           dtype: input.dtype,
           lastIndex: Date.now(),
+          quantized: 0,
         })
         const shouldQuantize =
           config.vectorSearch.mode === "turboquant" ||
@@ -410,10 +412,6 @@ const make = Effect.gen(function* () {
       yield* sql
         .withTransaction(transaction)
         .pipe(Effect.mapError(asStoreError("persist index transaction")))
-      const quantizationExpected =
-        config.vectorSearch.mode === "turboquant" ||
-        (config.vectorSearch.mode === "auto" && ordinal >= config.vectorSearch.turboQuantThreshold)
-      if (!quantizationExpected || ordinal === 0) yield* Ref.set(quantized, false)
       yield* removeLegacyIndexFiles().pipe(
         Effect.mapError(asStoreError("remove obsolete flat index files")),
       )
@@ -471,7 +469,7 @@ const make = Effect.gen(function* () {
       yield* initializeVectors(meta.dims).pipe(
         Effect.mapError(asStoreError("initialize vector search")),
       )
-      if (useQuantization && !(yield* Ref.get(quantized))) {
+      if (useQuantization && meta.quantized === 0) {
         yield* buildQuantization(meta.dims).pipe(
           Effect.mapError(asStoreError("build TurboQuant index")),
         )
@@ -594,7 +592,6 @@ const make = Effect.gen(function* () {
           yield* sql`DELETE FROM retrieval_indexes`
           yield* sql`DELETE FROM files`
           yield* sql`DELETE FROM chunks`
-          yield* Ref.set(quantized, false)
         }),
       )
       return {

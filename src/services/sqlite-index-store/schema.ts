@@ -50,6 +50,7 @@ export class IndexMetaRow extends Model.Class<IndexMetaRow>("IndexMetaRow")({
   dims: Schema.Number,
   dtype: EmbeddingDtypeSchema,
   lastIndex: Schema.Number,
+  quantized: Schema.Literals([0, 1]),
 }) {}
 
 /** Persisted chunk metadata and its Float32 embedding. */

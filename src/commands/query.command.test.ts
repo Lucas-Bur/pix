@@ -12,11 +12,7 @@ import {
   makeFailingEmbedder,
   runCommand,
 } from "../../tests/test-utils/command.js"
-import {
-  makeEmbedding,
-  makeStoredChunk,
-  TEST_CONFIG_JSON,
-} from "../../tests/test-utils/fixtures.js"
+import { makeLargeIndexSeed, TEST_CONFIG_JSON } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer, type TestIndexSeed } from "../../tests/test-utils/testLayer.js"
 import { queryCommand } from "./query.js"
@@ -93,29 +89,7 @@ it.effect("pix query --json clamps --top above maximum to 100", () => {
   const largeFixtures: FileTree = {
     ".pix/config.json": TEST_CONFIG_JSON,
   }
-  const largeSeed: TestIndexSeed = {
-    chunks: Array.from(
-      { length: 150 },
-      (_, i) =>
-        [
-          makeStoredChunk({
-            id: `chunk${i}`,
-            idx: i,
-            file: `/src/file${i}.ts`,
-            startLine: 1,
-            endLine: 1,
-            text: `content ${i}`,
-          }),
-          makeEmbedding(0),
-        ] as const,
-    ),
-    bm25Index: {
-      avgChunkLength: 2,
-      chunkLengths: Array.from({ length: 150 }, () => 2),
-      docFreqs: { test: 150 },
-      chunkTfs: { test: Array.from({ length: 150 }, (_, index) => [index, 1]) },
-    },
-  }
+  const largeSeed = makeLargeIndexSeed()
   const { ref, effect } = runQuery(
     ["--json", "--no-content", "--top", "200", "test"],
     largeFixtures,

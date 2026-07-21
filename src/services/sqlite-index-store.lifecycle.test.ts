@@ -95,6 +95,18 @@ it.effect("reopens a migrated file database with its committed data", () => {
     effect.pipe(Effect.provide(layer), Effect.scoped)
 
   return Effect.gen(function* () {
+    const fs = yield* FileSystem
+    yield* Effect.addFinalizer(() =>
+      Effect.forEach(
+        [path, `${path}-shm`, `${path}-wal`],
+        (candidate) =>
+          Effect.gen(function* () {
+            if (yield* fs.exists(candidate)) yield* fs.remove(candidate)
+          }),
+        { discard: true },
+      ).pipe(Effect.orDie),
+    )
+
     yield* run(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient
@@ -112,10 +124,5 @@ it.effect("reopens a migrated file database with its committed data", () => {
       }),
     )
     expect(rows[0]?.model).toBe("reopen-model")
-
-    const fs = yield* FileSystem
-    for (const candidate of [path, `${path}-shm`, `${path}-wal`]) {
-      if (yield* fs.exists(candidate)) yield* fs.remove(candidate)
-    }
-  }).pipe(Effect.provide(NodeServices.layer))
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped)
 })
