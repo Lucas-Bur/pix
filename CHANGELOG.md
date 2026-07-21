@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.22.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.21.0...pix-v0.22.0) (2026-07-21)
+
+
+### Features
+
+* replace flat-file index with SQLite ([adb7bdc](https://github.com/Lucas-Bur/pix/commit/adb7bdcc5ba43a828de2ab1351c97376a145c825))
+
+
+### Bug Fixes
+
+* address SQLite review findings ([9b5ba93](https://github.com/Lucas-Bur/pix/commit/9b5ba93ad8c919c2a66fc143afebc78df5c66eaf))
+* allow better-sqlite3 native build ([738d958](https://github.com/Lucas-Bur/pix/commit/738d958f6dbc16b9b8e1fbe88ac74102e5daf8b5))
+
 ## [0.21.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.20.1...pix-v0.21.0) (2026-07-15)
 
 
