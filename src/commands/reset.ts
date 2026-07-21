@@ -30,8 +30,8 @@ export const resetCommand = Command.make(
       })
 
       const deletedParts = [
-        result.deletedChunks ? "chunks.jsonl" : null,
-        result.deletedVectors ? "vectors.bin" : null,
+        result.deletedChunks ? "chunk rows" : null,
+        result.deletedVectors ? "vector rows" : null,
       ].filter((part): part is string => part !== null)
 
       if (deletedParts.length === 0) {

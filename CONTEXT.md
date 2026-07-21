@@ -4,16 +4,16 @@
 
 ### BM25
 
-Lexical retrieval algorithm scoring chunks by term frequency × inverse document frequency. Corpus statistics (term frequencies, document frequencies, chunk lengths) pre-built at index time, stored in `.pix/bm25.json`. Constants: k1=1.5, b=0.75 (standard Okapi BM25).
+Lexical retrieval algorithm scoring chunks by term frequency × inverse document frequency. Corpus statistics (term frequencies, document frequencies, chunk lengths) are pre-built at index time and stored in `.pix/index.db`. Constants: k1=1.5, b=0.75 (standard Okapi BM25).
 
 ### BM25 Index
 
-Pre-computed BM25 statistics stored in `.pix/bm25.json`: average chunk length, per-term document frequencies, per-chunk term frequencies, per-chunk lengths. Built during `pix index`, deleted on `pix reset`. Survives Phase 3 text removal.
+Pre-computed BM25 statistics stored as schema-validated JSON inside `.pix/index.db`: average chunk length, per-term document frequencies, per-chunk term frequencies, per-chunk lengths. Built during `pix index` and deleted on `pix reset`.
 
 ### Chunk
 
 A piece of source code produced by the chunker. One chunk = N lines of code with overlap.
-Stored as metadata only in one `chunks.jsonl` line. Source text remains in the source file and is loaded only for selected query results. Maximum size is guided by 60 lines (configurable `chunkLines`), with `overlapLines` lines overlapping between consecutive line chunks.
+Stored as one metadata row in `.pix/index.db`. Source text remains in the source file and is loaded only for selected query results. Maximum size is guided by 60 lines (configurable `chunkLines`), with `overlapLines` lines overlapping between consecutive line chunks.
 Line-chunk ID = `sha1(file:startLine).slice(0, 12)`. AST-chunk IDs also include the node's
 start/end row and column so distinct declarations on one line cannot collide.
 Minimum chunk size: 20 characters (configurable `minChunkChars`).
@@ -34,7 +34,7 @@ Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable). Produ
 
 ### Embedding Cache
 
-Content-addressed reuse for embeddings displaced from the active index. Active vectors live only in `vectors.bin` and are reused directly from the current snapshot. `.pix/embedding-cache.jsonl` stores historical non-active vectors keyed by exact embedded-text hash, model, dimensions, and dtype. `pix cache clear` removes this history; it does not remove active vectors.
+Content-addressed reuse for embeddings displaced from the active index. Active and historical vectors live in separate tables inside `.pix/index.db`. Historical entries are keyed by exact embedded-text hash, model, dimensions, and dtype. `pix cache clear` removes only this history.
 
 ### ModelRegistry
 
@@ -75,7 +75,7 @@ Result of `ConfigStore.healConfig()`: `{ config, conflicts }`. The `config` has 
 
 ### ModelMismatchError
 
-`Data.TaggedError` raised at query time when `config.embedder.model` differs from the model recorded in `index-meta.json`. Prevents silent wrong results when config is changed without re-indexing. Contains `configModel` and `indexModel` for actionable error messages. Re-indexing resolves the mismatch.
+`Data.TaggedError` raised at query time when `config.embedder.model` differs from the model recorded in `.pix/index.db`. Prevents silent wrong results when config is changed without re-indexing. Contains `configModel` and `indexModel` for actionable error messages. Re-indexing resolves the mismatch.
 
 ### Scanner
 
@@ -83,10 +83,7 @@ Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, ap
 
 ### IndexStore
 
-Reads/writes the `.pix/` directory: `config.json`, metadata-only `chunks.jsonl`, `files.jsonl`, `vectors.bin`, `index-meta.json`, `bm25.json`, `identifiers.json`, and `embedding-cache.jsonl`.
-`vectors.bin` = flat typed array, row-major, `n × dims` elements, encoded per `dtype` (`fp32` | `fp16` | `q8` | `q4`).
-`index-meta.json` = index metadata: schema version, dtype, dims, model ID, last index timestamp.
-BM25 index built at index time, survives Phase 3 text removal.
+Owns `.pix/index.db`, which contains active chunks and Float32 embedding BLOBs, metadata, file observations, BM25, identifier postings, historical embedding cache, and Effect SQL migration history. Complete streamed replacements run in one SQLite transaction. Editable config and aliases remain files.
 
 ### Core Scope
 
@@ -114,7 +111,7 @@ Fuses N ranked lists by rank position: `Σ weight * 1 / (k + rank_in_path)`. Raw
 
 ### Scorer
 
-A pure scoring function in `src/lib/` that ranks all chunks against a query. BM25 scorer uses pre-built index from `.pix/bm25.json`. Dense scorer uses cosine similarity on embeddings. Each scorer returns `RankedChunk[]`. Adding a scorer means adding a function + wiring it into `Effect.all`.
+A retrieval path producing `RankedChunk[]`. BM25 and identifier scorers are pure functions over pre-built data. Production dense ranking runs in SQLite through sqlite-vector; the pure JavaScript dense scorer remains the exact-reference implementation.
 
 ### Scorer Weight
 
@@ -264,7 +261,7 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 - `pix index` — Incrementally refresh the index. Unchanged files reuse chunk metadata, vectors, BM25 terms, and identifier postings; changed chunks use the embedding cache before inference.
 - `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content]` — Ensure the index is fresh, then run hybrid search. Missing indexes, source changes, and model/dtype changes are repaired automatically. Source text loads only after top-K selection; `--no-content` performs no source reads.
 - `pix status` — Show index statistics
-- `pix reset` — Delete `chunks.jsonl` + `vectors.bin`
+- `pix reset` — Delete the active SQLite index snapshot while retaining historical embeddings
 - `pix cache clear` — Delete the content-addressed embedding cache.
 - `pix config heal` — Validate and repair `.pix/config.json`. Structural heal (fill missing fields from defaults) + coupled validation (model registry check). Prompts for each conflict in human mode; `--json` mode auto-applies defaults for healed conflicts, fails with `ConfigHealError` for unhealed conflicts.
 
@@ -297,9 +294,9 @@ Position state is tracked locally (`state: { value, max }`) since `@clack` only 
 
 **Display flowing into app/services**: Display is composed into the AppLayer via `Layer.mergeAll(AppLayer, cliLayer)` in `src/index.ts`. Services that need operational logging (e.g. `index-project.ts` for scan/chunk/embed progress) use `d.updateInteractive()` or `d.log()`. Embedder GPU fallback uses `d.log(..., "warn")` — no `d.json()` calls in services; all structured output flows through the command layer.
 
-### Flat-file storage (not SQLite)
+### SQLite index storage
 
-MVP uses `.pix/` directory with JSONL + binary. No DB dependency. Reversible for Phase 3+ if incremental indexing demands it.
+Generated index state lives in `.pix/index.db` and evolves through Effect SQL migrations. Ordinary tables hold Float32 embedding BLOBs; sqlite-vector performs exact or optional TurboQuant cosine scans. See ADR-0018.
 
 ### Model cache in `.pix/cache/`
 
@@ -316,7 +313,7 @@ Users add extensions to `skipExtensions` in `config.json` to opt out of indexing
 
 ### Lazy source text and context
 
-`chunks.jsonl` stores no source text or context. Query ranks metadata and vectors first, then reads exact source offsets and requested context only for selected top-K results. The chunk content hash verifies that displayed source produced the ranked embedding. See ADR-0017.
+SQLite stores no source text or context. Query ranks persisted metadata first, then reads exact source offsets and requested context only for selected top-K results. The chunk content hash verifies that displayed source produced the ranked embedding. See ADR-0017.
 
 ### Multi-core search readiness
 
@@ -352,7 +349,7 @@ Returns all files found during FS walk, applying `.gitignore` rules (unless `ign
 
 ### Config
 
-Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip. New fields: `embedder.batchSize` (default 16), `ignoreGitignore` (default false). Updated `ignoredPaths` defaults: removed `.agents`, `.github`; added `.vite-hooks`, `.fallow`.
+Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip. New fields include `embedder.batchSize` (default 16), `ignoreGitignore` (default false), and `vectorSearch` (`mode`: exact/auto/turboquant; `turboQuantThreshold`: default 50000). Updated `ignoredPaths` defaults: removed `.agents`, `.github`; added `.vite-hooks`, `.fallow`.
 
 ### Extension→Processor mapping (Phase 2+)
 

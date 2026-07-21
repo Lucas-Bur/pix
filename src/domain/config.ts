@@ -9,6 +9,14 @@ const EmbedderConfigSchema = Schema.Struct({
   batchSize: Schema.Number,
 })
 
+/** Available SQLite vector scan strategies. */
+const VectorSearchModeSchema = Schema.Literals(["exact", "auto", "turboquant"])
+
+const VectorSearchConfigSchema = Schema.Struct({
+  mode: VectorSearchModeSchema,
+  turboQuantThreshold: Schema.Number,
+})
+
 /**
  * Runtime schema for persisted project configuration. Defines the structure and validation rules
  * for `.pix/config.json`.
@@ -22,6 +30,7 @@ export const ConfigSchema = Schema.Struct({
   ignoredPaths: Schema.Array(Schema.String),
   ignoreGitignore: Schema.Boolean,
   embedder: EmbedderConfigSchema,
+  vectorSearch: VectorSearchConfigSchema,
 })
 
 /** Domain config type inferred from ConfigSchema. */
@@ -54,5 +63,9 @@ export const DEFAULT_CONFIG: Config = {
     device: "auto",
     dtype: "fp32",
     batchSize: 16,
+  },
+  vectorSearch: {
+    mode: "exact",
+    turboQuantThreshold: 50_000,
   },
 }

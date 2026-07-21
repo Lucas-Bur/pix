@@ -14,6 +14,16 @@
 - One command per file: `src/commands/<name>.ts`
 - Co-located tests: `<file>.test.ts` next to source
 
+## CLI Packaging
+
+- Dependencies fully bundled by `vp pack` stay in `devDependencies`; packages imported by the
+  generated `dist` files belong in `dependencies`.
+- Native or platform-selected packages must remain external and be verified through an npm tarball
+  installed in a clean project.
+- Fallow analyses source imports, not Vite+ bundle boundaries, so bundled dev dependencies can appear
+  as `dev dependencies used in production`. Do not move them solely to silence that finding. The PR
+  regression gate is `vp run lint:fallow:ci`; the full `vp run lint:fallow` remains the health report.
+
 ## Simplicity and Derivation
 
 - Prefer less code over defensive abstraction. Add a helper, factory, interface, or type only when it removes real duplication across current call sites.

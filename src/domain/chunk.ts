@@ -14,7 +14,7 @@ export const ChunkLocationSchema = Schema.Struct({
 })
 
 /** Runtime schema for a working chunk before source text is removed for persistence. */
-export const ChunkSchema = Schema.Struct({
+const ChunkSchema = Schema.Struct({
   ...ChunkLocationSchema.fields,
   text: Schema.String,
 })

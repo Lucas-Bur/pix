@@ -7,6 +7,7 @@ import {
   expectJsonEntry,
   expectLogEntry,
   indexFixtures,
+  indexSeed,
   runCommand as makeRunCommand,
 } from "../../tests/test-utils/command.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
@@ -84,7 +85,7 @@ it.effect("pix alias run executes the saved query with runtime overrides", () =>
       const results = (data as { results: readonly unknown[] }).results
       expect(results).toHaveLength(2)
     })
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, indexSeed, displayLayer: layer })))
 })
 
 it.effect("pix run is a short form for pix alias run", () => {
@@ -98,7 +99,7 @@ it.effect("pix run is a short form for pix alias run", () => {
       const results = (data as { results: readonly unknown[] }).results
       expect(results).toHaveLength(2)
     })
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer: layer })))
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, indexSeed, displayLayer: layer })))
 })
 
 it.effect("pix alias run with nonexistent alias reports error", () => {
@@ -118,7 +119,9 @@ it.effect("pix alias run with --copy copies results to clipboard", () => {
     const copied = yield* Ref.get(clipboardRef)
     expect(copied).toContain("src/")
     yield* expectLogEntry(displayRef, { severity: "success", messageIncludes: "Copied" })
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer, clipboardLayer })))
+  }).pipe(
+    Effect.provide(testLayer({ contents: indexFixtures, indexSeed, displayLayer, clipboardLayer })),
+  )
 })
 
 it.effect("pix run --copy copies results to clipboard as short form", () => {
@@ -131,5 +134,7 @@ it.effect("pix run --copy copies results to clipboard as short form", () => {
     const copied = yield* Ref.get(clipboardRef)
     expect(copied).toContain("src/")
     yield* expectLogEntry(displayRef, { severity: "success", messageIncludes: "Copied" })
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, displayLayer, clipboardLayer })))
+  }).pipe(
+    Effect.provide(testLayer({ contents: indexFixtures, indexSeed, displayLayer, clipboardLayer })),
+  )
 })

@@ -89,9 +89,12 @@ export const buildChunkValidationErrors = (
   malformedLines > 0
     ? [
         new ChunkValidationError({
-          message: `Skipped ${malformedLines} malformed chunk line(s) in chunks.jsonl`,
+          message: `Skipped ${malformedLines} malformed persisted chunk record(s)`,
           errors: [
-            { path: "chunks.jsonl", message: `${malformedLines} line(s) failed schema validation` },
+            {
+              path: ".pix/index.db",
+              message: `${malformedLines} record(s) failed schema validation`,
+            },
           ],
         }),
       ]

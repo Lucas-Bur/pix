@@ -9,7 +9,7 @@ export default defineConfig({
     minify: true,
     banner: { js: "#!/usr/bin/env node" },
     deps: {
-      neverBundle: ["@huggingface/transformers"],
+      neverBundle: ["@huggingface/transformers", "@sqliteai/sqlite-vector"],
     },
   },
   test: {

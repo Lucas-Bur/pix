@@ -46,7 +46,7 @@ Concrete adapters implementing the domain ports:
 - `ScannerLive` — `fast-glob` + `.gitignore`-aware scanning
 - `ChunkerLive` — splits source files into Chunks
 - `OnnxEmbedderLive` — ONNX runtime with `Xenova/all-MiniLM-L6-v2`
-- `IndexStoreLive` — flat `chunks.jsonl` + `vectors.bin` + `bm25.json`
+- `SqliteIndexStoreLive` — transactional `.pix/index.db` plus native vector search
 
 Each adapter is an `Effect.Layer` providing its corresponding port tag.
 

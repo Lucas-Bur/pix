@@ -8,13 +8,17 @@ import {
   expectJsonEntry,
   expectLogEntry,
   indexFixtures,
+  indexSeed,
   makeFailingEmbedder,
   runCommand,
 } from "../../tests/test-utils/command.js"
-import { makeChunkJson, TEST_CONFIG_JSON } from "../../tests/test-utils/fixtures.js"
+import {
+  makeEmbedding,
+  makeStoredChunk,
+  TEST_CONFIG_JSON,
+} from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
-import { testLayer } from "../../tests/test-utils/testLayer.js"
-import { DEFAULT_CONFIG } from "../domain/config.js"
+import { testLayer, type TestIndexSeed } from "../../tests/test-utils/testLayer.js"
 import { queryCommand } from "./query.js"
 
 const run = runCommand(queryCommand)
@@ -24,12 +28,16 @@ const resultsOf = (data: unknown): readonly Record<string, unknown>[] => {
   return results as readonly Record<string, unknown>[]
 }
 
-const runQuery = (args: string[], contents: FileTree = indexFixtures) => {
+const runQuery = (
+  args: string[],
+  contents: FileTree = indexFixtures,
+  seed: TestIndexSeed | undefined = contents === indexFixtures ? indexSeed : undefined,
+) => {
   const { ref, layer } = silentDisplay()
   return {
     ref,
     effect: run(["query", ...args]).pipe(
-      Effect.provide(testLayer({ contents, displayLayer: layer })),
+      Effect.provide(testLayer({ contents, displayLayer: layer, indexSeed: seed })),
     ),
   }
 }
@@ -62,6 +70,7 @@ it.effect("pix query --json with failing embedder produces error JSON", () => {
     Effect.provide(
       testLayer({
         contents: indexFixtures,
+        indexSeed,
         embedderLayer: makeFailingEmbedder("embed"),
         displayLayer: layer,
       }),
@@ -83,32 +92,35 @@ it.effect("pix query --json clamps --top below minimum to 1", () => {
 it.effect("pix query --json clamps --top above maximum to 100", () => {
   const largeFixtures: FileTree = {
     ".pix/config.json": TEST_CONFIG_JSON,
-    ".pix/index-meta.json": JSON.stringify({
-      dtype: "fp32",
-      dims: 384,
-      model: DEFAULT_CONFIG.embedder.model,
-      lastIndex: Date.now(),
-    }),
-    ".pix/chunks.jsonl": Array.from({ length: 150 }, (_, i) =>
-      makeChunkJson({
-        id: `chunk${i}`,
-        idx: i,
-        file: `/src/file${i}.ts`,
-        startLine: 1,
-        endLine: 1,
-        text: `content ${i}`,
-      }),
-    ).join("\n"),
-    ".pix/vectors.bin": "\0".repeat(150 * 384 * 4),
-    ".pix/bm25.json": JSON.stringify({
+  }
+  const largeSeed: TestIndexSeed = {
+    chunks: Array.from(
+      { length: 150 },
+      (_, i) =>
+        [
+          makeStoredChunk({
+            id: `chunk${i}`,
+            idx: i,
+            file: `/src/file${i}.ts`,
+            startLine: 1,
+            endLine: 1,
+            text: `content ${i}`,
+          }),
+          makeEmbedding(0),
+        ] as const,
+    ),
+    bm25Index: {
       avgChunkLength: 2,
       chunkLengths: Array.from({ length: 150 }, () => 2),
       docFreqs: { test: 150 },
       chunkTfs: { test: Array.from({ length: 150 }, (_, index) => [index, 1]) },
-    }),
-    ".pix/files.jsonl": "",
+    },
   }
-  const { ref, effect } = runQuery(["--json", "--top", "200", "test"], largeFixtures)
+  const { ref, effect } = runQuery(
+    ["--json", "--no-content", "--top", "200", "test"],
+    largeFixtures,
+    largeSeed,
+  )
   return Effect.gen(function* () {
     yield* effect
     yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
@@ -184,7 +196,9 @@ it.effect("pix query --copy copies all returned formatted results", () => {
   const { ref: clipboardRef, layer: clipboardLayer } = testClipboard()
   return Effect.gen(function* () {
     yield* run(["query", "--copy", "--top", "2", "test"]).pipe(
-      Effect.provide(testLayer({ contents: indexFixtures, displayLayer, clipboardLayer })),
+      Effect.provide(
+        testLayer({ contents: indexFixtures, indexSeed, displayLayer, clipboardLayer }),
+      ),
     )
 
     const copied = yield* Ref.get(clipboardRef)

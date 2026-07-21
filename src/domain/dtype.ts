@@ -6,8 +6,8 @@ export const EmbeddingDtypeSchema = Schema.Literals(["fp32", "fp16", "q8", "q4"]
 /** Domain type inferred from EmbeddingDtypeSchema. */
 export type EmbeddingDtype = typeof EmbeddingDtypeSchema.Type
 
-/** Runtime schema for index metadata persisted to .pix/index-meta.json. */
-export const IndexMetaSchema = Schema.Struct({
+/** Runtime schema for index metadata persisted in `.pix/index.db`. */
+const IndexMetaSchema = Schema.Struct({
   dtype: EmbeddingDtypeSchema,
   dims: Schema.Number,
   model: Schema.String,
@@ -29,7 +29,7 @@ export class DtypeMismatchError extends Data.TaggedError("DtypeMismatchError")<{
 
 /**
  * Failed to decode a binary vector buffer into a Float32Array. Usually indicates a corrupt or
- * truncated vectors.bin file.
+ * malformed vector BLOB.
  */
 export class VectorDecodeError extends Data.TaggedError("VectorDecodeError")<{
   readonly message: string

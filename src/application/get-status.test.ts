@@ -12,7 +12,7 @@ const getStatusLayer = (status: StatusResult) =>
     }),
   )
 
-it.effect("GetStatus.getStatus returns index model from index-meta.json", () =>
+it.effect("GetStatus.getStatus returns the persisted index model", () =>
   Effect.gen(function* () {
     const result = yield* (yield* GetStatus).getStatus()
     expect(result.chunks).toBe(2)
@@ -34,7 +34,7 @@ it.effect("GetStatus.getStatus returns index model from index-meta.json", () =>
   ),
 )
 
-it.effect("GetStatus.getStatus returns empty model when index-meta.json missing", () =>
+it.effect("GetStatus.getStatus returns empty model when no index exists", () =>
   Effect.gen(function* () {
     const result = yield* (yield* GetStatus).getStatus()
     expect(result.model).toBe("")
