@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.23.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.22.0...pix-v0.23.0) (2026-07-24)
+
+
+### Features
+
+* add Effect MCP server ([98b612e](https://github.com/Lucas-Bur/pix/commit/98b612e75bc2a63693693b75a184745c64c441ab))
+
+
+### Bug Fixes
+
+* address MCP review findings ([284c7aa](https://github.com/Lucas-Bur/pix/commit/284c7aa55c061753d75c004f6aa6638ee4e00380))
+
 ## [0.22.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.21.0...pix-v0.22.0) (2026-07-21)
 
 
