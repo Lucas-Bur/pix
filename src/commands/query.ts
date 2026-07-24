@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
 import { Command } from "effect/unstable/cli"
 
 import { reportError } from "../lib/errors/error-format.js"
@@ -10,5 +10,16 @@ import { queryCommandConfig } from "./query-options.js"
  * [--only-path P] [--max-characters N] [--no-content] [--copy]
  */
 export const queryCommand = Command.make("query", queryCommandConfig, (input) =>
-  executeQuery(input).pipe(Effect.catch(reportError)),
+  executeQuery(
+    {
+      queryText: input.queryText,
+      top: input.top,
+      contextLines: input.contextLines,
+      ignorePath: input.ignorePath,
+      onlyPath: input.onlyPath,
+      maxCharacters: Option.getOrUndefined(input.maxCharacters),
+      noContent: input.noContent,
+    },
+    input.copy,
+  ).pipe(Effect.catch(reportError)),
 )

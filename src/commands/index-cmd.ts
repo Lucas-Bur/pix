@@ -1,10 +1,9 @@
 import { Effect, Option } from "effect"
 import { Command, Flag } from "effect/unstable/cli"
 
-import { IndexProject } from "../application/index-project.js"
-import type { IndexResult } from "../application/index-project.js"
+import { runIndex } from "../application/run-index.js"
+import type { IndexRequest, IndexResponse } from "../domain/index.js"
 import { Display } from "../domain/ports.js"
-import type { IndexOptions } from "../domain/ports.js"
 import { reportError } from "../lib/errors/error-format.js"
 
 const splitCsv = (value: string): string[] =>
@@ -20,7 +19,7 @@ const buildIndexOptions = (args: {
   ignorePath: Option.Option<string>
   ignorePaths: Option.Option<string>
   ignoreGitignore: boolean
-}): IndexOptions => {
+}): IndexRequest => {
   const cliSkipExtensions = Option.match(args.skipExtensions, {
     onNone: (): string[] => [],
     onSome: splitCsv,
@@ -36,23 +35,16 @@ const buildIndexOptions = (args: {
     }),
   ]
 
-  const batchSize =
-    Option.isSome(args.batchSize) && args.batchSize.value > 0 ? args.batchSize.value : undefined
-  const chunkConcurrency =
-    Option.isSome(args.chunkConcurrency) && args.chunkConcurrency.value > 0
-      ? args.chunkConcurrency.value
-      : undefined
-
   return {
-    batchSize,
-    chunkConcurrency,
-    skipExtensions: cliSkipExtensions.length > 0 ? cliSkipExtensions : undefined,
-    ignorePaths: cliIgnorePaths.length > 0 ? cliIgnorePaths : undefined,
-    ignoreGitignore: args.ignoreGitignore || undefined,
+    batchSize: Option.getOrUndefined(args.batchSize),
+    chunkConcurrency: Option.getOrUndefined(args.chunkConcurrency),
+    skipExtensions: cliSkipExtensions,
+    ignorePaths: cliIgnorePaths,
+    ignoreGitignore: args.ignoreGitignore,
   }
 }
 
-const emitIndexResult = (d: typeof Display.Service, result: IndexResult): Effect.Effect<void> =>
+const emitIndexResult = (d: typeof Display.Service, result: IndexResponse): Effect.Effect<void> =>
   Effect.gen(function* () {
     yield* d.json({
       chunks: result.status.chunks,
@@ -97,8 +89,7 @@ export const indexCommand = Command.make(
         ignoreGitignore,
       })
 
-      const indexService = yield* IndexProject
-      const result = yield* d.spinner("Indexing project...", indexService.index(opts))
+      const result = yield* d.spinner("Indexing project...", runIndex(opts))
 
       yield* emitIndexResult(d, result)
     }).pipe(Effect.catch(reportError)),

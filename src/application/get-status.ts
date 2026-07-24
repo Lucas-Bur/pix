@@ -3,7 +3,7 @@ import { Context, Effect, Layer } from "effect"
 import type { ChunkValidationError, StoreError } from "../domain/errors.js"
 import { IndexStore } from "../domain/ports.js"
 
-/** Return type for pix status */
+/** Current persisted index status. */
 export interface StatusResult {
   readonly chunks: number
   readonly files: number

@@ -24,10 +24,61 @@ pix query "authentication middleware"
 | `pix init`                   | Create `.pix/config.json` with defaults                                                                                                | `--json`  |
 | `pix index`                  | Scan, chunk, embed, and store project files                                                                                            | `--json`  |
 | `pix query "<text>" [flags]` | Semantic search via cosine similarity (`--top`, `--context-lines`, `--ignore-path`, `--only-path`, `--max-characters`, `--no-content`) | `--json`  |
+| `pix mcp`                    | Run the host-managed MCP stdio server with the same retrieval options as `pix query`                                                   | —         |
 | `pix status`                 | Show index statistics                                                                                                                  | `--json`  |
 | `pix reset`                  | Delete index files (chunks + vectors)                                                                                                  | `--json`  |
 
-All commands support `--json` for structured output on stdout — ideal for piping to AI agents.
+All one-shot commands support `--json` for structured output on stdout — ideal for piping to AI agents.
+
+## MCP Server
+
+The installed `pix` executable includes a local MCP server. An MCP host starts `pix mcp` as a child
+process, communicates over stdio, and stops it by closing stdin. The server uses the host's working
+directory, refreshes that project's index before each query, and does not run as a detached daemon.
+
+The server exposes `query`, `status`, `index`, `alias_list`, `alias_add`, `alias_remove`, and
+`alias_run`. Query and alias-run share the same retrieval options as the CLI. Reset, cache clearing,
+initialization, and config healing are intentionally not exposed through MCP.
+
+After installing pix globally, add it to any MCP client. All clients use the same stdio shape — just the config file location differs.
+
+**Standard format** (`mcpServers`):
+
+| Client         | Config file                           |
+| -------------- | ------------------------------------- |
+| Claude Desktop | `claude_desktop_config.json`          |
+| Cursor         | `.cursor/mcp.json` (project-local)    |
+| Windsurf       | `~/.codeium/windsurf/mcp_config.json` |
+| Cline          | `~/.cline/mcp_settings.json`          |
+
+```json
+{
+  "mcpServers": {
+    "pix": {
+      "command": "pix",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**OpenCode** uses a different key layout — `~/.config/opencode/config.json`:
+
+```json
+{
+  "mcp": {
+    "pix": {
+      "type": "local",
+      "command": ["pix", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Restart the MCP host after changing its configuration. Each workspace gets its own MCP process and uses
+its own `.pix/index.db`. SQLite uses WAL mode, so keeping the MCP connection open does not
+permanently lock the database against normal CLI reads.
 
 ## Agent-Ready Output
 

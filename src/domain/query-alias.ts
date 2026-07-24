@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 
-import { SavedQueryOptionsSchema } from "./query-options.js"
+import { QueryOptionsSchema, SavedQueryOptionsSchema } from "./query.js"
 
 /** Options persisted with a saved query alias. */
 export type QueryAliasOptions = typeof SavedQueryOptionsSchema.Type
@@ -11,8 +11,39 @@ const QueryAliasEntrySchema = Schema.Struct({
   options: SavedQueryOptionsSchema,
 })
 
+/** Structured saved alias shared by CLI and MCP. */
+export const QueryAliasSchema = Schema.Struct({
+  name: Schema.String,
+  ...QueryAliasEntrySchema.fields,
+})
+
+/** Request for creating or replacing a saved query alias. */
+export const AliasAddRequestSchema = Schema.Struct({
+  name: Schema.String,
+  queryText: Schema.String,
+  ...QueryOptionsSchema.fields,
+})
+
+/** Decoded alias add request. */
+export type AliasAddRequest = typeof AliasAddRequestSchema.Type
+
+/** Request identifying one saved alias. */
+export const AliasNameRequestSchema = Schema.Struct({ name: Schema.String })
+
+/** Result returned after removing a saved alias. */
+export const AliasRemoveResponseSchema = Schema.Struct({ removed: Schema.String })
+
+/** Request for running a saved alias with optional query overrides. */
+export const AliasRunRequestSchema = Schema.Struct({
+  aliasName: Schema.String,
+  ...QueryOptionsSchema.fields,
+})
+
+/** Decoded alias run request. */
+export type AliasRunRequest = typeof AliasRunRequestSchema.Type
+
 /** A saved query-only preset. */
-export type QueryAlias = typeof QueryAliasEntrySchema.Type & { readonly name: string }
+export type QueryAlias = typeof QueryAliasSchema.Type
 
 /** On-disk query alias registry stored as `.pix/aliases.json`. */
 export const QueryAliasRegistrySchema = Schema.Record(Schema.String, QueryAliasEntrySchema)
