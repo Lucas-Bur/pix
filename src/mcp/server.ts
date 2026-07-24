@@ -83,36 +83,30 @@ const PixToolkit = Toolkit.make(
   AliasRunTool,
 )
 
+const toToolFailure = <A, E extends { readonly message: string }, R>(
+  effect: Effect.Effect<A, E, R>,
+) => effect.pipe(Effect.mapError((error) => error.message))
+
 const QueryToolHandlersLive = PixToolkit.toLayer(
   Effect.gen(function* () {
     const querySemaphore = yield* Semaphore.make(1)
     return {
       query: (request: typeof QueryRequestSchema.Type) =>
-        querySemaphore.withPermits(1)(
-          runQuery(request).pipe(Effect.mapError((error) => error.message)),
-        ),
+        querySemaphore.withPermits(1)(toToolFailure(runQuery(request))),
       status: () =>
         Effect.gen(function* () {
           const getStatus = yield* GetStatus
-          return yield* getStatus.getStatus().pipe(Effect.mapError((error) => error.message))
+          return yield* toToolFailure(getStatus.getStatus())
         }),
       index: (request: typeof IndexRequestSchema.Type) =>
-        querySemaphore.withPermits(1)(
-          runIndex(request).pipe(Effect.mapError((error) => error.message)),
-        ),
-      alias_list: () => listAliases.pipe(Effect.mapError((error) => error.message)),
+        querySemaphore.withPermits(1)(toToolFailure(runIndex(request))),
+      alias_list: () => toToolFailure(listAliases),
       alias_add: (request: typeof AliasAddRequestSchema.Type) =>
-        querySemaphore.withPermits(1)(
-          addAlias(request).pipe(Effect.mapError((error) => error.message)),
-        ),
+        querySemaphore.withPermits(1)(toToolFailure(addAlias(request))),
       alias_remove: (request: typeof AliasNameRequestSchema.Type) =>
-        querySemaphore.withPermits(1)(
-          removeAlias(request).pipe(Effect.mapError((error) => error.message)),
-        ),
+        querySemaphore.withPermits(1)(toToolFailure(removeAlias(request))),
       alias_run: (request: typeof AliasRunRequestSchema.Type) =>
-        querySemaphore.withPermits(1)(
-          runAlias(request).pipe(Effect.mapError((error) => error.message)),
-        ),
+        querySemaphore.withPermits(1)(toToolFailure(runAlias(request))),
     }
   }),
 )

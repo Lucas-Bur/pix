@@ -2,10 +2,12 @@ import { Schema } from "effect"
 
 import { ChunkValidationErrorSchema } from "./errors.js"
 
+const PositiveInt = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))
+
 /** Transport-independent options for refreshing a pix index. */
 export const IndexRequestSchema = Schema.Struct({
-  batchSize: Schema.optional(Schema.Number),
-  chunkConcurrency: Schema.optional(Schema.Number),
+  batchSize: Schema.optional(PositiveInt),
+  chunkConcurrency: Schema.optional(PositiveInt),
   skipExtensions: Schema.optional(Schema.Array(Schema.String)),
   ignorePaths: Schema.optional(Schema.Array(Schema.String)),
   ignoreGitignore: Schema.optional(Schema.Boolean),

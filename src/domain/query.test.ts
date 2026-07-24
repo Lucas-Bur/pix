@@ -16,3 +16,13 @@ test("a query request applies transport-independent defaults", () => {
     noContent: false,
   })
 })
+
+test("query transport options reject fractional and invalid bounded values", () => {
+  expect(Schema.is(QueryRequestSchema)({ queryText: "test", top: 1.5 })).toBe(false)
+  expect(Schema.is(QueryRequestSchema)({ queryText: "test", contextLines: -1 })).toBe(false)
+  expect(Schema.is(QueryRequestSchema)({ queryText: "test", maxCharacters: 0 })).toBe(false)
+})
+
+test("top remains clampable at the application boundary", () => {
+  expect(Schema.is(QueryRequestSchema)({ queryText: "test", top: 0 })).toBe(true)
+})
