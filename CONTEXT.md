@@ -93,6 +93,24 @@ init, incremental index, self-refreshing query, status, reset, and explicit embe
 
 Token-count heuristic adjusting scorer weights before RRF fusion. Short queries (1-2 tokens) boost BM25 weight; long queries (8+ tokens) boost semantic weight. Default: equal weights. Inlined in `src/application/query-project.ts`.
 
+### Query API
+
+Transport-independent retrieval boundary shared by CLI, saved aliases, and MCP. `QueryRequestSchema`
+defines query text plus retrieval options; `runQuery()` applies shared defaults, refreshes the index,
+runs hybrid retrieval, and applies the character budget. CLI-only presentation controls such as
+`--json` and `--copy` stay outside this API. The CLI renders `QueryResponse`; the MCP adapter returns
+the same structured response through a read-only `query` tool.
+
+### MCP Server
+
+`pix mcp` runs an Effect v4 MCP server over stdio. The MCP host owns its lifecycle: open stdin keeps
+the process alive and EOF interrupts the server scope. The server builds indexing, SQLite, and
+embedding layers once per process and serializes overlapping query tool calls with a semaphore.
+SQLite remains usable from separate CLI processes; its WAL-backed connection does not hold a
+permanent exclusive file lock. Its tools are `query`, `status`, `index`, `alias_list`, `alias_add`,
+`alias_remove`, and `alias_run`; reset, cache clearing, initialization, and config healing remain
+CLI-only.
+
 ### Query Alias
 
 Named query-only preset stored in `.pix/aliases.json` as a flat map keyed by alias name. Each value contains `queryText` plus query options (`top`, `ignorePath`, `onlyPath`, `contextLines`, `maxCharacters`, and `noContent`). Output modes such as JSON and Clipboard Copy are runtime choices, not part of the alias. `pix run <name>` is the short form for `pix alias run <name>`; both execute the same implementation.
@@ -260,6 +278,7 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 - `pix init` — Create `.pix/config.json`. Prompts for model selection (human mode); `--json` uses default model.
 - `pix index` — Incrementally refresh the index. Unchanged files reuse chunk metadata, vectors, BM25 terms, and identifier postings; changed chunks use the embedding cache before inference.
 - `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content]` — Ensure the index is fresh, then run hybrid search. Missing indexes, source changes, and model/dtype changes are repaired automatically. Source text loads only after top-K selection; `--no-content` performs no source reads.
+- `pix mcp` — Run the host-managed MCP stdio server exposing the shared read-only query API.
 - `pix status` — Show index statistics
 - `pix reset` — Delete the active SQLite index snapshot while retaining historical embeddings
 - `pix cache clear` — Delete the content-addressed embedding cache.

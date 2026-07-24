@@ -40,6 +40,8 @@ const main = Effect.gen(function* () {
       return yield* runWith(() => import("./layers/init-layer.js").then((m) => m.InitLayer))
     case "query":
       return yield* runWith(() => import("./layers/query-layer.js").then((m) => m.QueryLayer))
+    case "mcp":
+      return yield* runDefault
     case "index":
       return yield* runWith(() => import("./layers/index-layer.js").then((m) => m.IndexLayer))
     case "bench":

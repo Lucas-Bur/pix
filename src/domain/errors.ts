@@ -1,4 +1,4 @@
-import { Data } from "effect"
+import { Data, Schema } from "effect"
 
 // === Config errors ===
 
@@ -98,6 +98,12 @@ export class ChunkValidationError extends Data.TaggedError("ChunkValidationError
     readonly message: string
   }>
 }> {}
+
+/** Runtime schema for serializing persisted chunk validation failures. */
+export const ChunkValidationErrorSchema = Schema.TaggedStruct("ChunkValidationError", {
+  message: Schema.String,
+  errors: Schema.Array(Schema.Struct({ path: Schema.String, message: Schema.String })),
+})
 
 // === Error union types ===
 

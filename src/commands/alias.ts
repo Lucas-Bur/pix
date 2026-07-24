@@ -1,85 +1,23 @@
 import { Effect, Option } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 
-import { Display, QueryAliasStore } from "../domain/ports.js"
+import { addAlias, getAliasQuery, listAliases, removeAlias } from "../application/query-aliases.js"
+import { Display } from "../domain/ports.js"
 import type { QueryAlias } from "../domain/query-alias.js"
 import { reportError } from "../lib/errors/error-format.js"
 import { executeQuery } from "./execute-query.js"
-import {
-  DEFAULT_CONTEXT_LINES,
-  DEFAULT_TOP_K,
-  queryAliasFlags,
-  queryAliasRunFlags,
-  type QueryCommandInput,
-} from "./query-options.js"
+import { queryAliasFlags, queryAliasRunFlags } from "./query-options.js"
 
 const aliasRunConfig = {
   aliasName: Argument.string("name"),
   ...queryAliasRunFlags,
 }
 
-type AliasRunFlags = Command.Command.Config.Infer<typeof queryAliasRunFlags>
-
 const aliasToRow = (alias: QueryAlias): readonly string[] => [
   alias.name,
   alias.queryText,
   JSON.stringify(alias.options),
 ]
-
-const numberWithFallback = (
-  override: Option.Option<number>,
-  saved: number | undefined,
-  fallback: number,
-): number => Option.getOrUndefined(override) ?? saved ?? fallback
-
-const optionalNumberWithFallback = (
-  override: Option.Option<number>,
-  saved: number | undefined,
-): Option.Option<number> => (Option.isSome(override) ? override : Option.fromUndefinedOr(saved))
-
-const listWithFallback = <T>(
-  override: readonly T[],
-  saved: readonly T[] | undefined,
-): readonly T[] => (override.length > 0 ? override : (saved ?? []))
-
-const buildAliasOptions = ({
-  top,
-  contextLines,
-  ignorePath,
-  onlyPath,
-  maxCharacters,
-  noContent,
-}: {
-  top: Option.Option<number>
-  contextLines: Option.Option<number>
-  ignorePath: readonly string[]
-  onlyPath: readonly string[]
-  maxCharacters: Option.Option<number>
-  noContent: boolean
-}): Record<string, unknown> => ({
-  ...(Option.isSome(top) && { top: top.value }),
-  ...(Option.isSome(contextLines) && { contextLines: contextLines.value }),
-  ...(ignorePath.length > 0 && { ignorePath: [...ignorePath] }),
-  ...(onlyPath.length > 0 && { onlyPath: [...onlyPath] }),
-  ...(Option.isSome(maxCharacters) && { maxCharacters: maxCharacters.value }),
-  ...(noContent && { noContent: true }),
-})
-
-const toQueryInput = (alias: QueryAlias, flags: AliasRunFlags): QueryCommandInput => ({
-  queryText: alias.queryText,
-  top: numberWithFallback(flags.top, alias.options.top, DEFAULT_TOP_K),
-  contextLines: numberWithFallback(
-    flags.contextLines,
-    alias.options.contextLines,
-    DEFAULT_CONTEXT_LINES,
-  ),
-  ignorePath: listWithFallback(flags.ignorePath, alias.options.ignorePath),
-  onlyPath: listWithFallback(flags.onlyPath, alias.options.onlyPath),
-  maxCharacters: optionalNumberWithFallback(flags.maxCharacters, alias.options.maxCharacters),
-  noContent: flags.noContent || alias.options.noContent === true,
-  json: flags.json,
-  copy: flags.copy,
-})
 
 /** CLI command: pix alias add <name> "<query>" [query flags...] */
 const aliasAddCommand = Command.make(
@@ -93,12 +31,16 @@ const aliasAddCommand = Command.make(
   ({ name, queryText, top, contextLines, ignorePath, onlyPath, maxCharacters, noContent }) =>
     Effect.gen(function* () {
       const d = yield* Display
-      const store = yield* QueryAliasStore
-      const alias = yield* store.save(
+      const alias = yield* addAlias({
         name,
         queryText,
-        buildAliasOptions({ top, contextLines, ignorePath, onlyPath, maxCharacters, noContent }),
-      )
+        top: Option.getOrUndefined(top),
+        contextLines: Option.getOrUndefined(contextLines),
+        ignorePath,
+        onlyPath,
+        maxCharacters: Option.getOrUndefined(maxCharacters),
+        noContent,
+      })
       yield* d.json(alias)
       yield* d.log(`Saved alias "${alias.name}"`, "success")
     }).pipe(Effect.catch(reportError)),
@@ -113,8 +55,7 @@ const aliasListCommand = Command.make(
   () =>
     Effect.gen(function* () {
       const d = yield* Display
-      const store = yield* QueryAliasStore
-      const aliases = yield* store.list()
+      const aliases = yield* listAliases
       yield* d.json(aliases)
       if (aliases.length === 0) {
         yield* d.log("No aliases saved", "warn")
@@ -134,9 +75,8 @@ const aliasRemoveCommand = Command.make(
   ({ name }) =>
     Effect.gen(function* () {
       const d = yield* Display
-      const store = yield* QueryAliasStore
-      yield* store.remove(name)
-      yield* d.json({ removed: name })
+      const result = yield* removeAlias({ name })
+      yield* d.json(result)
       yield* d.log(`Removed alias "${name}"`, "success")
     }).pipe(Effect.catch(reportError)),
 )
@@ -144,9 +84,16 @@ const aliasRemoveCommand = Command.make(
 /** Build an alias runner command. Shared by `pix alias run` and top-level `pix run`. */
 const aliasRunCommand = Command.make("run", aliasRunConfig, ({ aliasName, ...flags }) =>
   Effect.gen(function* () {
-    const store = yield* QueryAliasStore
-    const alias = yield* store.get(aliasName)
-    yield* executeQuery(toQueryInput(alias, flags))
+    const request = yield* getAliasQuery({
+      aliasName,
+      top: Option.getOrUndefined(flags.top),
+      contextLines: Option.getOrUndefined(flags.contextLines),
+      ignorePath: flags.ignorePath,
+      onlyPath: flags.onlyPath,
+      maxCharacters: Option.getOrUndefined(flags.maxCharacters),
+      noContent: flags.noContent,
+    })
+    yield* executeQuery(request, flags.copy)
   }).pipe(Effect.catch(reportError)),
 )
 

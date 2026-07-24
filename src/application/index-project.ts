@@ -33,7 +33,7 @@ import { rebuildBm25Index } from "../lib/retrieval/bm25.js"
 import { buildIdentifierIndex, rebuildIdentifierIndex } from "../lib/retrieval/identifier-index.js"
 import type { StatusResult } from "./get-status.js"
 
-export interface IndexResult {
+interface IndexResult {
   readonly success: true
   readonly refresh: "full" | "incremental" | "none"
   readonly status: Omit<StatusResult, "model" | "lastIndex">

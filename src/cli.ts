@@ -1,5 +1,3 @@
-import { createRequire } from "node:module"
-
 import { Effect } from "effect"
 import { Command } from "effect/unstable/cli"
 
@@ -9,15 +7,14 @@ import { cacheCommand } from "./commands/cache.js"
 import { configCommand } from "./commands/config.js"
 import { indexCommand } from "./commands/index-cmd.js"
 import { initCommand } from "./commands/init.js"
+import { mcpCommand } from "./commands/mcp.js"
 import { queryCommand } from "./commands/query.js"
 import { resetCommand } from "./commands/reset.js"
 import { statusCommand } from "./commands/status.js"
 import { ClackDisplayLive } from "./display/clack-display.js"
 import { JsonDisplayLive } from "./display/json-display.js"
 import { Display } from "./domain/ports.js"
-
-const require = createRequire(import.meta.url)
-const VERSION = (require("../package.json") as { version: string }).version
+import { VERSION } from "./version.js"
 
 const rootCommand = Command.make("pix", {}, () =>
   Effect.gen(function* () {
@@ -38,6 +35,7 @@ const pix = rootCommand.pipe(
     aliasCommand,
     runAliasShortcutCommand,
     cacheCommand,
+    mcpCommand,
   ]),
 )
 

@@ -1,36 +1,10 @@
-import { Effect, Option } from "effect"
+import { Effect } from "effect"
 
-import { IndexProject } from "../application/index-project.js"
-import { QueryProject } from "../application/query-project.js"
+import { runQuery } from "../application/run-query.js"
 import { Clipboard, Display } from "../domain/ports.js"
-import type { SearchOptions, SearchResponse } from "../domain/ports.js"
-import { clampTopK } from "../lib/config/validation.js"
-import { applyCharBudget, formatResult, toJsonOutput } from "../lib/formatting/search-output.js"
-import type { QueryCommandInput } from "./query-options.js"
-
-const MIN_TOP_K = 1
-const MAX_TOP_K = 100
-
-const buildSearchOptions = (
-  top: number,
-  ignorePath: readonly string[],
-  onlyPath: readonly string[],
-  contextLines: number,
-  noContent: boolean,
-): { options: SearchOptions; clamped: boolean; rawValue: number } => {
-  const clamped = clampTopK(top, MIN_TOP_K, MAX_TOP_K)
-  return {
-    options: {
-      topK: clamped.value,
-      ...(ignorePath.length > 0 && { ignorePaths: [...ignorePath] }),
-      ...(onlyPath.length > 0 && { onlyPaths: [...onlyPath] }),
-      contextLines,
-      noContent,
-    },
-    clamped: clamped.clamped,
-    rawValue: top,
-  }
-}
+import type { SearchResponse } from "../domain/ports.js"
+import { normalizeQueryRequest, type QueryRequest } from "../domain/query.js"
+import { formatResult, toJsonOutput } from "../lib/formatting/search-output.js"
 
 const renderResults = (
   d: typeof Display.Service,
@@ -66,53 +40,28 @@ const formatClipboardResults = (
   noContent: boolean,
 ): string => results.map((result, i) => formatResult(result, i + 1, noContent)).join("\n\n")
 
-/** Execute a query from parsed CLI input. Shared by `pix query` and alias runners. */
-export const executeQuery = ({
-  queryText,
-  top,
-  contextLines,
-  ignorePath,
-  onlyPath,
-  maxCharacters,
-  noContent,
-  copy,
-}: QueryCommandInput) =>
+/** Execute and present a shared query request through the CLI adapter. */
+export const executeQuery = (request: QueryRequest, copy: boolean) =>
   Effect.gen(function* () {
     const d = yield* Display
-    const indexService = yield* IndexProject
-    const indexResult = yield* indexService.index()
+    const normalized = normalizeQueryRequest(request)
+    const response = yield* d.spinner("Searching...", runQuery(request))
 
-    const {
-      options: searchOptions,
-      clamped,
-      rawValue,
-    } = buildSearchOptions(top, ignorePath, onlyPath, contextLines, noContent)
-
-    if (clamped) {
-      yield* d.log(`topK clamped from ${rawValue} to ${searchOptions.topK}`, "warn")
-    }
-
-    const queryService = yield* QueryProject
-    const searchResponse = yield* d.spinner(
-      "Searching...",
-      queryService.queryProject(queryText, searchOptions),
+    yield* Effect.forEach(response.warnings, (warning) =>
+      d.log(`topK clamped from ${warning.requested} to ${warning.applied}`, "warn"),
     )
 
-    const finalResults = noContent
-      ? searchResponse.results
-      : applyCharBudget(searchResponse.results, Option.getOrUndefined(maxCharacters)).results
-
-    if (copy && finalResults.length > 0) {
+    if (copy && response.results.length > 0) {
       const clipboard = yield* Clipboard
-      yield* clipboard.copy(formatClipboardResults(finalResults, noContent))
-      yield* d.log(`Copied ${finalResults.length} result(s) to clipboard`, "success")
+      yield* clipboard.copy(formatClipboardResults(response.results, normalized.noContent))
+      yield* d.log(`Copied ${response.results.length} result(s) to clipboard`, "success")
     }
 
-    yield* renderResults(d, { ...searchResponse, results: finalResults }, contextLines, noContent, {
-      kind: indexResult.refresh,
-      processedFiles: indexResult.processedFiles,
-      reusedFiles: indexResult.reusedFiles,
-      cacheHits: indexResult.cacheHits,
-      cacheMisses: indexResult.cacheMisses,
-    })
+    yield* renderResults(
+      d,
+      response,
+      normalized.contextLines,
+      normalized.noContent,
+      response.indexRefresh,
+    )
   })
