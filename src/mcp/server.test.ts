@@ -73,6 +73,35 @@ it.effect("the MCP server initializes and exposes the shared query tool", () =>
   }),
 )
 
+it.effect("the MCP query tool publishes guidance and parameter descriptions", () =>
+  Effect.gen(function* () {
+    const client = yield* makeTestClient(defaultApplicationLayer)
+    const tools = yield* client["tools/list"](undefined)
+    const queryTool = tools.tools.find((tool) => tool.name === "query")
+
+    expect(queryTool?.description).toContain("Semantic discovery search")
+    expect(queryTool?.description).toContain("noContent=true")
+    expect(queryTool?.annotations).toMatchObject({
+      title: "Semantic Repository Discovery",
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    })
+    expect(queryTool?.inputSchema).toMatchObject({
+      properties: {
+        queryText: {
+          description: expect.stringContaining("Natural-language description"),
+        },
+      },
+    })
+    expect(queryTool?.inputSchema).toHaveProperty(
+      "properties.noContent.anyOf.0.description",
+      expect.stringContaining("without loading source text"),
+    )
+  }),
+)
+
 it.effect("the MCP query tool returns the shared structured response", () =>
   Effect.gen(function* () {
     const client = yield* makeTestClient(defaultApplicationLayer)

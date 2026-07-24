@@ -17,17 +17,52 @@ export const QUERY_DEFAULTS = {
 
 /** Transport-independent retrieval options. Runtime output controls are excluded. */
 export const QueryOptionsSchema = Schema.Struct({
-  top: Schema.optional(Int),
-  contextLines: Schema.optional(NonNegativeInt),
-  ignorePath: Schema.optional(Schema.Array(Schema.String)),
-  onlyPath: Schema.optional(Schema.Array(Schema.String)),
-  maxCharacters: Schema.optional(PositiveInt),
-  noContent: Schema.optional(Schema.Boolean),
+  top: Schema.optional(
+    Int.pipe(
+      Schema.annotate({ description: "Maximum number of matching source chunks to return." }),
+    ),
+  ),
+  contextLines: Schema.optional(
+    NonNegativeInt.pipe(
+      Schema.annotate({
+        description: "Number of source lines to include before and after each result.",
+      }),
+    ),
+  ),
+  ignorePath: Schema.optional(
+    Schema.Array(Schema.String).pipe(
+      Schema.annotate({ description: "Gitignore-style paths to exclude from the search." }),
+    ),
+  ),
+  onlyPath: Schema.optional(
+    Schema.Array(Schema.String).pipe(
+      Schema.annotate({
+        description: "Gitignore-style paths to include exclusively in the search.",
+      }),
+    ),
+  ),
+  maxCharacters: Schema.optional(
+    PositiveInt.pipe(
+      Schema.annotate({ description: "Maximum number of characters in the complete response." }),
+    ),
+  ),
+  noContent: Schema.optional(
+    Schema.Boolean.pipe(
+      Schema.annotate({
+        description: "Return file and line metadata without loading source text.",
+      }),
+    ),
+  ),
 })
 
 /** Query request accepted by application and protocol adapters. */
 export const QueryRequestSchema = Schema.Struct({
-  queryText: Schema.String,
+  queryText: Schema.String.pipe(
+    Schema.annotate({
+      description:
+        "Natural-language description of the code or documentation to locate. Use concepts when the exact file or symbol is unknown.",
+    }),
+  ),
   ...QueryOptionsSchema.fields,
 })
 

@@ -6,11 +6,33 @@ const PositiveInt = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))
 
 /** Transport-independent options for refreshing a pix index. */
 export const IndexRequestSchema = Schema.Struct({
-  batchSize: Schema.optional(PositiveInt),
-  chunkConcurrency: Schema.optional(PositiveInt),
-  skipExtensions: Schema.optional(Schema.Array(Schema.String)),
-  ignorePaths: Schema.optional(Schema.Array(Schema.String)),
-  ignoreGitignore: Schema.optional(Schema.Boolean),
+  batchSize: Schema.optional(
+    PositiveInt.pipe(Schema.annotate({ description: "Number of chunks embedded in one batch." })),
+  ),
+  chunkConcurrency: Schema.optional(
+    PositiveInt.pipe(
+      Schema.annotate({ description: "Maximum number of chunks processed concurrently." }),
+    ),
+  ),
+  skipExtensions: Schema.optional(
+    Schema.Array(Schema.String).pipe(
+      Schema.annotate({
+        description: "File extensions to skip while indexing, including the leading dot.",
+      }),
+    ),
+  ),
+  ignorePaths: Schema.optional(
+    Schema.Array(Schema.String).pipe(
+      Schema.annotate({ description: "Gitignore-style paths to exclude from indexing." }),
+    ),
+  ),
+  ignoreGitignore: Schema.optional(
+    Schema.Boolean.pipe(
+      Schema.annotate({
+        description: "Ignore .gitignore and .git/info/exclude rules during indexing.",
+      }),
+    ),
+  ),
 })
 
 /** Decoded index refresh request. */

@@ -19,8 +19,12 @@ export const QueryAliasSchema = Schema.Struct({
 
 /** Request for creating or replacing a saved query alias. */
 export const AliasAddRequestSchema = Schema.Struct({
-  name: Schema.String,
-  queryText: Schema.String,
+  name: Schema.String.pipe(
+    Schema.annotate({ description: "Alias name used to address this saved query later." }),
+  ),
+  queryText: Schema.String.pipe(
+    Schema.annotate({ description: "Natural-language query to run when this alias is executed." }),
+  ),
   ...QueryOptionsSchema.fields,
 })
 
@@ -28,14 +32,18 @@ export const AliasAddRequestSchema = Schema.Struct({
 export type AliasAddRequest = typeof AliasAddRequestSchema.Type
 
 /** Request identifying one saved alias. */
-export const AliasNameRequestSchema = Schema.Struct({ name: Schema.String })
+export const AliasNameRequestSchema = Schema.Struct({
+  name: Schema.String.pipe(Schema.annotate({ description: "Name of the saved alias." })),
+})
 
 /** Result returned after removing a saved alias. */
 export const AliasRemoveResponseSchema = Schema.Struct({ removed: Schema.String })
 
 /** Request for running a saved alias with optional query overrides. */
 export const AliasRunRequestSchema = Schema.Struct({
-  aliasName: Schema.String,
+  aliasName: Schema.String.pipe(
+    Schema.annotate({ description: "Name of the saved alias to execute." }),
+  ),
   ...QueryOptionsSchema.fields,
 })
 
