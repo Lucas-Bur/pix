@@ -284,7 +284,7 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 - `pix cache clear` — Delete the content-addressed embedding cache.
 - `pix config heal` — Validate and repair `.pix/config.json`. Structural heal (fill missing fields from defaults) + coupled validation (model registry check). Prompts for each conflict in human mode; `--json` mode auto-applies defaults for healed conflicts, fails with `ConfigHealError` for unhealed conflicts.
 
-All commands support `--json` for agent-ready structured output on stdout. Single JSON object emitted at end of successful operations (e.g. `{ chunks, files, totalLines, byteSize, durationMs }`). Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent).
+All one-shot commands support `--json` for agent-ready structured output on stdout. Single JSON object emitted at end of successful operations (e.g. `{ chunks, files, totalLines, byteSize, durationMs }`). Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent).
 
 ## Relationships
 

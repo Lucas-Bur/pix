@@ -60,7 +60,7 @@ const resolveAliasQuery = (alias: QueryAlias, request: AliasRunRequest): QueryRe
   noContent: request.noContent === true || alias.options.noContent === true,
 })
 
-/** Run a saved alias through the shared query application API. */
+/** Resolve a saved alias into a shared query request. */
 export const getAliasQuery = (request: AliasRunRequest) =>
   Effect.gen(function* () {
     const store = yield* QueryAliasStore

@@ -2,6 +2,10 @@ import { Schema } from "effect"
 
 import { ChunkValidationErrorSchema } from "./errors.js"
 
+const Int = Schema.Number.check(Schema.isInt())
+const PositiveInt = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))
+const NonNegativeInt = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))
+
 /** Defaults shared by every query transport. */
 export const QUERY_DEFAULTS = {
   top: 5,
@@ -13,11 +17,11 @@ export const QUERY_DEFAULTS = {
 
 /** Transport-independent retrieval options. Runtime output controls are excluded. */
 export const QueryOptionsSchema = Schema.Struct({
-  top: Schema.optional(Schema.Number),
-  contextLines: Schema.optional(Schema.Number),
+  top: Schema.optional(Int),
+  contextLines: Schema.optional(NonNegativeInt),
   ignorePath: Schema.optional(Schema.Array(Schema.String)),
   onlyPath: Schema.optional(Schema.Array(Schema.String)),
-  maxCharacters: Schema.optional(Schema.Number),
+  maxCharacters: Schema.optional(PositiveInt),
   noContent: Schema.optional(Schema.Boolean),
 })
 
