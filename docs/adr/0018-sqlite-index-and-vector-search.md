@@ -44,10 +44,8 @@ linker they are nested below the generic package and cannot be resolved from app
 resolve the package returned by `getPlatformPackageName()` from there. Platform packages are not
 declared directly by pix.
 
-`@effect/sql-sqlite-node` remains an external runtime dependency and installs its `better-sqlite3`
-backend transitively. Package managers that block dependency install scripts must explicitly permit
-that native backend; adding platform-specific sqlite-vector dependencies does not solve blocked
-native build scripts.
+`@effect/sql-sqlite-node` remains an external runtime dependency and delegates to Node's built-in
+`node:sqlite` module. No native third-party SQLite package is installed.
 
 Effect, Effect Platform, Clack, and Ignore are bundled build inputs and remain dev dependencies.
 Fallow's source-level dependency analysis cannot observe that bundle boundary, so its corresponding
