@@ -115,14 +115,14 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "Each row selects weights without its validation fold. Validation quality and Shapley contributions use only the excluded fold.",
     "",
-    "| Model | Query form | Strategy | Fold | Weights I/C/B/D | Dev R@20 | Validation R@10 | Validation R@20 | Validation Ctx@4k | Shapley I/C/B/D |",
-    "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
+    "| Model | Query form | Strategy | Fold | Weights I/C/B/D | Dev R@20 | Validation R@5 | Validation R@10 | Validation R@20 | Validation Ctx@4k | Shapley I/C/B/D |",
+    "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
   )
   for (const result of artifact.weightSearch) {
     const weights = formatWeights(result.weights)
     const shapley = CHANNELS.map((channel) => percent(result.shapleyRecallAt20[channel])).join("/")
     lines.push(
-      `| ${result.model} | ${result.queryKind} | ${result.strategy} | ${result.fold} | ${weights} | ${percent(result.development.recallAt20)} | ${percent(result.validation.recallAt10)} | ${percent(result.validation.recallAt20)} | ${percent(result.validation.contextRecallAt4096)} | ${shapley} |`,
+      `| ${result.model} | ${result.queryKind} | ${result.strategy} | ${result.fold} | ${weights} | ${percent(result.development.recallAt20)} | ${percent(result.validation.recallAt5)} | ${percent(result.validation.recallAt10)} | ${percent(result.validation.recallAt20)} | ${percent(result.validation.contextRecallAt4096)} | ${shapley} |`,
     )
   }
 
@@ -132,13 +132,13 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "These deployment candidates are fitted on all available samples only after cross-validation.",
     "",
-    "| Model | Query form | Samples | Weights I/C/B/D | Fit R@20 |",
-    "| --- | --- | ---: | --- | ---: |",
+    "| Model | Query form | Samples | Weights I/C/B/D | Fit R@5 | Fit R@20 |",
+    "| --- | --- | ---: | --- | ---: | ---: |",
   )
   for (const result of artifact.recommendedWeights) {
     const weights = formatWeights(result.weights)
     lines.push(
-      `| ${result.model} | ${result.queryKind} | ${result.samples} | ${weights} | ${percent(result.fitQuality.recallAt20)} |`,
+      `| ${result.model} | ${result.queryKind} | ${result.samples} | ${weights} | ${percent(result.fitQuality.recallAt5)} | ${percent(result.fitQuality.recallAt20)} |`,
     )
   }
 
@@ -153,13 +153,13 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "Each fusion method selects its own positive weights on development samples. Validation metrics are weighted by excluded query count.",
     "",
-    "| Model | Fusion | Strategy | Weights I/C/B/D by fold | Validation R@10 | Validation R@20 | Validation Ctx@4k |",
-    "| --- | --- | --- | --- | ---: | ---: | ---: |",
+    "| Model | Fusion | Strategy | Weights I/C/B/D by fold | Validation R@5 | Validation R@10 | Validation R@20 | Validation Ctx@4k |",
+    "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
   )
   for (const [key, rows] of fusionGroups) {
     const [model, fusion, strategy] = key.split("\0")
     lines.push(
-      `| ${model} | ${fusion} | ${strategy} | ${rows.map((row) => formatWeights(row.weights)).join("; ")} | ${percent(weightedFusionAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedFusionAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedFusionAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
+      `| ${model} | ${fusion} | ${strategy} | ${rows.map((row) => formatWeights(row.weights)).join("; ")} | ${percent(weightedFusionAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedFusionAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedFusionAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedFusionAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
     )
   }
 
@@ -169,12 +169,12 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "Fit-all candidates are descriptive; excluded-fold rows above measure generalization.",
     "",
-    "| Model | Fusion | Samples | Weights I/C/B/D | Fit R@10 | Fit R@20 | Fit Ctx@4k |",
-    "| --- | --- | ---: | --- | ---: | ---: | ---: |",
+    "| Model | Fusion | Samples | Weights I/C/B/D | Fit R@5 | Fit R@10 | Fit R@20 | Fit Ctx@4k |",
+    "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.recommendedFusionWeights) {
     lines.push(
-      `| ${result.model} | ${result.fusion} | ${result.samples} | ${formatWeights(result.weights)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.fitQuality.recallAt20)} | ${percent(result.fitQuality.contextRecallAt4096)} |`,
+      `| ${result.model} | ${result.fusion} | ${result.samples} | ${formatWeights(result.weights)} | ${percent(result.fitQuality.recallAt5)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.fitQuality.recallAt20)} | ${percent(result.fitQuality.contextRecallAt4096)} |`,
     )
   }
 
@@ -184,15 +184,15 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "One router is selected across all query forms using only observable query features, score separation, score geometry, query-term coverage, pairwise cross-channel agreement, and dense confidence. Static and dynamic validation columns use the same fusion method and excluded fold.",
     "",
-    "| Model | Fusion | Strategy | Fold | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
-    "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Model | Fusion | Strategy | Fold | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
+    "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.evidenceRouterSearch) {
     const baseWeights = formatWeights(result.config.baseWeights)
     const staticWeights = formatWeights(result.staticWeights)
     const influences = formatInfluences(result.config)
     lines.push(
-      `| ${result.model} | ${result.fusion} | ${result.strategy} | ${result.fold} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticValidation.recallAt10)} | ${percent(result.validation.recallAt10)} | ${percent(result.staticValidation.recallAt20)} | ${percent(result.validation.recallAt20)} | ${percent(result.staticValidation.contextRecallAt4096)} | ${percent(result.validation.contextRecallAt4096)} |`,
+      `| ${result.model} | ${result.fusion} | ${result.strategy} | ${result.fold} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticValidation.recallAt5)} | ${percent(result.validation.recallAt5)} | ${percent(result.staticValidation.recallAt10)} | ${percent(result.validation.recallAt10)} | ${percent(result.staticValidation.recallAt20)} | ${percent(result.validation.recallAt20)} | ${percent(result.staticValidation.contextRecallAt4096)} | ${percent(result.validation.contextRecallAt4096)} |`,
     )
   }
 
@@ -207,13 +207,13 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "Validation metrics are weighted by each excluded fold's query count.",
     "",
-    "| Model | Fusion | Strategy | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
-    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Model | Fusion | Strategy | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
+    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const [key, rows] of routerGroups) {
     const [model, fusion, strategy] = key.split("\0")
     lines.push(
-      `| ${model} | ${fusion} | ${strategy} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.contextRecallAt4096))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
+      `| ${model} | ${fusion} | ${strategy} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt5))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.contextRecallAt4096))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
     )
   }
 
@@ -223,15 +223,15 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "These candidates are fitted across all query forms only after grouped and repository holdouts have measured generalization.",
     "",
-    "| Model | Fusion | Samples | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
-    "| --- | --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Model | Fusion | Samples | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
+    "| --- | --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.recommendedEvidenceRouters) {
     const baseWeights = formatWeights(result.config.baseWeights)
     const staticWeights = formatWeights(result.staticWeights)
     const influences = formatInfluences(result.config)
     lines.push(
-      `| ${result.model} | ${result.fusion} | ${result.samples} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticQuality.recallAt10)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.staticQuality.recallAt20)} | ${percent(result.fitQuality.recallAt20)} | ${percent(result.staticQuality.contextRecallAt4096)} | ${percent(result.fitQuality.contextRecallAt4096)} |`,
+      `| ${result.model} | ${result.fusion} | ${result.samples} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticQuality.recallAt5)} | ${percent(result.fitQuality.recallAt5)} | ${percent(result.staticQuality.recallAt10)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.staticQuality.recallAt20)} | ${percent(result.fitQuality.recallAt20)} | ${percent(result.staticQuality.contextRecallAt4096)} | ${percent(result.fitQuality.contextRecallAt4096)} |`,
     )
   }
 

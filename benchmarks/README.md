@@ -192,8 +192,11 @@ Score and DBSF; the full profile also includes RRF for milestone comparisons.
 
 Weight selection uses two grouped strategies:
 
-- Grouped 5-fold: intent index modulo five, balanced across all three repositories. The four query
-  representations of an intent never cross folds.
+- Grouped 5-fold: each repository's intent groups are deterministically shuffled with a fixed seed,
+  then assigned to the least-loaded fold for that category, difficulty, and overall sample count. The
+  four query representations of an intent never cross folds, and repository identity is mixed into every
+  fold rather than held out. Rare classes cannot appear in every fold, so they are distributed as evenly
+  as their count permits.
 - Leave-one-repository-out: calibrate on two repositories and validate on the third. This is emitted
   only when multiple repositories are selected in the same run.
 

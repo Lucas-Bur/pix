@@ -113,6 +113,7 @@ export interface ChannelWeights {
 
 /** Aggregate quality objective used for development and holdout evaluation. */
 export interface QualitySummary {
+  readonly recallAt5: number
   readonly recallAt10: number
   readonly recallAt20: number
   readonly contextRecallAt4096: number
@@ -193,7 +194,7 @@ export interface RecommendedEvidenceRouter {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 12
+  readonly schemaVersion: 13
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   readonly generatedAt: string
