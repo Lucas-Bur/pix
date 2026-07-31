@@ -52,6 +52,50 @@ const corpus: PreparedCorpus = {
 
 const zeroChannelCoefficients = { identity: 0, camelcase: 0, bm25: 0, dense: 0 }
 
+const makeEvidenceRouterSamples = () => {
+  const ranked = (target: number, offset: number, separated: boolean) =>
+    Array.from({ length: separated ? 20 : 30 }, (_, rank) => ({
+      chunkIndex: rank === 19 && separated ? target : offset + rank,
+      score: separated && rank === 0 ? 10 : 1,
+    }))
+  const evidenceChunks = Array.from({ length: 100 }, (_, index) => ({
+    ...chunks[0],
+    id: String(index),
+    idx: index,
+    file: `src/evidence-${index}.ts`,
+  }))
+  return [
+    {
+      repository: "fixture",
+      intentId: "fixture-bm25",
+      groupedFold: 0,
+      query: "find lexical target",
+      rankings: {
+        identity: [],
+        camelcase: [],
+        bm25: ranked(90, 0, true),
+        dense: ranked(90, 30, false),
+      },
+      targets: [new Set([90])],
+      chunks: evidenceChunks,
+    },
+    {
+      repository: "fixture",
+      intentId: "fixture-dense",
+      groupedFold: 1,
+      query: "find semantic target",
+      rankings: {
+        identity: [],
+        camelcase: [],
+        bm25: ranked(91, 0, false),
+        dense: ranked(91, 30, true),
+      },
+      targets: [new Set([91])],
+      chunks: evidenceChunks,
+    },
+  ]
+}
+
 describe("retrieval benchmark fixture", () => {
   it("covers every non-empty subset of four channels", () => {
     expect(new Set(RETRIEVAL_VARIANTS).size).toBe(15)
@@ -350,47 +394,7 @@ describe("retrieval benchmark fixture", () => {
   })
 
   it("selects one evidence router across queries with different reliable channels", () => {
-    const ranked = (target: number, offset: number, separated: boolean) =>
-      Array.from({ length: separated ? 20 : 30 }, (_, rank) => ({
-        chunkIndex: rank === 19 && separated ? target : offset + rank,
-        score: separated && rank === 0 ? 10 : 1,
-      }))
-    const evidenceChunks = Array.from({ length: 100 }, (_, index) => ({
-      ...chunks[0],
-      id: String(index),
-      idx: index,
-      file: `src/evidence-${index}.ts`,
-    }))
-    const samples = [
-      {
-        repository: "fixture",
-        intentId: "fixture-bm25",
-        groupedFold: 0,
-        query: "find lexical target",
-        rankings: {
-          identity: [],
-          camelcase: [],
-          bm25: ranked(90, 0, true),
-          dense: ranked(90, 30, false),
-        },
-        targets: [new Set([90])],
-        chunks: evidenceChunks,
-      },
-      {
-        repository: "fixture",
-        intentId: "fixture-dense",
-        groupedFold: 1,
-        query: "find semantic target",
-        rankings: {
-          identity: [],
-          camelcase: [],
-          bm25: ranked(91, 0, false),
-          dense: ranked(91, 30, true),
-        },
-        targets: [new Set([91])],
-        chunks: evidenceChunks,
-      },
-    ]
+    const samples = makeEvidenceRouterSamples()
 
     const result = optimizeEvidenceRouter(
       "fixture",
@@ -400,12 +404,66 @@ describe("retrieval benchmark fixture", () => {
       samples,
       samples,
     )
-
     expect(result.fusion).toBe("dbsf")
     expect(Object.values(result.config.baseWeights).every((weight) => weight > 0)).toBe(true)
-    expect(result.config.scoreInfluence.bm25 + result.config.scoreInfluence.dense).toBeGreaterThan(
+    const influenceNames = [
+      "scoreInfluence",
+      "geometryInfluence",
+      "termCoverageInfluence",
+      "pairwiseAgreementInfluence",
+      "denseConfidenceInfluence",
+      "identifierInfluence",
+      "queryLengthInfluence",
+    ] as const
+    const totalInfluence = influenceNames.reduce(
+      (sum, name) =>
+        sum +
+        Object.values(result.config[name]).reduce(
+          (coefficientSum, value) => coefficientSum + Math.abs(value),
+          0,
+        ),
       0,
     )
+    expect(totalInfluence).toBeGreaterThan(0)
     expect(result.validation.recallAt20).toBeGreaterThan(result.staticValidation.recallAt20)
+  })
+
+  it("keeps router fitting deterministic and independent of validation samples", () => {
+    const development = makeEvidenceRouterSamples()
+    const first = optimizeEvidenceRouter(
+      "fixture",
+      "dbsf",
+      "grouped-5-fold",
+      "1",
+      development,
+      development,
+    )
+    const repeat = optimizeEvidenceRouter(
+      "fixture",
+      "dbsf",
+      "grouped-5-fold",
+      "1",
+      development,
+      development,
+    )
+    const alteredValidation = development.map((sample) => ({
+      ...sample,
+      targets: [new Set([0])],
+    }))
+    const withAlteredValidation = optimizeEvidenceRouter(
+      "fixture",
+      "dbsf",
+      "grouped-5-fold",
+      "1",
+      development,
+      alteredValidation,
+    )
+
+    expect(repeat.config).toEqual(first.config)
+    expect(repeat.development).toEqual(first.development)
+    expect(first.development.recallAt20).toBeGreaterThanOrEqual(first.staticDevelopment.recallAt20)
+    expect(withAlteredValidation.config).toEqual(first.config)
+    expect(withAlteredValidation.development).toEqual(first.development)
+    expect(withAlteredValidation.staticDevelopment).toEqual(first.staticDevelopment)
   })
 })
