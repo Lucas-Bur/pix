@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process"
-import { mkdir, readFile } from "node:fs/promises"
+import { mkdir, readdir, readFile } from "node:fs/promises"
 import path from "node:path"
 import { promisify } from "node:util"
 
@@ -19,7 +19,16 @@ const runGit = (args: readonly string[]): Effect.Effect<string, Error> =>
 /** Load and validate every authored corpus manifest in deterministic filename order. */
 export const loadCorpusManifests = (): Effect.Effect<readonly CorpusManifest[], Error> =>
   Effect.gen(function* () {
-    const names = ["effect-v4.json", "fastapi.json", "fd.json"]
+    const names = yield* Effect.tryPromise({
+      try: () =>
+        readdir(path.resolve("benchmarks/corpus"), { withFileTypes: true }).then((entries) =>
+          entries
+            .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+            .map((entry) => entry.name)
+            .sort(),
+        ),
+      catch: (cause) => new Error("Could not list corpus manifests", { cause }),
+    })
     return yield* Effect.forEach(names, (name) =>
       Effect.tryPromise({
         try: () => readFile(path.resolve("benchmarks/corpus", name), "utf8"),

@@ -95,7 +95,7 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkProfileConfig => {
       return {
         groupedFolds: 5,
         repositoryHoldouts: true,
-        legacyDiagnostics: true,
+        legacyDiagnostics: false,
         fusionMethods: FUSION_METHODS,
         routerFusionMethods: FUSION_METHODS,
       }
