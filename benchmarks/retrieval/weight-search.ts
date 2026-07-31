@@ -11,17 +11,18 @@ import {
 import { fuseRankings } from "./fusion.js"
 import { contextRecallAtBudget, recallAt, reciprocalRank } from "./metrics.js"
 import type { ChannelName, ChannelRankings } from "./ranking.js"
-import type {
-  ChannelWeights,
-  EvidenceRouterSearchResult,
-  FusionMethod,
-  FusionSearchResult,
-  QualitySummary,
-  QueryKind,
-  RecommendedEvidenceRouter,
-  RecommendedFusionWeights,
-  RecommendedWeights,
-  WeightSearchResult,
+import {
+  ROUTER_SEARCH_STRATEGY,
+  type ChannelWeights,
+  type EvidenceRouterSearchResult,
+  type FusionMethod,
+  type FusionSearchResult,
+  type QualitySummary,
+  type QueryKind,
+  type RecommendedEvidenceRouter,
+  type RecommendedFusionWeights,
+  type RecommendedWeights,
+  type WeightSearchResult,
 } from "./types.js"
 
 const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dense"]
@@ -30,10 +31,10 @@ const STATIC_FINE_WEIGHT_LEVELS = Array.from({ length: 11 }, (_, index) => index
 const DYNAMIC_BASE_LEVELS = Array.from({ length: 10 }, (_, index) => (index + 1) / 10)
 const INFLUENCE_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
 const SIGNED_FINE_LEVELS = Array.from({ length: 21 }, (_, index) => (index - 10) / 10)
-const SEARCH_CANDIDATE_DEPTH = 200
-const SEARCH_BEAM_WIDTH = 6
-const SEARCH_PASSES = 2
-const SEARCH_GLOBAL_SCOUTS = 64
+const SEARCH_CANDIDATE_DEPTH = ROUTER_SEARCH_STRATEGY.candidateDepth
+const SEARCH_BEAM_WIDTH = ROUTER_SEARCH_STRATEGY.beamWidth
+const SEARCH_PASSES = ROUTER_SEARCH_STRATEGY.coordinatePasses
+const SEARCH_GLOBAL_SCOUTS = ROUTER_SEARCH_STRATEGY.globalScouts
 const HALTON_PRIMES = [
   2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
   101, 103, 107,

@@ -164,6 +164,8 @@ Schema 13 adds aggregate Recall@5 to quality summaries and reports and makes gro
 assignment independent of manifest question order through a fixed-seed category/difficulty-stratified shuffle.
 Short-profile fusion runs use Relative Score and DBSF; the full profile also runs RRF for milestone
 comparisons.
+Schema 14 records the router search strategy and compute-time breakdown in each artifact, including
+corpus preparation, embedding, retrieval, static fusion search, and evidence-router search duration.
 New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with
 `PIX_BENCH_REPOS`, and cached under `benchmarks/.cache/repos/`. A future Sparse Embedder must be
 implemented and registered in the main package first, then evaluated through the same benchmark
