@@ -241,7 +241,7 @@ Use `fixture` after changing benchmark logic or signal extraction. Use `corpus` 
 manifest, adding a repository, or changing gold targets. Use `develop` during signal iteration because
 it runs MiniLM on all current repositories with grouped 3-fold and DBSF. Use `validate` before deciding
 whether a signal generalizes; it adds grouped 5-fold and LORO. Use `full` for a milestone: it keeps one
-selected model, evaluates Relative Score and DBSF, and emits fit-all candidates plus active diagnostics.
+selected model, evaluates all three fusion methods, and emits fit-all candidates plus active diagnostics.
 
 For every schema, treat grouped and LORO hold-outs as the regression gate and fit-all as the candidate
 preview. Compare dynamic routers with each other to choose the active fusion; compare dynamic with its
@@ -257,12 +257,40 @@ model entry with dimensions, dtype, device, and cache identity, run the adapter 
 verify that embedding-cache keys distinguish the new model.
 
 The regression sequence for a new embedder is `bench:retrieval:fixture`, `bench:retrieval:corpus`,
-`bench:retrieval:smoke`, `bench:retrieval:develop`, and finally `bench:retrieval:validate`. Run `full`
-only for the milestone comparison. Keep all existing models and channels unchanged, compare dense or
+`bench:retrieval:smoke`, `bench:retrieval:develop`, `bench:retrieval:validate`, and finally `full` for
+the milestone comparison. Keep all existing models and channels unchanged, compare dense or
 sparse-only quality, active-fusion recall, context recall, indexing cost, memory, and query latency,
 and preserve the pinned corpora. A new embedder is beneficial only when its hold-out gain justifies
 its local cost; fit-all gains alone are not sufficient. Record unsupported devices or repositories
 explicitly rather than silently changing token limits or corpus preparation for one model.
+
+## Architecture Follow-Up
+
+The benchmark already reuses the main package for chunking, BM25, identifier indexing, identity and
+CamelCase scoring, dense scoring, RRF, model metadata, and embedder creation. It intentionally keeps
+the research router, exact holdout bookkeeping, and score-normalized Relative Score/DBSF experiments
+local while those behaviors are still changing.
+
+The remaining duplication is bounded but real: `benchmarks/retrieval/prepare.ts` rebuilds in-memory
+indexes instead of using `.pix/index.db`, and `benchmarks/retrieval/fusion.ts` contains fusion
+formulas that production does not yet expose. The benchmark needs raw per-channel rankings and exact
+gold resolution, which the current `QueryProject` response does not provide. Moving everything to the
+production query API now would hide the evidence needed for ablations.
+
+The next architectural refactor should introduce an injectable fusion seam in the main package: the
+production default remains RRF, while Relative Score and DBSF become reusable fusion adapters that
+the benchmark can provide and the application can test independently. A diagnostic retrieval snapshot
+from `IndexStore` should expose persisted entries, BM25/identifier data, and per-channel rankings.
+After that seam exists, benchmark preparation can use a temporary SQLite index for production-parity
+tests while manifests continue to own pinned revisions and exact gold targets.
+
+The sparse proposal is GitHub issue #159; issue #15 is the older closed `pix index` E2E issue. Sparse
+retrieval is a medium/high architectural change, not just another model: it needs a sparse output
+type and port, model/cache registration, SQLite migrations for token-weight pairs, a pure sparse
+scorer, fusion wiring, and benchmark regression rows. Issue #159 currently recommends the 67M
+Apache-2.0 OpenSearch v3 Distill ONNX model; the 133M GTE model is above the footprint ceiling. The
+recommended order is to complete the fusion seam first, then implement the sparse channel in the main
+package and evaluate it through the documented regression sequence.
 
 ## Metrics
 
