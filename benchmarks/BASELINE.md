@@ -16,6 +16,21 @@ each static baseline uses the same fusion method as its dynamic counterpart.
 | DBSF           | Grouped 5-fold      |       71.9% |        72.5% |       78.9% |        80.8% |             65.0% |              65.0% |
 | DBSF           | LORO                |       72.5% |        73.1% |       81.1% |        80.8% |             64.7% |              65.8% |
 
+### Fit-All Preview
+
+These candidates are fitted and measured on all 180 query representations. They are useful for
+comparing the eventual deployment candidates, but they are in-sample and do not replace hold-out
+quality.
+
+| Fusion         | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static context@4k | Dynamic context@4k |
+| -------------- | ----------: | -----------: | ----------: | -----------: | ----------------: | -----------------: |
+| Weighted RRF   |       68.1% |        67.5% |       83.1% |        83.6% |             62.8% |              63.3% |
+| Relative score |       73.9% |        74.4% |       84.7% |        85.3% |             63.6% |              64.2% |
+| DBSF           |       74.2% |        73.6% |       83.9% |        83.9% |             64.7% |              66.4% |
+
+Relative-score is also the strongest fit-all dynamic candidate for R@10 and R@20. DBSF has the
+strongest fit-all dynamic context recall. The hold-out rows above remain the decision criterion.
+
 The static columns are controls for measuring the incremental value of score geometry; the dynamic
 columns determine which fusion path is strongest. Among dynamic routers, relative-score leads grouped
 R@10, grouped R@20, grouped context recall, and LORO R@20. DBSF leads LORO R@10, while RRF leads only
