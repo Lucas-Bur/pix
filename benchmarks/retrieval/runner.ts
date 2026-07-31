@@ -121,12 +121,12 @@ const selectManifests = (
   return profile === "smoke" ? manifests.filter((manifest) => manifest.id === "fd") : manifests
 }
 
-const selectModels = (profile: BenchmarkProfile): readonly string[] => {
+const selectModels = (): readonly string[] => {
   const selected = selectValues(process.env.PIX_BENCH_MODELS)
-  const profileModels =
-    profile === "full" ? Object.keys(MODEL_REGISTRY) : ["Xenova/all-MiniLM-L6-v2"]
+  if (selected && selected.size !== 1)
+    throw new Error("PIX_BENCH_MODELS must select exactly one embedding model")
   const models = Object.keys(MODEL_REGISTRY).filter((model) =>
-    selected ? selected.has(model) : profileModels.includes(model),
+    selected ? selected.has(model) : model === "Xenova/all-MiniLM-L6-v2",
   )
   if (selected && models.length !== selected.size) {
     const unknown = [...selected].filter((model) => MODEL_REGISTRY[model] === undefined)
@@ -232,7 +232,7 @@ export const runRetrievalBenchmark = (
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
     const manifests = selectManifests(yield* loadCorpusManifests(), profile)
-    const models = selectModels(profile)
+    const models = selectModels()
     const repositories: BenchmarkArtifact["repositories"][number][] = []
     const embeddingRuns: BenchmarkArtifact["embeddingRuns"][number][] = []
     const measurements: QueryMeasurement[] = []
