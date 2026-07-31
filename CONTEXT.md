@@ -155,6 +155,8 @@ Schema 10 adds query-term coverage signals: BM25 IDF-weighted coverage, exact fu
 coverage, and CamelCase component coverage. These are mapped to their corresponding lexical channels;
 dense receives a neutral value. Schema-10 artifacts include the two active fusion methods and fit-all
 preview metrics in addition to grouped and repository holdouts.
+Schema 11 replaces aggregate cross-channel agreement with symmetric pairwise agreement for all six
+channel pairs at K=5, 10, and 20, evaluated with the active Relative Score and DBSF fusions.
 Current active fusion runs use Relative Score and DBSF; RRF remains historical reference data only.
 New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with
 `PIX_BENCH_REPOS`, and cached under `benchmarks/.cache/repos/`. A future Sparse Embedder must be

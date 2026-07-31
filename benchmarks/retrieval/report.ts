@@ -45,7 +45,7 @@ const formatInfluences = (config: EvidenceRouterConfig): string =>
     `S:${formatCoefficients(config.scoreInfluence)}`,
     `G:${formatCoefficients(config.geometryInfluence)}`,
     `T:${formatCoefficients(config.termCoverageInfluence)}`,
-    `A:${formatCoefficients(config.agreementInfluence)}`,
+    `P:${formatCoefficients(config.pairwiseAgreementInfluence)}`,
     `I:${formatCoefficients(config.identifierInfluence)}`,
     `L:${formatCoefficients(config.queryLengthInfluence)}`,
   ].join("; ")
@@ -181,9 +181,9 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Evidence Router Holdouts",
     "",
-    "One router is selected across all query forms using only observable query features, score separation, score geometry, query-term coverage, and cross-channel agreement. Static and dynamic validation columns use the same fusion method and excluded fold.",
+    "One router is selected across all query forms using only observable query features, score separation, score geometry, query-term coverage, and pairwise cross-channel agreement. Static and dynamic validation columns use the same fusion method and excluded fold.",
     "",
-    "| Model | Fusion | Strategy | Fold | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/Agreement/Identifier/Length | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
+    "| Model | Fusion | Strategy | Fold | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/PairwiseAgreement/Identifier/Length | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
     "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.evidenceRouterSearch) {
@@ -222,7 +222,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "These candidates are fitted across all query forms only after grouped and repository holdouts have measured generalization.",
     "",
-    "| Model | Fusion | Samples | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/Agreement/Identifier/Length | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
+    "| Model | Fusion | Samples | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/PairwiseAgreement/Identifier/Length | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
     "| --- | --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.recommendedEvidenceRouters) {

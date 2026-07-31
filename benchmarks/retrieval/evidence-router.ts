@@ -5,11 +5,9 @@ import { tokenize } from "../../src/lib/retrieval/tokenize.js"
 import type { ChannelName, ChannelRankings } from "./ranking.js"
 import type { ChannelWeights } from "./types.js"
 
-const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dense"]
 const SCORE_REFERENCE_RANK = 9
-const AGREEMENT_SOURCE_DEPTH = 5
-const AGREEMENT_TARGET_DEPTH = 20
 const SCORE_GEOMETRY_DEPTH = 20
+const PAIRWISE_AGREEMENT_DEPTHS = [5, 10, 20] as const
 
 /** Query-term coverage measured independently for the lexical and identifier channels. */
 export interface QueryTermCoverage {
@@ -31,11 +29,21 @@ export interface ScoreGeometryEvidence {
   readonly confidence: number
 }
 
+/** Symmetric agreement between each pair of physical retrieval channels. */
+export interface PairwiseAgreementEvidence {
+  readonly identityCamelcase: number
+  readonly identityBm25: number
+  readonly identityDense: number
+  readonly camelcaseBm25: number
+  readonly camelcaseDense: number
+  readonly bm25Dense: number
+}
+
 /** Scale-independent diagnostics derived from one channel's ranked results. */
 export interface ChannelEvidence {
   readonly available: boolean
   readonly scoreSeparation: number
-  readonly agreement: number
+  readonly pairwiseAgreement: number
   readonly scoreGeometry: ScoreGeometryEvidence
   readonly termCoverage: number
 }
@@ -46,6 +54,7 @@ export interface RoutingEvidence {
   readonly identifierLikelihood: number
   readonly queryLengthSignal: number
   readonly termCoverage: QueryTermCoverage
+  readonly pairwiseAgreement: PairwiseAgreementEvidence
   readonly channels: Readonly<Record<ChannelName, ChannelEvidence>>
 }
 
@@ -55,7 +64,7 @@ export interface EvidenceRouterConfig {
   readonly scoreInfluence: ChannelCoefficients
   readonly geometryInfluence: ChannelCoefficients
   readonly termCoverageInfluence: ChannelCoefficients
-  readonly agreementInfluence: ChannelCoefficients
+  readonly pairwiseAgreementInfluence: ChannelCoefficients
   readonly identifierInfluence: ChannelCoefficients
   readonly queryLengthInfluence: ChannelCoefficients
 }
@@ -191,26 +200,61 @@ const scoreGeometry = (ranking: ChannelRankings[ChannelName]): ScoreGeometryEvid
   }
 }
 
-const channelAgreement = (channel: ChannelName, rankings: ChannelRankings): number => {
-  const source = rankings[channel].slice(0, AGREEMENT_SOURCE_DEPTH)
-  if (source.length === 0) return 0
-  const peers = CHANNELS.filter((candidate) => candidate !== channel).map((candidate) =>
-    rankings[candidate].slice(0, AGREEMENT_TARGET_DEPTH),
-  )
+const directionalAgreement = (
+  source: ChannelRankings[ChannelName],
+  target: ChannelRankings[ChannelName],
+  depth: number,
+): number => {
+  const sourceTop = source.slice(0, depth)
+  const targetTop = target.slice(0, depth)
+  if (sourceTop.length === 0 || targetTop.length === 0) return 0
   let possible = 0
   let agreement = 0
-  for (let sourceRank = 0; sourceRank < source.length; sourceRank++) {
+  for (let sourceRank = 0; sourceRank < sourceTop.length; sourceRank++) {
     const sourceWeight = 1 / (sourceRank + 1)
     possible += sourceWeight
-    let bestPeerRank: number | null = null
-    for (const peer of peers) {
-      const peerRank = peer.findIndex((entry) => entry.chunkIndex === source[sourceRank].chunkIndex)
-      if (peerRank >= 0 && (bestPeerRank === null || peerRank < bestPeerRank))
-        bestPeerRank = peerRank
-    }
-    if (bestPeerRank !== null) agreement += sourceWeight / (bestPeerRank + 1)
+    const targetRank = targetTop.findIndex(
+      (entry) => entry.chunkIndex === sourceTop[sourceRank].chunkIndex,
+    )
+    if (targetRank >= 0) agreement += sourceWeight / (targetRank + 1)
   }
   return possible === 0 ? 0 : agreement / possible
+}
+
+const pairAgreement = (
+  left: ChannelRankings[ChannelName],
+  right: ChannelRankings[ChannelName],
+): number =>
+  PAIRWISE_AGREEMENT_DEPTHS.reduce(
+    (sum, depth) =>
+      sum +
+      (directionalAgreement(left, right, depth) + directionalAgreement(right, left, depth)) / 2,
+    0,
+  ) / PAIRWISE_AGREEMENT_DEPTHS.length
+
+const buildPairwiseAgreement = (rankings: ChannelRankings): PairwiseAgreementEvidence => ({
+  identityCamelcase: pairAgreement(rankings.identity, rankings.camelcase),
+  identityBm25: pairAgreement(rankings.identity, rankings.bm25),
+  identityDense: pairAgreement(rankings.identity, rankings.dense),
+  camelcaseBm25: pairAgreement(rankings.camelcase, rankings.bm25),
+  camelcaseDense: pairAgreement(rankings.camelcase, rankings.dense),
+  bm25Dense: pairAgreement(rankings.bm25, rankings.dense),
+})
+
+const channelPairwiseAgreement = (
+  channel: ChannelName,
+  pairwise: PairwiseAgreementEvidence,
+): number => {
+  switch (channel) {
+    case "identity":
+      return (pairwise.identityCamelcase + pairwise.identityBm25 + pairwise.identityDense) / 3
+    case "camelcase":
+      return (pairwise.identityCamelcase + pairwise.camelcaseBm25 + pairwise.camelcaseDense) / 3
+    case "bm25":
+      return (pairwise.identityBm25 + pairwise.camelcaseBm25 + pairwise.bm25Dense) / 3
+    case "dense":
+      return (pairwise.identityDense + pairwise.camelcaseDense + pairwise.bm25Dense) / 3
+  }
 }
 
 /** Derive scale-independent confidence and agreement signals from one query's channel rankings. */
@@ -221,6 +265,7 @@ export const buildRoutingEvidence = (
 ): RoutingEvidence => {
   const tokenCount = tokenize(query).length
   const identifierLikelihood = query !== "" && !/\s/u.test(query) ? 1 : 0
+  const pairwiseAgreement = buildPairwiseAgreement(rankings)
   const channelTermCoverage = (channel: ChannelName): number => {
     switch (channel) {
       case "identity":
@@ -236,7 +281,7 @@ export const buildRoutingEvidence = (
   const channelEvidence = (channel: ChannelName): ChannelEvidence => ({
     available: rankings[channel].length > 0,
     scoreSeparation: scoreSeparation(rankings[channel]),
-    agreement: channelAgreement(channel, rankings),
+    pairwiseAgreement: channelPairwiseAgreement(channel, pairwiseAgreement),
     scoreGeometry: scoreGeometry(rankings[channel]),
     termCoverage: channelTermCoverage(channel),
   })
@@ -245,6 +290,7 @@ export const buildRoutingEvidence = (
     identifierLikelihood,
     queryLengthSignal: clamp((tokenCount - 2) / 6),
     termCoverage,
+    pairwiseAgreement,
     channels: {
       identity: channelEvidence("identity"),
       camelcase: channelEvidence("camelcase"),
@@ -264,8 +310,8 @@ export const routeWithEvidence = (
     if (!channelEvidence.available) return 0
     const scoreFactor =
       1 - config.scoreInfluence[channel] * (1 - channelEvidence.scoreSeparation) * 0.75
-    const agreementFactor =
-      1 - config.agreementInfluence[channel] * (1 - channelEvidence.agreement) * 0.5
+    const pairwiseAgreementFactor =
+      1 - config.pairwiseAgreementInfluence[channel] * (1 - channelEvidence.pairwiseAgreement) * 0.5
     const geometryFactor =
       1 +
       config.geometryInfluence[channel] * (2 * channelEvidence.scoreGeometry.confidence - 1) * 0.5
@@ -280,7 +326,7 @@ export const routeWithEvidence = (
       scoreFactor *
       geometryFactor *
       termCoverageFactor *
-      agreementFactor *
+      pairwiseAgreementFactor *
       identifierFactor *
       lengthFactor
     )

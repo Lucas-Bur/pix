@@ -219,6 +219,9 @@ Schema 10 adds query-term coverage: BM25 coverage weighted by term IDF, exact fu
 coverage, and CamelCase constituent coverage. Each maps to the corresponding lexical channel, while
 dense receives a neutral term-coverage value. Schema-10 reports include hold-outs and fit-all previews
 for the two active fusion methods.
+Schema 11 replaces the former aggregate agreement signal with symmetric pairwise agreement across all
+six channel pairs, averaged over K=5, 10, and 20. The active full profile evaluates this signal with
+Relative Score and DBSF.
 
 ## Operating Procedure
 
