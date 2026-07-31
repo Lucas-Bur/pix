@@ -1,3 +1,6 @@
+import type { IdentifierIndexMaps } from "../../src/domain/identifier-index.js"
+import type { Bm25Index } from "../../src/domain/ports.js"
+import { splitIdentifier } from "../../src/lib/parsing/split-identifier.js"
 import { tokenize } from "../../src/lib/retrieval/tokenize.js"
 import type { ChannelName, ChannelRankings } from "./ranking.js"
 import type { ChannelWeights } from "./types.js"
@@ -7,6 +10,13 @@ const SCORE_REFERENCE_RANK = 9
 const AGREEMENT_SOURCE_DEPTH = 5
 const AGREEMENT_TARGET_DEPTH = 20
 const SCORE_GEOMETRY_DEPTH = 20
+
+/** Query-term coverage measured independently for the lexical and identifier channels. */
+export interface QueryTermCoverage {
+  readonly bm25Idf: number
+  readonly identity: number
+  readonly camelcase: number
+}
 
 /** Normalized shape measurements derived from one channel's top score curve. */
 export interface ScoreGeometryEvidence {
@@ -27,6 +37,7 @@ export interface ChannelEvidence {
   readonly scoreSeparation: number
   readonly agreement: number
   readonly scoreGeometry: ScoreGeometryEvidence
+  readonly termCoverage: number
 }
 
 /** Observable query and channel evidence available before score or rank fusion. */
@@ -34,6 +45,7 @@ export interface RoutingEvidence {
   readonly tokenCount: number
   readonly identifierLikelihood: number
   readonly queryLengthSignal: number
+  readonly termCoverage: QueryTermCoverage
   readonly channels: Readonly<Record<ChannelName, ChannelEvidence>>
 }
 
@@ -42,6 +54,7 @@ export interface EvidenceRouterConfig {
   readonly baseWeights: ChannelWeights
   readonly scoreInfluence: ChannelCoefficients
   readonly geometryInfluence: ChannelCoefficients
+  readonly termCoverageInfluence: ChannelCoefficients
   readonly agreementInfluence: ChannelCoefficients
   readonly identifierInfluence: ChannelCoefficients
   readonly queryLengthInfluence: ChannelCoefficients
@@ -56,6 +69,43 @@ export interface ChannelCoefficients {
 }
 
 const clamp = (value: number): number => Math.max(0, Math.min(1, value))
+
+const ZERO_TERM_COVERAGE: QueryTermCoverage = { bm25Idf: 0, identity: 0, camelcase: 0 }
+
+const idf = (documentCount: number, documentFrequency: number): number =>
+  Math.log(1 + (documentCount - documentFrequency + 0.5) / (documentFrequency + 0.5))
+
+/** Build query-term coverage signals from the same indexes used by the retrieval channels. */
+export const buildQueryTermCoverage = (
+  query: string,
+  bm25Index: Bm25Index,
+  identifierIndex: IdentifierIndexMaps,
+): QueryTermCoverage => {
+  const terms = [...new Set(tokenize(query))]
+  if (terms.length === 0) return ZERO_TERM_COVERAGE
+
+  const documentCount = bm25Index.chunkLengths.length
+  const totalIdf = terms.reduce(
+    (sum, term) => sum + idf(documentCount, bm25Index.docFreqs[term] ?? 0),
+    0,
+  )
+  const coveredIdf = terms.reduce(
+    (sum, term) =>
+      sum +
+      (bm25Index.docFreqs[term] === undefined ? 0 : idf(documentCount, bm25Index.docFreqs[term])),
+    0,
+  )
+  const camelcaseTerms = [...new Set(splitIdentifier(query))]
+  const coveredCamelcaseTerms = camelcaseTerms.filter(
+    (term) => (identifierIndex.split[term]?.length ?? 0) > 0,
+  ).length
+
+  return {
+    bm25Idf: totalIdf === 0 ? 0 : coveredIdf / totalIdf,
+    identity: identifierIndex.exact[query.toLowerCase()] === undefined ? 0 : 1,
+    camelcase: camelcaseTerms.length === 0 ? 0 : coveredCamelcaseTerms / camelcaseTerms.length,
+  }
+}
 
 const scoreSeparation = (ranking: ChannelRankings[ChannelName]): number => {
   if (ranking.length === 0) return 0
@@ -164,19 +214,37 @@ const channelAgreement = (channel: ChannelName, rankings: ChannelRankings): numb
 }
 
 /** Derive scale-independent confidence and agreement signals from one query's channel rankings. */
-export const buildRoutingEvidence = (query: string, rankings: ChannelRankings): RoutingEvidence => {
+export const buildRoutingEvidence = (
+  query: string,
+  rankings: ChannelRankings,
+  termCoverage: QueryTermCoverage = ZERO_TERM_COVERAGE,
+): RoutingEvidence => {
   const tokenCount = tokenize(query).length
   const identifierLikelihood = query !== "" && !/\s/u.test(query) ? 1 : 0
+  const channelTermCoverage = (channel: ChannelName): number => {
+    switch (channel) {
+      case "identity":
+        return termCoverage.identity
+      case "camelcase":
+        return termCoverage.camelcase
+      case "bm25":
+        return termCoverage.bm25Idf
+      case "dense":
+        return 0.5
+    }
+  }
   const channelEvidence = (channel: ChannelName): ChannelEvidence => ({
     available: rankings[channel].length > 0,
     scoreSeparation: scoreSeparation(rankings[channel]),
     agreement: channelAgreement(channel, rankings),
     scoreGeometry: scoreGeometry(rankings[channel]),
+    termCoverage: channelTermCoverage(channel),
   })
   return {
     tokenCount,
     identifierLikelihood,
     queryLengthSignal: clamp((tokenCount - 2) / 6),
+    termCoverage,
     channels: {
       identity: channelEvidence("identity"),
       camelcase: channelEvidence("camelcase"),
@@ -201,6 +269,8 @@ export const routeWithEvidence = (
     const geometryFactor =
       1 +
       config.geometryInfluence[channel] * (2 * channelEvidence.scoreGeometry.confidence - 1) * 0.5
+    const termCoverageFactor =
+      1 + config.termCoverageInfluence[channel] * (2 * channelEvidence.termCoverage - 1) * 0.5
     const identifierFactor =
       1 + config.identifierInfluence[channel] * (2 * evidence.identifierLikelihood - 1) * 0.5
     const lengthFactor =
@@ -209,6 +279,7 @@ export const routeWithEvidence = (
       config.baseWeights[channel] *
       scoreFactor *
       geometryFactor *
+      termCoverageFactor *
       agreementFactor *
       identifierFactor *
       lengthFactor

@@ -190,6 +190,10 @@ Schema 9's score geometry summarizes top-1/top-2, top-1/top-3, top-1/top-10, and
 normalized score-curve area, plateau width, entropy, and effective candidate count. These components
 form one scale-independent channel-confidence value; the router learns one non-negative geometry
 influence coefficient per channel. The raw score curve is never compared across channels.
+Schema 10 adds query-term coverage: BM25 coverage weighted by term IDF, exact full-identifier
+coverage, and CamelCase constituent coverage. Each maps to the corresponding lexical channel, while
+dense receives a neutral term-coverage value. Schema-10 reports include hold-outs and fit-all previews
+for all three fusion methods.
 
 ## Metrics
 

@@ -151,6 +151,10 @@ Schema 9 adds a composite score-geometry confidence signal to that linear router
 top-score gaps, score-curve area, plateau width, entropy, and effective candidate count. The `full`
 profile evaluates the resulting router with RRF, relative-score, and DBSF while smaller profiles stay
 on DBSF.
+Schema 10 adds query-term coverage signals: BM25 IDF-weighted coverage, exact full-identifier
+coverage, and CamelCase component coverage. These are mapped to their corresponding lexical channels;
+dense receives a neutral value. Schema-10 artifacts include all three fusion methods and fit-all
+preview metrics in addition to grouped and repository holdouts.
 The router uses only runtime-observable query length and identifier shape, within-channel score
 separation, channel availability, and cross-channel rank agreement. Raw scores from different
 channels are never compared. A deterministic coarse-to-fine beam search refines positive dynamic base weights (minimum 0.1) and

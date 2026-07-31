@@ -9,6 +9,7 @@ import type { BoundEmbedder } from "../../src/domain/ports.js"
 import { createAutoBoundEmbedder } from "../../src/services/embedder.js"
 import { loadCorpusManifests, prepareRepository } from "./corpus.js"
 import { loadEmbeddingCache, writeEmbeddingCache } from "./embedding-cache.js"
+import { buildQueryTermCoverage } from "./evidence-router.js"
 import { FUSION_METHODS } from "./fusion.js"
 import {
   contextRecallAtBudget,
@@ -343,6 +344,11 @@ export const runRetrievalBenchmark = (
             rankings,
             targets,
             chunks: corpus.chunks,
+            termCoverage: buildQueryTermCoverage(
+              entry.query,
+              corpus.bm25Index,
+              corpus.identifierIndex,
+            ),
           }
           group.samples.push(sample)
           sampleGroups.set(groupKey, group)
@@ -502,7 +508,7 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 9,
+      schemaVersion: 10,
       benchmarkProfile: profile,
       generatedAt: new Date().toISOString(),
       chunkConfig: {
