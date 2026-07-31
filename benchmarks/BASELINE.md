@@ -1,5 +1,26 @@
 # Preliminary Retrieval Baseline
 
+## Schema 8: Dynamic DBSF Weights
+
+Schema 8 changes only the fusion operation used by the stable schema-5 evidence router. Static and
+dynamic weights are now both selected and evaluated with DBSF. Query length, identifier shape, score
+separation, channel availability, aggregate cross-channel agreement, the linear multiplicative
+kernel, and the positive dynamic base floor remain unchanged.
+
+| Validation strategy | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static context@4k | Dynamic context@4k |
+| ------------------- | ----------: | -----------: | ----------: | -----------: | ----------------: | -----------------: |
+| Grouped 3-fold      |       73.1% |        73.1% |       80.0% |        80.3% |             64.4% |              63.9% |
+| Grouped 5-fold      |       71.9% |        72.5% |       78.9% |        80.8% |             65.0% |              65.0% |
+| Leave-one-repo-out  |       72.5% |        73.1% |       81.1% |        80.3% |             64.7% |              64.2% |
+| Fit all 180 queries |       74.2% |        73.6% |       83.9% |        83.9% |             64.7% |              64.7% |
+
+Dynamic DBSF improves grouped 5-fold R@10 by 0.6 points and R@20 by 1.9 points without changing 4k
+context recall. Repository generalization is mixed: R@10 improves by 0.6 points, while R@20 loses 0.8
+and context recall loses 0.5 points. Fold-selected coefficients remain variable, and the fit-all
+candidate does not improve static quality. Schema 8 therefore validates DBSF as a viable dynamic
+fusion path but does not justify production promotion. Schema 9 should test score-geometry confidence
+signals against this DBSF baseline.
+
 ## Schema 7: Static Fusion Methods
 
 Schema 7 restores the stable schema-5 evidence kernel and compares three fusion algorithms using the

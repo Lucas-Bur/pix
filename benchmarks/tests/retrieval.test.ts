@@ -17,12 +17,13 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.repositories.length).toBeGreaterThan(0)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(7)
+    expect(artifact.schemaVersion).toBe(8)
     expect(artifact.fusionSearch.length).toBe(
       artifact.models.length * fusionMethods * holdoutsPerModel,
     )
     expect(artifact.recommendedFusionWeights.length).toBe(artifact.models.length * fusionMethods)
     expect(artifact.evidenceRouterSearch.length).toBe(artifact.models.length * holdoutsPerModel)
+    expect(artifact.evidenceRouterSearch.every((row) => row.fusion === "dbsf")).toBe(true)
     expect(artifact.recommendedEvidenceRouters.length).toBe(artifact.models.length)
     expect(artifact.weightSearch.length === 0).toBe(profile !== "full")
     expect(artifact.recommendedWeights.length === 0).toBe(profile !== "full")

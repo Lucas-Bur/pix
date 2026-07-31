@@ -167,6 +167,7 @@ export interface RecommendedFusionWeights {
 /** One holdout evaluation of a router selected from query and channel evidence. */
 export interface EvidenceRouterSearchResult {
   readonly model: string
+  readonly fusion: FusionMethod
   readonly strategy: ValidationStrategy
   readonly fold: string
   readonly developmentQueries: number
@@ -182,6 +183,7 @@ export interface EvidenceRouterSearchResult {
 /** Evidence-router candidate fitted on all samples after holdout evaluation. */
 export interface RecommendedEvidenceRouter {
   readonly model: string
+  readonly fusion: FusionMethod
   readonly samples: number
   readonly staticWeights: ChannelWeights
   readonly config: EvidenceRouterConfig
@@ -191,7 +193,7 @@ export interface RecommendedEvidenceRouter {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 7
+  readonly schemaVersion: 8
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   readonly generatedAt: string

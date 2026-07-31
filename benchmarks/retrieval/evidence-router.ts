@@ -14,7 +14,7 @@ export interface ChannelEvidence {
   readonly agreement: number
 }
 
-/** Observable query and channel evidence available before RRF fusion. */
+/** Observable query and channel evidence available before score or rank fusion. */
 export interface RoutingEvidence {
   readonly tokenCount: number
   readonly identifierLikelihood: number
@@ -93,7 +93,7 @@ export const buildRoutingEvidence = (query: string, rankings: ChannelRankings): 
   }
 }
 
-/** Calculate per-query RRF weights from observable evidence and an interpretable router config. */
+/** Calculate per-query fusion weights from observable evidence and an interpretable router config. */
 export const routeWithEvidence = (
   evidence: RoutingEvidence,
   config: EvidenceRouterConfig,

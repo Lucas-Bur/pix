@@ -63,6 +63,8 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     `Generated: ${artifact.generatedAt}`,
     "",
+    `Profile: ${artifact.benchmarkProfile}`,
+    "",
     `Context budgets use the documented \`${artifact.contextTokenEstimator}\` estimator.`,
     "",
     "| Repository | Model | Query form | Variant | R@5 | R@10 | R@20 | S@10 | S@20 | MRR | Ctx@2k | Ctx@4k |",
@@ -177,23 +179,23 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Evidence Router Holdouts",
     "",
-    "One router is selected across all query forms using only observable query features, scale-independent score separation, and cross-channel agreement. Static and dynamic validation columns use the same excluded fold.",
+    "One router is selected across all query forms using only observable query features, scale-independent score separation, and cross-channel agreement. Static and dynamic validation columns use the same fusion method and excluded fold.",
     "",
-    "| Model | Strategy | Fold | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Agreement/Identifier/Length | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
-    "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Model | Fusion | Strategy | Fold | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Agreement/Identifier/Length | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
+    "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.evidenceRouterSearch) {
     const baseWeights = formatWeights(result.config.baseWeights)
     const staticWeights = formatWeights(result.staticWeights)
     const influences = formatInfluences(result.config)
     lines.push(
-      `| ${result.model} | ${result.strategy} | ${result.fold} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticValidation.recallAt10)} | ${percent(result.validation.recallAt10)} | ${percent(result.staticValidation.recallAt20)} | ${percent(result.validation.recallAt20)} | ${percent(result.staticValidation.contextRecallAt4096)} | ${percent(result.validation.contextRecallAt4096)} |`,
+      `| ${result.model} | ${result.fusion} | ${result.strategy} | ${result.fold} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticValidation.recallAt10)} | ${percent(result.validation.recallAt10)} | ${percent(result.staticValidation.recallAt20)} | ${percent(result.validation.recallAt20)} | ${percent(result.staticValidation.contextRecallAt4096)} | ${percent(result.validation.contextRecallAt4096)} |`,
     )
   }
 
   const routerGroups = new Map<string, EvidenceRouterSearchResult[]>()
   for (const result of artifact.evidenceRouterSearch) {
-    const key = `${result.model}\0${result.strategy}`
+    const key = `${result.model}\0${result.fusion}\0${result.strategy}`
     routerGroups.set(key, [...(routerGroups.get(key) ?? []), result])
   }
   lines.push(
@@ -202,13 +204,13 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "Validation metrics are weighted by each excluded fold's query count.",
     "",
-    "| Model | Strategy | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
-    "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Model | Fusion | Strategy | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
+    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const [key, rows] of routerGroups) {
-    const [model, strategy] = key.split("\0")
+    const [model, fusion, strategy] = key.split("\0")
     lines.push(
-      `| ${model} | ${strategy} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.contextRecallAt4096))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
+      `| ${model} | ${fusion} | ${strategy} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.contextRecallAt4096))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
     )
   }
 
@@ -218,15 +220,15 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "These candidates are fitted across all query forms only after grouped and repository holdouts have measured generalization.",
     "",
-    "| Model | Samples | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Agreement/Identifier/Length | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 |",
-    "| --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: |",
+    "| Model | Fusion | Samples | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Agreement/Identifier/Length | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 |",
+    "| --- | --- | ---: | --- | --- | --- | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.recommendedEvidenceRouters) {
     const baseWeights = formatWeights(result.config.baseWeights)
     const staticWeights = formatWeights(result.staticWeights)
     const influences = formatInfluences(result.config)
     lines.push(
-      `| ${result.model} | ${result.samples} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticQuality.recallAt10)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.staticQuality.recallAt20)} | ${percent(result.fitQuality.recallAt20)} |`,
+      `| ${result.model} | ${result.fusion} | ${result.samples} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticQuality.recallAt10)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.staticQuality.recallAt20)} | ${percent(result.fitQuality.recallAt20)} |`,
     )
   }
 

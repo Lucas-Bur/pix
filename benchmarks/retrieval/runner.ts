@@ -43,6 +43,7 @@ import {
 const CONTEXT_BUDGETS = [2_048, 4_096, 8_192, 16_384] as const
 const EMBEDDING_BATCH_SIZE = 2
 const SINGLE_ITEM_ESTIMATED_TOKENS = 2_048
+const ACTIVE_ROUTER_FUSION: FusionMethod = "dbsf"
 const QUERY_KINDS: readonly QueryKind[] = [
   "identifier",
   "searchPhrase",
@@ -459,6 +460,7 @@ export const runRetrievalBenchmark = (
         evidenceRouterSearch.push(
           optimizeEvidenceRouter(
             model,
+            ACTIVE_ROUTER_FUSION,
             groupedStrategy,
             String(fold + 1),
             samples.filter((sample) => sample.groupedFold !== fold),
@@ -473,6 +475,7 @@ export const runRetrievalBenchmark = (
           evidenceRouterSearch.push(
             optimizeEvidenceRouter(
               model,
+              ACTIVE_ROUTER_FUSION,
               "leave-one-repository-out",
               repository,
               samples.filter((sample) => sample.repository !== repository),
@@ -484,11 +487,11 @@ export const runRetrievalBenchmark = (
     }
     reportProgress("fitting final evidence router on all samples")
     const recommendedEvidenceRouters = [...samplesByModel].map(([model, samples]) =>
-      fitRecommendedEvidenceRouter(model, samples),
+      fitRecommendedEvidenceRouter(model, ACTIVE_ROUTER_FUSION, samples),
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 7,
+      schemaVersion: 8,
       benchmarkProfile: profile,
       generatedAt: new Date().toISOString(),
       chunkConfig: {

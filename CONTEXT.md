@@ -144,6 +144,9 @@ Schema-7 benchmark profiles trade runtime for coverage without changing retrieva
 uses fd and MiniLM, `develop` uses all corpora with MiniLM and grouped 3-fold, `validate` adds grouped
 5-fold and repository holdouts, and `full` restores every fusion and legacy diagnostic for one
 selected model.
+Schema 8 keeps the schema-5 linear router and its existing signals but applies its dynamic weights
+through DBSF. Static and dynamic holdout columns therefore use the same score-fusion formula; the
+artifact records that formula explicitly.
 The router uses only runtime-observable query length and identifier shape, within-channel score
 separation, channel availability, and cross-channel rank agreement. Raw scores from different
 channels are never compared. A deterministic coarse-to-fine beam search refines positive dynamic base weights (minimum 0.1) and
