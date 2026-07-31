@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 2,
+  "id": "fd",
+  "repository": "https://github.com/sharkdp/fd.git",
+  "revision": "41532d114e2ba565fb5367d606c111b29b96450c",
+  "language": "rust",
+  "size": "small",
+  "includeRoots": ["src/"],
+  "excludePaths": [],
+  "extensions": [".rs"],
+  "questions": [
+    {
+      "id": "fd-001",
+      "queries": {
+        "identifier": "run",
+        "searchPhrase": "coordinate options search configuration traversal exit status",
+        "naturalQuestion": "Where does fd coordinate parsed options, search configuration, traversal, and exit status?",
+        "agentTask": "Find fd's main orchestration function for configuration, traversal, and exit status."
+      },
+      "category": "architecture",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "src/main.rs", "symbol": "run" }]
+    },
+    {
+      "id": "fd-002",
+      "queries": {
+        "identifier": "build_pattern_regex",
+        "searchPhrase": "convert user search pattern regex syntax",
+        "naturalQuestion": "How is the user search pattern converted into the regular expression syntax fd needs?",
+        "agentTask": "Find the code that converts the user's search pattern into a regex."
+      },
+      "category": "symbol-lookup",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "src/main.rs", "symbol": "build_pattern_regex" }]
+    },
+    {
+      "id": "fd-003",
+      "queries": {
+        "identifier": "construct_config",
+        "searchPhrase": "combine command line options complete search configuration",
+        "naturalQuestion": "Which code combines command-line options into the complete search configuration?",
+        "agentTask": "Find the function that constructs search configuration from CLI options."
+      },
+      "category": "configuration",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "src/main.rs", "symbol": "construct_config" }]
+    },
+    {
+      "id": "fd-004",
+      "queries": {
+        "identifier": "build_regex",
+        "searchPhrase": "compile final byte regex configured pattern",
+        "naturalQuestion": "Where is the final byte-oriented regex compiled from the configured pattern?",
+        "agentTask": "Find the function that compiles the final byte-oriented search regex."
+      },
+      "category": "matching",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "src/main.rs", "symbol": "build_regex" }]
+    },
+    {
+      "id": "fd-005",
+      "queries": {
+        "identifier": "Config",
+        "searchPhrase": "traversal filtering output command execution settings structure",
+        "naturalQuestion": "What central structure holds traversal, filtering, output, and command execution settings?",
+        "agentTask": "Find the central configuration type used throughout fd's search."
+      },
+      "category": "configuration",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "src/config.rs", "symbol": "Config" }]
+    },
+    {
+      "id": "fd-006",
+      "queries": {
+        "identifier": "execute_commands",
+        "searchPhrase": "schedule execute generated commands matching entries",
+        "naturalQuestion": "How are generated commands scheduled and executed for matching entries?",
+        "agentTask": "Find the implementation that executes commands generated for matched entries."
+      },
+      "category": "execution",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "src/exec/command.rs", "symbol": "execute_commands" }]
+    },
+    {
+      "id": "fd-007",
+      "queries": {
+        "identifier": "ExecutionMode",
+        "searchPhrase": "immediate versus batched command execution mode",
+        "naturalQuestion": "Which type distinguishes immediate command execution from batched execution?",
+        "agentTask": "Find the type that selects immediate or batched command execution."
+      },
+      "category": "symbol-lookup",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "src/exec/mod.rs", "symbol": "ExecutionMode" }]
+    },
+    {
+      "id": "fd-008",
+      "queries": {
+        "identifier": "CommandSet",
+        "searchPhrase": "store commands selected execution mode",
+        "naturalQuestion": "What structure stores the commands and their selected execution mode?",
+        "agentTask": "Find the structure that groups commands with their execution mode."
+      },
+      "category": "execution",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "src/exec/mod.rs", "symbol": "CommandSet" }]
+    },
+    {
+      "id": "fd-009",
+      "queries": {
+        "identifier": "print_entry",
+        "searchPhrase": "render matched directory entry output writer",
+        "naturalQuestion": "Where is one matched directory entry rendered to the output writer?",
+        "agentTask": "Find the function that prints one matched directory entry."
+      },
+      "category": "output",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "src/output.rs", "symbol": "print_entry" }]
+    },
+    {
+      "id": "fd-010",
+      "queries": {
+        "identifier": "FormatTemplate",
+        "searchPhrase": "parsed template custom output formatting type",
+        "naturalQuestion": "Which parsed template type controls custom output formatting?",
+        "agentTask": "Find the parsed template type used for custom output formats."
+      },
+      "category": "output",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "src/fmt/mod.rs", "symbol": "FormatTemplate" }]
+    },
+    {
+      "id": "fd-011",
+      "queries": {
+        "identifier": "SizeFilter",
+        "searchPhrase": "minimum maximum exact file size constraints",
+        "naturalQuestion": "What type represents minimum, maximum, and exact file-size constraints?",
+        "agentTask": "Find the type that models file-size filters."
+      },
+      "category": "filtering",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "src/filter/size.rs", "symbol": "SizeFilter" }]
+    },
+    {
+      "id": "fd-012",
+      "queries": {
+        "identifier": "TimeFilter",
+        "searchPhrase": "newer older timestamp constraints type",
+        "naturalQuestion": "What type represents newer-than and older-than timestamp constraints?",
+        "agentTask": "Find the type that models timestamp filters."
+      },
+      "category": "filtering",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "src/filter/time.rs", "symbol": "TimeFilter" }]
+    },
+    {
+      "id": "fd-013",
+      "queries": {
+        "identifier": "pattern_has_uppercase_char",
+        "searchPhrase": "smart case detect uppercase regex pattern",
+        "naturalQuestion": "How does smart-case matching detect uppercase characters in a regex pattern?",
+        "agentTask": "Find the helper that detects uppercase characters for smart-case matching."
+      },
+      "category": "symbol-lookup",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "src/regex_helper.rs", "symbol": "pattern_has_uppercase_char" }]
+    },
+    {
+      "id": "fd-014",
+      "queries": {
+        "identifier": "pattern_matches_strings_with_leading_dot",
+        "searchPhrase": "pattern match hidden name leading dot",
+        "naturalQuestion": "How does fd determine whether a pattern can match a hidden name beginning with a dot?",
+        "agentTask": "Find the helper that checks whether a pattern can match leading-dot names."
+      },
+      "category": "matching",
+      "difficulty": "hard",
+      "groundTruth": [
+        {
+          "file": "src/regex_helper.rs",
+          "symbol": "pattern_matches_strings_with_leading_dot"
+        }
+      ]
+    },
+    {
+      "id": "fd-015",
+      "queries": {
+        "identifier": "search_str_for_entry",
+        "searchPhrase": "select candidate string full path basename matching entry",
+        "naturalQuestion": "Where is the candidate string selected from an entry for full-path or basename matching?",
+        "agentTask": "Find the function that selects an entry's full path or basename for matching."
+      },
+      "category": "traversal",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "src/walk.rs", "symbol": "search_str_for_entry" }]
+    }
+  ]
+}

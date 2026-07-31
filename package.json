@@ -34,6 +34,9 @@
     "access": "public"
   },
   "scripts": {
+    "bench:retrieval": "vp test --config benchmarks/vite.config.ts --run benchmarks/tests/retrieval.test.ts",
+    "bench:retrieval:corpus": "vp test --config benchmarks/vite.config.ts --run benchmarks/tests/corpus.test.ts",
+    "bench:retrieval:fixture": "vp test --config benchmarks/vite.config.ts --run benchmarks/tests/channels.test.ts",
     "build": "vp pack",
     "dev": "vp pack --watch",
     "test": "vp test",
@@ -44,7 +47,7 @@
     "lint:effect:ci": "effect-language-service diagnostics --project tsconfig.json --format github-actions --strict",
     "lint:effect:agent": "effect-language-service diagnostics --project tsconfig.json --format json --strict",
     "lint:fallow": "fallow",
-    "lint:fallow:ci": "vpx fallow audit --base origin/main",
+    "lint:fallow:ci": "vp exec fallow audit --base origin/main",
     "lint:fallow:health": "fallow health --format badge",
     "lint:fallow:agent": "fallow --format json",
     "fallow": "fallow",

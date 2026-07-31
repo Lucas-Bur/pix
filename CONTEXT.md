@@ -127,6 +127,28 @@ Scorer output — ranks all chunks against a query. Shape: `{ chunkIndex: number
 
 Fuses N ranked lists by rank position: `Σ weight * 1 / (k + rank_in_path)`. Raw scores are discarded — only rank position matters. k=60 (standard, configurable later). Pure function in `src/lib/retrieval/rrf.ts`.
 
+### Retrieval Quality Benchmark
+
+Opt-in local suite under `benchmarks/` that imports pix chunking, identifier extraction, scorers,
+query routing, RRF, and embedders directly. It is not a product CLI command and does not run in CI.
+Pinned FastAPI, Effect v4, and fd corpora contain exact file-qualified gold symbols. The suite reports
+Recall@5/10/20, Success@10/20, MRR, and context recall at fixed estimated-token budgets for individual
+channels, all 15 channel subsets, weight grids, and all registered embedding models. Every intent has
+identifier, search-phrase, natural-question, and agent-task representations which remain grouped in
+five-fold validation. Leave-one-repository-out tests cross-codebase generalization; exact holdout
+Shapley values explain marginal channel contribution. Embedders use automatic device selection and a
+maximum batch size of two. Schema 4 also evaluates one evidence-based router across all query forms.
+The router uses only runtime-observable query length and identifier shape, within-channel score
+separation, channel availability, and cross-channel rank agreement. Raw scores from different
+channels are never compared. A deterministic coarse-to-fine beam search refines base weights and
+per-channel score/agreement coefficients in 0.1 steps; signed per-channel query slopes allow the same
+length or identifier signal to boost one channel and damp another. Its parameters are selected on
+development folds and evaluated unchanged against static weights on excluded intent folds and
+repositories; authored query-form labels remain informed reference strata and are not router inputs.
+This router remains benchmark-only until holdouts justify a production change.
+Repository and embedding caches live under ignored `benchmarks/.cache/`; generated artifacts live
+under ignored `benchmarks/results/`. See `benchmarks/README.md` and `benchmarks/BASELINE.md`.
+
 ### Scorer
 
 A retrieval path producing `RankedChunk[]`. BM25 and identifier scorers are pure functions over pre-built data. Production dense ranking runs in SQLite through sqlite-vector; the pure JavaScript dense scorer remains the exact-reference implementation.

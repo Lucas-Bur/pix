@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 2,
+  "id": "effect-v4",
+  "repository": "https://github.com/Effect-TS/effect.git",
+  "revision": "9263ba30c4535b655cf69a14f44a43cb9a93921e",
+  "language": "typescript",
+  "size": "large",
+  "includeRoots": ["packages/effect/src/"],
+  "excludePaths": [
+    "packages/effect/src/unstable/httpapi/internal/httpApiScalar.ts",
+    "packages/effect/src/unstable/httpapi/internal/httpApiSwagger.ts"
+  ],
+  "extensions": [".ts"],
+  "questions": [
+    {
+      "id": "effect-001",
+      "queries": {
+        "identifier": "declare",
+        "searchPhrase": "declare custom Schema type guard constructor",
+        "naturalQuestion": "Which API declares a custom Schema from a type guard or constructor?",
+        "agentTask": "Find the Schema API used to declare a custom runtime type."
+      },
+      "category": "symbol-lookup",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "packages/effect/src/Schema.ts", "symbol": "declare" }]
+    },
+    {
+      "id": "effect-002",
+      "queries": {
+        "identifier": "all",
+        "searchPhrase": "combine multiple effects concurrency error collection",
+        "naturalQuestion": "How are many effects combined while controlling concurrency and error collection?",
+        "agentTask": "Find the Effect combinator that runs a collection with configurable concurrency and error handling."
+      },
+      "category": "concurrency",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "packages/effect/src/Effect.ts", "symbol": "all" }]
+    },
+    {
+      "id": "effect-003",
+      "queries": {
+        "identifier": "retry",
+        "searchPhrase": "repeat failed effect according schedule",
+        "naturalQuestion": "Which Effect combinator repeats failed computations according to a schedule?",
+        "agentTask": "Find the combinator that retries a failed Effect using a Schedule."
+      },
+      "category": "resilience",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "packages/effect/src/Effect.ts", "symbol": "retry" }]
+    },
+    {
+      "id": "effect-004",
+      "queries": {
+        "identifier": "timeout",
+        "searchPhrase": "apply time limit interrupt slow effect",
+        "naturalQuestion": "Where is a time limit applied to an Effect so slow work is interrupted?",
+        "agentTask": "Find the Effect operator that interrupts work after a duration."
+      },
+      "category": "concurrency",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "packages/effect/src/Effect.ts", "symbol": "timeout" }]
+    },
+    {
+      "id": "effect-005",
+      "queries": {
+        "identifier": "provide",
+        "searchPhrase": "supply services Layer Effect environment",
+        "naturalQuestion": "Which operation supplies services or a Layer to an Effect environment?",
+        "agentTask": "Find the Effect operator that provides required services or Layers."
+      },
+      "category": "dependency-injection",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "packages/effect/src/Effect.ts", "symbol": "provide" }]
+    },
+    {
+      "id": "effect-006",
+      "queries": {
+        "identifier": "acquireUseRelease",
+        "searchPhrase": "acquire resource use guarantee release",
+        "naturalQuestion": "How does Effect safely acquire a resource, use it, and guarantee release?",
+        "agentTask": "Find the resource combinator that guarantees cleanup after use."
+      },
+      "category": "resources",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "packages/effect/src/Effect.ts", "symbol": "acquireUseRelease" }]
+    },
+    {
+      "id": "effect-007",
+      "queries": {
+        "identifier": "runPromise",
+        "searchPhrase": "execute Effect return JavaScript Promise runtime",
+        "naturalQuestion": "Which runtime boundary executes an Effect and returns a JavaScript Promise?",
+        "agentTask": "Find the runtime function that evaluates an Effect as a Promise."
+      },
+      "category": "runtime",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "packages/effect/src/Effect.ts", "symbol": "runPromise" }]
+    },
+    {
+      "id": "effect-008",
+      "queries": {
+        "identifier": "format",
+        "searchPhrase": "format unknown value structured readable output",
+        "naturalQuestion": "Which formatter renders an unknown value as readable structured text?",
+        "agentTask": "Find the generic value formatter implementation."
+      },
+      "category": "symbol-lookup",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "packages/effect/src/Formatter.ts", "symbol": "format" }]
+    },
+    {
+      "id": "effect-009",
+      "queries": {
+        "identifier": "provide",
+        "searchPhrase": "feed Layer services into another Layer",
+        "naturalQuestion": "Which Layer operation feeds one layer's services into another layer?",
+        "agentTask": "Find the Layer combinator that provides one Layer's outputs to another."
+      },
+      "category": "dependency-injection",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "packages/effect/src/Layer.ts", "symbol": "provide" }]
+    },
+    {
+      "id": "effect-010",
+      "queries": {
+        "identifier": "fromIterable",
+        "searchPhrase": "lift synchronous iterable into Stream",
+        "naturalQuestion": "How is a synchronous iterable lifted into an Effect Stream?",
+        "agentTask": "Find the Stream constructor for synchronous iterables."
+      },
+      "category": "streams",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "packages/effect/src/Stream.ts", "symbol": "fromIterable" }]
+    },
+    {
+      "id": "effect-011",
+      "queries": {
+        "identifier": "runCollect",
+        "searchPhrase": "consume Stream collect all emitted values array",
+        "naturalQuestion": "Which Stream sink consumes all emitted values into an immutable collection?",
+        "agentTask": "Find the Stream runner that collects every emitted value."
+      },
+      "category": "streams",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "packages/effect/src/Stream.ts", "symbol": "runCollect" }]
+    },
+    {
+      "id": "effect-012",
+      "queries": {
+        "identifier": "decodeUnknownEffect",
+        "searchPhrase": "decode unknown external value Schema typed Effect",
+        "naturalQuestion": "Where is an unknown external value decoded through a Schema into a typed Effect?",
+        "agentTask": "Find the Schema decoder that accepts unknown input and returns an Effect."
+      },
+      "category": "schema",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "packages/effect/src/Schema.ts", "symbol": "decodeUnknownEffect" }]
+    },
+    {
+      "id": "effect-013",
+      "queries": {
+        "identifier": "SchemaError",
+        "searchPhrase": "Schema parsing validation error wrapper",
+        "naturalQuestion": "Which error type represents a failed Schema operation?",
+        "agentTask": "Find the error class exposed for Schema failures."
+      },
+      "category": "symbol-lookup",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "packages/effect/src/SchemaError.ts", "symbol": "SchemaError" }]
+    },
+    {
+      "id": "effect-014",
+      "queries": {
+        "identifier": "exhaustive",
+        "searchPhrase": "pattern matching require all remaining cases handled",
+        "naturalQuestion": "How does pattern matching require that every remaining case has been handled?",
+        "agentTask": "Find the Match combinator that enforces exhaustive case handling."
+      },
+      "category": "pattern-matching",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "packages/effect/src/Match.ts", "symbol": "exhaustive" }]
+    },
+    {
+      "id": "effect-015",
+      "queries": {
+        "identifier": "make",
+        "searchPhrase": "create mutable fiber safe Ref Effect",
+        "naturalQuestion": "Which API creates a mutable fiber-safe reference inside Effect?",
+        "agentTask": "Find the constructor for a fiber-safe mutable Ref."
+      },
+      "category": "state",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "packages/effect/src/Ref.ts", "symbol": "make" }]
+    }
+  ]
+}

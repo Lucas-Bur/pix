@@ -4,7 +4,15 @@ import type { DeviceType } from "../domain/device.js"
 import { ModelLoadError } from "../domain/errors.js"
 import { DeviceDetection } from "../domain/ports.js"
 
-const DEVICE_PRIORITY: readonly DeviceType[] = ["cuda", "dml", "coreml", "webgpu", "wasm", "cpu"]
+/** Device order used by automatic embedding inference selection. */
+export const DEVICE_PRIORITY: readonly DeviceType[] = [
+  "cuda",
+  "dml",
+  "coreml",
+  "webgpu",
+  "wasm",
+  "cpu",
+]
 
 const tryDevice = (
   model: string,

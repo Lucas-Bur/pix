@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 2,
+  "id": "fastapi",
+  "repository": "https://github.com/fastapi/fastapi.git",
+  "revision": "95f8322ee1dcda7ceace7b1c4f6c9915b36d748f",
+  "language": "python",
+  "size": "medium",
+  "includeRoots": ["fastapi/"],
+  "excludePaths": [],
+  "extensions": [".py"],
+  "questions": [
+    {
+      "id": "fastapi-001",
+      "queries": {
+        "identifier": "solve_dependencies",
+        "searchPhrase": "build solve dependency injection tree route request",
+        "naturalQuestion": "How does FastAPI build and solve the dependency injection tree for a route request?",
+        "agentTask": "Find the code that builds and resolves a route's dependency injection tree."
+      },
+      "category": "architecture",
+      "difficulty": "hard",
+      "groundTruth": [
+        { "file": "fastapi/dependencies/utils.py", "symbol": "get_dependant" },
+        { "file": "fastapi/dependencies/utils.py", "symbol": "solve_dependencies" }
+      ]
+    },
+    {
+      "id": "fastapi-002",
+      "queries": {
+        "identifier": "get_openapi",
+        "searchPhrase": "assemble OpenAPI document registered routes",
+        "naturalQuestion": "Where is the OpenAPI document assembled from registered routes?",
+        "agentTask": "Find the implementation that generates the complete OpenAPI document."
+      },
+      "category": "symbol-lookup",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "fastapi/openapi/utils.py", "symbol": "get_openapi" }]
+    },
+    {
+      "id": "fastapi-003",
+      "queries": {
+        "identifier": "request_body_to_args",
+        "searchPhrase": "validate request body fields convert endpoint arguments",
+        "naturalQuestion": "How are parsed request body fields validated and converted into endpoint arguments?",
+        "agentTask": "Find the code that turns validated request body fields into endpoint arguments."
+      },
+      "category": "validation",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "fastapi/dependencies/utils.py", "symbol": "request_body_to_args" }]
+    },
+    {
+      "id": "fastapi-004",
+      "queries": {
+        "identifier": "serialize_response",
+        "searchPhrase": "validate serialize endpoint return response model",
+        "naturalQuestion": "Which code validates and serializes an endpoint return value against its response model?",
+        "agentTask": "Find the response-model validation and serialization implementation."
+      },
+      "category": "serialization",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "fastapi/routing.py", "symbol": "serialize_response" }]
+    },
+    {
+      "id": "fastapi-005",
+      "queries": {
+        "identifier": "run_endpoint_function",
+        "searchPhrase": "invoke sync async path operation function",
+        "naturalQuestion": "Where does FastAPI invoke a synchronous or asynchronous path operation function?",
+        "agentTask": "Find the code that executes synchronous and asynchronous route handlers."
+      },
+      "category": "routing",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "fastapi/routing.py", "symbol": "run_endpoint_function" }]
+    },
+    {
+      "id": "fastapi-006",
+      "queries": {
+        "identifier": "get_request_handler",
+        "searchPhrase": "construct ASGI API route request handler",
+        "naturalQuestion": "How is the ASGI request handler for an API route constructed?",
+        "agentTask": "Find the implementation that builds an API route's ASGI request handler."
+      },
+      "category": "routing",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "fastapi/routing.py", "symbol": "get_request_handler" }]
+    },
+    {
+      "id": "fastapi-007",
+      "queries": {
+        "identifier": "APIWebSocketRoute",
+        "searchPhrase": "WebSocket route dependency resolution endpoint execution",
+        "naturalQuestion": "Which route class handles WebSocket dependency resolution and endpoint execution?",
+        "agentTask": "Find the route implementation responsible for WebSocket endpoint execution."
+      },
+      "category": "symbol-lookup",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "fastapi/routing.py", "symbol": "APIWebSocketRoute" }]
+    },
+    {
+      "id": "fastapi-008",
+      "queries": {
+        "identifier": "include_router",
+        "searchPhrase": "merge APIRouter routes shared prefix tags dependencies",
+        "naturalQuestion": "How does an APIRouter merge its routes under a shared prefix, tags, and dependencies?",
+        "agentTask": "Find the code that includes one router with shared prefix, tags, and dependencies."
+      },
+      "category": "architecture",
+      "difficulty": "medium",
+      "groundTruth": [
+        { "file": "fastapi/routing.py", "symbol": "APIRouter" },
+        { "file": "fastapi/routing.py", "symbol": "include_router" }
+      ]
+    },
+    {
+      "id": "fastapi-009",
+      "queries": {
+        "identifier": "Path",
+        "searchPhrase": "path parameter metadata validation constraints",
+        "naturalQuestion": "Where are path parameter metadata and validation constraints declared?",
+        "agentTask": "Find the API used to declare validation constraints for path parameters."
+      },
+      "category": "parameters",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "fastapi/param_functions.py", "symbol": "Path" }]
+    },
+    {
+      "id": "fastapi-010",
+      "queries": {
+        "identifier": "Depends",
+        "searchPhrase": "marker callable injected dependency",
+        "naturalQuestion": "Which marker declares a callable as an injected dependency?",
+        "agentTask": "Find the marker API used to declare an injected callable dependency."
+      },
+      "category": "dependency-injection",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "fastapi/param_functions.py", "symbol": "Depends" }]
+    },
+    {
+      "id": "fastapi-011",
+      "queries": {
+        "identifier": "Security",
+        "searchPhrase": "dependency marker OAuth security scopes OpenAPI resolution",
+        "naturalQuestion": "Which dependency marker adds OAuth security scopes to OpenAPI and resolution?",
+        "agentTask": "Find the dependency marker that carries OAuth security scopes."
+      },
+      "category": "security",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "fastapi/param_functions.py", "symbol": "Security" }]
+    },
+    {
+      "id": "fastapi-012",
+      "queries": {
+        "identifier": "BackgroundTasks",
+        "searchPhrase": "queue callables execute after response sent",
+        "naturalQuestion": "What object queues callables to execute after the response has been sent?",
+        "agentTask": "Find the abstraction that schedules work after sending a response."
+      },
+      "category": "background-tasks",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "fastapi/background.py", "symbol": "BackgroundTasks" }]
+    },
+    {
+      "id": "fastapi-013",
+      "queries": {
+        "identifier": "OAuth2PasswordBearer",
+        "searchPhrase": "OAuth2 password flow bearer token dependency",
+        "naturalQuestion": "Which security dependency reads a bearer token for the OAuth2 password flow?",
+        "agentTask": "Find the security dependency that extracts an OAuth2 password-flow bearer token."
+      },
+      "category": "symbol-lookup",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "fastapi/security/oauth2.py", "symbol": "OAuth2PasswordBearer" }]
+    },
+    {
+      "id": "fastapi-014",
+      "queries": {
+        "identifier": "jsonable_encoder",
+        "searchPhrase": "convert Pydantic Python values JSON compatible data",
+        "naturalQuestion": "How are Pydantic models and other Python values converted into JSON-compatible data?",
+        "agentTask": "Find the encoder that converts Python and Pydantic values to JSON-compatible data."
+      },
+      "category": "serialization",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "fastapi/encoders.py", "symbol": "jsonable_encoder" }]
+    },
+    {
+      "id": "fastapi-015",
+      "queries": {
+        "identifier": "request_validation_exception_handler",
+        "searchPhrase": "HTTP exception request validation failure JSON response handlers",
+        "naturalQuestion": "Where are HTTP exceptions and request validation failures converted into JSON responses?",
+        "agentTask": "Find the handlers that turn HTTP and request-validation exceptions into JSON responses."
+      },
+      "category": "errors",
+      "difficulty": "medium",
+      "groundTruth": [
+        { "file": "fastapi/exception_handlers.py", "symbol": "http_exception_handler" },
+        {
+          "file": "fastapi/exception_handlers.py",
+          "symbol": "request_validation_exception_handler"
+        }
+      ]
+    }
+  ]
+}
