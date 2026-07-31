@@ -16,7 +16,7 @@ import {
 } from "../domain/ports.js"
 import { resolveEmbedderConfig } from "../lib/embedder/resolve.js"
 import { ConfigStoreLive } from "./config-store.js"
-import { DeviceDetectionLive } from "./device-detect.js"
+import { DEVICE_PRIORITY, DeviceDetectionLive } from "./device-detect.js"
 
 interface FallbackInfo {
   readonly originalDevice: string
@@ -102,6 +102,42 @@ const makeEmbedBatch = (
 
   return { embed, batch: batchEmbed }
 }
+
+/** Load one embedding model for an explicit device configuration. */
+const createBoundEmbedder = (
+  cfg: EmbedderDeviceConfig,
+): Effect.Effect<BoundEmbedder, ModelLoadError> =>
+  loadExtractor(cfg.model, cfg.device, cfg.dtype).pipe(
+    Effect.map((extractor) => makeEmbedBatch(() => Effect.succeed(extractor), cfg.dims, cfg.dtype)),
+  )
+
+/** Embedding model loaded on the first working device in automatic priority order. */
+export interface AutoBoundEmbedder {
+  readonly device: DeviceType
+  readonly embedder: BoundEmbedder
+}
+
+/** Load an embedding model once on the highest-priority working device. */
+export const createAutoBoundEmbedder = (cfg: {
+  readonly model: string
+  readonly dtype: EmbeddingDtype
+  readonly dims: number
+}): Effect.Effect<AutoBoundEmbedder, ModelLoadError> =>
+  Effect.gen(function* () {
+    let lastError: ModelLoadError | undefined
+    for (const device of DEVICE_PRIORITY) {
+      const result = yield* createBoundEmbedder({ ...cfg, device }).pipe(Effect.result)
+      if (Result.isSuccess(result)) return { device, embedder: result.success }
+      lastError = result.failure
+    }
+    return yield* (
+      lastError ??
+        new ModelLoadError({
+          message: `No device available for model "${cfg.model}"`,
+          model: cfg.model,
+        })
+    )
+  })
 
 const withGpuFallback = (
   model: string,
@@ -194,12 +230,7 @@ const make = Effect.gen(function* () {
   const getFallbackInfo = () =>
     Ref.get(fallbackRef).pipe(Effect.map(Option.getOrElse(() => undefined)))
 
-  const createForDevice = (devCfg: EmbedderDeviceConfig) =>
-    Effect.gen(function* () {
-      const extractor = yield* loadExtractor(devCfg.model, devCfg.device, devCfg.dtype)
-      const getExtractor = () => Effect.succeed(extractor)
-      return makeEmbedBatch(getExtractor, devCfg.dims, devCfg.dtype)
-    })
+  const createForDevice = createBoundEmbedder
 
   return { embed, batch: batchEmbed, getFallbackInfo, createForDevice } as const
 })

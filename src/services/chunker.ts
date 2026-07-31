@@ -206,20 +206,29 @@ const make = Effect.gen(function* () {
     .pipe(Effect.catch(() => Effect.succeed(DEFAULT_CONFIG)))
   const registry = buildExtensionRegistry(config.skipExtensions)
 
-  const chunkText = (text: string, file: string): Effect.Effect<readonly Chunk[]> => {
-    if (text === "") return Effect.succeed([])
-
-    const parser = registry[getExtension(file)]?.parser
-    if (parser == null) return Effect.succeed(buildLineChunks(file, text, config))
-
-    return buildAstChunks(parser, file, text, config).pipe(
-      Effect.map(Option.getOrElse(() => buildLineChunks(file, text, config))),
-      Effect.catch(() => Effect.succeed(buildLineChunks(file, text, config))),
-    )
-  }
+  const chunkText = (text: string, file: string): Effect.Effect<readonly Chunk[]> =>
+    chunkTextWithConfig(text, file, config, registry)
 
   return { chunkText } as const
 })
+
+/** Chunk source text using an explicit configuration without reading project state. */
+export const chunkTextWithConfig = (
+  text: string,
+  file: string,
+  config: Config,
+  registry = buildExtensionRegistry(config.skipExtensions),
+): Effect.Effect<readonly Chunk[]> => {
+  if (text === "") return Effect.succeed([])
+
+  const parser = registry[getExtension(file)]?.parser
+  if (parser == null) return Effect.succeed(buildLineChunks(file, text, config))
+
+  return buildAstChunks(parser, file, text, config).pipe(
+    Effect.map(Option.getOrElse(() => buildLineChunks(file, text, config))),
+    Effect.catch(() => Effect.succeed(buildLineChunks(file, text, config))),
+  )
+}
 
 export const ChunkerBase = Layer.effect(Chunker, make)
 
