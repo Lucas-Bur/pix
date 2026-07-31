@@ -114,6 +114,7 @@ describe("retrieval benchmark fixture", () => {
     const weights = routeWithEvidence(evidence, {
       baseWeights: { identity: 0, camelcase: 0, bm25: 1, dense: 1 },
       scoreInfluence: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
+      geometryInfluence: zeroChannelCoefficients,
       agreementInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: zeroChannelCoefficients,
@@ -135,6 +136,7 @@ describe("retrieval benchmark fixture", () => {
     const config = {
       baseWeights: { identity: 1, camelcase: 0, bm25: 0, dense: 1 },
       scoreInfluence: zeroChannelCoefficients,
+      geometryInfluence: zeroChannelCoefficients,
       agreementInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: { ...zeroChannelCoefficients, identity: -1, dense: 1 },
@@ -147,6 +149,37 @@ describe("retrieval benchmark fixture", () => {
 
     expect(shortWeights.identity).toBeGreaterThan(shortWeights.dense)
     expect(longWeights.dense).toBeGreaterThan(longWeights.identity)
+  })
+
+  it("recognizes concentrated score geometry as stronger evidence", () => {
+    const rankings = {
+      identity: [],
+      camelcase: [],
+      bm25: [
+        { chunkIndex: 0, score: 10 },
+        { chunkIndex: 1, score: 1 },
+        { chunkIndex: 2, score: 1 },
+      ],
+      dense: [
+        { chunkIndex: 0, score: 0.51 },
+        { chunkIndex: 1, score: 0.5 },
+        { chunkIndex: 2, score: 0.5 },
+      ],
+    }
+    const evidence = buildRoutingEvidence("find the target", rankings)
+    const weights = routeWithEvidence(evidence, {
+      baseWeights: { identity: 0, camelcase: 0, bm25: 1, dense: 1 },
+      scoreInfluence: zeroChannelCoefficients,
+      geometryInfluence: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
+      agreementInfluence: zeroChannelCoefficients,
+      identifierInfluence: zeroChannelCoefficients,
+      queryLengthInfluence: zeroChannelCoefficients,
+    })
+
+    expect(evidence.channels.bm25.scoreGeometry.confidence).toBeGreaterThan(
+      evidence.channels.dense.scoreGeometry.confidence,
+    )
+    expect(weights.bm25).toBeGreaterThan(weights.dense)
   })
 
   it("measures full RRF against exact file-qualified gold targets", () => {

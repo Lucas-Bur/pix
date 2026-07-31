@@ -6,12 +6,27 @@ const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dens
 const SCORE_REFERENCE_RANK = 9
 const AGREEMENT_SOURCE_DEPTH = 5
 const AGREEMENT_TARGET_DEPTH = 20
+const SCORE_GEOMETRY_DEPTH = 20
+
+/** Normalized shape measurements derived from one channel's top score curve. */
+export interface ScoreGeometryEvidence {
+  readonly top1Top2Gap: number
+  readonly top1Top3Gap: number
+  readonly top1Top10Gap: number
+  readonly top3Top20Gap: number
+  readonly areaUnderCurve: number
+  readonly plateauWidth: number
+  readonly entropy: number
+  readonly effectiveCandidateCount: number
+  readonly confidence: number
+}
 
 /** Scale-independent diagnostics derived from one channel's ranked results. */
 export interface ChannelEvidence {
   readonly available: boolean
   readonly scoreSeparation: number
   readonly agreement: number
+  readonly scoreGeometry: ScoreGeometryEvidence
 }
 
 /** Observable query and channel evidence available before score or rank fusion. */
@@ -26,6 +41,7 @@ export interface RoutingEvidence {
 export interface EvidenceRouterConfig {
   readonly baseWeights: ChannelWeights
   readonly scoreInfluence: ChannelCoefficients
+  readonly geometryInfluence: ChannelCoefficients
   readonly agreementInfluence: ChannelCoefficients
   readonly identifierInfluence: ChannelCoefficients
   readonly queryLengthInfluence: ChannelCoefficients
@@ -47,6 +63,82 @@ const scoreSeparation = (ranking: ChannelRankings[ChannelName]): number => {
   const top = ranking[0].score
   const reference = ranking[Math.min(SCORE_REFERENCE_RANK, ranking.length - 1)].score
   return clamp((top - reference) / (Math.abs(top) + Math.abs(reference) + Number.EPSILON))
+}
+
+const normalizedGap = (top: number, reference: number): number =>
+  clamp((top - reference) / (Math.abs(top) + Math.abs(reference) + Number.EPSILON))
+
+const scoreGeometry = (ranking: ChannelRankings[ChannelName]): ScoreGeometryEvidence => {
+  if (ranking.length === 0)
+    return {
+      top1Top2Gap: 0,
+      top1Top3Gap: 0,
+      top1Top10Gap: 0,
+      top3Top20Gap: 0,
+      areaUnderCurve: 0,
+      plateauWidth: 0,
+      entropy: 0,
+      effectiveCandidateCount: 0,
+      confidence: 0,
+    }
+  if (ranking.length === 1)
+    return {
+      top1Top2Gap: 1,
+      top1Top3Gap: 1,
+      top1Top10Gap: 1,
+      top3Top20Gap: 1,
+      areaUnderCurve: 1,
+      plateauWidth: 0,
+      entropy: 0,
+      effectiveCandidateCount: 0,
+      confidence: 1,
+    }
+
+  const scores = ranking.slice(0, SCORE_GEOMETRY_DEPTH).map((entry) => entry.score)
+  const top = scores[0]
+  const last = scores[scores.length - 1]
+  const range = top - last
+  const normalized =
+    range === 0 ? scores.map(() => 1) : scores.map((score) => (score - last) / range)
+  const areaUnderCurve = normalized.reduce((sum, score) => sum + score, 0) / normalized.length
+  const plateauWidth = normalized.filter((score) => score >= 0.9).length / normalized.length
+  const total = normalized.reduce((sum, score) => sum + score, 0)
+  const probabilities =
+    total === 0
+      ? normalized.map(() => 1 / normalized.length)
+      : normalized.map((score) => score / total)
+  const entropyDenominator = Math.log(probabilities.length)
+  const entropy =
+    entropyDenominator === 0
+      ? 0
+      : -probabilities
+          .filter((probability) => probability > 0)
+          .reduce((sum, probability) => sum + probability * Math.log(probability), 0) /
+        entropyDenominator
+  const effectiveCount = 1 / probabilities.reduce((sum, probability) => sum + probability ** 2, 0)
+  const effectiveCandidateCount = (effectiveCount - 1) / Math.max(1, probabilities.length - 1)
+  const top1Top2Gap = normalizedGap(scores[0], scores[Math.min(1, scores.length - 1)])
+  const top1Top3Gap = normalizedGap(scores[0], scores[Math.min(2, scores.length - 1)])
+  const top1Top10Gap = normalizedGap(scores[0], scores[Math.min(9, scores.length - 1)])
+  const top3Top20Gap = normalizedGap(
+    scores[Math.min(2, scores.length - 1)],
+    scores[Math.min(19, scores.length - 1)],
+  )
+  const gapConfidence = (top1Top2Gap + top1Top3Gap + top1Top10Gap + top3Top20Gap) / 4
+  const concentrationConfidence =
+    (1 - areaUnderCurve + 1 - plateauWidth + 1 - entropy + 1 - effectiveCandidateCount) / 4
+
+  return {
+    top1Top2Gap,
+    top1Top3Gap,
+    top1Top10Gap,
+    top3Top20Gap,
+    areaUnderCurve,
+    plateauWidth,
+    entropy,
+    effectiveCandidateCount,
+    confidence: clamp((gapConfidence + concentrationConfidence) / 2),
+  }
 }
 
 const channelAgreement = (channel: ChannelName, rankings: ChannelRankings): number => {
@@ -79,6 +171,7 @@ export const buildRoutingEvidence = (query: string, rankings: ChannelRankings): 
     available: rankings[channel].length > 0,
     scoreSeparation: scoreSeparation(rankings[channel]),
     agreement: channelAgreement(channel, rankings),
+    scoreGeometry: scoreGeometry(rankings[channel]),
   })
   return {
     tokenCount,
@@ -105,12 +198,20 @@ export const routeWithEvidence = (
       1 - config.scoreInfluence[channel] * (1 - channelEvidence.scoreSeparation) * 0.75
     const agreementFactor =
       1 - config.agreementInfluence[channel] * (1 - channelEvidence.agreement) * 0.5
+    const geometryFactor =
+      1 +
+      config.geometryInfluence[channel] * (2 * channelEvidence.scoreGeometry.confidence - 1) * 0.5
     const identifierFactor =
       1 + config.identifierInfluence[channel] * (2 * evidence.identifierLikelihood - 1) * 0.5
     const lengthFactor =
       1 + config.queryLengthInfluence[channel] * (2 * evidence.queryLengthSignal - 1) * 0.5
     return (
-      config.baseWeights[channel] * scoreFactor * agreementFactor * identifierFactor * lengthFactor
+      config.baseWeights[channel] *
+      scoreFactor *
+      geometryFactor *
+      agreementFactor *
+      identifierFactor *
+      lengthFactor
     )
   }
 

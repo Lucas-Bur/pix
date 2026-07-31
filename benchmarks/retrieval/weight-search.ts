@@ -316,6 +316,7 @@ const selectBestWeightsPerSubset = (
 /** Config field containing one coefficient per retrieval channel. */
 type InfluenceName =
   | "scoreInfluence"
+  | "geometryInfluence"
   | "agreementInfluence"
   | "identifierInfluence"
   | "queryLengthInfluence"
@@ -343,6 +344,7 @@ const positiveBaseWeights = (weights: ChannelWeights): ChannelWeights =>
 const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig => ({
   baseWeights: positiveBaseWeights(baseWeights),
   scoreInfluence: ZERO_COEFFICIENTS,
+  geometryInfluence: ZERO_COEFFICIENTS,
   agreementInfluence: ZERO_COEFFICIENTS,
   identifierInfluence: ZERO_COEFFICIENTS,
   queryLengthInfluence: ZERO_COEFFICIENTS,
@@ -358,6 +360,8 @@ const withInfluence = (
   switch (influence) {
     case "scoreInfluence":
       return { ...config, scoreInfluence: coefficients }
+    case "geometryInfluence":
+      return { ...config, geometryInfluence: coefficients }
     case "agreementInfluence":
       return { ...config, agreementInfluence: coefficients }
     case "identifierInfluence":
@@ -380,6 +384,7 @@ const routerParameters = (): readonly RouterParameter[] => {
     readonly values: readonly number[]
   }[] = [
     { name: "scoreInfluence", values: INFLUENCE_LEVELS },
+    { name: "geometryInfluence", values: INFLUENCE_LEVELS },
     { name: "agreementInfluence", values: INFLUENCE_LEVELS },
     { name: "identifierInfluence", values: SIGNED_FINE_LEVELS },
     { name: "queryLengthInfluence", values: SIGNED_FINE_LEVELS },
@@ -402,6 +407,7 @@ const routerKey = (config: EvidenceRouterConfig): string =>
   [
     weightsKey(config.baseWeights),
     coefficientsKey(config.scoreInfluence),
+    coefficientsKey(config.geometryInfluence),
     coefficientsKey(config.agreementInfluence),
     coefficientsKey(config.identifierInfluence),
     coefficientsKey(config.queryLengthInfluence),
@@ -412,6 +418,7 @@ const routerComplexity = (config: EvidenceRouterConfig): number =>
     (sum, channel) =>
       sum +
       Math.abs(config.scoreInfluence[channel]) +
+      Math.abs(config.geometryInfluence[channel]) +
       Math.abs(config.agreementInfluence[channel]) +
       Math.abs(config.identifierInfluence[channel]) +
       Math.abs(config.queryLengthInfluence[channel]),
