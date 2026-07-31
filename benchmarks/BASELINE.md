@@ -1,5 +1,38 @@
 # Preliminary Retrieval Baseline
 
+## Schema 13: Recall@5 And Stratified Grouped Folds
+
+Schema 13 adds aggregate `Recall@5` to quality summaries and reports. Grouped folds now use a fixed-seed
+deterministic shuffle of intent groups per repository followed by category/difficulty-stratified assignment;
+leave-one-repository-out remains the separate repository-generalization holdout. The BGE full run below uses
+the new grouped split and all three active fusion methods. The artifact is
+`benchmarks/results/retrieval-2026-07-31T13-29-31.177Z.json`.
+
+### Dynamic Hold-outs
+
+| Model     | Fusion         | Validation strategy |   R@5 |  R@10 |  R@20 | Context@4k |
+| --------- | -------------- | ------------------- | ----: | ----: | ----: | ---------: |
+| BGE-small | RRF            | Grouped 5-fold      | 65.3% | 76.4% | 86.9% |      70.0% |
+| BGE-small | RRF            | LORO                | 62.2% | 75.3% | 84.4% |      70.0% |
+| BGE-small | Relative score | Grouped 5-fold      | 62.8% | 76.1% | 88.9% |      67.8% |
+| BGE-small | Relative score | LORO                | 62.8% | 75.3% | 87.2% |      67.2% |
+| BGE-small | DBSF           | Grouped 5-fold      | 62.2% | 75.3% | 86.7% |      65.3% |
+| BGE-small | DBSF           | LORO                | 63.9% | 75.8% | 88.3% |      68.3% |
+
+### Fit-All Preview
+
+| Model     | Fusion         |   R@5 |  R@10 |  R@20 | Context@4k |
+| --------- | -------------- | ----: | ----: | ----: | ---------: |
+| BGE-small | RRF            | 65.0% | 75.8% | 88.3% |      69.7% |
+| BGE-small | Relative score | 64.2% | 77.8% | 89.4% |      71.1% |
+| BGE-small | DBSF           | 64.2% | 77.5% | 90.0% |      69.4% |
+
+LORO is unchanged from Schema 12, as expected: only the grouped intent assignment changed. Relative
+Score remains the strongest grouped dynamic candidate at R@20 (88.9%), while RRF has the strongest
+grouped dynamic `R@5` and context recall. DBSF loses grouped holdout quality relative to the previous
+split, so the grouped result is split-sensitive; the LORO result remains the stronger cross-repository
+generalization signal.
+
 ## Schema 12: Dense Confidence And BGE Comparison
 
 Schema 12 adds dense confidence from the dense score distribution: top score relative to the median,

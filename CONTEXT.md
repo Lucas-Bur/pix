@@ -135,7 +135,7 @@ Pinned FastAPI, Effect v4, and fd corpora contain exact file-qualified gold symb
 Recall@5/10/20, Success@10/20, MRR, and context recall at fixed estimated-token budgets for individual
 channels, all 15 channel subsets, weight grids, and all registered embedding models. Every intent has
 identifier, search-phrase, natural-question, and agent-task representations which remain grouped in
-five-fold validation. Leave-one-repository-out tests cross-codebase generalization; exact holdout
+five-fold validation after a deterministic per-repository shuffle and category/difficulty-stratified assignment. Leave-one-repository-out tests cross-codebase generalization; exact holdout
 Shapley values explain marginal channel contribution. Embedders use automatic device selection and a
 maximum batch size of two. Schema 7 also compares Weighted RRF, per-channel min-max relative-score
 fusion, and three-sigma distribution-based score fusion with independently tuned positive weights,
@@ -160,6 +160,8 @@ Schema 12 adds dense confidence from the dense score distribution using top-scor
 MAD-based robust deviation, and score-tail strength. Model- and repository-specific calibration is
 not yet part of the router. The full milestone runs MiniLM and BGE separately with all three fusion
 methods; model quality and cost are compared from the same pinned corpora and hold-out splits.
+Schema 13 adds aggregate Recall@5 to quality summaries and reports and makes grouped intent-fold
+assignment independent of manifest question order through a fixed-seed category/difficulty-stratified shuffle.
 Short-profile fusion runs use Relative Score and DBSF; the full profile also runs RRF for milestone
 comparisons.
 New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with

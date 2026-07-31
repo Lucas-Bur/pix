@@ -10,6 +10,7 @@ import { createAutoBoundEmbedder } from "../../src/services/embedder.js"
 import { loadCorpusManifests, prepareRepository } from "./corpus.js"
 import { loadEmbeddingCache, writeEmbeddingCache } from "./embedding-cache.js"
 import { buildQueryTermCoverage } from "./evidence-router.js"
+import { assignGroupedFolds } from "./folds.js"
 import { FUSION_METHODS } from "./fusion.js"
 import {
   contextRecallAtBudget,
@@ -239,6 +240,7 @@ export const runRetrievalBenchmark = (
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
     const manifests = selectManifests(yield* loadCorpusManifests(), profile)
+    const groupedFoldAssignments = assignGroupedFolds(manifests, config.groupedFolds)
     const models = selectModels()
     const repositories: BenchmarkArtifact["repositories"][number][] = []
     const embeddingRuns: BenchmarkArtifact["embeddingRuns"][number][] = []
@@ -326,7 +328,11 @@ export const runRetrievalBenchmark = (
           const entry = queries[queryIndex]
           const question = manifest.questions[entry.questionIndex]
           const targets = targetsByQuestion[entry.questionIndex]
-          const groupedFold = entry.questionIndex % config.groupedFolds
+          const groupedFold = groupedFoldAssignments.get(`${manifest.id}\0${question.id}`)
+          if (groupedFold === undefined)
+            return yield* Effect.fail(
+              new Error(`No grouped fold assignment for ${manifest.id}/${question.id}`),
+            )
           const channelStartedAt = performance.now()
           const rankings = rankChannels(entry.query, corpus, chunkVectors, queryVectors[queryIndex])
           const channelDurationMs = performance.now() - channelStartedAt
@@ -508,7 +514,7 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 12,
+      schemaVersion: 13,
       benchmarkProfile: profile,
       generatedAt: new Date().toISOString(),
       chunkConfig: {

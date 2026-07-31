@@ -71,20 +71,29 @@ const summarize = (
   fusion: FusionMethod = "rrf",
 ): QualitySummary => {
   if (samples.length === 0) {
-    return { recallAt10: 0, recallAt20: 0, contextRecallAt4096: 0, meanReciprocalRank: 0 }
+    return {
+      recallAt5: 0,
+      recallAt10: 0,
+      recallAt20: 0,
+      contextRecallAt4096: 0,
+      meanReciprocalRank: 0,
+    }
   }
+  let recall5 = 0
   let recall10 = 0
   let recall20 = 0
   let contextRecall = 0
   let mrr = 0
   for (const sample of samples) {
     const ranked = fuseWithWeights(sample.rankings, weights, fusion)
+    recall5 += recallAt(ranked, sample.targets, 5)
     recall10 += recallAt(ranked, sample.targets, 10)
     recall20 += recallAt(ranked, sample.targets, 20)
     contextRecall += contextRecallAtBudget(ranked, sample.targets, sample.chunks, 4_096)
     mrr += reciprocalRank(ranked, sample.targets)
   }
   return {
+    recallAt5: recall5 / samples.length,
     recallAt10: recall10 / samples.length,
     recallAt20: recall20 / samples.length,
     contextRecallAt4096: contextRecall / samples.length,
@@ -98,20 +107,29 @@ const summarizeEvidenceRouter = (
   fusion: FusionMethod,
 ): QualitySummary => {
   if (samples.length === 0) {
-    return { recallAt10: 0, recallAt20: 0, contextRecallAt4096: 0, meanReciprocalRank: 0 }
+    return {
+      recallAt5: 0,
+      recallAt10: 0,
+      recallAt20: 0,
+      contextRecallAt4096: 0,
+      meanReciprocalRank: 0,
+    }
   }
+  let recall5 = 0
   let recall10 = 0
   let recall20 = 0
   let contextRecall = 0
   let mrr = 0
   for (const { sample, evidence } of samples) {
     const ranked = fuseWithWeights(sample.rankings, routeWithEvidence(evidence, config), fusion)
+    recall5 += recallAt(ranked, sample.targets, 5)
     recall10 += recallAt(ranked, sample.targets, 10)
     recall20 += recallAt(ranked, sample.targets, 20)
     contextRecall += contextRecallAtBudget(ranked, sample.targets, sample.chunks, 4_096)
     mrr += reciprocalRank(ranked, sample.targets)
   }
   return {
+    recallAt5: recall5 / samples.length,
     recallAt10: recall10 / samples.length,
     recallAt20: recall20 / samples.length,
     contextRecallAt4096: contextRecall / samples.length,
