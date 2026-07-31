@@ -181,7 +181,7 @@ under ignored `benchmarks/results/`. See `benchmarks/README.md` and `benchmarks/
 
 ### Scorer
 
-A retrieval path producing `RankedChunk[]`. BM25 and identifier scorers are pure functions over pre-built data. Production dense ranking runs in SQLite through sqlite-vector; the pure JavaScript dense scorer remains the exact-reference implementation.
+A retrieval path producing `RankedChunk[]`. BM25 and identifier scorers are pure functions over pre-built data. Dense ranking runs in SQLite through sqlite-vector; SQLite is the sole dense-ranking implementation and reference path.
 
 ### Scorer Weight
 

@@ -11,7 +11,7 @@ import {
 import { fuseRankings } from "../retrieval/fusion.js"
 import { recallAt, resolveGoldTargets } from "../retrieval/metrics.js"
 import type { PreparedCorpus } from "../retrieval/prepare.js"
-import { rankChannels, rankVariant, RETRIEVAL_VARIANTS } from "../retrieval/ranking.js"
+import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "../retrieval/ranking.js"
 import { optimizeEvidenceRouter, optimizeWeights } from "../retrieval/weight-search.js"
 
 const texts = [
@@ -50,13 +50,6 @@ const corpus: PreparedCorpus = {
   preparationDurationMs: 0,
 }
 
-const chunkVectors = [
-  new Float32Array([0.6, 0.4]),
-  new Float32Array([0.2, 0.8]),
-  new Float32Array([0, 1]),
-  new Float32Array([1, 0]),
-]
-
 const zeroChannelCoefficients = { identity: 0, camelcase: 0, bm25: 0, dense: 0 }
 
 describe("retrieval benchmark fixture", () => {
@@ -65,40 +58,20 @@ describe("retrieval benchmark fixture", () => {
   })
 
   it("isolates the exact identity channel without prefix false positives", () => {
-    const channels = rankChannels(
-      "loadProjectConfiguration",
-      corpus,
-      chunkVectors,
-      new Float32Array([0, 1]),
-    )
+    const channels = rankLexicalChannels("loadProjectConfiguration", corpus)
     expect(channels.identity.map((entry) => entry.chunkIndex)).toEqual([0])
     expect(channels.identity.some((entry) => entry.chunkIndex === 1)).toBe(false)
   })
 
   it("ranks the identifier matching both constituent words first", () => {
-    const channels = rankChannels(
-      "project configuration",
-      corpus,
-      chunkVectors,
-      new Float32Array([0, 1]),
-    )
+    const channels = rankLexicalChannels("project configuration", corpus)
     expect(channels.camelcase[0].chunkIndex).toBe(0)
     expect(channels.camelcase[0].score).toBe(2)
   })
 
   it("finds rare lexical terms through BM25", () => {
-    const channels = rankChannels("quasar ledger", corpus, chunkVectors, new Float32Array([0, 1]))
+    const channels = rankLexicalChannels("quasar ledger", corpus)
     expect(channels.bm25[0].chunkIndex).toBe(2)
-  })
-
-  it("finds a semantic target through dense vectors", () => {
-    const channels = rankChannels(
-      "who checks the logged-in user",
-      corpus,
-      chunkVectors,
-      new Float32Array([1, 0]),
-    )
-    expect(channels.dense[0].chunkIndex).toBe(3)
   })
 
   it("downweights an ambiguous channel using scale-independent ranking evidence", () => {
@@ -292,13 +265,11 @@ describe("retrieval benchmark fixture", () => {
   })
 
   it("measures full RRF against exact file-qualified gold targets", () => {
-    const ranked = rankVariant(
-      "rrf",
-      "project configuration",
-      corpus,
-      chunkVectors,
-      new Float32Array([0.6, 0.4]),
-    )
+    const query = "project configuration"
+    const ranked = fuseVariant("rrf", query, {
+      ...rankLexicalChannels(query, corpus),
+      dense: [{ chunkIndex: 0, score: 1 }],
+    })
     const targets = resolveGoldTargets(
       [{ file: "src/chunk-0.ts", symbol: "loadProjectConfiguration" }],
       chunks,

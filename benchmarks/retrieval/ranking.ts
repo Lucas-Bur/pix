@@ -1,7 +1,6 @@
 import type { RankedChunk } from "../../src/domain/ports.js"
 import { rankBm25 } from "../../src/lib/retrieval/bm25.js"
 import { rankCamelCase } from "../../src/lib/retrieval/camelcase.js"
-import { rankDense } from "../../src/lib/retrieval/dense.js"
 import { rankIdentity } from "../../src/lib/retrieval/identity.js"
 import { routeQuery, type RetrievalWeights } from "../../src/lib/retrieval/routing.js"
 import { rrfFuse } from "../../src/lib/retrieval/rrf.js"
@@ -13,6 +12,9 @@ export type ChannelName = keyof RetrievalWeights
 
 /** Rankings produced once per query by each physical retrieval channel. */
 export type ChannelRankings = Readonly<Record<ChannelName, readonly RankedChunk[]>>
+
+/** Rankings produced by the lexical channels before dense search is delegated to SQLite. */
+export type LexicalChannelRankings = Pick<ChannelRankings, "identity" | "camelcase" | "bm25">
 
 /** All retrieval configurations emitted by the local quality benchmark. */
 export const RETRIEVAL_VARIANTS: readonly RetrievalVariant[] = [
@@ -65,20 +67,14 @@ const channelsForVariant = (variant: RetrievalVariant): readonly ChannelName[] =
   }
 }
 
-/** Execute each physical retrieval channel once for a query. */
-export const rankChannels = (
+/** Execute the lexical retrieval channels once for a query. */
+export const rankLexicalChannels = (
   query: string,
-  corpus: PreparedCorpus,
-  chunkVectors: readonly Float32Array[],
-  queryVector: Float32Array,
-): ChannelRankings => ({
+  corpus: Pick<PreparedCorpus, "bm25Index" | "identifierIndex">,
+): LexicalChannelRankings => ({
   identity: rankIdentity(query, corpus.identifierIndex),
   camelcase: rankCamelCase(query, corpus.identifierIndex),
   bm25: rankBm25(query, corpus.bm25Index),
-  dense: rankDense(
-    queryVector,
-    chunkVectors.map((vector, index) => ({ index, vector })),
-  ),
 })
 
 /** Fuse precomputed channel rankings with production query-routing weights. */
@@ -97,13 +93,3 @@ export const fuseVariant = (
     present.map((channel) => weights[channel]),
   )
 }
-
-/** Rank one query with an individual channel, combination, or production-weighted RRF ablation. */
-export const rankVariant = (
-  variant: RetrievalVariant,
-  query: string,
-  corpus: PreparedCorpus,
-  chunkVectors: readonly Float32Array[],
-  queryVector: Float32Array,
-): readonly RankedChunk[] =>
-  fuseVariant(variant, query, rankChannels(query, corpus, chunkVectors, queryVector))

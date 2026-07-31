@@ -24,8 +24,8 @@ generations. Query also loaded every Float32 vector into JavaScript for exact co
   the previous snapshot visible.
 - Use an explicit `ordinal` as the generation-local identity shared by vector, BM25, identifier, and
   RRF channels. SQLite `rowid` is only an implementation detail used to join vector scan results.
-- Run exact cosine search with sqlite-vector `vector_full_scan` by default. Preserve the JavaScript
-  `rankDense` implementation as the correctness oracle.
+- Run exact cosine search with sqlite-vector `vector_full_scan` by default. SQLite is the sole dense
+  ranking implementation; do not maintain a duplicate JavaScript cosine-search oracle.
 - Support `exact`, `auto`, and `turboquant` modes. `auto` uses TurboQuant only at or above
   `vectorSearch.turboQuantThreshold`; TurboQuant uses four-bit quantization. Persist completed
   quantization state in index metadata so reopened stores reuse sqlite-vector's shared DB state.

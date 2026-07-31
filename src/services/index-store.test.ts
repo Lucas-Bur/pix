@@ -15,7 +15,6 @@ import { GetStatus } from "../application/get-status.js"
 import { StoreError } from "../domain/errors.js"
 import { IndexStore } from "../domain/ports.js"
 import { buildBm25Index } from "../lib/retrieval/bm25.js"
-import { rankDense } from "../lib/retrieval/dense.js"
 import { rrfFuse } from "../lib/retrieval/rrf.js"
 import { ConfigStoreLive } from "./config-store.js"
 import { SqliteIndexStoreBase } from "./sqlite-index-store.js"
@@ -262,37 +261,6 @@ it.effect("IndexStore.loadSearchData returns bm25Index after indexing", () =>
     expect(data.bm25Index!.chunkLengths).toHaveLength(2)
     expect(data.bm25Index!.chunkLengths).toEqual([4, 3])
   }).pipe(Effect.provide(isLayer), Effect.scoped),
-)
-
-it.effect("IndexStore.searchDense agrees with the JavaScript exact scorer", () =>
-  Effect.gen(function* () {
-    const embeddings = [
-      makeBasisEmbedding(1, 0),
-      makeBasisEmbedding(1, 1),
-      makeBasisEmbedding(0, 1),
-      makeBasisEmbedding(-1, 0),
-    ]
-    const chunks = embeddings.map((_, index) => makeChunk({ id: `chunk-${index}`, idx: index }))
-    const store = yield* storeFixture(chunks, embeddings)
-    const query = makeBasisEmbedding(1, 0)
-
-    const actual = yield* store.searchDense(query)
-    const expected = rankDense(
-      query.vector,
-      embeddings.map((embedding, index) => ({
-        ...makeStoredChunk(chunks[index]),
-        index,
-        vector: embedding.vector,
-      })),
-    )
-
-    expect(actual.map(({ chunkIndex }) => chunkIndex)).toEqual(
-      expected.map(({ chunkIndex }) => chunkIndex),
-    )
-    expect(actual.map(({ score }) => score)).toEqual(
-      expected.map(({ score }) => expect.closeTo(score, 5)),
-    )
-  }).pipe(Effect.provide(indexStoreLayer()), Effect.scoped),
 )
 
 it.effect("IndexStore.searchDense uses the ordinal as deterministic tie-breaker", () =>
