@@ -141,11 +141,13 @@ channel to its top 200 candidates; ordinary production-variant measurements stil
 Static weight search treats the four authored query forms as separate query-form-informed strata. Evidence-router
 search deliberately combines all forms: it does not receive `identifier`, `searchPhrase`,
 `naturalQuestion`, or `agentTask` labels. Search starts from the coarse grid, retains a six-candidate
-beam, then performs two coordinate passes in 0.1 steps. Base weights and per-channel score/agreement
-coefficients range from 0 to 1. Identifier-shape and query-length slopes range from -1 to 1 so one
-query signal may boost one channel while damping another. This bounded coarse-to-fine search avoids
-the combinatorial explosion of a full 20-parameter product; it is deterministic but does not claim a
-global optimum. Exact metric ties prefer the lower-coefficient candidate.
+beam, then performs two coordinate passes in 0.1 steps. Dynamic base weights range from 0.1 to 1 so a
+channel cannot be permanently deleted before its evidence is observed; static ablations may still use
+zero. Per-channel score/agreement coefficients range from 0 to 1. Identifier-shape and query-length
+slopes range from -1 to 1 so one query signal may boost one channel while damping another. This
+bounded coarse-to-fine search avoids the combinatorial explosion of a full 20-parameter product; it is
+deterministic but does not claim a global optimum. Exact metric ties prefer the lower-coefficient
+candidate.
 
 The selected router is evaluated unchanged on the excluded intent fold or repository and compared
 with static weights selected on the same development samples. Finer steps increase the number of
@@ -171,7 +173,7 @@ Each run writes ignored JSON and Markdown artifacts under `benchmarks/results`. 
 repository, revision, language, size, category, difficulty, query form, grouped fold, model, variant,
 individual gold ranks, timing, and every metric. The Markdown report includes quality by query form,
 marginal leave-one-channel-out contribution, cross-validation folds, Shapley values, and final fitted
-weight candidates. Schema 4 artifacts also include static-versus-dynamic evidence-router holdouts and
+weight candidates. Schema 5 artifacts also include static-versus-dynamic evidence-router holdouts and
 the final router candidate fitted across all query forms.
 
 ## Interpretation

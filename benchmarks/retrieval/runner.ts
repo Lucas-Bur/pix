@@ -39,6 +39,10 @@ const QUERY_KINDS: readonly QueryKind[] = [
   "agentTask",
 ]
 
+const reportProgress = (message: string): void => {
+  process.stderr.write(`[retrieval benchmark] ${message}\n`)
+}
+
 const isLongInput = (text: string): boolean =>
   Buffer.byteLength(text, "utf8") / 4 > SINGLE_ITEM_ESTIMATED_TOKENS
 
@@ -310,6 +314,8 @@ export const runRetrievalBenchmark = (): Effect.Effect<
       }
     }
 
+    const staticSearchStartedAt = performance.now()
+    reportProgress("selecting static holdout weights")
     const weightSearch = [...sampleGroups.values()].flatMap((group) => {
       const groupedFolds = Array.from({ length: 5 }, (_, fold) =>
         optimizeWeights(
@@ -337,40 +343,49 @@ export const runRetrievalBenchmark = (): Effect.Effect<
           : []
       return [...groupedFolds, ...repositoryFolds]
     })
+    reportProgress(
+      `selected static holdout weights in ${((performance.now() - staticSearchStartedAt) / 1_000).toFixed(1)}s`,
+    )
     const recommendedWeights = [...sampleGroups.values()].map((group) =>
       fitRecommendedWeights(group.model, group.queryKind, group.samples),
     )
-    const evidenceRouterSearch = [...samplesByModel].flatMap(([model, samples]) => {
-      const groupedFolds = Array.from({ length: 5 }, (_, fold) =>
-        optimizeEvidenceRouter(
-          model,
-          "grouped-5-fold",
-          String(fold + 1),
-          samples.filter((sample) => sample.groupedFold !== fold),
-          samples.filter((sample) => sample.groupedFold === fold),
-        ),
-      )
+    const evidenceRouterSearch: BenchmarkArtifact["evidenceRouterSearch"][number][] = []
+    for (const [model, samples] of samplesByModel) {
+      for (let fold = 0; fold < 5; fold++) {
+        reportProgress(`${model}: selecting evidence router for grouped fold ${fold + 1}/5`)
+        evidenceRouterSearch.push(
+          optimizeEvidenceRouter(
+            model,
+            "grouped-5-fold",
+            String(fold + 1),
+            samples.filter((sample) => sample.groupedFold !== fold),
+            samples.filter((sample) => sample.groupedFold === fold),
+          ),
+        )
+      }
       const repositories = [...new Set(samples.map((sample) => sample.repository))]
-      const repositoryFolds =
-        repositories.length > 1
-          ? repositories.map((repository) =>
-              optimizeEvidenceRouter(
-                model,
-                "leave-one-repository-out",
-                repository,
-                samples.filter((sample) => sample.repository !== repository),
-                samples.filter((sample) => sample.repository === repository),
-              ),
-            )
-          : []
-      return [...groupedFolds, ...repositoryFolds]
-    })
+      if (repositories.length > 1) {
+        for (const repository of repositories) {
+          reportProgress(`${model}: selecting evidence router with ${repository} held out`)
+          evidenceRouterSearch.push(
+            optimizeEvidenceRouter(
+              model,
+              "leave-one-repository-out",
+              repository,
+              samples.filter((sample) => sample.repository !== repository),
+              samples.filter((sample) => sample.repository === repository),
+            ),
+          )
+        }
+      }
+    }
+    reportProgress("fitting final evidence router on all samples")
     const recommendedEvidenceRouters = [...samplesByModel].map(([model, samples]) =>
       fitRecommendedEvidenceRouter(model, samples),
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 4,
+      schemaVersion: 5,
       generatedAt: new Date().toISOString(),
       chunkConfig: {
         chunkLines: DEFAULT_CONFIG.chunkLines,
