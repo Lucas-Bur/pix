@@ -74,9 +74,14 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.repositories.length).toBeGreaterThan(0)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(14)
-    expect(artifact.searchStrategy.algorithm).toBe("halton-global-scout-elitist-beam")
+    expect(artifact.schemaVersion).toBe(15)
+    expect(artifact.searchStrategy.algorithm).toBe(
+      "halton-global-scout-elitist-beam-successive-halving",
+    )
     expect(artifact.searchStrategy.globalScouts).toBe(64)
+    expect(artifact.searchStrategy.proxySampleFraction).toBe(0.25)
+    expect(artifact.searchStrategy.proxyMinimumSamples).toBe(32)
+    expect(artifact.searchStrategy.halvingKeepFactor).toBe(8)
     expect(artifact.timings.totalDurationMs).toBeGreaterThan(0)
     expect(Object.values(artifact.timings).every((duration) => duration >= 0)).toBe(true)
     expect(artifact.embeddingRuns.every((run) => run.queryEmbeddingDurationMs >= 0)).toBe(true)
@@ -93,6 +98,10 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.recommendedEvidenceRouters.length).toBe(
       artifact.models.length * routerFusionMethods,
     )
+    expect(artifact.evidenceRouterSearch.every((row) => row.proxyEvaluations >= 0)).toBe(true)
+    expect(artifact.evidenceRouterSearch.every((row) => row.fullEvaluations > 0)).toBe(true)
+    expect(artifact.recommendedEvidenceRouters.every((row) => row.proxyEvaluations >= 0)).toBe(true)
+    expect(artifact.recommendedEvidenceRouters.every((row) => row.fullEvaluations > 0)).toBe(true)
     expect(artifact.weightSearch.length).toBe(0)
     expect(artifact.recommendedWeights.length).toBe(0)
     expect(artifact.measurements.every((row) => row.recallAt20 >= row.recallAt10)).toBe(true)

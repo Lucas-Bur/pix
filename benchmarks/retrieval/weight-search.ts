@@ -35,6 +35,9 @@ const SEARCH_CANDIDATE_DEPTH = ROUTER_SEARCH_STRATEGY.candidateDepth
 const SEARCH_BEAM_WIDTH = ROUTER_SEARCH_STRATEGY.beamWidth
 const SEARCH_PASSES = ROUTER_SEARCH_STRATEGY.coordinatePasses
 const SEARCH_GLOBAL_SCOUTS = ROUTER_SEARCH_STRATEGY.globalScouts
+const SEARCH_PROXY_SAMPLE_FRACTION = ROUTER_SEARCH_STRATEGY.proxySampleFraction
+const SEARCH_PROXY_MINIMUM_SAMPLES = ROUTER_SEARCH_STRATEGY.proxyMinimumSamples
+const SEARCH_HALVING_KEEP_FACTOR = ROUTER_SEARCH_STRATEGY.halvingKeepFactor
 const HALTON_PRIMES = [
   2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
   101, 103, 107,
@@ -51,6 +54,8 @@ const ZERO_COEFFICIENTS: ChannelCoefficients = {
 export interface WeightSearchSample {
   readonly repository: string
   readonly intentId: string
+  /** Query form used to stratify low-fidelity router evaluations. */
+  readonly queryKind: QueryKind
   readonly groupedFold: number
   readonly query: string
   readonly rankings: ChannelRankings
@@ -150,6 +155,33 @@ const prepareEvidenceSamples = (
     sample,
     evidence: buildRoutingEvidence(sample.query, sample.rankings, sample.termCoverage),
   }))
+
+const buildProxySamples = (
+  samples: readonly EvidenceSearchSample[],
+): readonly EvidenceSearchSample[] => {
+  const target = Math.max(
+    SEARCH_PROXY_MINIMUM_SAMPLES,
+    Math.ceil(samples.length * SEARCH_PROXY_SAMPLE_FRACTION),
+  )
+  if (target >= samples.length) return samples
+
+  const groups = new Map<string, EvidenceSearchSample[]>()
+  for (const sample of samples) {
+    const key = `${sample.sample.repository}\0${sample.sample.queryKind}`
+    groups.set(key, [...(groups.get(key) ?? []), sample])
+  }
+  const groupedSamples = [...groups.values()]
+  return groupedSamples
+    .flatMap((group, groupIndex) =>
+      group.map((sample, sampleIndex) => ({
+        sample,
+        order: sampleIndex * groupedSamples.length + groupIndex,
+      })),
+    )
+    .sort((left, right) => left.order - right.order)
+    .slice(0, target)
+    .map(({ sample }) => sample)
+}
 
 const compareQuality = (left: QualitySummary, right: QualitySummary): number => {
   const leftValues = [
@@ -504,21 +536,61 @@ const routerComplexity = (config: EvidenceRouterConfig): number =>
     0,
   )
 
+interface SearchEvaluationStats {
+  proxyEvaluations: number
+  fullEvaluations: number
+}
+
+interface RouterSearchContext {
+  readonly samples: readonly EvidenceSearchSample[]
+  readonly proxySamples: readonly EvidenceSearchSample[]
+  readonly qualityCache: Map<string, QualitySummary>
+  readonly proxyQualityCache: Map<string, QualitySummary>
+  readonly elites: Map<string, RouterCandidate>
+  readonly fusion: FusionMethod
+  readonly stats: SearchEvaluationStats
+}
+
 const rankRouterCandidates = (
-  samples: readonly EvidenceSearchSample[],
+  context: RouterSearchContext,
   configs: readonly EvidenceRouterConfig[],
   limit: number,
-  qualityCache: Map<string, QualitySummary>,
-  fusion: FusionMethod,
+  protectedConfigs: readonly EvidenceRouterConfig[] = [],
+  useProxy = true,
 ): readonly RouterCandidate[] => {
   const unique = new Map<string, EvidenceRouterConfig>()
   for (const config of configs) unique.set(routerKey(config), config)
-  return [...unique]
+  let fullCandidates = [...unique]
+  if (useProxy && context.proxySamples.length < context.samples.length) {
+    const rankedProxy = fullCandidates
+      .map(([key, config]) => {
+        const cached = context.proxyQualityCache.get(key)
+        if (cached !== undefined) return { key, config, quality: cached }
+        const quality = summarizeEvidenceRouter(context.proxySamples, config, context.fusion)
+        context.proxyQualityCache.set(key, quality)
+        context.stats.proxyEvaluations++
+        return { key, config, quality }
+      })
+      .sort(
+        (left, right) =>
+          compareQuality(left.quality, right.quality) ||
+          routerComplexity(left.config) - routerComplexity(right.config),
+      )
+      .slice(0, limit * SEARCH_HALVING_KEEP_FACTOR)
+    const selected = new Map(rankedProxy.map((candidate) => [candidate.key, candidate.config]))
+    const protectedKeys = new Set([...protectedConfigs.map(routerKey), ...context.elites.keys()])
+    for (const [key, config] of fullCandidates) {
+      if (protectedKeys.has(key)) selected.set(key, config)
+    }
+    fullCandidates = [...selected]
+  }
+  const rankedFull = fullCandidates
     .map(([key, config]) => {
-      const cached = qualityCache.get(key)
+      const cached = context.qualityCache.get(key)
       if (cached !== undefined) return { config, quality: cached }
-      const quality = summarizeEvidenceRouter(samples, config, fusion)
-      qualityCache.set(key, quality)
+      const quality = summarizeEvidenceRouter(context.samples, config, context.fusion)
+      context.qualityCache.set(key, quality)
+      context.stats.fullEvaluations++
       return { config, quality }
     })
     .sort(
@@ -526,46 +598,70 @@ const rankRouterCandidates = (
         compareQuality(left.quality, right.quality) ||
         routerComplexity(left.config) - routerComplexity(right.config),
     )
-    .slice(0, limit)
+  const rankedElites = new Map(
+    [...context.elites.values(), ...rankedFull]
+      .sort(
+        (left, right) =>
+          compareQuality(left.quality, right.quality) ||
+          routerComplexity(left.config) - routerComplexity(right.config),
+      )
+      .slice(0, SEARCH_BEAM_WIDTH)
+      .map((candidate) => [routerKey(candidate.config), candidate]),
+  )
+  context.elites.clear()
+  for (const [key, candidate] of rankedElites) context.elites.set(key, candidate)
+  return rankedFull.slice(0, limit)
 }
 
 const selectBestEvidenceRouter = (
   samples: readonly WeightSearchSample[],
   fusion: FusionMethod,
-): { readonly config: EvidenceRouterConfig; readonly quality: QualitySummary } => {
+): {
+  readonly config: EvidenceRouterConfig
+  readonly quality: QualitySummary
+  readonly proxyEvaluations: number
+  readonly fullEvaluations: number
+} => {
   const evidenceSamples = prepareEvidenceSamples(samples)
+  const stats: SearchEvaluationStats = { proxyEvaluations: 0, fullEvaluations: 0 }
+  const searchContext: RouterSearchContext = {
+    samples: evidenceSamples,
+    proxySamples: buildProxySamples(evidenceSamples),
+    qualityCache: new Map<string, QualitySummary>(),
+    proxyQualityCache: new Map<string, QualitySummary>(),
+    elites: new Map<string, RouterCandidate>(),
+    fusion,
+    stats,
+  }
   const baseSeeds = [
     selectBestWeights(samples, fusion).weights,
     ...selectBestWeightsPerSubset(samples, fusion),
   ].map(emptyRouterConfig)
-  const qualityCache = new Map<string, QualitySummary>()
   const parameters = routerParameters()
   let beam = rankRouterCandidates(
-    evidenceSamples,
+    searchContext,
     [...baseSeeds, ...buildGlobalRouterSeeds(baseSeeds, parameters)],
     SEARCH_BEAM_WIDTH,
-    qualityCache,
-    fusion,
+    baseSeeds,
   )
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     const orderedParameters = pass % 2 === 0 ? parameters : [...parameters].reverse()
     for (const parameter of orderedParameters) {
       beam = rankRouterCandidates(
-        evidenceSamples,
+        searchContext,
         [
-          // Retain current elites so a later coordinate cannot regress the best development fit.
+          // Retain the current beam; the search context also protects full-quality elites.
           ...beam.map((candidate) => candidate.config),
           ...beam.flatMap((candidate) =>
             parameter.values.map((value) => parameter.update(candidate.config, value)),
           ),
         ],
         SEARCH_BEAM_WIDTH,
-        qualityCache,
-        fusion,
+        beam.map((candidate) => candidate.config),
       )
     }
   }
-  return beam[0]
+  return { ...beam[0], ...stats }
 }
 
 /** Select weights on development samples, then evaluate unchanged on one validation fold. */
@@ -643,6 +739,8 @@ export const optimizeEvidenceRouter = (
       dynamicSelection.config,
       fusion,
     ),
+    proxyEvaluations: dynamicSelection.proxyEvaluations,
+    fullEvaluations: dynamicSelection.fullEvaluations,
   }
 }
 
@@ -697,5 +795,7 @@ export const fitRecommendedEvidenceRouter = (
     config: dynamicSelection.config,
     staticQuality: staticSelection.quality,
     fitQuality: dynamicSelection.quality,
+    proxyEvaluations: dynamicSelection.proxyEvaluations,
+    fullEvaluations: dynamicSelection.fullEvaluations,
   }
 }
