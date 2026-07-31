@@ -93,6 +93,7 @@ const summarize = (
 const summarizeEvidenceRouter = (
   samples: readonly EvidenceSearchSample[],
   config: EvidenceRouterConfig,
+  fusion: FusionMethod,
 ): QualitySummary => {
   if (samples.length === 0) {
     return { recallAt10: 0, recallAt20: 0, contextRecallAt4096: 0, meanReciprocalRank: 0 }
@@ -102,7 +103,7 @@ const summarizeEvidenceRouter = (
   let contextRecall = 0
   let mrr = 0
   for (const { sample, evidence } of samples) {
-    const ranked = fuseWithWeights(sample.rankings, routeWithEvidence(evidence, config))
+    const ranked = fuseWithWeights(sample.rankings, routeWithEvidence(evidence, config), fusion)
     recall10 += recallAt(ranked, sample.targets, 10)
     recall20 += recallAt(ranked, sample.targets, 20)
     contextRecall += contextRecallAtBudget(ranked, sample.targets, sample.chunks, 4_096)
@@ -296,6 +297,7 @@ const activeChannelsKey = (weights: ChannelWeights): string =>
 
 const selectBestWeightsPerSubset = (
   samples: readonly WeightSearchSample[],
+  fusion: FusionMethod,
 ): readonly ChannelWeights[] => {
   const selected = new Map<
     string,
@@ -303,7 +305,7 @@ const selectBestWeightsPerSubset = (
   >()
   for (const weights of weightCandidates()) {
     const key = activeChannelsKey(weights)
-    const quality = summarize(samples, weights)
+    const quality = summarize(samples, weights, fusion)
     const current = selected.get(key)
     if (current === undefined || isBetter(quality, current.quality))
       selected.set(key, { weights, quality })
@@ -421,6 +423,7 @@ const rankRouterCandidates = (
   configs: readonly EvidenceRouterConfig[],
   limit: number,
   qualityCache: Map<string, QualitySummary>,
+  fusion: FusionMethod,
 ): readonly RouterCandidate[] => {
   const unique = new Map<string, EvidenceRouterConfig>()
   for (const config of configs) unique.set(routerKey(config), config)
@@ -428,7 +431,7 @@ const rankRouterCandidates = (
     .map(([key, config]) => {
       const cached = qualityCache.get(key)
       if (cached !== undefined) return { config, quality: cached }
-      const quality = summarizeEvidenceRouter(samples, config)
+      const quality = summarizeEvidenceRouter(samples, config, fusion)
       qualityCache.set(key, quality)
       return { config, quality }
     })
@@ -442,14 +445,21 @@ const rankRouterCandidates = (
 
 const selectBestEvidenceRouter = (
   samples: readonly WeightSearchSample[],
+  fusion: FusionMethod,
 ): { readonly config: EvidenceRouterConfig; readonly quality: QualitySummary } => {
   const evidenceSamples = prepareEvidenceSamples(samples)
   const baseSeeds = [
-    selectBestWeights(samples).weights,
-    ...selectBestWeightsPerSubset(samples),
+    selectBestWeights(samples, fusion).weights,
+    ...selectBestWeightsPerSubset(samples, fusion),
   ].map(emptyRouterConfig)
   const qualityCache = new Map<string, QualitySummary>()
-  let beam = rankRouterCandidates(evidenceSamples, baseSeeds, SEARCH_BEAM_WIDTH, qualityCache)
+  let beam = rankRouterCandidates(
+    evidenceSamples,
+    baseSeeds,
+    SEARCH_BEAM_WIDTH,
+    qualityCache,
+    fusion,
+  )
   const parameters = routerParameters()
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (const parameter of parameters) {
@@ -460,6 +470,7 @@ const selectBestEvidenceRouter = (
         ),
         SEARCH_BEAM_WIDTH,
         qualityCache,
+        fusion,
       )
     }
   }
@@ -516,15 +527,17 @@ export const optimizeFusionWeights = (
 /** Select one evidence-based router on development queries and evaluate it unchanged on a holdout. */
 export const optimizeEvidenceRouter = (
   model: string,
+  fusion: FusionMethod,
   strategy: EvidenceRouterSearchResult["strategy"],
   fold: string,
   development: readonly WeightSearchSample[],
   validation: readonly WeightSearchSample[],
 ): EvidenceRouterSearchResult => {
-  const staticSelection = selectBestWeights(development)
-  const dynamicSelection = selectBestEvidenceRouter(development)
+  const staticSelection = selectBestWeights(development, fusion)
+  const dynamicSelection = selectBestEvidenceRouter(development, fusion)
   return {
     model,
+    fusion,
     strategy,
     fold,
     developmentQueries: development.length,
@@ -532,11 +545,12 @@ export const optimizeEvidenceRouter = (
     staticWeights: staticSelection.weights,
     config: dynamicSelection.config,
     staticDevelopment: staticSelection.quality,
-    staticValidation: summarize(validation, staticSelection.weights),
+    staticValidation: summarize(validation, staticSelection.weights, fusion),
     development: dynamicSelection.quality,
     validation: summarizeEvidenceRouter(
       prepareEvidenceSamples(validation),
       dynamicSelection.config,
+      fusion,
     ),
   }
 }
@@ -579,12 +593,14 @@ export const fitRecommendedFusionWeights = (
  */
 export const fitRecommendedEvidenceRouter = (
   model: string,
+  fusion: FusionMethod,
   samples: readonly WeightSearchSample[],
 ): RecommendedEvidenceRouter => {
-  const staticSelection = selectBestWeights(samples)
-  const dynamicSelection = selectBestEvidenceRouter(samples)
+  const staticSelection = selectBestWeights(samples, fusion)
+  const dynamicSelection = selectBestEvidenceRouter(samples, fusion)
   return {
     model,
+    fusion,
     samples: samples.length,
     staticWeights: staticSelection.weights,
     config: dynamicSelection.config,

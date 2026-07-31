@@ -279,8 +279,16 @@ describe("retrieval benchmark fixture", () => {
       },
     ]
 
-    const result = optimizeEvidenceRouter("fixture", "grouped-5-fold", "1", samples, samples)
+    const result = optimizeEvidenceRouter(
+      "fixture",
+      "dbsf",
+      "grouped-5-fold",
+      "1",
+      samples,
+      samples,
+    )
 
+    expect(result.fusion).toBe("dbsf")
     expect(Object.values(result.config.baseWeights).every((weight) => weight > 0)).toBe(true)
     expect(result.config.scoreInfluence.bm25 + result.config.scoreInfluence.dense).toBeGreaterThan(
       0,

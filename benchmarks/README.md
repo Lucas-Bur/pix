@@ -150,6 +150,8 @@ list's mean and sample standard deviation, maps the three-sigma interval to a co
 sums weighted normalized scores. A constant or single-result channel contributes 0.5 instead of
 dividing by zero. Missing candidates contribute nothing. Every fusion method selects its own positive
 weights; weights are not transferred between formulas with different semantics.
+Schema 8 uses DBSF for both sides of the evidence-router comparison: one static DBSF vector versus
+per-query DBSF weights produced by the existing schema-5 linear router.
 
 ## Validation
 
@@ -200,9 +202,9 @@ Each run writes ignored JSON and Markdown artifacts under `benchmarks/results`. 
 repository, revision, language, size, category, difficulty, query form, grouped fold, model, variant,
 individual gold ranks, timing, and every metric. The Markdown report includes quality by query form,
 marginal leave-one-channel-out contribution, cross-validation folds, Shapley values, and final fitted
-weight candidates. Schema 7 artifacts also include static fusion holdouts, fit-all fusion candidates,
-static-versus-dynamic evidence-router holdouts, and the final router candidate fitted across all query
-forms.
+weight candidates. Schema 8 artifacts also include static fusion holdouts, fit-all fusion candidates,
+static-versus-dynamic DBSF router holdouts, and the final router candidate fitted across all query
+forms. The router's fusion method is recorded explicitly.
 
 ## Interpretation
 
