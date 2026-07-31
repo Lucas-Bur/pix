@@ -8,6 +8,7 @@ import type { ChannelWeights } from "./types.js"
 const SCORE_REFERENCE_RANK = 9
 const SCORE_GEOMETRY_DEPTH = 20
 const PAIRWISE_AGREEMENT_DEPTHS = [5, 10, 20] as const
+const DENSE_TAIL_RANK = 19
 
 /** Query-term coverage measured independently for the lexical and identifier channels. */
 export interface QueryTermCoverage {
@@ -39,12 +40,21 @@ export interface PairwiseAgreementEvidence {
   readonly bm25Dense: number
 }
 
+/** Robust confidence measurements derived only from one dense score distribution. */
+export interface DenseConfidenceEvidence {
+  readonly topScoreRelativeToMedian: number
+  readonly robustDeviation: number
+  readonly scoreTail: number
+  readonly confidence: number
+}
+
 /** Scale-independent diagnostics derived from one channel's ranked results. */
 export interface ChannelEvidence {
   readonly available: boolean
   readonly scoreSeparation: number
   readonly pairwiseAgreement: number
   readonly scoreGeometry: ScoreGeometryEvidence
+  readonly denseConfidence: number
   readonly termCoverage: number
 }
 
@@ -55,6 +65,7 @@ export interface RoutingEvidence {
   readonly queryLengthSignal: number
   readonly termCoverage: QueryTermCoverage
   readonly pairwiseAgreement: PairwiseAgreementEvidence
+  readonly denseConfidence: DenseConfidenceEvidence
   readonly channels: Readonly<Record<ChannelName, ChannelEvidence>>
 }
 
@@ -65,6 +76,7 @@ export interface EvidenceRouterConfig {
   readonly geometryInfluence: ChannelCoefficients
   readonly termCoverageInfluence: ChannelCoefficients
   readonly pairwiseAgreementInfluence: ChannelCoefficients
+  readonly denseConfidenceInfluence: ChannelCoefficients
   readonly identifierInfluence: ChannelCoefficients
   readonly queryLengthInfluence: ChannelCoefficients
 }
@@ -257,6 +269,39 @@ const channelPairwiseAgreement = (
   }
 }
 
+const median = (values: readonly number[]): number => {
+  const sorted = [...values].sort((left, right) => left - right)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
+}
+
+const buildDenseConfidence = (ranking: ChannelRankings[ChannelName]): DenseConfidenceEvidence => {
+  if (ranking.length === 0)
+    return { topScoreRelativeToMedian: 0, robustDeviation: 0, scoreTail: 0, confidence: 0 }
+  if (ranking.length === 1)
+    return { topScoreRelativeToMedian: 1, robustDeviation: 1, scoreTail: 1, confidence: 1 }
+
+  const scores = ranking.map((entry) => entry.score)
+  const top = scores[0]
+  const scoreMedian = median(scores)
+  const deviations = scores.map((score) => Math.abs(score - scoreMedian))
+  const mad = median(deviations)
+  const topMedianGap = top - scoreMedian
+  const topScoreRelativeToMedian = clamp(
+    topMedianGap / (Math.abs(top) + Math.abs(scoreMedian) + Number.EPSILON),
+  )
+  const robustDeviation = clamp(topMedianGap / (1.4826 * mad + Number.EPSILON) / 6)
+  const tail = scores[Math.min(DENSE_TAIL_RANK, scores.length - 1)]
+  const scoreTail = topMedianGap === 0 ? 0 : clamp((tail - scoreMedian) / topMedianGap)
+
+  return {
+    topScoreRelativeToMedian,
+    robustDeviation,
+    scoreTail,
+    confidence: (topScoreRelativeToMedian + robustDeviation + scoreTail) / 3,
+  }
+}
+
 /** Derive scale-independent confidence and agreement signals from one query's channel rankings. */
 export const buildRoutingEvidence = (
   query: string,
@@ -266,6 +311,7 @@ export const buildRoutingEvidence = (
   const tokenCount = tokenize(query).length
   const identifierLikelihood = query !== "" && !/\s/u.test(query) ? 1 : 0
   const pairwiseAgreement = buildPairwiseAgreement(rankings)
+  const denseConfidence = buildDenseConfidence(rankings.dense)
   const channelTermCoverage = (channel: ChannelName): number => {
     switch (channel) {
       case "identity":
@@ -284,6 +330,7 @@ export const buildRoutingEvidence = (
     pairwiseAgreement: channelPairwiseAgreement(channel, pairwiseAgreement),
     scoreGeometry: scoreGeometry(rankings[channel]),
     termCoverage: channelTermCoverage(channel),
+    denseConfidence: channel === "dense" ? denseConfidence.confidence : 0.5,
   })
   return {
     tokenCount,
@@ -291,6 +338,7 @@ export const buildRoutingEvidence = (
     queryLengthSignal: clamp((tokenCount - 2) / 6),
     termCoverage,
     pairwiseAgreement,
+    denseConfidence,
     channels: {
       identity: channelEvidence("identity"),
       camelcase: channelEvidence("camelcase"),
@@ -317,6 +365,8 @@ export const routeWithEvidence = (
       config.geometryInfluence[channel] * (2 * channelEvidence.scoreGeometry.confidence - 1) * 0.5
     const termCoverageFactor =
       1 + config.termCoverageInfluence[channel] * (2 * channelEvidence.termCoverage - 1) * 0.5
+    const denseConfidenceFactor =
+      1 + config.denseConfidenceInfluence[channel] * (2 * channelEvidence.denseConfidence - 1) * 0.5
     const identifierFactor =
       1 + config.identifierInfluence[channel] * (2 * evidence.identifierLikelihood - 1) * 0.5
     const lengthFactor =
@@ -326,6 +376,7 @@ export const routeWithEvidence = (
       scoreFactor *
       geometryFactor *
       termCoverageFactor *
+      denseConfidenceFactor *
       pairwiseAgreementFactor *
       identifierFactor *
       lengthFactor

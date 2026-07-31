@@ -508,7 +508,7 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 11,
+      schemaVersion: 12,
       benchmarkProfile: profile,
       generatedAt: new Date().toISOString(),
       chunkConfig: {

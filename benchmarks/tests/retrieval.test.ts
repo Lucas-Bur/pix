@@ -12,13 +12,13 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
         ? artifact.repositories.length
         : 0
     const holdoutsPerModel = groupedFolds + repositoryHoldouts
-    const routerFusionMethods = profile === "full" ? 2 : 1
+    const routerFusionMethods = profile === "full" ? 3 : 1
 
     expect(artifact.benchmarkProfile).toBe(profile)
     expect(artifact.repositories.length).toBeGreaterThan(0)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(11)
+    expect(artifact.schemaVersion).toBe(12)
     expect(artifact.fusionSearch.length).toBe(
       artifact.models.length * fusionMethods * holdoutsPerModel,
     )
@@ -45,4 +45,4 @@ it.effect("runs the develop retrieval profile", () => runProfile("develop", 3, 1
 
 it.effect("runs the validate retrieval profile", () => runProfile("validate", 5, 1))
 
-it.effect("runs the full retrieval profile", () => runProfile("full", 5, 2))
+it.effect("runs the full retrieval profile", () => runProfile("full", 5, 3))

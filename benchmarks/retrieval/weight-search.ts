@@ -321,6 +321,7 @@ type InfluenceName =
   | "geometryInfluence"
   | "termCoverageInfluence"
   | "pairwiseAgreementInfluence"
+  | "denseConfidenceInfluence"
   | "identifierInfluence"
   | "queryLengthInfluence"
 
@@ -350,6 +351,7 @@ const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig =>
   geometryInfluence: ZERO_COEFFICIENTS,
   termCoverageInfluence: ZERO_COEFFICIENTS,
   pairwiseAgreementInfluence: ZERO_COEFFICIENTS,
+  denseConfidenceInfluence: ZERO_COEFFICIENTS,
   identifierInfluence: ZERO_COEFFICIENTS,
   queryLengthInfluence: ZERO_COEFFICIENTS,
 })
@@ -370,6 +372,8 @@ const withInfluence = (
       return { ...config, termCoverageInfluence: coefficients }
     case "pairwiseAgreementInfluence":
       return { ...config, pairwiseAgreementInfluence: coefficients }
+    case "denseConfidenceInfluence":
+      return { ...config, denseConfidenceInfluence: coefficients }
     case "identifierInfluence":
       return { ...config, identifierInfluence: coefficients }
     case "queryLengthInfluence":
@@ -393,6 +397,7 @@ const routerParameters = (): readonly RouterParameter[] => {
     { name: "geometryInfluence", values: INFLUENCE_LEVELS },
     { name: "termCoverageInfluence", values: INFLUENCE_LEVELS },
     { name: "pairwiseAgreementInfluence", values: INFLUENCE_LEVELS },
+    { name: "denseConfidenceInfluence", values: INFLUENCE_LEVELS },
     { name: "identifierInfluence", values: SIGNED_FINE_LEVELS },
     { name: "queryLengthInfluence", values: SIGNED_FINE_LEVELS },
   ]
@@ -417,6 +422,7 @@ const routerKey = (config: EvidenceRouterConfig): string =>
     coefficientsKey(config.geometryInfluence),
     coefficientsKey(config.termCoverageInfluence),
     coefficientsKey(config.pairwiseAgreementInfluence),
+    coefficientsKey(config.denseConfidenceInfluence),
     coefficientsKey(config.identifierInfluence),
     coefficientsKey(config.queryLengthInfluence),
   ].join("|")
@@ -429,6 +435,7 @@ const routerComplexity = (config: EvidenceRouterConfig): number =>
       Math.abs(config.geometryInfluence[channel]) +
       Math.abs(config.termCoverageInfluence[channel]) +
       Math.abs(config.pairwiseAgreementInfluence[channel]) +
+      Math.abs(config.denseConfidenceInfluence[channel]) +
       Math.abs(config.identifierInfluence[channel]) +
       Math.abs(config.queryLengthInfluence[channel]),
     0,

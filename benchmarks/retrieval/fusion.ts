@@ -7,8 +7,8 @@ const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dens
 const DEFAULT_CANDIDATE_DEPTH = 200
 const NEUTRAL_NORMALIZED_SCORE = 0.5
 
-/** Active fusion algorithms compared by current benchmark runs. */
-export const FUSION_METHODS: readonly FusionMethod[] = ["relative-score", "dbsf"]
+/** Fusion algorithms compared by the full benchmark profile. */
+export const FUSION_METHODS: readonly FusionMethod[] = ["rrf", "relative-score", "dbsf"]
 
 const relativeScores = (ranking: readonly RankedChunk[]): readonly number[] => {
   if (ranking.length === 0) return []
