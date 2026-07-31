@@ -68,6 +68,7 @@ const makeEvidenceRouterSamples = () => {
     {
       repository: "fixture",
       intentId: "fixture-bm25",
+      queryKind: "searchPhrase" as const,
       groupedFold: 0,
       query: "find lexical target",
       rankings: {
@@ -82,6 +83,7 @@ const makeEvidenceRouterSamples = () => {
     {
       repository: "fixture",
       intentId: "fixture-dense",
+      queryKind: "naturalQuestion" as const,
       groupedFold: 1,
       query: "find semantic target",
       rankings: {
@@ -366,6 +368,7 @@ describe("retrieval benchmark fixture", () => {
     const sample = {
       repository: "fixture",
       intentId: "fixture-001",
+      queryKind: "identifier" as const,
       groupedFold: 0,
       query: "loadProjectConfiguration",
       rankings: {

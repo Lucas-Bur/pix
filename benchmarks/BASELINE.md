@@ -1,5 +1,44 @@
 # Preliminary Retrieval Baseline
 
+## Schema 15: Successive Halving Router Search
+
+Schema 15 adds deterministic successive halving to the evidence-router optimizer. Each candidate pool is
+first evaluated on a 25% proxy sample, stratified by repository and query form with a 32-sample minimum;
+the best eight beam widths and protected exact elites receive full development evaluation. The artifact
+is `benchmarks/results/retrieval-2026-07-31T17-38-02.556Z.json`.
+
+The validate run uses the same MiniLM model, pinned repositories, folds, and static DBSF controls as
+Schema 14. Hold-out quality remains within rounding-level movement while compute time improves from
+`390.61 s` to `361.76 s` (`-7.4%`); router search improves from `343.33 s` to `311.26 s` (`-9.3%`).
+
+### Dynamic Hold-outs
+
+| Model  | Fusion | Validation strategy |   R@5 |  R@10 |  R@20 | Context@4k |
+| ------ | ------ | ------------------- | ----: | ----: | ----: | ---------: |
+| MiniLM | DBSF   | Grouped 5-fold      | 62.2% | 73.6% | 78.1% |      65.6% |
+| MiniLM | DBSF   | LORO                | 63.3% | 73.1% | 80.0% |      69.2% |
+
+### Static Controls
+
+| Model  | Fusion | Validation strategy |   R@5 |  R@10 |  R@20 | Context@4k |
+| ------ | ------ | ------------------- | ----: | ----: | ----: | ---------: |
+| MiniLM | DBSF   | Grouped 5-fold      | 61.7% | 72.5% | 79.4% |      63.1% |
+| MiniLM | DBSF   | LORO                | 59.2% | 73.1% | 81.1% |      64.2% |
+
+### Fit-All Preview
+
+| Model  | Fusion |   R@5 |  R@10 |  R@20 | Context@4k |
+| ------ | ------ | ----: | ----: | ----: | ---------: |
+| MiniLM | DBSF   | 59.4% | 74.2% | 83.9% |      65.3% |
+
+### Compute Timing
+
+Compute timing excludes JSON and Markdown artifact serialization. The run took `361.76 s` total:
+router search `311.26 s`, fusion search `32.30 s`, corpus preparation `9.20 s`, embedding `2.02 s`,
+and SQLite retrieval `2.50 s`. The fit-all router evaluated `3,693` proxy candidates and `2,384` full
+candidates. The small hold-out movements are recorded rather than treated as a universal quality gain;
+future optimizer changes must compare the same pinned corpora, model, folds, and static controls.
+
 ## Schema 14: Router Search Strategy And Runtime Telemetry
 
 Schema 14 records the deterministic `halton-global-scout-elitist-beam` router search strategy and

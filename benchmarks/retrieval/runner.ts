@@ -397,6 +397,7 @@ export const runRetrievalBenchmark = (
               const sample: WeightSearchSample = {
                 repository: manifest.id,
                 intentId: question.id,
+                queryKind: entry.queryKind,
                 groupedFold,
                 query: entry.query,
                 rankings,
@@ -595,7 +596,7 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 14,
+      schemaVersion: 15,
       benchmarkProfile: profile,
       generatedAt: new Date().toISOString(),
       searchStrategy: ROUTER_SEARCH_STRATEGY,

@@ -207,8 +207,11 @@ channel to its top 200 candidates; ordinary production-variant measurements stil
 
 Static weight search treats the four authored query forms as separate query-form-informed strata. Evidence-router
 search deliberately combines all forms: it does not receive `identifier`, `searchPhrase`,
-`naturalQuestion`, or `agentTask` labels. Search starts from the coarse grid, retains a six-candidate
-beam, then performs two coordinate passes in 0.1 steps. Dynamic base weights range from 0.1 to 1 so a
+`naturalQuestion`, or `agentTask` labels. Search starts from 64 deterministic Halton scout points and a
+six-candidate beam. Schema 15 uses successive halving: each candidate pool is first scored on a
+deterministic 25% proxy sample, stratified by repository and query form with a 32-sample minimum, then
+up to eight beam widths are evaluated on the full development set. The full-quality elite cache protects
+the best exact candidates across coordinate passes. Dynamic base weights range from 0.1 to 1 so a
 channel cannot be permanently deleted before its evidence is observed; static ablations may still use
 zero. Per-channel score/agreement coefficients range from 0 to 1. Identifier-shape and query-length
 slopes range from -1 to 1 so one query signal may boost one channel while damping another. This
@@ -315,6 +318,14 @@ weight candidates. Schema 10 artifacts also include static fusion holdouts, fit-
 static-versus-dynamic router holdouts for each active fusion method, and the final router candidates
 fitted across all query forms. The router's fusion method and fit-all context metrics are recorded
 explicitly.
+
+## Baseline Visualization
+
+`benchmarks/plot-baseline.html` is a standalone HTML viewer for the schema progression recorded in
+`benchmarks/BASELINE.md`. It plots the best grouped hold-out, LORO, and fit-all values per schema for
+`R@10`, `R@20`, and `Context@4k`, split by model (MiniLM vs. BGE-small) so model swaps and
+comparison-only runs stay visible. Open the file directly in a browser; it needs no build step,
+server, or network access.
 
 ## Interpretation
 

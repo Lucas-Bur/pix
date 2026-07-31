@@ -56,11 +56,14 @@ export type FusionMethod = "rrf" | "relative-score" | "dbsf"
 
 /** Versioned evidence-router search strategy recorded in every benchmark artifact. */
 export const ROUTER_SEARCH_STRATEGY = {
-  algorithm: "halton-global-scout-elitist-beam",
+  algorithm: "halton-global-scout-elitist-beam-successive-halving",
   globalScouts: 64,
   beamWidth: 6,
   coordinatePasses: 2,
   candidateDepth: 200,
+  proxySampleFraction: 0.25,
+  proxyMinimumSamples: 32,
+  halvingKeepFactor: 8,
 } as const
 
 /** Runtime/coverage trade-off selected for one benchmark invocation. */
@@ -188,6 +191,8 @@ export interface EvidenceRouterSearchResult {
   readonly staticValidation: QualitySummary
   readonly development: QualitySummary
   readonly validation: QualitySummary
+  readonly proxyEvaluations: number
+  readonly fullEvaluations: number
 }
 
 /** Evidence-router candidate fitted on all samples after holdout evaluation. */
@@ -199,6 +204,8 @@ export interface RecommendedEvidenceRouter {
   readonly config: EvidenceRouterConfig
   readonly staticQuality: QualitySummary
   readonly fitQuality: QualitySummary
+  readonly proxyEvaluations: number
+  readonly fullEvaluations: number
 }
 
 /** Compute-time breakdown for one benchmark invocation, excluding artifact file serialization. */
@@ -214,7 +221,7 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 14
+  readonly schemaVersion: 15
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   readonly generatedAt: string
