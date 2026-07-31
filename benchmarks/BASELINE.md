@@ -1,5 +1,24 @@
 # Preliminary Retrieval Baseline
 
+## Schema 5: Positive Dynamic Bases
+
+Schema 5 changes only the dynamic-router base-weight search: every physical channel receives at least
+0.1, while static baselines and evidence coefficients may still use zero. The linear multiplicative
+kernel and all observable signals remain identical to schema 4. The search also caches repeated
+quality evaluations; this changes runtime, not candidate selection.
+
+| Validation strategy | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static context@4k | Dynamic context@4k |
+| ------------------- | ----------: | -----------: | ----------: | -----------: | ----------------: | -----------------: |
+| Grouped 5-fold      |       69.2% |        68.1% |       76.9% |        78.1% |             64.4% |              63.3% |
+| Leave-one-repo-out  |       70.8% |        70.3% |       78.6% |        80.3% |             66.9% |              64.7% |
+| Fit all 180 queries |       68.1% |        68.6% |       83.1% |        83.1% |             62.8% |              63.3% |
+
+The fit-all router remains exactly the schema-4 candidate because its bases were already all positive:
+`0.40/0.50/1.00/0.70`. Holdout R@20 is effectively unchanged, while LORO context recall drops by
+roughly 0.6 points. Forcing a positive base therefore neither solves nor materially worsens routing,
+but it confirms that zero-base channel deletion was not driving schema 4's behavior. Schema 6 can now
+isolate the symmetric Log2 kernel without dead channels confounding the result.
+
 ## Schema 4: Fine-Grained Channel Interactions
 
 Schema 4 replaces shared evidence strengths with per-channel coefficients, adds centered signed

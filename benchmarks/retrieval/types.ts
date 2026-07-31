@@ -160,7 +160,7 @@ export interface RecommendedEvidenceRouter {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 4
+  readonly schemaVersion: 5
   readonly generatedAt: string
   readonly chunkConfig: {
     readonly chunkLines: number

@@ -241,6 +241,7 @@ describe("retrieval benchmark fixture", () => {
 
     const result = optimizeEvidenceRouter("fixture", "grouped-5-fold", "1", samples, samples)
 
+    expect(Object.values(result.config.baseWeights).every((weight) => weight > 0)).toBe(true)
     expect(result.config.scoreInfluence.bm25 + result.config.scoreInfluence.dense).toBeGreaterThan(
       0,
     )

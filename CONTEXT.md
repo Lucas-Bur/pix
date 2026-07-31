@@ -137,10 +137,10 @@ channels, all 15 channel subsets, weight grids, and all registered embedding mod
 identifier, search-phrase, natural-question, and agent-task representations which remain grouped in
 five-fold validation. Leave-one-repository-out tests cross-codebase generalization; exact holdout
 Shapley values explain marginal channel contribution. Embedders use automatic device selection and a
-maximum batch size of two. Schema 4 also evaluates one evidence-based router across all query forms.
+maximum batch size of two. Schema 5 also evaluates one evidence-based router across all query forms.
 The router uses only runtime-observable query length and identifier shape, within-channel score
 separation, channel availability, and cross-channel rank agreement. Raw scores from different
-channels are never compared. A deterministic coarse-to-fine beam search refines base weights and
+channels are never compared. A deterministic coarse-to-fine beam search refines positive dynamic base weights (minimum 0.1) and
 per-channel score/agreement coefficients in 0.1 steps; signed per-channel query slopes allow the same
 length or identifier signal to boost one channel and damp another. Its parameters are selected on
 development folds and evaluated unchanged against static weights on excluded intent folds and

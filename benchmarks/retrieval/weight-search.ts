@@ -22,7 +22,9 @@ import type {
 
 const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dense"]
 const WEIGHT_LEVELS = [0, 0.5, 1, 2] as const
-const FINE_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
+const STATIC_FINE_WEIGHT_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
+const DYNAMIC_BASE_LEVELS = Array.from({ length: 10 }, (_, index) => (index + 1) / 10)
+const INFLUENCE_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
 const SIGNED_FINE_LEVELS = Array.from({ length: 21 }, (_, index) => (index - 10) / 10)
 const SEARCH_CANDIDATE_DEPTH = 200
 const SEARCH_BEAM_WIDTH = 6
@@ -237,14 +239,21 @@ const rankWeightCandidates = (
   samples: readonly WeightSearchSample[],
   candidates: readonly ChannelWeights[],
   limit: number,
+  qualityCache: Map<string, QualitySummary>,
 ): readonly WeightCandidate[] => {
   const unique = new Map<string, ChannelWeights>()
   for (const candidate of candidates) {
     const normalized = normalizeWeights(candidate)
     unique.set(weightsKey(normalized), normalized)
   }
-  return [...unique.values()]
-    .map((weights) => ({ weights, quality: summarize(samples, weights) }))
+  return [...unique]
+    .map(([key, weights]) => {
+      const cached = qualityCache.get(key)
+      if (cached !== undefined) return { weights, quality: cached }
+      const quality = summarize(samples, weights)
+      qualityCache.set(key, quality)
+      return { weights, quality }
+    })
     .sort((left, right) => compareQuality(left.quality, right.quality))
     .slice(0, limit)
 }
@@ -258,15 +267,17 @@ const withWeight = (weights: ChannelWeights, channel: ChannelName, value: number
 const selectBestWeights = (
   samples: readonly WeightSearchSample[],
 ): { readonly weights: ChannelWeights; readonly quality: QualitySummary } => {
-  let beam = rankWeightCandidates(samples, weightCandidates(), SEARCH_BEAM_WIDTH)
+  const qualityCache = new Map<string, QualitySummary>()
+  let beam = rankWeightCandidates(samples, weightCandidates(), SEARCH_BEAM_WIDTH, qualityCache)
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (const channel of CHANNELS) {
       beam = rankWeightCandidates(
         samples,
         beam.flatMap((candidate) =>
-          FINE_LEVELS.map((level) => withWeight(candidate.weights, channel, level)),
+          STATIC_FINE_WEIGHT_LEVELS.map((level) => withWeight(candidate.weights, channel, level)),
         ),
         SEARCH_BEAM_WIDTH,
+        qualityCache,
       )
     }
   }
@@ -312,8 +323,16 @@ interface RouterCandidate {
   readonly quality: QualitySummary
 }
 
+const positiveBaseWeights = (weights: ChannelWeights): ChannelWeights =>
+  normalizeWeights({
+    identity: Math.max(DYNAMIC_BASE_LEVELS[0], weights.identity),
+    camelcase: Math.max(DYNAMIC_BASE_LEVELS[0], weights.camelcase),
+    bm25: Math.max(DYNAMIC_BASE_LEVELS[0], weights.bm25),
+    dense: Math.max(DYNAMIC_BASE_LEVELS[0], weights.dense),
+  })
+
 const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig => ({
-  baseWeights,
+  baseWeights: positiveBaseWeights(baseWeights),
   scoreInfluence: ZERO_COEFFICIENTS,
   agreementInfluence: ZERO_COEFFICIENTS,
   identifierInfluence: ZERO_COEFFICIENTS,
@@ -341,7 +360,7 @@ const withInfluence = (
 
 const routerParameters = (): readonly RouterParameter[] => {
   const parameters: RouterParameter[] = CHANNELS.map((channel) => ({
-    values: FINE_LEVELS,
+    values: DYNAMIC_BASE_LEVELS,
     update: (config, value) => ({
       ...config,
       baseWeights: withWeight(config.baseWeights, channel, value),
@@ -351,8 +370,8 @@ const routerParameters = (): readonly RouterParameter[] => {
     readonly name: InfluenceName
     readonly values: readonly number[]
   }[] = [
-    { name: "scoreInfluence", values: FINE_LEVELS },
-    { name: "agreementInfluence", values: FINE_LEVELS },
+    { name: "scoreInfluence", values: INFLUENCE_LEVELS },
+    { name: "agreementInfluence", values: INFLUENCE_LEVELS },
     { name: "identifierInfluence", values: SIGNED_FINE_LEVELS },
     { name: "queryLengthInfluence", values: SIGNED_FINE_LEVELS },
   ]
@@ -394,11 +413,18 @@ const rankRouterCandidates = (
   samples: readonly EvidenceSearchSample[],
   configs: readonly EvidenceRouterConfig[],
   limit: number,
+  qualityCache: Map<string, QualitySummary>,
 ): readonly RouterCandidate[] => {
   const unique = new Map<string, EvidenceRouterConfig>()
   for (const config of configs) unique.set(routerKey(config), config)
-  return [...unique.values()]
-    .map((config) => ({ config, quality: summarizeEvidenceRouter(samples, config) }))
+  return [...unique]
+    .map(([key, config]) => {
+      const cached = qualityCache.get(key)
+      if (cached !== undefined) return { config, quality: cached }
+      const quality = summarizeEvidenceRouter(samples, config)
+      qualityCache.set(key, quality)
+      return { config, quality }
+    })
     .sort(
       (left, right) =>
         compareQuality(left.quality, right.quality) ||
@@ -415,7 +441,8 @@ const selectBestEvidenceRouter = (
     selectBestWeights(samples).weights,
     ...selectBestWeightsPerSubset(samples),
   ].map(emptyRouterConfig)
-  let beam = rankRouterCandidates(evidenceSamples, baseSeeds, SEARCH_BEAM_WIDTH)
+  const qualityCache = new Map<string, QualitySummary>()
+  let beam = rankRouterCandidates(evidenceSamples, baseSeeds, SEARCH_BEAM_WIDTH, qualityCache)
   const parameters = routerParameters()
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (const parameter of parameters) {
@@ -425,6 +452,7 @@ const selectBestEvidenceRouter = (
           parameter.values.map((value) => parameter.update(candidate.config, value)),
         ),
         SEARCH_BEAM_WIDTH,
+        qualityCache,
       )
     }
   }
