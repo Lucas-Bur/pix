@@ -91,12 +91,13 @@ vp run bench:retrieval:full
 | `smoke`    | fd           | MiniLM   | grouped 5-fold                | DBSF          | DBSF          | current router         |
 | `develop`  | all three    | MiniLM   | grouped 3-fold                | DBSF          | DBSF          | current router         |
 | `validate` | all three    | MiniLM   | grouped 5-fold and repository | DBSF          | DBSF          | current router         |
-| `full`     | all three    | selected | grouped 5-fold and repository | all           | all three     | all legacy diagnostics |
+| `full`     | all three    | selected | grouped 5-fold and repository | Relative/DBSF | Relative/DBSF | all active diagnostics |
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
-diagnostics. The selected profile is recorded in schema-7 artifacts without changing retrieval
-semantics.
+diagnostics. The selected profile is recorded in schema-10 artifacts without changing retrieval
+semantics. Legacy RRF weight grids are intentionally disabled; historical RRF artifacts remain
+available for comparison.
 
 The first run clones repositories into `benchmarks/.cache/repos` and downloads missing Hugging Face
 models. The highest-priority working device is selected automatically and recorded in the artifact.
@@ -111,7 +112,30 @@ $env:PIX_BENCH_MODELS = "Xenova/all-MiniLM-L6-v2"
 vp run bench:retrieval:validate
 ```
 
-Supported repository IDs are `fastapi`, `effect-v4`, and `fd`. Every profile runs exactly one model,
+### Corpus Manifests
+
+Corpus definitions live in `benchmarks/corpus/*.json`. The loader discovers every JSON manifest in
+that directory, so adding another repository normally requires only a new manifest. Each manifest
+pins the repository URL and revision, declares `includeRoots`, `excludePaths`, and `extensions`, and
+contains exact `file + symbol` ground truth for its authored questions. The checkout is cloned into
+`benchmarks/.cache/repos/<manifest.id>` and is never committed.
+
+Use `PIX_BENCH_REPOS` to select manifests for an exploratory run; omit it to use every manifest (the
+`smoke` profile still defaults to `fd`). `PIX_BENCH_MODELS` selects exactly one embedding model for
+all profiles. Examples:
+
+```powershell
+$env:PIX_BENCH_REPOS = "fd,fastapi"
+$env:PIX_BENCH_MODELS = "Xenova/all-MiniLM-L6-v2"
+vp run bench:retrieval:develop
+```
+
+For a new repository, add and validate its manifest with `vp run bench:retrieval:corpus` before any
+embedding run. Keep the revision pinned and add manually verified gold symbols; the external checkout
+is reproducible from the manifest and does not belong in the Git repository.
+
+The built-in repository IDs are `fastapi`, `effect-v4`, and `fd`; additional IDs come from added
+manifests. Every profile runs exactly one model,
 defaulting to MiniLM. Select another with `PIX_BENCH_MODELS`. Supported values are the three models in
 `MODEL_REGISTRY`:
 
@@ -150,9 +174,10 @@ list's mean and sample standard deviation, maps the three-sigma interval to a co
 sums weighted normalized scores. A constant or single-result channel contributes 0.5 instead of
 dividing by zero. Missing candidates contribute nothing. Every fusion method selects its own positive
 weights; weights are not transferred between formulas with different semantics.
-Schema 8 used DBSF for both sides of the evidence-router comparison. Schema 9 adds a composite
-score-geometry confidence signal to the same linear router and evaluates it with RRF, relative-score,
-and DBSF in the `full` profile.
+Schema 8 used DBSF for both sides of the evidence-router comparison. Schema 9 added a composite
+score-geometry confidence signal to the same linear router. Current fusion searches use Relative Score
+and DBSF; historical RRF results remain in the baseline for reference but are no longer part of active
+fusion searches.
 
 ## Validation
 
@@ -193,7 +218,36 @@ influence coefficient per channel. The raw score curve is never compared across 
 Schema 10 adds query-term coverage: BM25 coverage weighted by term IDF, exact full-identifier
 coverage, and CamelCase constituent coverage. Each maps to the corresponding lexical channel, while
 dense receives a neutral term-coverage value. Schema-10 reports include hold-outs and fit-all previews
-for all three fusion methods.
+for the two active fusion methods.
+
+## Operating Procedure
+
+Use `fixture` after changing benchmark logic or signal extraction. Use `corpus` after changing a
+manifest, adding a repository, or changing gold targets. Use `develop` during signal iteration because
+it runs MiniLM on all current repositories with grouped 3-fold and DBSF. Use `validate` before deciding
+whether a signal generalizes; it adds grouped 5-fold and LORO. Use `full` for a milestone: it keeps one
+selected model, evaluates Relative Score and DBSF, and emits fit-all candidates plus active diagnostics.
+
+For every schema, treat grouped and LORO hold-outs as the regression gate and fit-all as the candidate
+preview. Compare dynamic routers with each other to choose the active fusion; compare dynamic with its
+matching static baseline only to measure the incremental value of the new signal. Record the winning
+metrics, fit-all parameters, runtime, and any regressions in `benchmarks/BASELINE.md` before committing.
+
+## Adding A Sparse Embedder
+
+A future sparse embedder must be implemented first in the main package, registered in the model
+registry, and exposed through the same embedder port used by the existing dense models. The benchmark
+then consumes it through the registry; it must not contain a benchmark-only implementation. Add a
+model entry with dimensions, dtype, device, and cache identity, run the adapter and project tests, and
+verify that embedding-cache keys distinguish the new model.
+
+The regression sequence for a new embedder is `bench:retrieval:fixture`, `bench:retrieval:corpus`,
+`bench:retrieval:smoke`, `bench:retrieval:develop`, and finally `bench:retrieval:validate`. Run `full`
+only for the milestone comparison. Keep all existing models and channels unchanged, compare dense or
+sparse-only quality, active-fusion recall, context recall, indexing cost, memory, and query latency,
+and preserve the pinned corpora. A new embedder is beneficial only when its hold-out gain justifies
+its local cost; fit-all gains alone are not sufficient. Record unsupported devices or repositories
+explicitly rather than silently changing token limits or corpus preparation for one model.
 
 ## Metrics
 
@@ -211,16 +265,17 @@ Each run writes ignored JSON and Markdown artifacts under `benchmarks/results`. 
 repository, revision, language, size, category, difficulty, query form, grouped fold, model, variant,
 individual gold ranks, timing, and every metric. The Markdown report includes quality by query form,
 marginal leave-one-channel-out contribution, cross-validation folds, Shapley values, and final fitted
-weight candidates. Schema 9 artifacts also include static fusion holdouts, fit-all fusion candidates,
-static-versus-dynamic router holdouts for each fusion method, and the final router candidates fitted
-across all query forms. The router's fusion method is recorded explicitly.
+weight candidates. Schema 10 artifacts also include static fusion holdouts, fit-all fusion candidates,
+static-versus-dynamic router holdouts for each active fusion method, and the final router candidates
+fitted across all query forms. The router's fusion method and fit-all context metrics are recorded
+explicitly.
 
 ## Interpretation
 
-Compare dense-only model deltas with full-RRF model deltas. If Jina substantially improves dense-only
-quality but the gap collapses after fusion, the other channels make the small default embedder less
-critical. Compare full RRF with each leave-one-channel-out row before changing channel weights: a
-channel may help one language or query category while hurting another.
+Compare dense-only model deltas with the active Relative Score and DBSF candidates. If a stronger
+embedder substantially improves dense-only quality but the gap collapses after fusion, the other
+channels make the small default embedder less critical. Historical RRF rows remain reference-only and
+are not included in routine profile runs.
 
 Do not infer statistical significance from one repository or from the 15-question smoke corpus.
 Expand the authored questions and preserve pinned revisions before making a product-wide claim.

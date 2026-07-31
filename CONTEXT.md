@@ -153,8 +153,13 @@ profile evaluates the resulting router with RRF, relative-score, and DBSF while 
 on DBSF.
 Schema 10 adds query-term coverage signals: BM25 IDF-weighted coverage, exact full-identifier
 coverage, and CamelCase component coverage. These are mapped to their corresponding lexical channels;
-dense receives a neutral value. Schema-10 artifacts include all three fusion methods and fit-all
+dense receives a neutral value. Schema-10 artifacts include the two active fusion methods and fit-all
 preview metrics in addition to grouped and repository holdouts.
+Current active fusion runs use Relative Score and DBSF; RRF remains historical reference data only.
+New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with
+`PIX_BENCH_REPOS`, and cached under `benchmarks/.cache/repos/`. A future Sparse Embedder must be
+implemented and registered in the main package first, then evaluated through the same benchmark
+regression sequence before it can be considered an advantage.
 The router uses only runtime-observable query length and identifier shape, within-channel score
 separation, channel availability, and cross-channel rank agreement. Raw scores from different
 channels are never compared. A deterministic coarse-to-fine beam search refines positive dynamic base weights (minimum 0.1) and
