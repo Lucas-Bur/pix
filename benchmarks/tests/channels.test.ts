@@ -112,16 +112,51 @@ describe("retrieval benchmark fixture", () => {
     const evidence = buildRoutingEvidence("find project configuration", rankings)
     const weights = routeWithEvidence(evidence, {
       baseWeights: { identity: 0, camelcase: 0, bm25: 1, dense: 1 },
-      scoreInfluence: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
-      agreementInfluence: zeroChannelCoefficients,
-      identifierInfluence: zeroChannelCoefficients,
-      queryLengthInfluence: zeroChannelCoefficients,
+      scoreCoefficient: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
+      agreementCoefficient: zeroChannelCoefficients,
+      identifierCoefficient: zeroChannelCoefficients,
+      queryLengthCoefficient: zeroChannelCoefficients,
     })
 
     expect(evidence.channels.bm25.scoreSeparation).toBeGreaterThan(
       evidence.channels.dense.scoreSeparation,
     )
     expect(weights.bm25).toBeGreaterThan(weights.dense)
+  })
+
+  it("applies symmetric Log2 boost and damping around each base weight", () => {
+    const config = {
+      baseWeights: { identity: 1, camelcase: 0.1, bm25: 0.1, dense: 0.1 },
+      scoreCoefficient: { ...zeroChannelCoefficients, identity: 1 },
+      agreementCoefficient: zeroChannelCoefficients,
+      identifierCoefficient: zeroChannelCoefficients,
+      queryLengthCoefficient: zeroChannelCoefficients,
+    }
+    const strong = routeWithEvidence(
+      buildRoutingEvidence("target", {
+        identity: [{ chunkIndex: 0, score: 1 }],
+        camelcase: [],
+        bm25: [],
+        dense: [],
+      }),
+      config,
+    ).identity
+    const weak = routeWithEvidence(
+      buildRoutingEvidence("target", {
+        identity: [
+          { chunkIndex: 0, score: 1 },
+          { chunkIndex: 1, score: 1 },
+        ],
+        camelcase: [],
+        bm25: [],
+        dense: [],
+      }),
+      config,
+    ).identity
+
+    expect(strong).toBeGreaterThan(1)
+    expect(weak).toBeLessThan(1)
+    expect(strong * weak).toBeCloseTo(1)
   })
 
   it("applies query-length evidence differently to each channel", () => {
@@ -133,10 +168,10 @@ describe("retrieval benchmark fixture", () => {
     }
     const config = {
       baseWeights: { identity: 1, camelcase: 0, bm25: 0, dense: 1 },
-      scoreInfluence: zeroChannelCoefficients,
-      agreementInfluence: zeroChannelCoefficients,
-      identifierInfluence: zeroChannelCoefficients,
-      queryLengthInfluence: { ...zeroChannelCoefficients, identity: -1, dense: 1 },
+      scoreCoefficient: zeroChannelCoefficients,
+      agreementCoefficient: zeroChannelCoefficients,
+      identifierCoefficient: zeroChannelCoefficients,
+      queryLengthCoefficient: { ...zeroChannelCoefficients, identity: -1, dense: 1 },
     }
     const shortWeights = routeWithEvidence(buildRoutingEvidence("target", rankings), config)
     const longWeights = routeWithEvidence(
@@ -242,9 +277,6 @@ describe("retrieval benchmark fixture", () => {
     const result = optimizeEvidenceRouter("fixture", "grouped-5-fold", "1", samples, samples)
 
     expect(Object.values(result.config.baseWeights).every((weight) => weight > 0)).toBe(true)
-    expect(result.config.scoreInfluence.bm25 + result.config.scoreInfluence.dense).toBeGreaterThan(
-      0,
-    )
     expect(result.validation.recallAt20).toBeGreaterThan(result.staticValidation.recallAt20)
   })
 })

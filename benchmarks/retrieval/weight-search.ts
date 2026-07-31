@@ -24,7 +24,6 @@ const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dens
 const WEIGHT_LEVELS = [0, 0.5, 1, 2] as const
 const STATIC_FINE_WEIGHT_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
 const DYNAMIC_BASE_LEVELS = Array.from({ length: 10 }, (_, index) => (index + 1) / 10)
-const INFLUENCE_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
 const SIGNED_FINE_LEVELS = Array.from({ length: 21 }, (_, index) => (index - 10) / 10)
 const SEARCH_CANDIDATE_DEPTH = 200
 const SEARCH_BEAM_WIDTH = 6
@@ -304,12 +303,12 @@ const selectBestWeightsPerSubset = (
   return [...selected.values()].map((entry) => entry.weights)
 }
 
-/** Config field containing one coefficient per retrieval channel. */
-type InfluenceName =
-  | "scoreInfluence"
-  | "agreementInfluence"
-  | "identifierInfluence"
-  | "queryLengthInfluence"
+/** Config field containing one signed coefficient per retrieval channel. */
+type CoefficientName =
+  | "scoreCoefficient"
+  | "agreementCoefficient"
+  | "identifierCoefficient"
+  | "queryLengthCoefficient"
 
 /** One coordinate and its discrete values in the fine-grained router search. */
 interface RouterParameter {
@@ -333,28 +332,28 @@ const positiveBaseWeights = (weights: ChannelWeights): ChannelWeights =>
 
 const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig => ({
   baseWeights: positiveBaseWeights(baseWeights),
-  scoreInfluence: ZERO_COEFFICIENTS,
-  agreementInfluence: ZERO_COEFFICIENTS,
-  identifierInfluence: ZERO_COEFFICIENTS,
-  queryLengthInfluence: ZERO_COEFFICIENTS,
+  scoreCoefficient: ZERO_COEFFICIENTS,
+  agreementCoefficient: ZERO_COEFFICIENTS,
+  identifierCoefficient: ZERO_COEFFICIENTS,
+  queryLengthCoefficient: ZERO_COEFFICIENTS,
 })
 
-const withInfluence = (
+const withCoefficient = (
   config: EvidenceRouterConfig,
-  influence: InfluenceName,
+  coefficient: CoefficientName,
   channel: ChannelName,
   value: number,
 ): EvidenceRouterConfig => {
-  const coefficients = { ...config[influence], [channel]: value }
-  switch (influence) {
-    case "scoreInfluence":
-      return { ...config, scoreInfluence: coefficients }
-    case "agreementInfluence":
-      return { ...config, agreementInfluence: coefficients }
-    case "identifierInfluence":
-      return { ...config, identifierInfluence: coefficients }
-    case "queryLengthInfluence":
-      return { ...config, queryLengthInfluence: coefficients }
+  const coefficients = { ...config[coefficient], [channel]: value }
+  switch (coefficient) {
+    case "scoreCoefficient":
+      return { ...config, scoreCoefficient: coefficients }
+    case "agreementCoefficient":
+      return { ...config, agreementCoefficient: coefficients }
+    case "identifierCoefficient":
+      return { ...config, identifierCoefficient: coefficients }
+    case "queryLengthCoefficient":
+      return { ...config, queryLengthCoefficient: coefficients }
   }
 }
 
@@ -366,20 +365,20 @@ const routerParameters = (): readonly RouterParameter[] => {
       baseWeights: withWeight(config.baseWeights, channel, value),
     }),
   }))
-  const influences: readonly {
-    readonly name: InfluenceName
+  const coefficients: readonly {
+    readonly name: CoefficientName
     readonly values: readonly number[]
   }[] = [
-    { name: "scoreInfluence", values: INFLUENCE_LEVELS },
-    { name: "agreementInfluence", values: INFLUENCE_LEVELS },
-    { name: "identifierInfluence", values: SIGNED_FINE_LEVELS },
-    { name: "queryLengthInfluence", values: SIGNED_FINE_LEVELS },
+    { name: "scoreCoefficient", values: SIGNED_FINE_LEVELS },
+    { name: "agreementCoefficient", values: SIGNED_FINE_LEVELS },
+    { name: "identifierCoefficient", values: SIGNED_FINE_LEVELS },
+    { name: "queryLengthCoefficient", values: SIGNED_FINE_LEVELS },
   ]
-  for (const { name, values } of influences) {
+  for (const { name, values } of coefficients) {
     for (const channel of CHANNELS) {
       parameters.push({
         values,
-        update: (config, value) => withInfluence(config, name, channel, value),
+        update: (config, value) => withCoefficient(config, name, channel, value),
       })
     }
   }
@@ -392,20 +391,20 @@ const coefficientsKey = (coefficients: ChannelCoefficients): string =>
 const routerKey = (config: EvidenceRouterConfig): string =>
   [
     weightsKey(config.baseWeights),
-    coefficientsKey(config.scoreInfluence),
-    coefficientsKey(config.agreementInfluence),
-    coefficientsKey(config.identifierInfluence),
-    coefficientsKey(config.queryLengthInfluence),
+    coefficientsKey(config.scoreCoefficient),
+    coefficientsKey(config.agreementCoefficient),
+    coefficientsKey(config.identifierCoefficient),
+    coefficientsKey(config.queryLengthCoefficient),
   ].join("|")
 
 const routerComplexity = (config: EvidenceRouterConfig): number =>
   CHANNELS.reduce(
     (sum, channel) =>
       sum +
-      Math.abs(config.scoreInfluence[channel]) +
-      Math.abs(config.agreementInfluence[channel]) +
-      Math.abs(config.identifierInfluence[channel]) +
-      Math.abs(config.queryLengthInfluence[channel]),
+      Math.abs(config.scoreCoefficient[channel]) +
+      Math.abs(config.agreementCoefficient[channel]) +
+      Math.abs(config.identifierCoefficient[channel]) +
+      Math.abs(config.queryLengthCoefficient[channel]),
     0,
   )
 
