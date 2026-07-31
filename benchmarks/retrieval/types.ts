@@ -51,6 +51,9 @@ export type GoldLocation = typeof GoldLocationSchema.Type
 /** Query representation categories evaluated independently. */
 export type QueryKind = keyof typeof QueryFormsSchema.Type
 
+/** Score or rank fusion algorithm evaluated with independently tuned channel weights. */
+export type FusionMethod = "rrf" | "relative-score" | "dbsf"
+
 /** Retrieval configurations evaluated against identical chunks and queries. */
 export type RetrievalVariant =
   | "identity"
@@ -133,6 +136,28 @@ export interface RecommendedWeights {
   readonly fitQuality: QualitySummary
 }
 
+/** Static fusion weights selected without one validation fold. */
+export interface FusionSearchResult {
+  readonly model: string
+  readonly fusion: FusionMethod
+  readonly strategy: "grouped-5-fold" | "leave-one-repository-out"
+  readonly fold: string
+  readonly developmentQueries: number
+  readonly validationQueries: number
+  readonly weights: ChannelWeights
+  readonly development: QualitySummary
+  readonly validation: QualitySummary
+}
+
+/** Static fusion candidate fitted on all query forms after holdout evaluation. */
+export interface RecommendedFusionWeights {
+  readonly model: string
+  readonly fusion: FusionMethod
+  readonly samples: number
+  readonly weights: ChannelWeights
+  readonly fitQuality: QualitySummary
+}
+
 /** One holdout evaluation of a router selected from query and channel evidence. */
 export interface EvidenceRouterSearchResult {
   readonly model: string
@@ -160,7 +185,7 @@ export interface RecommendedEvidenceRouter {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 6
+  readonly schemaVersion: 7
   readonly generatedAt: string
   readonly chunkConfig: {
     readonly chunkLines: number
@@ -188,6 +213,8 @@ export interface BenchmarkArtifact {
   readonly measurements: readonly QueryMeasurement[]
   readonly weightSearch: readonly WeightSearchResult[]
   readonly recommendedWeights: readonly RecommendedWeights[]
+  readonly fusionSearch: readonly FusionSearchResult[]
+  readonly recommendedFusionWeights: readonly RecommendedFusionWeights[]
   readonly evidenceRouterSearch: readonly EvidenceRouterSearchResult[]
   readonly recommendedEvidenceRouters: readonly RecommendedEvidenceRouter[]
 }

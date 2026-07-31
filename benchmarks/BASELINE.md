@@ -1,11 +1,32 @@
 # Preliminary Retrieval Baseline
 
+## Schema 7: Static Fusion Methods
+
+Schema 7 restores the stable schema-5 evidence kernel and compares three fusion algorithms using the
+same physical rankings. Each method tunes its own positive static channel weights on development
+samples before unchanged grouped and repository holdout evaluation. Relative-score fusion applies
+per-channel min-max normalization; DBSF normalizes from each top-200 list's mean and sample standard
+deviation. Constant or single-result lists contribute a neutral 0.5 in both score-based methods.
+
+| Fusion         | Grouped R@10 | Grouped R@20 | Grouped context@4k | LORO R@10 | LORO R@20 | LORO context@4k |
+| -------------- | -----------: | -----------: | -----------------: | --------: | --------: | --------------: |
+| Weighted RRF   |        69.2% |        76.9% |              64.4% |     70.8% |     78.6% |           66.9% |
+| Relative score |        70.8% |        82.8% |              61.9% |     70.8% |     83.3% |           64.7% |
+| DBSF           |        71.9% |        78.9% |              65.0% |     72.5% |     81.1% |           64.7% |
+
+Relative-score fusion provides the largest candidate-recall gain over RRF: +5.9 grouped and +4.7
+LORO R@20, at the cost of roughly two context-recall points. DBSF is the more balanced improvement:
+it gains 2.7/1.7 R@10 and 2.0/2.5 R@20, improves grouped context by 0.6, and loses 2.2 LORO context
+points. Score magnitude therefore contains substantial useful information that rank-only RRF drops.
+Schema 8 should evaluate evidence-based dynamic weights with the strongest score fusion methods rather
+than adding new observable signals immediately.
+
 ## Schema 6: Symmetric Log2 Evidence Kernel
 
-Schema 6 keeps schema 5's positive dynamic bases and replaces the asymmetric linear factors with
+Schema 6 kept schema 5's positive dynamic bases and replaced the asymmetric linear factors with
 signed, per-channel Log2 coefficients. Score separation, agreement, identifier shape, and query
-length are each centered to [-1, 1]. Their contributions add in Log2 space, then the sum is clamped to
-[-2, 2], allowing a final evidence multiplier from 0.25 to 4.0. No new observable signal is added.
+length were centered to [-1, 1]. Their contributions added in Log2 space and were clamped to [-2, 2],
+allowing a final evidence multiplier from 0.25 to 4.0. No new observable signal was added.
 
 | Validation strategy | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static context@4k | Dynamic context@4k |
 | ------------------- | ----------: | -----------: | ----------: | -----------: | ----------------: | -----------------: |
@@ -13,12 +34,12 @@ length are each centered to [-1, 1]. Their contributions add in Log2 space, then
 | Leave-one-repo-out  |       70.8% |        69.7% |       78.6% |        81.1% |             66.9% |              65.3% |
 | Fit all 180 queries |       68.1% |        69.2% |       83.1% |        83.1% |             62.8% |              62.8% |
 
-The fit-all bases are `1.00/0.50/1.00/0.70`. Score coefficients are
+The fit-all bases were `1.00/0.50/1.00/0.70`. Score coefficients were
 `0.30/-0.10/0.00/-0.10`, agreement coefficients `1.00/0.00/0.00/0.00`, and every identifier and
-length coefficient is zero. Fold-selected coefficients vary substantially and often reverse signs.
-Compared with schema 5, the Log2 kernel gains 0.8 points of LORO R@20 but loses 1.7 grouped points;
-both holdout strategies lose R@10 relative to their static baselines. The stronger kernel can recover
-cross-repository candidates, but its additional signed freedom is not stable enough for production.
+length coefficient was zero. Fold-selected coefficients varied substantially and often reversed
+signs. Compared with schema 5, the Log2 kernel gained 0.8 points of LORO R@20 but lost 1.7 grouped
+points; both strategies lost R@10 relative to static baselines. Schema 7 therefore returned to the
+schema-5 kernel while preserving schema 6 as a negative experiment.
 
 ## Schema 5: Positive Dynamic Bases
 

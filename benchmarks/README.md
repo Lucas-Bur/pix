@@ -118,11 +118,22 @@ physical channel rankings are reused for every fusion experiment:
 - production-weighted RRF and leave-one-channel-out diagnostics
 - a coarse relative weight grid with 255 raw configurations followed by bounded 0.1-step refinement
 - exact Shapley contribution for holdout `Recall@20`
+- static Weighted RRF, relative-score, and distribution-based score fusion with independently tuned
+  weights
 - an evidence router using query length and identifier shape plus each channel's availability,
   scale-independent score separation, and cross-channel top-rank agreement
 
 This separates channel contribution from model sensitivity without repeating embedding inference for
 every ablation.
+
+### Fusion Methods
+
+Weighted RRF uses rank positions and deliberately discards raw score magnitude. Relative-score fusion
+min-max normalizes each channel's top-200 scores before a weighted sum. DBSF computes each top-200
+list's mean and sample standard deviation, maps the three-sigma interval to a comparable scale, then
+sums weighted normalized scores. A constant or single-result channel contributes 0.5 instead of
+dividing by zero. Missing candidates contribute nothing. Every fusion method selects its own positive
+weights; weights are not transferred between formulas with different semantics.
 
 ## Validation
 
@@ -138,14 +149,13 @@ weights are evaluated unchanged on its excluded samples. Only after cross-valida
 fit a recommended deployment candidate on all available samples. Weight search limits each physical
 channel to its top 200 candidates; ordinary production-variant measurements still use complete lists.
 
-Static weight search treats the four authored query forms as separate query-form-informed strata.
-Evidence-router search deliberately combines all forms: it does not receive `identifier`, `searchPhrase`,
+Static weight search treats the four authored query forms as separate query-form-informed strata. Evidence-router
+search deliberately combines all forms: it does not receive `identifier`, `searchPhrase`,
 `naturalQuestion`, or `agentTask` labels. Search starts from the coarse grid, retains a six-candidate
 beam, then performs two coordinate passes in 0.1 steps. Dynamic base weights range from 0.1 to 1 so a
 channel cannot be permanently deleted before its evidence is observed; static ablations may still use
-zero. Every per-channel evidence coefficient ranges from -1 to 1. Each signal is centered to [-1, 1],
-the contributions add in Log2 space, and the sum is clamped to [-2, 2]. Evidence can therefore adjust
-a channel from one quarter to four times its base weight without producing negative RRF weights. This
+zero. Per-channel score/agreement coefficients range from 0 to 1. Identifier-shape and query-length
+slopes range from -1 to 1 so one query signal may boost one channel while damping another. This
 bounded coarse-to-fine search avoids the combinatorial explosion of a full 20-parameter product; it is
 deterministic but does not claim a global optimum. Exact metric ties prefer the lower-coefficient
 candidate.
@@ -174,8 +184,9 @@ Each run writes ignored JSON and Markdown artifacts under `benchmarks/results`. 
 repository, revision, language, size, category, difficulty, query form, grouped fold, model, variant,
 individual gold ranks, timing, and every metric. The Markdown report includes quality by query form,
 marginal leave-one-channel-out contribution, cross-validation folds, Shapley values, and final fitted
-weight candidates. Schema 6 artifacts also include static-versus-dynamic evidence-router holdouts and
-the final router candidate fitted across all query forms.
+weight candidates. Schema 7 artifacts also include static fusion holdouts, fit-all fusion candidates,
+static-versus-dynamic evidence-router holdouts, and the final router candidate fitted across all query
+forms.
 
 ## Interpretation
 
