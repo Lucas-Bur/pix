@@ -21,7 +21,15 @@ import {
 import { prepareCorpus, type PreparedCorpus } from "./prepare.js"
 import { fuseVariant, rankChannels, RETRIEVAL_VARIANTS } from "./ranking.js"
 import { renderMarkdownReport } from "./report.js"
-import type { BenchmarkArtifact, CorpusManifest, QueryKind, QueryMeasurement } from "./types.js"
+import type {
+  BenchmarkArtifact,
+  BenchmarkProfile,
+  CorpusManifest,
+  FusionMethod,
+  QueryKind,
+  QueryMeasurement,
+  ValidationStrategy,
+} from "./types.js"
 import {
   fitRecommendedEvidenceRouter,
   fitRecommendedFusionWeights,
@@ -42,6 +50,51 @@ const QUERY_KINDS: readonly QueryKind[] = [
   "agentTask",
 ]
 
+/** Search and validation stages enabled by one benchmark profile. */
+interface BenchmarkProfileConfig {
+  /** Number of intent-grouped cross-validation folds. */
+  readonly groupedFolds: number
+  /** Whether each selected repository is evaluated as an excluded holdout. */
+  readonly repositoryHoldouts: boolean
+  /** Whether historical query-kind RRF grids and Shapley diagnostics run. */
+  readonly legacyDiagnostics: boolean
+  /** Static fusion formulas evaluated by this profile. */
+  readonly fusionMethods: readonly FusionMethod[]
+}
+
+const profileConfig = (profile: BenchmarkProfile): BenchmarkProfileConfig => {
+  switch (profile) {
+    case "smoke":
+      return {
+        groupedFolds: 5,
+        repositoryHoldouts: false,
+        legacyDiagnostics: false,
+        fusionMethods: ["dbsf"],
+      }
+    case "develop":
+      return {
+        groupedFolds: 3,
+        repositoryHoldouts: false,
+        legacyDiagnostics: false,
+        fusionMethods: ["dbsf"],
+      }
+    case "validate":
+      return {
+        groupedFolds: 5,
+        repositoryHoldouts: true,
+        legacyDiagnostics: false,
+        fusionMethods: ["dbsf"],
+      }
+    case "full":
+      return {
+        groupedFolds: 5,
+        repositoryHoldouts: true,
+        legacyDiagnostics: true,
+        fusionMethods: FUSION_METHODS,
+      }
+  }
+}
+
 const reportProgress = (message: string): void => {
   process.stderr.write(`[retrieval benchmark] ${message}\n`)
 }
@@ -59,14 +112,22 @@ const selectValues = (value: string | undefined): ReadonlySet<string> | null =>
       )
     : null
 
-const selectManifests = (manifests: readonly CorpusManifest[]): readonly CorpusManifest[] => {
+const selectManifests = (
+  manifests: readonly CorpusManifest[],
+  profile: BenchmarkProfile,
+): readonly CorpusManifest[] => {
   const selected = selectValues(process.env.PIX_BENCH_REPOS)
-  return selected ? manifests.filter((manifest) => selected.has(manifest.id)) : manifests
+  if (selected) return manifests.filter((manifest) => selected.has(manifest.id))
+  return profile === "smoke" ? manifests.filter((manifest) => manifest.id === "fd") : manifests
 }
 
-const selectModels = (): readonly string[] => {
+const selectModels = (profile: BenchmarkProfile): readonly string[] => {
   const selected = selectValues(process.env.PIX_BENCH_MODELS)
-  const models = Object.keys(MODEL_REGISTRY).filter((model) => !selected || selected.has(model))
+  const profileModels =
+    profile === "full" ? Object.keys(MODEL_REGISTRY) : ["Xenova/all-MiniLM-L6-v2"]
+  const models = Object.keys(MODEL_REGISTRY).filter((model) =>
+    selected ? selected.has(model) : profileModels.includes(model),
+  )
   if (selected && models.length !== selected.size) {
     const unknown = [...selected].filter((model) => MODEL_REGISTRY[model] === undefined)
     throw new Error(`Unknown PIX_BENCH_MODELS values: ${unknown.join(", ")}`)
@@ -163,13 +224,15 @@ const writeArtifact = (artifact: BenchmarkArtifact): Effect.Effect<string, Error
   })
 
 /** Run all selected repositories, embedding models, channel variants, and context budgets. */
-export const runRetrievalBenchmark = (): Effect.Effect<
-  { readonly artifact: BenchmarkArtifact; readonly outputPath: string },
-  Error
-> =>
+export const runRetrievalBenchmark = (
+  profile: BenchmarkProfile = "full",
+): Effect.Effect<{ readonly artifact: BenchmarkArtifact; readonly outputPath: string }, Error> =>
   Effect.gen(function* () {
-    const manifests = selectManifests(yield* loadCorpusManifests())
-    const models = selectModels()
+    const config = profileConfig(profile)
+    const groupedStrategy: ValidationStrategy =
+      config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
+    const manifests = selectManifests(yield* loadCorpusManifests(), profile)
+    const models = selectModels(profile)
     const repositories: BenchmarkArtifact["repositories"][number][] = []
     const embeddingRuns: BenchmarkArtifact["embeddingRuns"][number][] = []
     const measurements: QueryMeasurement[] = []
@@ -256,7 +319,7 @@ export const runRetrievalBenchmark = (): Effect.Effect<
           const entry = queries[queryIndex]
           const question = manifest.questions[entry.questionIndex]
           const targets = targetsByQuestion[entry.questionIndex]
-          const groupedFold = entry.questionIndex % 5
+          const groupedFold = entry.questionIndex % config.groupedFolds
           const channelStartedAt = performance.now()
           const rankings = rankChannels(entry.query, corpus, chunkVectors, queryVectors[queryIndex])
           const channelDurationMs = performance.now() - channelStartedAt
@@ -317,59 +380,58 @@ export const runRetrievalBenchmark = (): Effect.Effect<
       }
     }
 
-    const staticSearchStartedAt = performance.now()
-    reportProgress("selecting static holdout weights")
-    const weightSearch = [...sampleGroups.values()].flatMap((group) => {
-      const groupedFolds = Array.from({ length: 5 }, (_, fold) =>
-        optimizeWeights(
-          group.model,
-          group.queryKind,
-          "grouped-5-fold",
-          String(fold + 1),
-          group.samples.filter((sample) => sample.groupedFold !== fold),
-          group.samples.filter((sample) => sample.groupedFold === fold),
-        ),
-      )
-      const repositories = [...new Set(group.samples.map((sample) => sample.repository))]
-      const repositoryFolds =
-        repositories.length > 1
-          ? repositories.map((repository) =>
-              optimizeWeights(
-                group.model,
-                group.queryKind,
-                "leave-one-repository-out",
-                repository,
-                group.samples.filter((sample) => sample.repository !== repository),
-                group.samples.filter((sample) => sample.repository === repository),
-              ),
-            )
-          : []
-      return [...groupedFolds, ...repositoryFolds]
-    })
-    reportProgress(
-      `selected static holdout weights in ${((performance.now() - staticSearchStartedAt) / 1_000).toFixed(1)}s`,
-    )
-    const recommendedWeights = [...sampleGroups.values()].map((group) =>
-      fitRecommendedWeights(group.model, group.queryKind, group.samples),
-    )
+    const weightSearch = config.legacyDiagnostics
+      ? [...sampleGroups.values()].flatMap((group) => {
+          const groupedFolds = Array.from({ length: config.groupedFolds }, (_, fold) =>
+            optimizeWeights(
+              group.model,
+              group.queryKind,
+              groupedStrategy,
+              String(fold + 1),
+              group.samples.filter((sample) => sample.groupedFold !== fold),
+              group.samples.filter((sample) => sample.groupedFold === fold),
+            ),
+          )
+          const repositories = [...new Set(group.samples.map((sample) => sample.repository))]
+          const repositoryFolds =
+            config.repositoryHoldouts && repositories.length > 1
+              ? repositories.map((repository) =>
+                  optimizeWeights(
+                    group.model,
+                    group.queryKind,
+                    "leave-one-repository-out",
+                    repository,
+                    group.samples.filter((sample) => sample.repository !== repository),
+                    group.samples.filter((sample) => sample.repository === repository),
+                  ),
+                )
+              : []
+          return [...groupedFolds, ...repositoryFolds]
+        })
+      : []
+    const recommendedWeights = config.legacyDiagnostics
+      ? [...sampleGroups.values()].map((group) =>
+          fitRecommendedWeights(group.model, group.queryKind, group.samples),
+        )
+      : []
     const fusionSearch: BenchmarkArtifact["fusionSearch"][number][] = []
     for (const [model, samples] of samplesByModel) {
       const repositories = [...new Set(samples.map((sample) => sample.repository))]
-      for (const fusion of FUSION_METHODS) {
+      for (const fusion of config.fusionMethods) {
         reportProgress(`${model}: selecting static ${fusion} fusion weights`)
-        for (let fold = 0; fold < 5; fold++) {
+        for (let fold = 0; fold < config.groupedFolds; fold++) {
           fusionSearch.push(
             optimizeFusionWeights(
               model,
               fusion,
-              "grouped-5-fold",
+              groupedStrategy,
               String(fold + 1),
               samples.filter((sample) => sample.groupedFold !== fold),
               samples.filter((sample) => sample.groupedFold === fold),
             ),
           )
         }
-        if (repositories.length > 1) {
+        if (config.repositoryHoldouts && repositories.length > 1) {
           for (const repository of repositories) {
             fusionSearch.push(
               optimizeFusionWeights(
@@ -386,16 +448,18 @@ export const runRetrievalBenchmark = (): Effect.Effect<
       }
     }
     const recommendedFusionWeights = [...samplesByModel].flatMap(([model, samples]) =>
-      FUSION_METHODS.map((fusion) => fitRecommendedFusionWeights(model, fusion, samples)),
+      config.fusionMethods.map((fusion) => fitRecommendedFusionWeights(model, fusion, samples)),
     )
     const evidenceRouterSearch: BenchmarkArtifact["evidenceRouterSearch"][number][] = []
     for (const [model, samples] of samplesByModel) {
-      for (let fold = 0; fold < 5; fold++) {
-        reportProgress(`${model}: selecting evidence router for grouped fold ${fold + 1}/5`)
+      for (let fold = 0; fold < config.groupedFolds; fold++) {
+        reportProgress(
+          `${model}: selecting evidence router for grouped fold ${fold + 1}/${config.groupedFolds}`,
+        )
         evidenceRouterSearch.push(
           optimizeEvidenceRouter(
             model,
-            "grouped-5-fold",
+            groupedStrategy,
             String(fold + 1),
             samples.filter((sample) => sample.groupedFold !== fold),
             samples.filter((sample) => sample.groupedFold === fold),
@@ -403,7 +467,7 @@ export const runRetrievalBenchmark = (): Effect.Effect<
         )
       }
       const repositories = [...new Set(samples.map((sample) => sample.repository))]
-      if (repositories.length > 1) {
+      if (config.repositoryHoldouts && repositories.length > 1) {
         for (const repository of repositories) {
           reportProgress(`${model}: selecting evidence router with ${repository} held out`)
           evidenceRouterSearch.push(
@@ -425,6 +489,7 @@ export const runRetrievalBenchmark = (): Effect.Effect<
 
     const artifact: BenchmarkArtifact = {
       schemaVersion: 7,
+      benchmarkProfile: profile,
       generatedAt: new Date().toISOString(),
       chunkConfig: {
         chunkLines: DEFAULT_CONFIG.chunkLines,

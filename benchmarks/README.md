@@ -77,11 +77,26 @@ Validate all pinned checkouts and gold locations without loading embedding model
 vp run bench:retrieval:corpus
 ```
 
-Run the complete three-repository by three-model matrix:
+Use the smallest profile that provides the evidence needed for the current change:
 
 ```bash
-vp run bench:retrieval
+vp run bench:retrieval:smoke
+vp run bench:retrieval:develop
+vp run bench:retrieval:validate
+vp run bench:retrieval:full
 ```
+
+| Profile    | Repositories | Models | Validation                    | Fusion and diagnostics            |
+| ---------- | ------------ | ------ | ----------------------------- | --------------------------------- |
+| `smoke`    | fd           | MiniLM | grouped 5-fold                | DBSF, current router              |
+| `develop`  | all three    | MiniLM | grouped 3-fold                | DBSF, current router              |
+| `validate` | all three    | MiniLM | grouped 5-fold and repository | DBSF, current router              |
+| `full`     | all three    | all    | grouped 5-fold and repository | all fusion and legacy diagnostics |
+
+`bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
+rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
+diagnostics. The selected profile is recorded in schema-7 artifacts without changing retrieval
+semantics.
 
 The first run clones repositories into `benchmarks/.cache/repos` and downloads missing Hugging Face
 models. The highest-priority working device is selected automatically and recorded in the artifact.
@@ -93,7 +108,7 @@ from Git. Limit an exploratory run with comma-separated environment variables:
 ```powershell
 $env:PIX_BENCH_REPOS = "fd"
 $env:PIX_BENCH_MODELS = "Xenova/all-MiniLM-L6-v2"
-vp run bench:retrieval
+vp run bench:retrieval:validate
 ```
 
 Supported repository IDs are `fastapi`, `effect-v4`, and `fd`. Supported models are the three models

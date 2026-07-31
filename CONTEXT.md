@@ -140,6 +140,9 @@ Shapley values explain marginal channel contribution. Embedders use automatic de
 maximum batch size of two. Schema 7 also compares Weighted RRF, per-channel min-max relative-score
 fusion, and three-sigma distribution-based score fusion with independently tuned positive weights,
 then evaluates one evidence-based router across all query forms.
+Schema-7 benchmark profiles trade runtime for coverage without changing retrieval semantics: `smoke`
+uses fd and MiniLM, `develop` uses all corpora with MiniLM and grouped 3-fold, `validate` adds grouped
+5-fold and repository holdouts, and `full` restores every model, fusion, and legacy diagnostic.
 The router uses only runtime-observable query length and identifier shape, within-channel score
 separation, channel availability, and cross-channel rank agreement. Raw scores from different
 channels are never compared. A deterministic coarse-to-fine beam search refines positive dynamic base weights (minimum 0.1) and
