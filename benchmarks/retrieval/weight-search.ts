@@ -5,6 +5,7 @@ import {
   routeWithEvidence,
   type ChannelCoefficients,
   type EvidenceRouterConfig,
+  type QueryTermCoverage,
   type RoutingEvidence,
 } from "./evidence-router.js"
 import { fuseRankings } from "./fusion.js"
@@ -49,6 +50,7 @@ export interface WeightSearchSample {
   readonly rankings: ChannelRankings
   readonly targets: readonly ReadonlySet<number>[]
   readonly chunks: readonly Chunk[]
+  readonly termCoverage?: QueryTermCoverage
 }
 
 /** Weight-search sample paired with diagnostics cached once before fine-grained search. */
@@ -122,7 +124,7 @@ const prepareEvidenceSamples = (
 ): readonly EvidenceSearchSample[] =>
   samples.map((sample) => ({
     sample,
-    evidence: buildRoutingEvidence(sample.query, sample.rankings),
+    evidence: buildRoutingEvidence(sample.query, sample.rankings, sample.termCoverage),
   }))
 
 const compareQuality = (left: QualitySummary, right: QualitySummary): number => {
@@ -317,6 +319,7 @@ const selectBestWeightsPerSubset = (
 type InfluenceName =
   | "scoreInfluence"
   | "geometryInfluence"
+  | "termCoverageInfluence"
   | "agreementInfluence"
   | "identifierInfluence"
   | "queryLengthInfluence"
@@ -345,6 +348,7 @@ const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig =>
   baseWeights: positiveBaseWeights(baseWeights),
   scoreInfluence: ZERO_COEFFICIENTS,
   geometryInfluence: ZERO_COEFFICIENTS,
+  termCoverageInfluence: ZERO_COEFFICIENTS,
   agreementInfluence: ZERO_COEFFICIENTS,
   identifierInfluence: ZERO_COEFFICIENTS,
   queryLengthInfluence: ZERO_COEFFICIENTS,
@@ -362,6 +366,8 @@ const withInfluence = (
       return { ...config, scoreInfluence: coefficients }
     case "geometryInfluence":
       return { ...config, geometryInfluence: coefficients }
+    case "termCoverageInfluence":
+      return { ...config, termCoverageInfluence: coefficients }
     case "agreementInfluence":
       return { ...config, agreementInfluence: coefficients }
     case "identifierInfluence":
@@ -385,6 +391,7 @@ const routerParameters = (): readonly RouterParameter[] => {
   }[] = [
     { name: "scoreInfluence", values: INFLUENCE_LEVELS },
     { name: "geometryInfluence", values: INFLUENCE_LEVELS },
+    { name: "termCoverageInfluence", values: INFLUENCE_LEVELS },
     { name: "agreementInfluence", values: INFLUENCE_LEVELS },
     { name: "identifierInfluence", values: SIGNED_FINE_LEVELS },
     { name: "queryLengthInfluence", values: SIGNED_FINE_LEVELS },
@@ -408,6 +415,7 @@ const routerKey = (config: EvidenceRouterConfig): string =>
     weightsKey(config.baseWeights),
     coefficientsKey(config.scoreInfluence),
     coefficientsKey(config.geometryInfluence),
+    coefficientsKey(config.termCoverageInfluence),
     coefficientsKey(config.agreementInfluence),
     coefficientsKey(config.identifierInfluence),
     coefficientsKey(config.queryLengthInfluence),
@@ -419,6 +427,7 @@ const routerComplexity = (config: EvidenceRouterConfig): number =>
       sum +
       Math.abs(config.scoreInfluence[channel]) +
       Math.abs(config.geometryInfluence[channel]) +
+      Math.abs(config.termCoverageInfluence[channel]) +
       Math.abs(config.agreementInfluence[channel]) +
       Math.abs(config.identifierInfluence[channel]) +
       Math.abs(config.queryLengthInfluence[channel]),

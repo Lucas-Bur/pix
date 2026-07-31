@@ -3,7 +3,11 @@ import { describe, expect, it } from "@effect/vitest"
 import type { Chunk } from "../../src/domain/chunk.js"
 import { buildBm25Index } from "../../src/lib/retrieval/bm25.js"
 import { buildIdentifierIndex } from "../../src/lib/retrieval/identifier-index.js"
-import { buildRoutingEvidence, routeWithEvidence } from "../retrieval/evidence-router.js"
+import {
+  buildQueryTermCoverage,
+  buildRoutingEvidence,
+  routeWithEvidence,
+} from "../retrieval/evidence-router.js"
 import { fuseRankings } from "../retrieval/fusion.js"
 import { recallAt, resolveGoldTargets } from "../retrieval/metrics.js"
 import type { PreparedCorpus } from "../retrieval/prepare.js"
@@ -115,6 +119,7 @@ describe("retrieval benchmark fixture", () => {
       baseWeights: { identity: 0, camelcase: 0, bm25: 1, dense: 1 },
       scoreInfluence: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
       geometryInfluence: zeroChannelCoefficients,
+      termCoverageInfluence: zeroChannelCoefficients,
       agreementInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: zeroChannelCoefficients,
@@ -137,6 +142,7 @@ describe("retrieval benchmark fixture", () => {
       baseWeights: { identity: 1, camelcase: 0, bm25: 0, dense: 1 },
       scoreInfluence: zeroChannelCoefficients,
       geometryInfluence: zeroChannelCoefficients,
+      termCoverageInfluence: zeroChannelCoefficients,
       agreementInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: { ...zeroChannelCoefficients, identity: -1, dense: 1 },
@@ -171,6 +177,7 @@ describe("retrieval benchmark fixture", () => {
       baseWeights: { identity: 0, camelcase: 0, bm25: 1, dense: 1 },
       scoreInfluence: zeroChannelCoefficients,
       geometryInfluence: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
+      termCoverageInfluence: zeroChannelCoefficients,
       agreementInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: zeroChannelCoefficients,
@@ -180,6 +187,26 @@ describe("retrieval benchmark fixture", () => {
       evidence.channels.dense.scoreGeometry.confidence,
     )
     expect(weights.bm25).toBeGreaterThan(weights.dense)
+  })
+
+  it("measures lexical and identifier query-term coverage", () => {
+    const complete = buildQueryTermCoverage(
+      "loadProjectConfiguration",
+      corpus.bm25Index,
+      corpus.identifierIndex,
+    )
+    const partial = buildQueryTermCoverage(
+      "loadProjectConfiguration missing",
+      corpus.bm25Index,
+      corpus.identifierIndex,
+    )
+
+    expect(complete.bm25Idf).toBe(1)
+    expect(complete.identity).toBe(1)
+    expect(complete.camelcase).toBe(1)
+    expect(partial.bm25Idf).toBeLessThan(1)
+    expect(partial.identity).toBe(0)
+    expect(partial.camelcase).toBeLessThan(1)
   })
 
   it("measures full RRF against exact file-qualified gold targets", () => {

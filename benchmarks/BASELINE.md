@@ -1,5 +1,37 @@
 # Preliminary Retrieval Baseline
 
+## Schema 10: Query-Term Coverage Across Fusion Methods
+
+Schema 10 adds three lexical coverage signals to the Schema-9 router: BM25 query coverage weighted
+by term IDF, exact full-identifier coverage, and CamelCase constituent coverage. The signals are
+mapped to their corresponding channels; dense receives a neutral value. Static and dynamic rows use
+the same fusion method.
+
+| Fusion         | Validation strategy | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static context@4k | Dynamic context@4k |
+| -------------- | ------------------- | ----------: | -----------: | ----------: | -----------: | ----------------: | -----------------: |
+| Weighted RRF   | Grouped 5-fold      |       69.2% |        68.1% |       76.9% |        76.4% |             64.4% |              64.4% |
+| Weighted RRF   | LORO                |       70.8% |        71.4% |       78.6% |        80.3% |             66.9% |              67.5% |
+| Relative score | Grouped 5-fold      |       70.8% |        72.8% |       82.8% |        82.2% |             61.9% |              66.7% |
+| Relative score | LORO                |       70.8% |        69.2% |       83.3% |        83.3% |             64.7% |              61.4% |
+| DBSF           | Grouped 5-fold      |       71.9% |        72.5% |       78.9% |        80.8% |             65.0% |              66.1% |
+| DBSF           | LORO                |       72.5% |        72.5% |       81.1% |        79.7% |             64.7% |              68.6% |
+
+### Fit-All Preview
+
+These candidates use all 180 query representations and are descriptive in-sample measurements, not
+generalization evidence.
+
+| Fusion         | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static context@4k | Dynamic context@4k |
+| -------------- | ----------: | -----------: | ----------: | -----------: | ----------------: | -----------------: |
+| Weighted RRF   |       68.1% |        67.5% |       83.1% |        83.6% |             62.8% |              63.3% |
+| Relative score |       73.9% |        74.7% |       84.7% |        85.3% |             63.6% |              64.2% |
+| DBSF           |       74.2% |        75.3% |       83.9% |        83.9% |             64.7% |              64.2% |
+
+Among dynamic holdouts, relative-score remains best for R@20 in both grouped and LORO validation.
+DBSF has the strongest LORO R@10 and context recall; relative-score has the strongest grouped R@10
+and context recall. Term coverage therefore adds useful context quality in several splits but does
+not displace relative-score as the recall-first candidate.
+
 ## Schema 9: Score Geometry Across Fusion Methods
 
 Schema 9 adds one composite score-geometry confidence signal to the stable schema-5 linear router.
