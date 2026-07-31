@@ -86,12 +86,12 @@ vp run bench:retrieval:validate
 vp run bench:retrieval:full
 ```
 
-| Profile    | Repositories | Models | Validation                    | Fusion and diagnostics            |
-| ---------- | ------------ | ------ | ----------------------------- | --------------------------------- |
-| `smoke`    | fd           | MiniLM | grouped 5-fold                | DBSF, current router              |
-| `develop`  | all three    | MiniLM | grouped 3-fold                | DBSF, current router              |
-| `validate` | all three    | MiniLM | grouped 5-fold and repository | DBSF, current router              |
-| `full`     | all three    | all    | grouped 5-fold and repository | all fusion and legacy diagnostics |
+| Profile    | Repositories | Models   | Validation                    | Fusion and diagnostics            |
+| ---------- | ------------ | -------- | ----------------------------- | --------------------------------- |
+| `smoke`    | fd           | MiniLM   | grouped 5-fold                | DBSF, current router              |
+| `develop`  | all three    | MiniLM   | grouped 3-fold                | DBSF, current router              |
+| `validate` | all three    | MiniLM   | grouped 5-fold and repository | DBSF, current router              |
+| `full`     | all three    | selected | grouped 5-fold and repository | all fusion and legacy diagnostics |
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
@@ -111,8 +111,9 @@ $env:PIX_BENCH_MODELS = "Xenova/all-MiniLM-L6-v2"
 vp run bench:retrieval:validate
 ```
 
-Supported repository IDs are `fastapi`, `effect-v4`, and `fd`. Supported models are the three models
-in `MODEL_REGISTRY`:
+Supported repository IDs are `fastapi`, `effect-v4`, and `fd`. Every profile runs exactly one model,
+defaulting to MiniLM. Select another with `PIX_BENCH_MODELS`. Supported values are the three models in
+`MODEL_REGISTRY`:
 
 - `Xenova/all-MiniLM-L6-v2`
 - `Xenova/bge-small-en-v1.5`
