@@ -4,6 +4,7 @@ import type { Chunk } from "../../src/domain/chunk.js"
 import { buildBm25Index } from "../../src/lib/retrieval/bm25.js"
 import { buildIdentifierIndex } from "../../src/lib/retrieval/identifier-index.js"
 import { buildRoutingEvidence, routeWithEvidence } from "../retrieval/evidence-router.js"
+import { fuseRankings } from "../retrieval/fusion.js"
 import { recallAt, resolveGoldTargets } from "../retrieval/metrics.js"
 import type { PreparedCorpus } from "../retrieval/prepare.js"
 import { rankChannels, rankVariant, RETRIEVAL_VARIANTS } from "../retrieval/ranking.js"
@@ -112,51 +113,16 @@ describe("retrieval benchmark fixture", () => {
     const evidence = buildRoutingEvidence("find project configuration", rankings)
     const weights = routeWithEvidence(evidence, {
       baseWeights: { identity: 0, camelcase: 0, bm25: 1, dense: 1 },
-      scoreCoefficient: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
-      agreementCoefficient: zeroChannelCoefficients,
-      identifierCoefficient: zeroChannelCoefficients,
-      queryLengthCoefficient: zeroChannelCoefficients,
+      scoreInfluence: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
+      agreementInfluence: zeroChannelCoefficients,
+      identifierInfluence: zeroChannelCoefficients,
+      queryLengthInfluence: zeroChannelCoefficients,
     })
 
     expect(evidence.channels.bm25.scoreSeparation).toBeGreaterThan(
       evidence.channels.dense.scoreSeparation,
     )
     expect(weights.bm25).toBeGreaterThan(weights.dense)
-  })
-
-  it("applies symmetric Log2 boost and damping around each base weight", () => {
-    const config = {
-      baseWeights: { identity: 1, camelcase: 0.1, bm25: 0.1, dense: 0.1 },
-      scoreCoefficient: { ...zeroChannelCoefficients, identity: 1 },
-      agreementCoefficient: zeroChannelCoefficients,
-      identifierCoefficient: zeroChannelCoefficients,
-      queryLengthCoefficient: zeroChannelCoefficients,
-    }
-    const strong = routeWithEvidence(
-      buildRoutingEvidence("target", {
-        identity: [{ chunkIndex: 0, score: 1 }],
-        camelcase: [],
-        bm25: [],
-        dense: [],
-      }),
-      config,
-    ).identity
-    const weak = routeWithEvidence(
-      buildRoutingEvidence("target", {
-        identity: [
-          { chunkIndex: 0, score: 1 },
-          { chunkIndex: 1, score: 1 },
-        ],
-        camelcase: [],
-        bm25: [],
-        dense: [],
-      }),
-      config,
-    ).identity
-
-    expect(strong).toBeGreaterThan(1)
-    expect(weak).toBeLessThan(1)
-    expect(strong * weak).toBeCloseTo(1)
   })
 
   it("applies query-length evidence differently to each channel", () => {
@@ -168,10 +134,10 @@ describe("retrieval benchmark fixture", () => {
     }
     const config = {
       baseWeights: { identity: 1, camelcase: 0, bm25: 0, dense: 1 },
-      scoreCoefficient: zeroChannelCoefficients,
-      agreementCoefficient: zeroChannelCoefficients,
-      identifierCoefficient: zeroChannelCoefficients,
-      queryLengthCoefficient: { ...zeroChannelCoefficients, identity: -1, dense: 1 },
+      scoreInfluence: zeroChannelCoefficients,
+      agreementInfluence: zeroChannelCoefficients,
+      identifierInfluence: zeroChannelCoefficients,
+      queryLengthInfluence: { ...zeroChannelCoefficients, identity: -1, dense: 1 },
     }
     const shortWeights = routeWithEvidence(buildRoutingEvidence("target", rankings), config)
     const longWeights = routeWithEvidence(
@@ -198,6 +164,45 @@ describe("retrieval benchmark fixture", () => {
     )
     expect(targets[0]).toEqual(new Set([0]))
     expect(recallAt(ranked, targets, 1)).toBe(1)
+  })
+
+  it("fuses channel-relative scores without comparing raw score scales", () => {
+    const ranked = fuseRankings(
+      "relative-score",
+      {
+        identity: [],
+        camelcase: [],
+        bm25: [
+          { chunkIndex: 0, score: 10 },
+          { chunkIndex: 1, score: 9 },
+          { chunkIndex: 2, score: 0 },
+        ],
+        dense: [
+          { chunkIndex: 2, score: 0.6 },
+          { chunkIndex: 1, score: 0.59 },
+          { chunkIndex: 0, score: 0.58 },
+        ],
+      },
+      { identity: 0, camelcase: 0, bm25: 1, dense: 1 },
+    )
+
+    expect(ranked[0].chunkIndex).toBe(1)
+    expect(ranked[0].score).toBeCloseTo(1.4)
+  })
+
+  it("assigns neutral DBSF evidence to a constant channel", () => {
+    const ranked = fuseRankings(
+      "dbsf",
+      {
+        identity: [{ chunkIndex: 0, score: 1 }],
+        camelcase: [],
+        bm25: [],
+        dense: [],
+      },
+      { identity: 1, camelcase: 0, bm25: 0, dense: 0 },
+    )
+
+    expect(ranked).toEqual([{ chunkIndex: 0, score: 0.5 }])
   })
 
   it("learns weights on development and attributes holdout value with Shapley", () => {
@@ -277,6 +282,9 @@ describe("retrieval benchmark fixture", () => {
     const result = optimizeEvidenceRouter("fixture", "grouped-5-fold", "1", samples, samples)
 
     expect(Object.values(result.config.baseWeights).every((weight) => weight > 0)).toBe(true)
+    expect(result.config.scoreInfluence.bm25 + result.config.scoreInfluence.dense).toBeGreaterThan(
+      0,
+    )
     expect(result.validation.recallAt20).toBeGreaterThan(result.staticValidation.recallAt20)
   })
 })

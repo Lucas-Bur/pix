@@ -6,7 +6,6 @@ const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dens
 const SCORE_REFERENCE_RANK = 9
 const AGREEMENT_SOURCE_DEPTH = 5
 const AGREEMENT_TARGET_DEPTH = 20
-const MAX_ABS_LOG2_ADJUSTMENT = 2
 
 /** Scale-independent diagnostics derived from one channel's ranked results. */
 export interface ChannelEvidence {
@@ -26,10 +25,10 @@ export interface RoutingEvidence {
 /** Interpretable parameters controlling evidence-based channel weighting. */
 export interface EvidenceRouterConfig {
   readonly baseWeights: ChannelWeights
-  readonly scoreCoefficient: ChannelCoefficients
-  readonly agreementCoefficient: ChannelCoefficients
-  readonly identifierCoefficient: ChannelCoefficients
-  readonly queryLengthCoefficient: ChannelCoefficients
+  readonly scoreInfluence: ChannelCoefficients
+  readonly agreementInfluence: ChannelCoefficients
+  readonly identifierInfluence: ChannelCoefficients
+  readonly queryLengthInfluence: ChannelCoefficients
 }
 
 /** Per-channel coefficient vector; query interactions may use negative values. */
@@ -102,16 +101,17 @@ export const routeWithEvidence = (
   const weight = (channel: ChannelName): number => {
     const channelEvidence = evidence.channels[channel]
     if (!channelEvidence.available) return 0
-    const combinedEvidence =
-      config.scoreCoefficient[channel] * (2 * channelEvidence.scoreSeparation - 1) +
-      config.agreementCoefficient[channel] * (2 * channelEvidence.agreement - 1) +
-      config.identifierCoefficient[channel] * (2 * evidence.identifierLikelihood - 1) +
-      config.queryLengthCoefficient[channel] * (2 * evidence.queryLengthSignal - 1)
-    const boundedEvidence = Math.max(
-      -MAX_ABS_LOG2_ADJUSTMENT,
-      Math.min(MAX_ABS_LOG2_ADJUSTMENT, combinedEvidence),
+    const scoreFactor =
+      1 - config.scoreInfluence[channel] * (1 - channelEvidence.scoreSeparation) * 0.75
+    const agreementFactor =
+      1 - config.agreementInfluence[channel] * (1 - channelEvidence.agreement) * 0.5
+    const identifierFactor =
+      1 + config.identifierInfluence[channel] * (2 * evidence.identifierLikelihood - 1) * 0.5
+    const lengthFactor =
+      1 + config.queryLengthInfluence[channel] * (2 * evidence.queryLengthSignal - 1) * 0.5
+    return (
+      config.baseWeights[channel] * scoreFactor * agreementFactor * identifierFactor * lengthFactor
     )
-    return config.baseWeights[channel] * 2 ** boundedEvidence
   }
 
   return {

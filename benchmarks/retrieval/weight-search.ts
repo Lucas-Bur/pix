@@ -1,6 +1,5 @@
 import type { Chunk } from "../../src/domain/chunk.js"
 import type { RankedChunk } from "../../src/domain/ports.js"
-import { rrfFuse } from "../../src/lib/retrieval/rrf.js"
 import {
   buildRoutingEvidence,
   routeWithEvidence,
@@ -8,14 +7,18 @@ import {
   type EvidenceRouterConfig,
   type RoutingEvidence,
 } from "./evidence-router.js"
+import { fuseRankings } from "./fusion.js"
 import { contextRecallAtBudget, recallAt, reciprocalRank } from "./metrics.js"
 import type { ChannelName, ChannelRankings } from "./ranking.js"
 import type {
   ChannelWeights,
   EvidenceRouterSearchResult,
+  FusionMethod,
+  FusionSearchResult,
   QualitySummary,
   QueryKind,
   RecommendedEvidenceRouter,
+  RecommendedFusionWeights,
   RecommendedWeights,
   WeightSearchResult,
 } from "./types.js"
@@ -24,6 +27,7 @@ const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dens
 const WEIGHT_LEVELS = [0, 0.5, 1, 2] as const
 const STATIC_FINE_WEIGHT_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
 const DYNAMIC_BASE_LEVELS = Array.from({ length: 10 }, (_, index) => (index + 1) / 10)
+const INFLUENCE_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
 const SIGNED_FINE_LEVELS = Array.from({ length: 21 }, (_, index) => (index - 10) / 10)
 const SEARCH_CANDIDATE_DEPTH = 200
 const SEARCH_BEAM_WIDTH = 6
@@ -56,18 +60,13 @@ interface EvidenceSearchSample {
 const fuseWithWeights = (
   rankings: ChannelRankings,
   weights: ChannelWeights,
-): readonly RankedChunk[] => {
-  const present = CHANNELS.filter((channel) => weights[channel] > 0 && rankings[channel].length > 0)
-  if (present.length === 0) return []
-  return rrfFuse(
-    present.map((channel) => rankings[channel].slice(0, SEARCH_CANDIDATE_DEPTH)),
-    present.map((channel) => weights[channel]),
-  )
-}
+  fusion: FusionMethod = "rrf",
+): readonly RankedChunk[] => fuseRankings(fusion, rankings, weights, SEARCH_CANDIDATE_DEPTH)
 
 const summarize = (
   samples: readonly WeightSearchSample[],
   weights: ChannelWeights,
+  fusion: FusionMethod = "rrf",
 ): QualitySummary => {
   if (samples.length === 0) {
     return { recallAt10: 0, recallAt20: 0, contextRecallAt4096: 0, meanReciprocalRank: 0 }
@@ -77,7 +76,7 @@ const summarize = (
   let contextRecall = 0
   let mrr = 0
   for (const sample of samples) {
-    const ranked = fuseWithWeights(sample.rankings, weights)
+    const ranked = fuseWithWeights(sample.rankings, weights, fusion)
     recall10 += recallAt(ranked, sample.targets, 10)
     recall20 += recallAt(ranked, sample.targets, 20)
     contextRecall += contextRecallAtBudget(ranked, sample.targets, sample.chunks, 4_096)
@@ -239,6 +238,7 @@ const rankWeightCandidates = (
   candidates: readonly ChannelWeights[],
   limit: number,
   qualityCache: Map<string, QualitySummary>,
+  fusion: FusionMethod,
 ): readonly WeightCandidate[] => {
   const unique = new Map<string, ChannelWeights>()
   for (const candidate of candidates) {
@@ -249,7 +249,7 @@ const rankWeightCandidates = (
     .map(([key, weights]) => {
       const cached = qualityCache.get(key)
       if (cached !== undefined) return { weights, quality: cached }
-      const quality = summarize(samples, weights)
+      const quality = summarize(samples, weights, fusion)
       qualityCache.set(key, quality)
       return { weights, quality }
     })
@@ -265,9 +265,16 @@ const withWeight = (weights: ChannelWeights, channel: ChannelName, value: number
 
 const selectBestWeights = (
   samples: readonly WeightSearchSample[],
+  fusion: FusionMethod = "rrf",
 ): { readonly weights: ChannelWeights; readonly quality: QualitySummary } => {
   const qualityCache = new Map<string, QualitySummary>()
-  let beam = rankWeightCandidates(samples, weightCandidates(), SEARCH_BEAM_WIDTH, qualityCache)
+  let beam = rankWeightCandidates(
+    samples,
+    weightCandidates(),
+    SEARCH_BEAM_WIDTH,
+    qualityCache,
+    fusion,
+  )
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (const channel of CHANNELS) {
       beam = rankWeightCandidates(
@@ -277,6 +284,7 @@ const selectBestWeights = (
         ),
         SEARCH_BEAM_WIDTH,
         qualityCache,
+        fusion,
       )
     }
   }
@@ -303,12 +311,12 @@ const selectBestWeightsPerSubset = (
   return [...selected.values()].map((entry) => entry.weights)
 }
 
-/** Config field containing one signed coefficient per retrieval channel. */
-type CoefficientName =
-  | "scoreCoefficient"
-  | "agreementCoefficient"
-  | "identifierCoefficient"
-  | "queryLengthCoefficient"
+/** Config field containing one coefficient per retrieval channel. */
+type InfluenceName =
+  | "scoreInfluence"
+  | "agreementInfluence"
+  | "identifierInfluence"
+  | "queryLengthInfluence"
 
 /** One coordinate and its discrete values in the fine-grained router search. */
 interface RouterParameter {
@@ -332,28 +340,28 @@ const positiveBaseWeights = (weights: ChannelWeights): ChannelWeights =>
 
 const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig => ({
   baseWeights: positiveBaseWeights(baseWeights),
-  scoreCoefficient: ZERO_COEFFICIENTS,
-  agreementCoefficient: ZERO_COEFFICIENTS,
-  identifierCoefficient: ZERO_COEFFICIENTS,
-  queryLengthCoefficient: ZERO_COEFFICIENTS,
+  scoreInfluence: ZERO_COEFFICIENTS,
+  agreementInfluence: ZERO_COEFFICIENTS,
+  identifierInfluence: ZERO_COEFFICIENTS,
+  queryLengthInfluence: ZERO_COEFFICIENTS,
 })
 
-const withCoefficient = (
+const withInfluence = (
   config: EvidenceRouterConfig,
-  coefficient: CoefficientName,
+  influence: InfluenceName,
   channel: ChannelName,
   value: number,
 ): EvidenceRouterConfig => {
-  const coefficients = { ...config[coefficient], [channel]: value }
-  switch (coefficient) {
-    case "scoreCoefficient":
-      return { ...config, scoreCoefficient: coefficients }
-    case "agreementCoefficient":
-      return { ...config, agreementCoefficient: coefficients }
-    case "identifierCoefficient":
-      return { ...config, identifierCoefficient: coefficients }
-    case "queryLengthCoefficient":
-      return { ...config, queryLengthCoefficient: coefficients }
+  const coefficients = { ...config[influence], [channel]: value }
+  switch (influence) {
+    case "scoreInfluence":
+      return { ...config, scoreInfluence: coefficients }
+    case "agreementInfluence":
+      return { ...config, agreementInfluence: coefficients }
+    case "identifierInfluence":
+      return { ...config, identifierInfluence: coefficients }
+    case "queryLengthInfluence":
+      return { ...config, queryLengthInfluence: coefficients }
   }
 }
 
@@ -365,20 +373,20 @@ const routerParameters = (): readonly RouterParameter[] => {
       baseWeights: withWeight(config.baseWeights, channel, value),
     }),
   }))
-  const coefficients: readonly {
-    readonly name: CoefficientName
+  const influences: readonly {
+    readonly name: InfluenceName
     readonly values: readonly number[]
   }[] = [
-    { name: "scoreCoefficient", values: SIGNED_FINE_LEVELS },
-    { name: "agreementCoefficient", values: SIGNED_FINE_LEVELS },
-    { name: "identifierCoefficient", values: SIGNED_FINE_LEVELS },
-    { name: "queryLengthCoefficient", values: SIGNED_FINE_LEVELS },
+    { name: "scoreInfluence", values: INFLUENCE_LEVELS },
+    { name: "agreementInfluence", values: INFLUENCE_LEVELS },
+    { name: "identifierInfluence", values: SIGNED_FINE_LEVELS },
+    { name: "queryLengthInfluence", values: SIGNED_FINE_LEVELS },
   ]
-  for (const { name, values } of coefficients) {
+  for (const { name, values } of influences) {
     for (const channel of CHANNELS) {
       parameters.push({
         values,
-        update: (config, value) => withCoefficient(config, name, channel, value),
+        update: (config, value) => withInfluence(config, name, channel, value),
       })
     }
   }
@@ -391,20 +399,20 @@ const coefficientsKey = (coefficients: ChannelCoefficients): string =>
 const routerKey = (config: EvidenceRouterConfig): string =>
   [
     weightsKey(config.baseWeights),
-    coefficientsKey(config.scoreCoefficient),
-    coefficientsKey(config.agreementCoefficient),
-    coefficientsKey(config.identifierCoefficient),
-    coefficientsKey(config.queryLengthCoefficient),
+    coefficientsKey(config.scoreInfluence),
+    coefficientsKey(config.agreementInfluence),
+    coefficientsKey(config.identifierInfluence),
+    coefficientsKey(config.queryLengthInfluence),
   ].join("|")
 
 const routerComplexity = (config: EvidenceRouterConfig): number =>
   CHANNELS.reduce(
     (sum, channel) =>
       sum +
-      Math.abs(config.scoreCoefficient[channel]) +
-      Math.abs(config.agreementCoefficient[channel]) +
-      Math.abs(config.identifierCoefficient[channel]) +
-      Math.abs(config.queryLengthCoefficient[channel]),
+      Math.abs(config.scoreInfluence[channel]) +
+      Math.abs(config.agreementInfluence[channel]) +
+      Math.abs(config.identifierInfluence[channel]) +
+      Math.abs(config.queryLengthInfluence[channel]),
     0,
   )
 
@@ -482,6 +490,29 @@ export const optimizeWeights = (
   }
 }
 
+/** Select static weights for one fusion method, then evaluate them unchanged on a holdout. */
+export const optimizeFusionWeights = (
+  model: string,
+  fusion: FusionMethod,
+  strategy: FusionSearchResult["strategy"],
+  fold: string,
+  development: readonly WeightSearchSample[],
+  validation: readonly WeightSearchSample[],
+): FusionSearchResult => {
+  const selected = selectBestWeights(development, fusion)
+  return {
+    model,
+    fusion,
+    strategy,
+    fold,
+    developmentQueries: development.length,
+    validationQueries: validation.length,
+    weights: selected.weights,
+    development: selected.quality,
+    validation: summarize(validation, selected.weights, fusion),
+  }
+}
+
 /** Select one evidence-based router on development queries and evaluate it unchanged on a holdout. */
 export const optimizeEvidenceRouter = (
   model: string,
@@ -520,6 +551,22 @@ export const fitRecommendedWeights = (
   return {
     model,
     queryKind,
+    samples: samples.length,
+    weights: selected.weights,
+    fitQuality: selected.quality,
+  }
+}
+
+/** Fit one static candidate for a fusion method across all query forms. */
+export const fitRecommendedFusionWeights = (
+  model: string,
+  fusion: FusionMethod,
+  samples: readonly WeightSearchSample[],
+): RecommendedFusionWeights => {
+  const selected = selectBestWeights(samples, fusion)
+  return {
+    model,
+    fusion,
     samples: samples.length,
     weights: selected.weights,
     fitQuality: selected.quality,

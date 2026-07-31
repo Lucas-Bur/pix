@@ -9,6 +9,7 @@ import type { BoundEmbedder } from "../../src/domain/ports.js"
 import { createAutoBoundEmbedder } from "../../src/services/embedder.js"
 import { loadCorpusManifests, prepareRepository } from "./corpus.js"
 import { loadEmbeddingCache, writeEmbeddingCache } from "./embedding-cache.js"
+import { FUSION_METHODS } from "./fusion.js"
 import {
   contextRecallAtBudget,
   goldTargetRanks,
@@ -23,8 +24,10 @@ import { renderMarkdownReport } from "./report.js"
 import type { BenchmarkArtifact, CorpusManifest, QueryKind, QueryMeasurement } from "./types.js"
 import {
   fitRecommendedEvidenceRouter,
+  fitRecommendedFusionWeights,
   fitRecommendedWeights,
   optimizeEvidenceRouter,
+  optimizeFusionWeights,
   optimizeWeights,
   type WeightSearchSample,
 } from "./weight-search.js"
@@ -349,6 +352,42 @@ export const runRetrievalBenchmark = (): Effect.Effect<
     const recommendedWeights = [...sampleGroups.values()].map((group) =>
       fitRecommendedWeights(group.model, group.queryKind, group.samples),
     )
+    const fusionSearch: BenchmarkArtifact["fusionSearch"][number][] = []
+    for (const [model, samples] of samplesByModel) {
+      const repositories = [...new Set(samples.map((sample) => sample.repository))]
+      for (const fusion of FUSION_METHODS) {
+        reportProgress(`${model}: selecting static ${fusion} fusion weights`)
+        for (let fold = 0; fold < 5; fold++) {
+          fusionSearch.push(
+            optimizeFusionWeights(
+              model,
+              fusion,
+              "grouped-5-fold",
+              String(fold + 1),
+              samples.filter((sample) => sample.groupedFold !== fold),
+              samples.filter((sample) => sample.groupedFold === fold),
+            ),
+          )
+        }
+        if (repositories.length > 1) {
+          for (const repository of repositories) {
+            fusionSearch.push(
+              optimizeFusionWeights(
+                model,
+                fusion,
+                "leave-one-repository-out",
+                repository,
+                samples.filter((sample) => sample.repository !== repository),
+                samples.filter((sample) => sample.repository === repository),
+              ),
+            )
+          }
+        }
+      }
+    }
+    const recommendedFusionWeights = [...samplesByModel].flatMap(([model, samples]) =>
+      FUSION_METHODS.map((fusion) => fitRecommendedFusionWeights(model, fusion, samples)),
+    )
     const evidenceRouterSearch: BenchmarkArtifact["evidenceRouterSearch"][number][] = []
     for (const [model, samples] of samplesByModel) {
       for (let fold = 0; fold < 5; fold++) {
@@ -385,7 +424,7 @@ export const runRetrievalBenchmark = (): Effect.Effect<
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 6,
+      schemaVersion: 7,
       generatedAt: new Date().toISOString(),
       chunkConfig: {
         chunkLines: DEFAULT_CONFIG.chunkLines,
@@ -400,6 +439,8 @@ export const runRetrievalBenchmark = (): Effect.Effect<
       measurements,
       weightSearch,
       recommendedWeights,
+      fusionSearch,
+      recommendedFusionWeights,
       evidenceRouterSearch,
       recommendedEvidenceRouters,
     }
