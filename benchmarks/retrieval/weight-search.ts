@@ -33,6 +33,11 @@ const SIGNED_FINE_LEVELS = Array.from({ length: 21 }, (_, index) => (index - 10)
 const SEARCH_CANDIDATE_DEPTH = 200
 const SEARCH_BEAM_WIDTH = 6
 const SEARCH_PASSES = 2
+const SEARCH_GLOBAL_SCOUTS = 64
+const HALTON_PRIMES = [
+  2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
+  101, 103, 107,
+] as const
 
 const ZERO_COEFFICIENTS: ChannelCoefficients = {
   identity: 0,
@@ -300,9 +305,13 @@ const selectBestWeights = (
     for (const channel of CHANNELS) {
       beam = rankWeightCandidates(
         samples,
-        beam.flatMap((candidate) =>
-          STATIC_FINE_WEIGHT_LEVELS.map((level) => withWeight(candidate.weights, channel, level)),
-        ),
+        [
+          // Retain current elites so a later coordinate cannot regress the best development fit.
+          ...beam.map((candidate) => candidate.weights),
+          ...beam.flatMap((candidate) =>
+            STATIC_FINE_WEIGHT_LEVELS.map((level) => withWeight(candidate.weights, channel, level)),
+          ),
+        ],
         SEARCH_BEAM_WIDTH,
         qualityCache,
         fusion,
@@ -430,6 +439,41 @@ const routerParameters = (): readonly RouterParameter[] => {
   return parameters
 }
 
+const radicalInverse = (index: number, base: number): number => {
+  let remaining = index
+  let place = 1 / base
+  let result = 0
+  while (remaining > 0) {
+    result += (remaining % base) * place
+    remaining = Math.floor(remaining / base)
+    place /= base
+  }
+  return result
+}
+
+const buildGlobalRouterSeeds = (
+  baseSeeds: readonly EvidenceRouterConfig[],
+  parameters: readonly RouterParameter[],
+): readonly EvidenceRouterConfig[] => {
+  if (baseSeeds.length === 0) return []
+  const coefficientParameters = parameters.slice(CHANNELS.length)
+  return Array.from({ length: SEARCH_GLOBAL_SCOUTS }, (_, pointIndex) =>
+    coefficientParameters.reduce(
+      (config, parameter, parameterIndex) => {
+        const values = parameter.values
+        const valueIndex = Math.min(
+          values.length - 1,
+          Math.floor(
+            radicalInverse(pointIndex + 1, HALTON_PRIMES[parameterIndex]!) * values.length,
+          ),
+        )
+        return parameter.update(config, values[valueIndex]!)
+      },
+      baseSeeds[pointIndex % baseSeeds.length]!,
+    ),
+  )
+}
+
 const coefficientsKey = (coefficients: ChannelCoefficients): string =>
   CHANNELS.map((channel) => coefficients[channel].toFixed(2)).join(":")
 
@@ -494,21 +538,26 @@ const selectBestEvidenceRouter = (
     ...selectBestWeightsPerSubset(samples, fusion),
   ].map(emptyRouterConfig)
   const qualityCache = new Map<string, QualitySummary>()
+  const parameters = routerParameters()
   let beam = rankRouterCandidates(
     evidenceSamples,
-    baseSeeds,
+    [...baseSeeds, ...buildGlobalRouterSeeds(baseSeeds, parameters)],
     SEARCH_BEAM_WIDTH,
     qualityCache,
     fusion,
   )
-  const parameters = routerParameters()
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
-    for (const parameter of parameters) {
+    const orderedParameters = pass % 2 === 0 ? parameters : [...parameters].reverse()
+    for (const parameter of orderedParameters) {
       beam = rankRouterCandidates(
         evidenceSamples,
-        beam.flatMap((candidate) =>
-          parameter.values.map((value) => parameter.update(candidate.config, value)),
-        ),
+        [
+          // Retain current elites so a later coordinate cannot regress the best development fit.
+          ...beam.map((candidate) => candidate.config),
+          ...beam.flatMap((candidate) =>
+            parameter.values.map((value) => parameter.update(candidate.config, value)),
+          ),
+        ],
         SEARCH_BEAM_WIDTH,
         qualityCache,
         fusion,

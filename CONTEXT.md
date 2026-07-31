@@ -170,9 +170,11 @@ implemented and registered in the main package first, then evaluated through the
 regression sequence before it can be considered an advantage.
 The router uses only runtime-observable query length and identifier shape, within-channel score
 separation, channel availability, and cross-channel rank agreement. Raw scores from different
-channels are never compared. A deterministic coarse-to-fine beam search refines positive dynamic base weights (minimum 0.1) and
-per-channel score/agreement coefficients in 0.1 steps; signed per-channel query slopes allow the same
-length or identifier signal to boost one channel and damp another. Its parameters are selected on
+channels are never compared. A deterministic coarse-to-fine beam search starts with 64 Halton global
+scout points, then refines positive dynamic base weights (minimum 0.1) and per-channel
+score/agreement coefficients in 0.1 steps; signed per-channel query slopes allow the same
+length or identifier signal to boost one channel and damp another. Each coordinate sweep retains the
+current beam elites, so a later coordinate cannot regress the best development candidate. Its parameters are selected on
 development folds and evaluated unchanged against static weights on excluded intent folds and
 repositories; authored query-form labels remain informed reference strata and are not router inputs.
 This router remains benchmark-only until holdouts justify a production change.
