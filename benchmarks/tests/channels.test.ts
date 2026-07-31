@@ -120,7 +120,7 @@ describe("retrieval benchmark fixture", () => {
       scoreInfluence: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
       geometryInfluence: zeroChannelCoefficients,
       termCoverageInfluence: zeroChannelCoefficients,
-      agreementInfluence: zeroChannelCoefficients,
+      pairwiseAgreementInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: zeroChannelCoefficients,
     })
@@ -143,7 +143,7 @@ describe("retrieval benchmark fixture", () => {
       scoreInfluence: zeroChannelCoefficients,
       geometryInfluence: zeroChannelCoefficients,
       termCoverageInfluence: zeroChannelCoefficients,
-      agreementInfluence: zeroChannelCoefficients,
+      pairwiseAgreementInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: { ...zeroChannelCoefficients, identity: -1, dense: 1 },
     }
@@ -178,7 +178,7 @@ describe("retrieval benchmark fixture", () => {
       scoreInfluence: zeroChannelCoefficients,
       geometryInfluence: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
       termCoverageInfluence: zeroChannelCoefficients,
-      agreementInfluence: zeroChannelCoefficients,
+      pairwiseAgreementInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: zeroChannelCoefficients,
     })
@@ -207,6 +207,42 @@ describe("retrieval benchmark fixture", () => {
     expect(partial.bm25Idf).toBeLessThan(1)
     expect(partial.identity).toBe(0)
     expect(partial.camelcase).toBeLessThan(1)
+  })
+
+  it("uses symmetric pairwise agreement instead of one best peer", () => {
+    const rankings = {
+      identity: [
+        { chunkIndex: 0, score: 1 },
+        { chunkIndex: 1, score: 0.9 },
+      ],
+      camelcase: [
+        { chunkIndex: 0, score: 2 },
+        { chunkIndex: 2, score: 1 },
+      ],
+      bm25: [
+        { chunkIndex: 3, score: 2 },
+        { chunkIndex: 4, score: 1 },
+      ],
+      dense: [
+        { chunkIndex: 0, score: 0.9 },
+        { chunkIndex: 5, score: 0.8 },
+      ],
+    }
+    const evidence = buildRoutingEvidence("find target", rankings)
+    const weights = routeWithEvidence(evidence, {
+      baseWeights: { identity: 1, camelcase: 0, bm25: 1, dense: 0 },
+      scoreInfluence: zeroChannelCoefficients,
+      geometryInfluence: zeroChannelCoefficients,
+      termCoverageInfluence: zeroChannelCoefficients,
+      pairwiseAgreementInfluence: { ...zeroChannelCoefficients, identity: 1, bm25: 1 },
+      identifierInfluence: zeroChannelCoefficients,
+      queryLengthInfluence: zeroChannelCoefficients,
+    })
+
+    expect(evidence.pairwiseAgreement.identityCamelcase).toBeGreaterThan(
+      evidence.pairwiseAgreement.identityBm25,
+    )
+    expect(weights.identity).toBeGreaterThan(weights.bm25)
   })
 
   it("measures full RRF against exact file-qualified gold targets", () => {

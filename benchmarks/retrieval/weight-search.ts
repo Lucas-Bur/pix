@@ -320,7 +320,7 @@ type InfluenceName =
   | "scoreInfluence"
   | "geometryInfluence"
   | "termCoverageInfluence"
-  | "agreementInfluence"
+  | "pairwiseAgreementInfluence"
   | "identifierInfluence"
   | "queryLengthInfluence"
 
@@ -349,7 +349,7 @@ const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig =>
   scoreInfluence: ZERO_COEFFICIENTS,
   geometryInfluence: ZERO_COEFFICIENTS,
   termCoverageInfluence: ZERO_COEFFICIENTS,
-  agreementInfluence: ZERO_COEFFICIENTS,
+  pairwiseAgreementInfluence: ZERO_COEFFICIENTS,
   identifierInfluence: ZERO_COEFFICIENTS,
   queryLengthInfluence: ZERO_COEFFICIENTS,
 })
@@ -368,8 +368,8 @@ const withInfluence = (
       return { ...config, geometryInfluence: coefficients }
     case "termCoverageInfluence":
       return { ...config, termCoverageInfluence: coefficients }
-    case "agreementInfluence":
-      return { ...config, agreementInfluence: coefficients }
+    case "pairwiseAgreementInfluence":
+      return { ...config, pairwiseAgreementInfluence: coefficients }
     case "identifierInfluence":
       return { ...config, identifierInfluence: coefficients }
     case "queryLengthInfluence":
@@ -392,7 +392,7 @@ const routerParameters = (): readonly RouterParameter[] => {
     { name: "scoreInfluence", values: INFLUENCE_LEVELS },
     { name: "geometryInfluence", values: INFLUENCE_LEVELS },
     { name: "termCoverageInfluence", values: INFLUENCE_LEVELS },
-    { name: "agreementInfluence", values: INFLUENCE_LEVELS },
+    { name: "pairwiseAgreementInfluence", values: INFLUENCE_LEVELS },
     { name: "identifierInfluence", values: SIGNED_FINE_LEVELS },
     { name: "queryLengthInfluence", values: SIGNED_FINE_LEVELS },
   ]
@@ -416,7 +416,7 @@ const routerKey = (config: EvidenceRouterConfig): string =>
     coefficientsKey(config.scoreInfluence),
     coefficientsKey(config.geometryInfluence),
     coefficientsKey(config.termCoverageInfluence),
-    coefficientsKey(config.agreementInfluence),
+    coefficientsKey(config.pairwiseAgreementInfluence),
     coefficientsKey(config.identifierInfluence),
     coefficientsKey(config.queryLengthInfluence),
   ].join("|")
@@ -428,7 +428,7 @@ const routerComplexity = (config: EvidenceRouterConfig): number =>
       Math.abs(config.scoreInfluence[channel]) +
       Math.abs(config.geometryInfluence[channel]) +
       Math.abs(config.termCoverageInfluence[channel]) +
-      Math.abs(config.agreementInfluence[channel]) +
+      Math.abs(config.pairwiseAgreementInfluence[channel]) +
       Math.abs(config.identifierInfluence[channel]) +
       Math.abs(config.queryLengthInfluence[channel]),
     0,

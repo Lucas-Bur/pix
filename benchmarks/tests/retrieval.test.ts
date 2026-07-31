@@ -18,7 +18,7 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.repositories.length).toBeGreaterThan(0)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(10)
+    expect(artifact.schemaVersion).toBe(11)
     expect(artifact.fusionSearch.length).toBe(
       artifact.models.length * fusionMethods * holdoutsPerModel,
     )

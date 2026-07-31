@@ -1,5 +1,30 @@
 # Preliminary Retrieval Baseline
 
+## Schema 11: Pairwise Agreement
+
+Schema 11 replaces aggregate cross-channel agreement with symmetric agreement across all six channel
+pairs at K=5, 10, and 20. The active comparison contains Relative Score and DBSF only; RRF remains a
+historical reference and is not run in the active matrix.
+
+| Fusion         | Validation strategy | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static context@4k | Dynamic context@4k |
+| -------------- | ------------------- | ----------: | -----------: | ----------: | -----------: | ----------------: | -----------------: |
+| Relative score | Grouped 5-fold      |       70.8% |        72.2% |       82.8% |        83.3% |             61.9% |              65.6% |
+| Relative score | LORO                |       70.8% |        68.3% |       83.3% |        82.8% |             64.7% |              61.1% |
+| DBSF           | Grouped 5-fold      |       71.9% |        72.5% |       78.9% |        80.8% |             65.0% |              65.6% |
+| DBSF           | LORO                |       72.5% |        72.5% |       81.1% |        79.7% |             64.7% |              68.6% |
+
+### Fit-All Preview
+
+| Fusion         | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static context@4k | Dynamic context@4k |
+| -------------- | ----------: | -----------: | ----------: | -----------: | ----------------: | -----------------: |
+| Relative score |       73.9% |        72.8% |       84.7% |        85.3% |             63.6% |              64.7% |
+| DBSF           |       74.2% |        73.6% |       83.9% |        83.9% |             64.7% |              65.8% |
+
+Pairwise agreement is not a robust improvement over Schema 10. Relative Score gains 1.1 grouped
+R@20 points but loses 0.9 LORO R@10 and 0.5 LORO R@20. DBSF has unchanged dynamic recall and only
+small context movement. Relative Score remains the recall-first candidate, but pairwise agreement
+does not justify a production change by itself.
+
 ## Schema 10: Query-Term Coverage Across Fusion Methods
 
 Schema 10 adds three lexical coverage signals to the Schema-9 router: BM25 query coverage weighted

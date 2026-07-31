@@ -193,7 +193,7 @@ export interface RecommendedEvidenceRouter {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 10
+  readonly schemaVersion: 11
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   readonly generatedAt: string
