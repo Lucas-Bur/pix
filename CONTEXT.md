@@ -142,8 +142,7 @@ fusion, and three-sigma distribution-based score fusion with independently tuned
 then evaluates one evidence-based router across all query forms.
 Schema-7 benchmark profiles trade runtime for coverage without changing retrieval semantics: `smoke`
 uses fd and MiniLM, `develop` uses all corpora with MiniLM and grouped 3-fold, `validate` adds grouped
-5-fold and repository holdouts, and `full` restores every fusion and legacy diagnostic for one
-selected model.
+5-fold and repository holdouts, and `full` restores every fusion diagnostic for one selected model.
 Schema 8 keeps the schema-5 linear router and its existing signals but applies its dynamic weights
 through DBSF. Static and dynamic holdout columns therefore use the same score-fusion formula; the
 artifact records that formula explicitly.
@@ -157,7 +156,12 @@ dense receives a neutral value. Schema-10 artifacts include the two active fusio
 preview metrics in addition to grouped and repository holdouts.
 Schema 11 replaces aggregate cross-channel agreement with symmetric pairwise agreement for all six
 channel pairs at K=5, 10, and 20, evaluated with the active Relative Score and DBSF fusions.
-Current active fusion runs use Relative Score and DBSF; RRF remains historical reference data only.
+Schema 12 adds dense confidence from the dense score distribution using top-score/median separation,
+MAD-based robust deviation, and score-tail strength. Model- and repository-specific calibration is
+not yet part of the router. The full milestone runs MiniLM and BGE separately with all three fusion
+methods; model quality and cost are compared from the same pinned corpora and hold-out splits.
+Short-profile fusion runs use Relative Score and DBSF; the full profile also runs RRF for milestone
+comparisons.
 New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with
 `PIX_BENCH_REPOS`, and cached under `benchmarks/.cache/repos/`. A future Sparse Embedder must be
 implemented and registered in the main package first, then evaluated through the same benchmark

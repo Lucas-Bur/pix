@@ -1,5 +1,45 @@
 # Preliminary Retrieval Baseline
 
+## Schema 12: Dense Confidence And BGE Comparison
+
+Schema 12 adds dense confidence from the dense score distribution: top score relative to the median,
+MAD-based robust deviation, and score-tail strength. The full milestone now evaluates MiniLM and BGE
+separately with all three fusion methods. Each model still runs in its own process so model selection,
+cache identity, and timing remain unambiguous.
+
+### Dynamic Hold-outs
+
+| Model     | Fusion         | Validation strategy |  R@10 |  R@20 | Context@4k |
+| --------- | -------------- | ------------------- | ----: | ----: | ---------: |
+| MiniLM    | RRF            | Grouped 5-fold      | 66.9% | 76.4% |      63.3% |
+| MiniLM    | RRF            | LORO                | 72.5% | 80.3% |      67.5% |
+| MiniLM    | Relative score | Grouped 5-fold      | 73.3% | 82.8% |      65.0% |
+| MiniLM    | Relative score | LORO                | 68.1% | 83.6% |      60.6% |
+| MiniLM    | DBSF           | Grouped 5-fold      | 72.5% | 80.8% |      66.1% |
+| MiniLM    | DBSF           | LORO                | 73.1% | 80.3% |      68.6% |
+| BGE-small | RRF            | Grouped 5-fold      | 74.7% | 85.0% |      67.5% |
+| BGE-small | RRF            | LORO                | 75.3% | 84.4% |      70.0% |
+| BGE-small | Relative score | Grouped 5-fold      | 76.7% | 87.8% |      68.9% |
+| BGE-small | Relative score | LORO                | 75.3% | 87.2% |      67.2% |
+| BGE-small | DBSF           | Grouped 5-fold      | 76.4% | 88.9% |      68.1% |
+| BGE-small | DBSF           | LORO                | 75.8% | 88.3% |      68.3% |
+
+### Fit-All Preview
+
+| Model     | Fusion         |  R@10 |  R@20 | Context@4k |
+| --------- | -------------- | ----: | ----: | ---------: |
+| MiniLM    | RRF            | 69.2% | 83.6% |      65.6% |
+| MiniLM    | Relative score | 72.5% | 85.8% |      63.3% |
+| MiniLM    | DBSF           | 74.2% | 83.9% |      66.4% |
+| BGE-small | RRF            | 75.8% | 88.3% |      69.7% |
+| BGE-small | Relative score | 77.8% | 89.4% |      71.1% |
+| BGE-small | DBSF           | 77.5% | 90.0% |      69.4% |
+
+BGE improves dense and fused hold-out recall substantially over MiniLM. For MiniLM, Relative Score
+remains the strongest dynamic recall candidate. For BGE, DBSF leads dynamic R@20 in both grouped and
+LORO validation. Dense confidence changes the ranking and context trade-offs but is not a universal
+improvement; the model and fusion method must remain paired in regression comparisons.
+
 ## Schema 11: Pairwise Agreement
 
 Schema 11 replaces aggregate cross-channel agreement with symmetric agreement across all six channel

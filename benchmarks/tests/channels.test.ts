@@ -121,6 +121,7 @@ describe("retrieval benchmark fixture", () => {
       geometryInfluence: zeroChannelCoefficients,
       termCoverageInfluence: zeroChannelCoefficients,
       pairwiseAgreementInfluence: zeroChannelCoefficients,
+      denseConfidenceInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: zeroChannelCoefficients,
     })
@@ -144,6 +145,7 @@ describe("retrieval benchmark fixture", () => {
       geometryInfluence: zeroChannelCoefficients,
       termCoverageInfluence: zeroChannelCoefficients,
       pairwiseAgreementInfluence: zeroChannelCoefficients,
+      denseConfidenceInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: { ...zeroChannelCoefficients, identity: -1, dense: 1 },
     }
@@ -179,6 +181,7 @@ describe("retrieval benchmark fixture", () => {
       geometryInfluence: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
       termCoverageInfluence: zeroChannelCoefficients,
       pairwiseAgreementInfluence: zeroChannelCoefficients,
+      denseConfidenceInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: zeroChannelCoefficients,
     })
@@ -235,6 +238,7 @@ describe("retrieval benchmark fixture", () => {
       geometryInfluence: zeroChannelCoefficients,
       termCoverageInfluence: zeroChannelCoefficients,
       pairwiseAgreementInfluence: { ...zeroChannelCoefficients, identity: 1, bm25: 1 },
+      denseConfidenceInfluence: zeroChannelCoefficients,
       identifierInfluence: zeroChannelCoefficients,
       queryLengthInfluence: zeroChannelCoefficients,
     })
@@ -243,6 +247,48 @@ describe("retrieval benchmark fixture", () => {
       evidence.pairwiseAgreement.identityBm25,
     )
     expect(weights.identity).toBeGreaterThan(weights.bm25)
+  })
+
+  it("recognizes a dense score outlier relative to its distribution", () => {
+    const rankings = (dense: readonly { chunkIndex: number; score: number }[]) => ({
+      identity: [],
+      camelcase: [],
+      bm25: [],
+      dense,
+    })
+    const config = {
+      baseWeights: { identity: 0, camelcase: 0, bm25: 0, dense: 1 },
+      scoreInfluence: zeroChannelCoefficients,
+      geometryInfluence: zeroChannelCoefficients,
+      termCoverageInfluence: zeroChannelCoefficients,
+      pairwiseAgreementInfluence: zeroChannelCoefficients,
+      denseConfidenceInfluence: { ...zeroChannelCoefficients, dense: 1 },
+      identifierInfluence: zeroChannelCoefficients,
+      queryLengthInfluence: zeroChannelCoefficients,
+    }
+    const strongEvidence = buildRoutingEvidence(
+      "find target",
+      rankings([
+        { chunkIndex: 0, score: 0.99 },
+        { chunkIndex: 1, score: 0.1 },
+        { chunkIndex: 2, score: 0.1 },
+      ]),
+    )
+    const flatEvidence = buildRoutingEvidence(
+      "find target",
+      rankings([
+        { chunkIndex: 0, score: 0.51 },
+        { chunkIndex: 1, score: 0.5 },
+        { chunkIndex: 2, score: 0.5 },
+      ]),
+    )
+
+    expect(strongEvidence.denseConfidence.confidence).toBeGreaterThan(
+      flatEvidence.denseConfidence.confidence,
+    )
+    expect(routeWithEvidence(strongEvidence, config).dense).toBeGreaterThan(
+      routeWithEvidence(flatEvidence, config).dense,
+    )
   })
 
   it("measures full RRF against exact file-qualified gold targets", () => {

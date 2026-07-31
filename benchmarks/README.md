@@ -91,13 +91,13 @@ vp run bench:retrieval:full
 | `smoke`    | fd           | MiniLM   | grouped 5-fold                | DBSF          | DBSF          | current router         |
 | `develop`  | all three    | MiniLM   | grouped 3-fold                | DBSF          | DBSF          | current router         |
 | `validate` | all three    | MiniLM   | grouped 5-fold and repository | DBSF          | DBSF          | current router         |
-| `full`     | all three    | selected | grouped 5-fold and repository | Relative/DBSF | Relative/DBSF | all active diagnostics |
+| `full`     | all three    | selected | grouped 5-fold and repository | all three     | all three     | all active diagnostics |
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
 diagnostics. The selected profile is recorded in schema-10 artifacts without changing retrieval
-semantics. Legacy RRF weight grids are intentionally disabled; historical RRF artifacts remain
-available for comparison.
+semantics. The full profile includes all three fusion methods; short profiles intentionally omit RRF
+to keep development runs fast.
 
 The first run clones repositories into `benchmarks/.cache/repos` and downloads missing Hugging Face
 models. The highest-priority working device is selected automatically and recorded in the artifact.
@@ -133,6 +133,16 @@ vp run bench:retrieval:develop
 For a new repository, add and validate its manifest with `vp run bench:retrieval:corpus` before any
 embedding run. Keep the revision pinned and add manually verified gold symbols; the external checkout
 is reproducible from the manifest and does not belong in the Git repository.
+
+The full profile still uses one model per process. To compare MiniLM and BGE, run the full profile once
+per model and compare their artifacts:
+
+```powershell
+$env:PIX_BENCH_MODELS = "Xenova/all-MiniLM-L6-v2"
+vp run bench:retrieval:full
+$env:PIX_BENCH_MODELS = "Xenova/bge-small-en-v1.5"
+vp run bench:retrieval:full
+```
 
 The built-in repository IDs are `fastapi`, `effect-v4`, and `fd`; additional IDs come from added
 manifests. Every profile runs exactly one model,
@@ -175,9 +185,8 @@ sums weighted normalized scores. A constant or single-result channel contributes
 dividing by zero. Missing candidates contribute nothing. Every fusion method selects its own positive
 weights; weights are not transferred between formulas with different semantics.
 Schema 8 used DBSF for both sides of the evidence-router comparison. Schema 9 added a composite
-score-geometry confidence signal to the same linear router. Current fusion searches use Relative Score
-and DBSF; historical RRF results remain in the baseline for reference but are no longer part of active
-fusion searches.
+score-geometry confidence signal to the same linear router. Short-profile fusion searches use Relative
+Score and DBSF; the full profile also includes RRF for milestone comparisons.
 
 ## Validation
 
@@ -222,6 +231,9 @@ for the two active fusion methods.
 Schema 11 replaces the former aggregate agreement signal with symmetric pairwise agreement across all
 six channel pairs, averaged over K=5, 10, and 20. The active full profile evaluates this signal with
 Relative Score and DBSF.
+Schema 12 adds dense confidence from the dense score distribution: top score relative to the median,
+MAD-based robust deviation, and score-tail strength. It is evaluated with the same active fusion
+matrix; model- and repository-specific calibration remains a later extension.
 
 ## Operating Procedure
 
