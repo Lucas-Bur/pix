@@ -12,7 +12,7 @@ Vectors are stored as raw Float32 BLOBs in `.pix/index.db`. Although the `dtype`
 
 ## Decision
 
-**Internal working representation is `Float32Array`.** A bidirectional Effect Schema transforms aligned arrays to and from SQLite BLOBs, validates byte lengths, and copies sliced views correctly. sqlite-vector consumes those BLOBs directly; `computeCosineSimilarity` remains the JavaScript exact-search oracle.
+**Internal working representation is `Float32Array`.** A bidirectional Effect Schema transforms aligned arrays to and from SQLite BLOBs, validates byte lengths, and copies sliced views correctly. sqlite-vector consumes those BLOBs directly and performs the dense search; there is no duplicate JavaScript cosine-search implementation.
 
 The embedder adapter converts from its native format (ONNX `Float32Array`, OpenAI `number[]`, etc.) to `number[]` for the domain `Embedding`, then `serializeVectors` lays those values into a contiguous `Float32Array` for storage.
 
@@ -33,7 +33,7 @@ The embedder adapter converts from its native format (ONNX `Float32Array`, OpenA
 - `src/domain/chunk.ts` — `Embedding.vector: number[]` (domain type)
 - `src/services/sqlite-index-store/schema.ts` — bidirectional Float32 BLOB schema
 - `src/services/sqlite-index-store.ts` — validated persistence and native vector search
-- `src/lib/vectors/cosine.ts` — `computeCosineSimilarity(chunkVector: Float32Array, query: Float32Array)` (infrastructure)
+- `src/services/sqlite-index-store.ts` — native exact and optional approximate vector search
 
 ## Findings: ONNX Transformers Output Dtype
 

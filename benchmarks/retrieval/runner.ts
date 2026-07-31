@@ -1,11 +1,16 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 
-import { Effect, Option } from "effect"
+import { Effect, Option, Stream } from "effect"
 
+import type { Embedding } from "../../src/domain/chunk.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
+import type { EmbeddingDtype } from "../../src/domain/dtype.js"
+import type { StoredChunk } from "../../src/domain/index-data.js"
 import { MODEL_REGISTRY } from "../../src/domain/models.js"
 import type { BoundEmbedder } from "../../src/domain/ports.js"
+import { IndexStore } from "../../src/domain/ports.js"
+import { contentHash } from "../../src/lib/content-hash.js"
 import { createAutoBoundEmbedder } from "../../src/services/embedder.js"
 import { loadCorpusManifests, prepareRepository } from "./corpus.js"
 import { loadEmbeddingCache, writeEmbeddingCache } from "./embedding-cache.js"
@@ -21,8 +26,9 @@ import {
   successAt,
 } from "./metrics.js"
 import { prepareCorpus, type PreparedCorpus } from "./prepare.js"
-import { fuseVariant, rankChannels, RETRIEVAL_VARIANTS } from "./ranking.js"
+import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "./ranking.js"
 import { renderMarkdownReport } from "./report.js"
+import { withSqliteBenchmarkStore } from "./sqlite-index.js"
 import type {
   BenchmarkArtifact,
   BenchmarkProfile,
@@ -210,6 +216,34 @@ const embedCorpus = (
   })
 }
 
+const toStoredChunk = (chunk: PreparedCorpus["chunks"][number]): StoredChunk => {
+  const { text, ...location } = chunk
+  return { ...location, contentHash: contentHash(text) }
+}
+
+const persistBenchmarkCorpus = (
+  store: typeof IndexStore.Service,
+  corpus: PreparedCorpus,
+  vectors: readonly Float32Array[],
+  dims: number,
+  dtype: EmbeddingDtype,
+): Effect.Effect<void, Error> =>
+  Effect.gen(function* () {
+    const pairs = corpus.chunks.map((chunk, index): readonly [StoredChunk, Embedding] => [
+      toStoredChunk(chunk),
+      { vector: vectors[index]!, dims, dtype },
+    ])
+    yield* store.persistIndex({
+      chunks: Stream.succeed(pairs),
+      identifierIndex: corpus.identifierIndex,
+      bm25Index: corpus.bm25Index,
+      files: [],
+      dims,
+      dtype,
+      embeddingCache: [],
+    })
+  })
+
 const writeArtifact = (artifact: BenchmarkArtifact): Effect.Effect<string, Error> =>
   Effect.gen(function* () {
     const outputDirectory = path.resolve("benchmarks/results")
@@ -324,76 +358,98 @@ export const runRetrievalBenchmark = (
           bound.embedder,
         )
 
-        for (let queryIndex = 0; queryIndex < queries.length; queryIndex++) {
-          const entry = queries[queryIndex]
-          const question = manifest.questions[entry.questionIndex]
-          const targets = targetsByQuestion[entry.questionIndex]
-          const groupedFold = groupedFoldAssignments.get(`${manifest.id}\0${question.id}`)
-          if (groupedFold === undefined)
-            return yield* Effect.fail(
-              new Error(`No grouped fold assignment for ${manifest.id}/${question.id}`),
-            )
-          const channelStartedAt = performance.now()
-          const rankings = rankChannels(entry.query, corpus, chunkVectors, queryVectors[queryIndex])
-          const channelDurationMs = performance.now() - channelStartedAt
-          const groupKey = `${model}\0${entry.queryKind}`
-          const group = sampleGroups.get(groupKey) ?? {
-            model,
-            queryKind: entry.queryKind,
-            samples: [],
-          }
-          const sample: WeightSearchSample = {
-            repository: manifest.id,
-            intentId: question.id,
-            groupedFold,
-            query: entry.query,
-            rankings,
-            targets,
-            chunks: corpus.chunks,
-            termCoverage: buildQueryTermCoverage(
-              entry.query,
-              corpus.bm25Index,
-              corpus.identifierIndex,
-            ),
-          }
-          group.samples.push(sample)
+        const modelRun = yield* withSqliteBenchmarkStore(
+          model,
+          info.defaultDtype,
+          Effect.gen(function* () {
+            const store = yield* IndexStore
+            yield* persistBenchmarkCorpus(store, corpus, chunkVectors, info.dims, info.defaultDtype)
+            const searchData = yield* store.loadSearchData()
+            const modelMeasurements: QueryMeasurement[] = []
+            const modelSamples: WeightSearchSample[] = []
+            const samplesByQueryKind = new Map<QueryKind, WeightSearchSample[]>()
+
+            for (let queryIndex = 0; queryIndex < queries.length; queryIndex++) {
+              const entry = queries[queryIndex]
+              const question = manifest.questions[entry.questionIndex]
+              const targets = targetsByQuestion[entry.questionIndex]
+              const groupedFold = groupedFoldAssignments.get(`${manifest.id}\0${question.id}`)
+              if (groupedFold === undefined)
+                return yield* Effect.fail(
+                  new Error(`No grouped fold assignment for ${manifest.id}/${question.id}`),
+                )
+              const channelStartedAt = performance.now()
+              const lexicalRankings = rankLexicalChannels(entry.query, searchData)
+              const dense = yield* store.searchDense({
+                vector: queryVectors[queryIndex]!,
+                dims: info.dims,
+                dtype: info.defaultDtype,
+              })
+              const rankings = { ...lexicalRankings, dense }
+              const channelDurationMs = performance.now() - channelStartedAt
+              const sample: WeightSearchSample = {
+                repository: manifest.id,
+                intentId: question.id,
+                groupedFold,
+                query: entry.query,
+                rankings,
+                targets,
+                chunks: corpus.chunks,
+                termCoverage: buildQueryTermCoverage(
+                  entry.query,
+                  searchData.bm25Index,
+                  searchData.identifierIndex,
+                ),
+              }
+              modelSamples.push(sample)
+              samplesByQueryKind.set(entry.queryKind, [
+                ...(samplesByQueryKind.get(entry.queryKind) ?? []),
+                sample,
+              ])
+              for (const variant of RETRIEVAL_VARIANTS) {
+                const variantStartedAt = performance.now()
+                const ranked = fuseVariant(variant, entry.query, rankings)
+                const queryDurationMs = channelDurationMs + performance.now() - variantStartedAt
+                modelMeasurements.push({
+                  repository: manifest.id,
+                  language: manifest.language,
+                  size: manifest.size,
+                  revision: manifest.revision,
+                  model,
+                  variant,
+                  questionId: question.id,
+                  queryKind: entry.queryKind,
+                  query: entry.query,
+                  category: question.category,
+                  difficulty: question.difficulty,
+                  groupedFold,
+                  recallAt5: recallAt(ranked, targets, 5),
+                  recallAt10: recallAt(ranked, targets, 10),
+                  recallAt20: recallAt(ranked, targets, 20),
+                  successAt10: successAt(ranked, targets, 10),
+                  successAt20: successAt(ranked, targets, 20),
+                  reciprocalRank: reciprocalRank(ranked, targets),
+                  goldRanks: goldTargetRanks(ranked, targets),
+                  contextRecall: Object.fromEntries(
+                    CONTEXT_BUDGETS.map((budget) => [
+                      String(budget),
+                      contextRecallAtBudget(ranked, targets, corpus.chunks, budget),
+                    ]),
+                  ),
+                  queryDurationMs,
+                })
+              }
+            }
+            return { measurements: modelMeasurements, samples: modelSamples, samplesByQueryKind }
+          }),
+        )
+        measurements.push(...modelRun.measurements)
+        samplesByModel.set(model, [...(samplesByModel.get(model) ?? []), ...modelRun.samples])
+        for (const [queryKind, samples] of modelRun.samplesByQueryKind) {
+          const groupKey = `${model}\0${queryKind}`
+          const group = sampleGroups.get(groupKey) ?? { model, queryKind, samples: [] }
+          group.samples.push(...samples)
           sampleGroups.set(groupKey, group)
-          const modelSamples = samplesByModel.get(model) ?? []
-          modelSamples.push(sample)
-          samplesByModel.set(model, modelSamples)
-          for (const variant of RETRIEVAL_VARIANTS) {
-            const variantStartedAt = performance.now()
-            const ranked = fuseVariant(variant, entry.query, rankings)
-            const queryDurationMs = channelDurationMs + performance.now() - variantStartedAt
-            measurements.push({
-              repository: manifest.id,
-              language: manifest.language,
-              size: manifest.size,
-              revision: manifest.revision,
-              model,
-              variant,
-              questionId: question.id,
-              queryKind: entry.queryKind,
-              query: entry.query,
-              category: question.category,
-              difficulty: question.difficulty,
-              groupedFold,
-              recallAt5: recallAt(ranked, targets, 5),
-              recallAt10: recallAt(ranked, targets, 10),
-              recallAt20: recallAt(ranked, targets, 20),
-              successAt10: successAt(ranked, targets, 10),
-              successAt20: successAt(ranked, targets, 20),
-              reciprocalRank: reciprocalRank(ranked, targets),
-              goldRanks: goldTargetRanks(ranked, targets),
-              contextRecall: Object.fromEntries(
-                CONTEXT_BUDGETS.map((budget) => [
-                  String(budget),
-                  contextRecallAtBudget(ranked, targets, corpus.chunks, budget),
-                ]),
-              ),
-              queryDurationMs,
-            })
-          }
         }
       }
     }
