@@ -54,6 +54,15 @@ export type QueryKind = keyof typeof QueryFormsSchema.Type
 /** Score or rank fusion algorithm evaluated with independently tuned channel weights. */
 export type FusionMethod = "rrf" | "relative-score" | "dbsf"
 
+/** Versioned evidence-router search strategy recorded in every benchmark artifact. */
+export const ROUTER_SEARCH_STRATEGY = {
+  algorithm: "halton-global-scout-elitist-beam",
+  globalScouts: 64,
+  beamWidth: 6,
+  coordinatePasses: 2,
+  candidateDepth: 200,
+} as const
+
 /** Runtime/coverage trade-off selected for one benchmark invocation. */
 export type BenchmarkProfile = "smoke" | "develop" | "validate" | "full"
 
@@ -192,12 +201,25 @@ export interface RecommendedEvidenceRouter {
   readonly fitQuality: QualitySummary
 }
 
+/** Compute-time breakdown for one benchmark invocation, excluding artifact file serialization. */
+export interface BenchmarkTimings {
+  readonly totalDurationMs: number
+  readonly corpusPreparationDurationMs: number
+  readonly embeddingDurationMs: number
+  readonly retrievalDurationMs: number
+  readonly weightSearchDurationMs: number
+  readonly fusionSearchDurationMs: number
+  readonly evidenceRouterSearchDurationMs: number
+}
+
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 13
+  readonly schemaVersion: 14
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   readonly generatedAt: string
+  readonly searchStrategy: typeof ROUTER_SEARCH_STRATEGY
+  readonly timings: BenchmarkTimings
   readonly chunkConfig: {
     readonly chunkLines: number
     readonly overlapLines: number
@@ -219,6 +241,7 @@ export interface BenchmarkArtifact {
     readonly device: string
     readonly batchSize: number
     readonly chunkEmbeddingDurationMs: number
+    readonly queryEmbeddingDurationMs: number
     readonly cacheHit: boolean
   }>
   readonly measurements: readonly QueryMeasurement[]

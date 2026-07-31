@@ -74,7 +74,12 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.repositories.length).toBeGreaterThan(0)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(13)
+    expect(artifact.schemaVersion).toBe(14)
+    expect(artifact.searchStrategy.algorithm).toBe("halton-global-scout-elitist-beam")
+    expect(artifact.searchStrategy.globalScouts).toBe(64)
+    expect(artifact.timings.totalDurationMs).toBeGreaterThan(0)
+    expect(Object.values(artifact.timings).every((duration) => duration >= 0)).toBe(true)
+    expect(artifact.embeddingRuns.every((run) => run.queryEmbeddingDurationMs >= 0)).toBe(true)
     expect(artifact.fusionSearch.length).toBe(
       artifact.models.length * fusionMethods * holdoutsPerModel,
     )

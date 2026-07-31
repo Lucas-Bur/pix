@@ -14,6 +14,8 @@ const average = (rows: readonly QueryMeasurement[], select: (row: QueryMeasureme
 
 const percent = (value: number): string => `${(value * 100).toFixed(1)}%`
 
+const duration = (milliseconds: number): string => `${(milliseconds / 1_000).toFixed(2)} s`
+
 const weightedRouterAverage = (
   rows: readonly EvidenceRouterSearchResult[],
   select: (row: EvidenceRouterSearchResult) => number,
@@ -68,7 +70,17 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     `Profile: ${artifact.benchmarkProfile}`,
     "",
+    `Search strategy: \`${artifact.searchStrategy.algorithm}\` (${artifact.searchStrategy.globalScouts} global scouts, beam ${artifact.searchStrategy.beamWidth}, ${artifact.searchStrategy.coordinatePasses} coordinate passes).`,
+    "",
     `Context budgets use the documented \`${artifact.contextTokenEstimator}\` estimator.`,
+    "",
+    "## Run Timings",
+    "",
+    "Compute timings exclude JSON and Markdown artifact serialization.",
+    "",
+    "| Total | Corpus preparation | Embedding | Retrieval | Weight search | Fusion search | Router search |",
+    "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    `| ${duration(artifact.timings.totalDurationMs)} | ${duration(artifact.timings.corpusPreparationDurationMs)} | ${duration(artifact.timings.embeddingDurationMs)} | ${duration(artifact.timings.retrievalDurationMs)} | ${duration(artifact.timings.weightSearchDurationMs)} | ${duration(artifact.timings.fusionSearchDurationMs)} | ${duration(artifact.timings.evidenceRouterSearchDurationMs)} |`,
     "",
     "| Repository | Model | Query form | Variant | R@5 | R@10 | R@20 | S@10 | S@20 | MRR | Ctx@2k | Ctx@4k |",
     "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",

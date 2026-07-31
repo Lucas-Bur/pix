@@ -29,14 +29,15 @@ import { prepareCorpus, type PreparedCorpus } from "./prepare.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "./ranking.js"
 import { renderMarkdownReport } from "./report.js"
 import { withSqliteBenchmarkStore } from "./sqlite-index.js"
-import type {
-  BenchmarkArtifact,
-  BenchmarkProfile,
-  CorpusManifest,
-  FusionMethod,
-  QueryKind,
-  QueryMeasurement,
-  ValidationStrategy,
+import {
+  ROUTER_SEARCH_STRATEGY,
+  type BenchmarkArtifact,
+  type BenchmarkProfile,
+  type CorpusManifest,
+  type FusionMethod,
+  type QueryKind,
+  type QueryMeasurement,
+  type ValidationStrategy,
 } from "./types.js"
 import {
   fitRecommendedEvidenceRouter,
@@ -270,6 +271,7 @@ export const runRetrievalBenchmark = (
   profile: BenchmarkProfile = "full",
 ): Effect.Effect<{ readonly artifact: BenchmarkArtifact; readonly outputPath: string }, Error> =>
   Effect.gen(function* () {
+    const benchmarkStartedAt = performance.now()
     const config = profileConfig(profile)
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
@@ -288,6 +290,7 @@ export const runRetrievalBenchmark = (
       }
     >()
     const samplesByModel = new Map<string, WeightSearchSample[]>()
+    let retrievalDurationMs = 0
 
     for (const manifest of manifests) {
       const repositoryPath = yield* prepareRepository(manifest)
@@ -337,14 +340,7 @@ export const runRetrievalBenchmark = (
           bound.embedder,
         )
         const chunkVectors = embedded.vectors
-        embeddingRuns.push({
-          repository: manifest.id,
-          model,
-          device: embedded.device,
-          batchSize: EMBEDDING_BATCH_SIZE,
-          chunkEmbeddingDurationMs: performance.now() - embeddingStartedAt,
-          cacheHit: embedded.cacheHit,
-        })
+        const chunkEmbeddingDurationMs = performance.now() - embeddingStartedAt
         const queries = manifest.questions.flatMap((question, questionIndex) =>
           QUERY_KINDS.map((queryKind) => ({
             questionIndex,
@@ -352,12 +348,23 @@ export const runRetrievalBenchmark = (
             query: question.queries[queryKind],
           })),
         )
+        const queryEmbeddingStartedAt = performance.now()
         const queryVectors = yield* embedTexts(
           queries.map((entry) => entry.query),
           model,
           bound.embedder,
         )
+        embeddingRuns.push({
+          repository: manifest.id,
+          model,
+          device: embedded.device,
+          batchSize: EMBEDDING_BATCH_SIZE,
+          chunkEmbeddingDurationMs,
+          queryEmbeddingDurationMs: performance.now() - queryEmbeddingStartedAt,
+          cacheHit: embedded.cacheHit,
+        })
 
+        const retrievalStartedAt = performance.now()
         const modelRun = yield* withSqliteBenchmarkStore(
           model,
           info.defaultDtype,
@@ -443,6 +450,7 @@ export const runRetrievalBenchmark = (
             return { measurements: modelMeasurements, samples: modelSamples, samplesByQueryKind }
           }),
         )
+        retrievalDurationMs += performance.now() - retrievalStartedAt
         measurements.push(...modelRun.measurements)
         samplesByModel.set(model, [...(samplesByModel.get(model) ?? []), ...modelRun.samples])
         for (const [queryKind, samples] of modelRun.samplesByQueryKind) {
@@ -454,6 +462,7 @@ export const runRetrievalBenchmark = (
       }
     }
 
+    const weightSearchStartedAt = performance.now()
     const weightSearch = config.legacyDiagnostics
       ? [...sampleGroups.values()].flatMap((group) => {
           const groupedFolds = Array.from({ length: config.groupedFolds }, (_, fold) =>
@@ -488,6 +497,9 @@ export const runRetrievalBenchmark = (
           fitRecommendedWeights(group.model, group.queryKind, group.samples),
         )
       : []
+    const weightSearchDurationMs = performance.now() - weightSearchStartedAt
+
+    const fusionSearchStartedAt = performance.now()
     const fusionSearch: BenchmarkArtifact["fusionSearch"][number][] = []
     for (const [model, samples] of samplesByModel) {
       const repositories = [...new Set(samples.map((sample) => sample.repository))]
@@ -524,6 +536,9 @@ export const runRetrievalBenchmark = (
     const recommendedFusionWeights = [...samplesByModel].flatMap(([model, samples]) =>
       config.fusionMethods.map((fusion) => fitRecommendedFusionWeights(model, fusion, samples)),
     )
+    const fusionSearchDurationMs = performance.now() - fusionSearchStartedAt
+
+    const evidenceRouterSearchStartedAt = performance.now()
     const evidenceRouterSearch: BenchmarkArtifact["evidenceRouterSearch"][number][] = []
     for (const [model, samples] of samplesByModel) {
       for (const fusion of config.routerFusionMethods) {
@@ -568,11 +583,31 @@ export const runRetrievalBenchmark = (
         fitRecommendedEvidenceRouter(model, fusion, samples),
       ),
     )
+    const evidenceRouterSearchDurationMs = performance.now() - evidenceRouterSearchStartedAt
+
+    const embeddingDurationMs = embeddingRuns.reduce(
+      (sum, run) => sum + run.chunkEmbeddingDurationMs + run.queryEmbeddingDurationMs,
+      0,
+    )
+    const corpusPreparationDurationMs = repositories.reduce(
+      (sum, repository) => sum + repository.preparationDurationMs,
+      0,
+    )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 13,
+      schemaVersion: 14,
       benchmarkProfile: profile,
       generatedAt: new Date().toISOString(),
+      searchStrategy: ROUTER_SEARCH_STRATEGY,
+      timings: {
+        totalDurationMs: performance.now() - benchmarkStartedAt,
+        corpusPreparationDurationMs,
+        embeddingDurationMs,
+        retrievalDurationMs,
+        weightSearchDurationMs,
+        fusionSearchDurationMs,
+        evidenceRouterSearchDurationMs,
+      },
       chunkConfig: {
         chunkLines: DEFAULT_CONFIG.chunkLines,
         overlapLines: DEFAULT_CONFIG.overlapLines,

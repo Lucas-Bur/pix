@@ -1,5 +1,50 @@
 # Preliminary Retrieval Baseline
 
+## Schema 14: Router Search Strategy And Runtime Telemetry
+
+Schema 14 records the deterministic `halton-global-scout-elitist-beam` router search strategy and
+compute-time breakdown in every artifact. The strategy uses 64 global Halton scout points, a six-
+candidate elitist beam, two alternating coordinate passes, and a 200-candidate fusion depth. Fusion
+normalization is cached per ranking and method so candidate weights do not repeat invariant work. The
+artifact is `benchmarks/results/retrieval-2026-07-31T16-03-14.892Z.json`.
+
+The validate run uses MiniLM on all three pinned repositories. Dynamic quality is compared with a
+static DBSF baseline selected on the same development samples; all reported validation rows are
+excluded-fold results.
+
+### Dynamic Hold-outs
+
+| Model  | Fusion | Validation strategy |   R@5 |  R@10 |  R@20 | Context@4k |
+| ------ | ------ | ------------------- | ----: | ----: | ----: | ---------: |
+| MiniLM | DBSF   | Grouped 5-fold      | 62.2% | 73.6% | 78.1% |      65.6% |
+| MiniLM | DBSF   | LORO                | 63.3% | 73.1% | 80.0% |      69.2% |
+
+### Static Controls
+
+| Model  | Fusion | Validation strategy |   R@5 |  R@10 |  R@20 | Context@4k |
+| ------ | ------ | ------------------- | ----: | ----: | ----: | ---------: |
+| MiniLM | DBSF   | Grouped 5-fold      | 61.7% | 72.5% | 79.4% |      63.1% |
+| MiniLM | DBSF   | LORO                | 59.2% | 73.1% | 81.1% |      64.2% |
+
+### Fit-All Preview
+
+| Model  | Fusion |   R@5 |  R@10 |  R@20 | Context@4k |
+| ------ | ------ | ----: | ----: | ----: | ---------: |
+| MiniLM | DBSF   | 60.0% | 74.2% | 83.9% |      64.7% |
+
+### Compute Timing
+
+Compute timing excludes JSON and Markdown artifact serialization. The router optimizer dominates the
+run cost: `343.33 s` of `390.61 s` total compute time. Fusion search takes `30.25 s`; corpus
+preparation takes `8.61 s`; embedding takes `1.77 s`; SQLite retrieval takes `2.33 s`.
+
+On the identical `smoke` profile, cached fusion normalization reduced compute time from `53.28 s` to
+`41.07 s` and router search from `44.39 s` to `35.38 s`; the quality tables remained unchanged.
+
+The new search strategy improves exploration, but this run is the new Schema-14 reference rather than
+a claim of universal quality improvement. Future optimizer changes must compare the same pinned
+corpora, model, folds, and static controls before promotion.
+
 ## Schema 13: Recall@5 And Stratified Grouped Folds
 
 Schema 13 adds aggregate `Recall@5` to quality summaries and reports. Grouped folds now use a fixed-seed
