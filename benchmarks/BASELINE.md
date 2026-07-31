@@ -1,5 +1,25 @@
 # Preliminary Retrieval Baseline
 
+## Schema 6: Symmetric Log2 Evidence Kernel
+
+Schema 6 keeps schema 5's positive dynamic bases and replaces the asymmetric linear factors with
+signed, per-channel Log2 coefficients. Score separation, agreement, identifier shape, and query
+length are each centered to [-1, 1]. Their contributions add in Log2 space, then the sum is clamped to
+[-2, 2], allowing a final evidence multiplier from 0.25 to 4.0. No new observable signal is added.
+
+| Validation strategy | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static context@4k | Dynamic context@4k |
+| ------------------- | ----------: | -----------: | ----------: | -----------: | ----------------: | -----------------: |
+| Grouped 5-fold      |       69.2% |        68.6% |       76.9% |        76.4% |             64.4% |              64.4% |
+| Leave-one-repo-out  |       70.8% |        69.7% |       78.6% |        81.1% |             66.9% |              65.3% |
+| Fit all 180 queries |       68.1% |        69.2% |       83.1% |        83.1% |             62.8% |              62.8% |
+
+The fit-all bases are `1.00/0.50/1.00/0.70`. Score coefficients are
+`0.30/-0.10/0.00/-0.10`, agreement coefficients `1.00/0.00/0.00/0.00`, and every identifier and
+length coefficient is zero. Fold-selected coefficients vary substantially and often reverse signs.
+Compared with schema 5, the Log2 kernel gains 0.8 points of LORO R@20 but loses 1.7 grouped points;
+both holdout strategies lose R@10 relative to their static baselines. The stronger kernel can recover
+cross-repository candidates, but its additional signed freedom is not stable enough for production.
+
 ## Schema 5: Positive Dynamic Bases
 
 Schema 5 changes only the dynamic-router base-weight search: every physical channel receives at least

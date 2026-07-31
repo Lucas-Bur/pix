@@ -385,7 +385,7 @@ export const runRetrievalBenchmark = (): Effect.Effect<
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 5,
+      schemaVersion: 6,
       generatedAt: new Date().toISOString(),
       chunkConfig: {
         chunkLines: DEFAULT_CONFIG.chunkLines,
