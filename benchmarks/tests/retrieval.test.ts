@@ -12,19 +12,26 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
         ? artifact.repositories.length
         : 0
     const holdoutsPerModel = groupedFolds + repositoryHoldouts
+    const routerFusionMethods = profile === "full" ? 3 : 1
 
     expect(artifact.benchmarkProfile).toBe(profile)
     expect(artifact.repositories.length).toBeGreaterThan(0)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(8)
+    expect(artifact.schemaVersion).toBe(9)
     expect(artifact.fusionSearch.length).toBe(
       artifact.models.length * fusionMethods * holdoutsPerModel,
     )
     expect(artifact.recommendedFusionWeights.length).toBe(artifact.models.length * fusionMethods)
-    expect(artifact.evidenceRouterSearch.length).toBe(artifact.models.length * holdoutsPerModel)
-    expect(artifact.evidenceRouterSearch.every((row) => row.fusion === "dbsf")).toBe(true)
-    expect(artifact.recommendedEvidenceRouters.length).toBe(artifact.models.length)
+    expect(artifact.evidenceRouterSearch.length).toBe(
+      artifact.models.length * routerFusionMethods * holdoutsPerModel,
+    )
+    expect(new Set(artifact.evidenceRouterSearch.map((row) => row.fusion)).size).toBe(
+      routerFusionMethods,
+    )
+    expect(artifact.recommendedEvidenceRouters.length).toBe(
+      artifact.models.length * routerFusionMethods,
+    )
     expect(artifact.weightSearch.length === 0).toBe(profile !== "full")
     expect(artifact.recommendedWeights.length === 0).toBe(profile !== "full")
     expect(artifact.measurements.every((row) => row.recallAt20 >= row.recallAt10)).toBe(true)

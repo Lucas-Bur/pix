@@ -43,7 +43,6 @@ import {
 const CONTEXT_BUDGETS = [2_048, 4_096, 8_192, 16_384] as const
 const EMBEDDING_BATCH_SIZE = 2
 const SINGLE_ITEM_ESTIMATED_TOKENS = 2_048
-const ACTIVE_ROUTER_FUSION: FusionMethod = "dbsf"
 const QUERY_KINDS: readonly QueryKind[] = [
   "identifier",
   "searchPhrase",
@@ -61,6 +60,8 @@ interface BenchmarkProfileConfig {
   readonly legacyDiagnostics: boolean
   /** Static fusion formulas evaluated by this profile. */
   readonly fusionMethods: readonly FusionMethod[]
+  /** Fusion formulas used when evaluating the evidence router. */
+  readonly routerFusionMethods: readonly FusionMethod[]
 }
 
 const profileConfig = (profile: BenchmarkProfile): BenchmarkProfileConfig => {
@@ -71,6 +72,7 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkProfileConfig => {
         repositoryHoldouts: false,
         legacyDiagnostics: false,
         fusionMethods: ["dbsf"],
+        routerFusionMethods: ["dbsf"],
       }
     case "develop":
       return {
@@ -78,6 +80,7 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkProfileConfig => {
         repositoryHoldouts: false,
         legacyDiagnostics: false,
         fusionMethods: ["dbsf"],
+        routerFusionMethods: ["dbsf"],
       }
     case "validate":
       return {
@@ -85,6 +88,7 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkProfileConfig => {
         repositoryHoldouts: true,
         legacyDiagnostics: false,
         fusionMethods: ["dbsf"],
+        routerFusionMethods: ["dbsf"],
       }
     case "full":
       return {
@@ -92,6 +96,7 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkProfileConfig => {
         repositoryHoldouts: true,
         legacyDiagnostics: true,
         fusionMethods: FUSION_METHODS,
+        routerFusionMethods: FUSION_METHODS,
       }
   }
 }
@@ -453,45 +458,51 @@ export const runRetrievalBenchmark = (
     )
     const evidenceRouterSearch: BenchmarkArtifact["evidenceRouterSearch"][number][] = []
     for (const [model, samples] of samplesByModel) {
-      for (let fold = 0; fold < config.groupedFolds; fold++) {
-        reportProgress(
-          `${model}: selecting evidence router for grouped fold ${fold + 1}/${config.groupedFolds}`,
-        )
-        evidenceRouterSearch.push(
-          optimizeEvidenceRouter(
-            model,
-            ACTIVE_ROUTER_FUSION,
-            groupedStrategy,
-            String(fold + 1),
-            samples.filter((sample) => sample.groupedFold !== fold),
-            samples.filter((sample) => sample.groupedFold === fold),
-          ),
-        )
-      }
-      const repositories = [...new Set(samples.map((sample) => sample.repository))]
-      if (config.repositoryHoldouts && repositories.length > 1) {
-        for (const repository of repositories) {
-          reportProgress(`${model}: selecting evidence router with ${repository} held out`)
+      for (const fusion of config.routerFusionMethods) {
+        for (let fold = 0; fold < config.groupedFolds; fold++) {
+          reportProgress(
+            `${model}: selecting ${fusion} evidence router for grouped fold ${fold + 1}/${config.groupedFolds}`,
+          )
           evidenceRouterSearch.push(
             optimizeEvidenceRouter(
               model,
-              ACTIVE_ROUTER_FUSION,
-              "leave-one-repository-out",
-              repository,
-              samples.filter((sample) => sample.repository !== repository),
-              samples.filter((sample) => sample.repository === repository),
+              fusion,
+              groupedStrategy,
+              String(fold + 1),
+              samples.filter((sample) => sample.groupedFold !== fold),
+              samples.filter((sample) => sample.groupedFold === fold),
             ),
           )
+        }
+        const repositories = [...new Set(samples.map((sample) => sample.repository))]
+        if (config.repositoryHoldouts && repositories.length > 1) {
+          for (const repository of repositories) {
+            reportProgress(
+              `${model}: selecting ${fusion} evidence router with ${repository} held out`,
+            )
+            evidenceRouterSearch.push(
+              optimizeEvidenceRouter(
+                model,
+                fusion,
+                "leave-one-repository-out",
+                repository,
+                samples.filter((sample) => sample.repository !== repository),
+                samples.filter((sample) => sample.repository === repository),
+              ),
+            )
+          }
         }
       }
     }
     reportProgress("fitting final evidence router on all samples")
-    const recommendedEvidenceRouters = [...samplesByModel].map(([model, samples]) =>
-      fitRecommendedEvidenceRouter(model, ACTIVE_ROUTER_FUSION, samples),
+    const recommendedEvidenceRouters = [...samplesByModel].flatMap(([model, samples]) =>
+      config.routerFusionMethods.map((fusion) =>
+        fitRecommendedEvidenceRouter(model, fusion, samples),
+      ),
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 8,
+      schemaVersion: 9,
       benchmarkProfile: profile,
       generatedAt: new Date().toISOString(),
       chunkConfig: {

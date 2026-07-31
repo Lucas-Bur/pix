@@ -1,5 +1,28 @@
 # Preliminary Retrieval Baseline
 
+## Schema 9: Score Geometry Across Fusion Methods
+
+Schema 9 adds one composite score-geometry confidence signal to the stable schema-5 linear router.
+It combines normalized top-score gaps, score-curve area, plateau width, entropy, and effective
+candidate count. The router is evaluated independently with RRF, relative-score fusion, and DBSF;
+each static baseline uses the same fusion method as its dynamic counterpart.
+
+| Fusion         | Validation strategy | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static context@4k | Dynamic context@4k |
+| -------------- | ------------------- | ----------: | -----------: | ----------: | -----------: | ----------------: | -----------------: |
+| Weighted RRF   | Grouped 5-fold      |       69.2% |        66.9% |       76.9% |        75.8% |             64.4% |              62.8% |
+| Weighted RRF   | LORO                |       70.8% |        71.4% |       78.6% |        80.3% |             66.9% |              68.1% |
+| Relative score | Grouped 5-fold      |       70.8% |        72.8% |       82.8% |        82.2% |             61.9% |              66.1% |
+| Relative score | LORO                |       70.8% |        70.8% |       83.3% |        82.8% |             64.7% |              64.2% |
+| DBSF           | Grouped 5-fold      |       71.9% |        72.5% |       78.9% |        80.8% |             65.0% |              65.0% |
+| DBSF           | LORO                |       72.5% |        73.1% |       81.1% |        80.8% |             64.7% |              65.8% |
+
+Score geometry is not a universal improvement. RRF loses grouped recall but improves LORO recall and
+context, so its effect is unstable. Relative-score improves grouped R@10 and context substantially,
+but loses grouped and repository-holdout R@20. DBSF gives the most balanced result: grouped R@10 and
+R@20 improve by 0.6 and 1.9 points, while LORO R@10 improves by 0.6 and context recall by 1.1;
+LORO R@20 declines by 0.3 points. DBSF remains the strongest candidate for further investigation,
+but the geometry signal is not ready for production promotion without more intents and repositories.
+
 ## Schema 8: Dynamic DBSF Weights
 
 Schema 8 changes only the fusion operation used by the stable schema-5 evidence router. Static and
