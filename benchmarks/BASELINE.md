@@ -16,12 +16,13 @@ each static baseline uses the same fusion method as its dynamic counterpart.
 | DBSF           | Grouped 5-fold      |       71.9% |        72.5% |       78.9% |        80.8% |             65.0% |              65.0% |
 | DBSF           | LORO                |       72.5% |        73.1% |       81.1% |        80.8% |             64.7% |              65.8% |
 
-Score geometry is not a universal improvement. RRF loses grouped recall but improves LORO recall and
-context, so its effect is unstable. Relative-score improves grouped R@10 and context substantially,
-but loses grouped and repository-holdout R@20. DBSF gives the most balanced result: grouped R@10 and
-R@20 improve by 0.6 and 1.9 points, while LORO R@10 improves by 0.6 and context recall by 1.1;
-LORO R@20 declines by 0.3 points. DBSF remains the strongest candidate for further investigation,
-but the geometry signal is not ready for production promotion without more intents and repositories.
+The static columns are controls for measuring the incremental value of score geometry; the dynamic
+columns determine which fusion path is strongest. Among dynamic routers, relative-score leads grouped
+R@10, grouped R@20, grouped context recall, and LORO R@20. DBSF leads LORO R@10, while RRF leads only
+LORO context recall. With recall as the primary objective, relative-score is therefore the current
+best dynamic candidate. This does not prove that score geometry itself is universally useful: relative
+score's improvement over its static baseline is mixed, so more intents and repositories are needed
+before production promotion.
 
 ## Schema 8: Dynamic DBSF Weights
 
