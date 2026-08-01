@@ -132,7 +132,7 @@ Fuses N ranked lists by rank position: `Σ weight * 1 / (k + rank_in_path)`. Raw
 Opt-in local suite under `benchmarks/` that imports pix chunking, identifier extraction, scorers,
 query routing, RRF, and embedders directly. It is not a product CLI command and does not run in CI.
 Pinned FastAPI, Effect v4, and fd corpora contain exact file-qualified gold symbols. The suite reports
-Recall@5/10/20, Success@10/20, MRR, and context recall at fixed estimated-token budgets for individual
+Recall@5/10/20/50, Success@10/20, MRR, and context recall at fixed estimated-token budgets for individual
 channels, all 15 channel subsets, weight grids, and all registered embedding models. Every intent has
 identifier, search-phrase, natural-question, and agent-task representations which remain grouped in
 five-fold validation after a deterministic per-repository shuffle and category/difficulty-stratified assignment. Leave-one-repository-out tests cross-codebase generalization; exact holdout
@@ -166,6 +166,13 @@ Short-profile fusion runs use Relative Score and DBSF; the full profile also run
 comparisons.
 Schema 14 records the router search strategy and compute-time breakdown in each artifact, including
 corpus preparation, embedding, retrieval, static fusion search, and evidence-router search duration.
+Schema 15 adds deterministic successive halving to the evidence-router search. Schema 16 evaluates the
+current production RRF query-length router as an explicit holdout baseline, adds Recall@50, and uses one
+shared Pareto search to select objective-specific candidates for direct retrieval, reranker top-20
+candidate pools, and reranker top-50 candidate pools. Each candidate must remain within a 1% development
+guardrail of production RRF; grouped and leave-one-repository-out holdouts determine whether the
+objective-specific candidates generalize. The three objectives are reported separately because direct
+R@5 quality and reranker candidate-pool R@50 quality are different deployment goals.
 New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with
 `PIX_BENCH_REPOS`, and cached under `benchmarks/.cache/repos/`. A future Sparse Embedder must be
 implemented and registered in the main package first, then evaluated through the same benchmark

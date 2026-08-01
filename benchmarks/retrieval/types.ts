@@ -54,9 +54,13 @@ export type QueryKind = keyof typeof QueryFormsSchema.Type
 /** Score or rank fusion algorithm evaluated with independently tuned channel weights. */
 export type FusionMethod = "rrf" | "relative-score" | "dbsf"
 
+/** Product retrieval scenario used to choose a router candidate. */
+export const ROUTER_OBJECTIVES = ["direct", "reranker-top20", "reranker-top50"] as const
+export type RouterObjective = (typeof ROUTER_OBJECTIVES)[number]
+
 /** Versioned evidence-router search strategy recorded in every benchmark artifact. */
 export const ROUTER_SEARCH_STRATEGY = {
-  algorithm: "halton-global-scout-elitist-beam-successive-halving",
+  algorithm: "halton-global-scout-elitist-beam-successive-halving-pareto",
   globalScouts: 64,
   beamWidth: 6,
   coordinatePasses: 2,
@@ -64,6 +68,8 @@ export const ROUTER_SEARCH_STRATEGY = {
   proxySampleFraction: 0.25,
   proxyMinimumSamples: 32,
   halvingKeepFactor: 8,
+  objectives: ROUTER_OBJECTIVES,
+  guardrailTolerance: 0.01,
 } as const
 
 /** Runtime/coverage trade-off selected for one benchmark invocation. */
@@ -107,6 +113,7 @@ export interface QueryMeasurement {
   readonly recallAt5: number
   readonly recallAt10: number
   readonly recallAt20: number
+  readonly recallAt50: number
   readonly successAt10: boolean
   readonly successAt20: boolean
   readonly reciprocalRank: number
@@ -128,6 +135,7 @@ export interface QualitySummary {
   readonly recallAt5: number
   readonly recallAt10: number
   readonly recallAt20: number
+  readonly recallAt50: number
   readonly contextRecallAt4096: number
   readonly meanReciprocalRank: number
 }
@@ -168,6 +176,17 @@ export interface FusionSearchResult {
   readonly validation: QualitySummary
 }
 
+/** Holdout evaluation of the current production RRF query-routing weights. */
+export interface ProductionRrfSearchResult {
+  readonly model: string
+  readonly strategy: ValidationStrategy
+  readonly fold: string
+  readonly developmentQueries: number
+  readonly validationQueries: number
+  readonly development: QualitySummary
+  readonly validation: QualitySummary
+}
+
 /** Static fusion candidate fitted on all query forms after holdout evaluation. */
 export interface RecommendedFusionWeights {
   readonly model: string
@@ -181,6 +200,7 @@ export interface RecommendedFusionWeights {
 export interface EvidenceRouterSearchResult {
   readonly model: string
   readonly fusion: FusionMethod
+  readonly objective: RouterObjective
   readonly strategy: ValidationStrategy
   readonly fold: string
   readonly developmentQueries: number
@@ -191,6 +211,9 @@ export interface EvidenceRouterSearchResult {
   readonly staticValidation: QualitySummary
   readonly development: QualitySummary
   readonly validation: QualitySummary
+  readonly productionDevelopment: QualitySummary
+  readonly productionValidation: QualitySummary
+  readonly guardrailsMet: boolean
   readonly proxyEvaluations: number
   readonly fullEvaluations: number
 }
@@ -199,11 +222,14 @@ export interface EvidenceRouterSearchResult {
 export interface RecommendedEvidenceRouter {
   readonly model: string
   readonly fusion: FusionMethod
+  readonly objective: RouterObjective
   readonly samples: number
   readonly staticWeights: ChannelWeights
   readonly config: EvidenceRouterConfig
   readonly staticQuality: QualitySummary
   readonly fitQuality: QualitySummary
+  readonly productionQuality: QualitySummary
+  readonly guardrailsMet: boolean
   readonly proxyEvaluations: number
   readonly fullEvaluations: number
 }
@@ -221,7 +247,7 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 15
+  readonly schemaVersion: 16
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   readonly generatedAt: string
@@ -254,6 +280,7 @@ export interface BenchmarkArtifact {
   readonly measurements: readonly QueryMeasurement[]
   readonly weightSearch: readonly WeightSearchResult[]
   readonly recommendedWeights: readonly RecommendedWeights[]
+  readonly productionRrfSearch: readonly ProductionRrfSearchResult[]
   readonly fusionSearch: readonly FusionSearchResult[]
   readonly recommendedFusionWeights: readonly RecommendedFusionWeights[]
   readonly evidenceRouterSearch: readonly EvidenceRouterSearchResult[]

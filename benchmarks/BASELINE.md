@@ -1,5 +1,58 @@
 # Preliminary Retrieval Baseline
 
+## Schema 16: Production RRF Guardrails And Objective-Specific Router Search
+
+Schema 16 adds an explicit holdout evaluation of the current production RRF query-length router,
+Recall@50, and three deployment objectives: `direct`, `reranker-top20`, and `reranker-top50`. One
+shared Pareto search produces candidates for all three objectives. Candidate selection uses a 1%
+development guardrail against the production RRF baseline; holdout rows below decide generalization.
+The artifact is `benchmarks/results/retrieval-2026-07-31T23-54-20.351Z.json`.
+
+### Production RRF Holdouts
+
+| Model  | Validation strategy |   R@5 |  R@10 |  R@20 |  R@50 | Context@4k |
+| ------ | ------------------- | ----: | ----: | ----: | ----: | ---------: |
+| MiniLM | Grouped 5-fold      | 55.0% | 63.6% | 70.3% | 84.7% |      58.6% |
+| MiniLM | LORO                | 55.0% | 63.6% | 70.3% | 84.7% |      58.6% |
+
+### Objective Holdouts
+
+Validation metrics are excluded-fold results. Production columns are repeated here as the guardrail
+reference for each objective.
+
+| Objective      | Validation strategy | Production R@5 | Dynamic R@5 | Production R@10 | Dynamic R@10 | Production R@20 | Dynamic R@20 | Production R@50 | Dynamic R@50 | Production Context@4k | Dynamic Context@4k |
+| -------------- | ------------------- | -------------: | ----------: | --------------: | -----------: | --------------: | -----------: | --------------: | -----------: | --------------------: | -----------------: |
+| direct         | Grouped 5-fold      |          55.0% |       61.7% |           63.6% |        71.9% |           70.3% |        80.0% |           84.7% |        86.4% |                 58.6% |              67.5% |
+| reranker-top20 | Grouped 5-fold      |          55.0% |       63.3% |           63.6% |        74.2% |           70.3% |        78.1% |           84.7% |        88.9% |                 58.6% |              66.1% |
+| reranker-top50 | Grouped 5-fold      |          55.0% |       59.4% |           63.6% |        72.5% |           70.3% |        80.3% |           84.7% |        89.2% |                 58.6% |              63.9% |
+| direct         | LORO                |          55.0% |       61.1% |           63.6% |        73.6% |           70.3% |        81.9% |           84.7% |        88.9% |                 58.6% |              66.4% |
+| reranker-top20 | LORO                |          55.0% |       60.0% |           63.6% |        72.5% |           70.3% |        81.1% |           84.7% |        89.4% |                 58.6% |              65.3% |
+| reranker-top50 | LORO                |          55.0% |       59.2% |           63.6% |        71.4% |           70.3% |        80.6% |           84.7% |        88.3% |                 58.6% |              62.5% |
+
+The direct objective is strongest at R@5, while `reranker-top50` is strongest at R@50. The
+reranker-top20 candidate is competitive at R@20 and preserves a larger context-recall margin than
+the top-50 candidate. These results support separate scenario candidates, not one universal router;
+they do not yet justify changing production routing or adding a reranker.
+
+### Fit-All Candidates
+
+The final candidates are descriptive fits over all 180 samples. The dynamic base weights are shown;
+the artifact retains all learned feature influences.
+
+| Objective      | Base weights I/C/B/D | Fit R@5 | Fit R@10 | Fit R@20 | Fit R@50 | Fit Context@4k |
+| -------------- | -------------------- | ------: | -------: | -------: | -------: | -------------: |
+| direct         | 1.00/0.11/0.30/0.60  |   66.7% |    75.3% |    81.4% |    86.7% |          71.9% |
+| reranker-top20 | 0.40/0.80/1.00/1.00  |   60.0% |    73.1% |    84.2% |    91.4% |          64.4% |
+| reranker-top50 | 0.60/0.80/1.00/1.00  |   59.7% |    72.5% |    83.1% |    92.5% |          61.7% |
+
+### Compute Timing
+
+Compute timing excludes JSON and Markdown artifact serialization. The run took `471.30 s` total:
+router search `419.99 s`, fusion search `32.52 s`, corpus preparation `9.60 s`, embedding `2.06 s`,
+and SQLite retrieval `2.58 s`. The fit-all search evaluated `3,973` proxy candidates and `2,580`
+full candidates per shared search. The additional objectives increase search cost; future reductions
+must preserve the shared-search and holdout semantics.
+
 ## Schema 15: Successive Halving Router Search
 
 Schema 15 adds deterministic successive halving to the evidence-router optimizer. Each candidate pool is
