@@ -127,6 +127,24 @@ Scorer output — ranks all chunks against a query. Shape: `{ chunkIndex: number
 
 Fuses N ranked lists by rank position: `Σ weight * 1 / (k + rank_in_path)`. Raw scores are discarded — only rank position matters. k=60 (standard, configurable later). Pure function in `src/lib/retrieval/rrf.ts`.
 
+### Fusion Strategy and Optimization Profiles
+
+Production currently uses RRF as the compatibility fusion for the four live channels. The schema-17
+benchmark compares RRF with per-channel Relative Score fusion and Distribution-Based Score Fusion
+(DBSF); these alternatives are benchmark candidates, not production behavior yet. The planned production
+seam is an explicit fusion method plus an evidence router, so Identity, CamelCase, BM25, Dense, and the
+future Sparse channel can participate without fusion-specific channel branches. The router may adjust
+each channel's base weight using score separation, score geometry, term coverage, pairwise agreement,
+dense confidence, identifier likelihood, query length, and channel availability.
+
+The benchmark currently weights the four authored query forms equally. The next optimization objective is
+intent-weighted: `identifier=1`, `agentTask=2`, `naturalQuestion=3`, and `searchPhrase=4`, while still
+reporting unweighted per-form results and holdout guardrails. This is an evaluation objective, not an
+implicit runtime query label. Future explicit profiles such as `balanced`, `code-navigation`, and
+`basic-exploration` may choose different query-form priorities, channel priors, and target metrics
+(Recall@5/10/20/50 and context recall). See ADR-0019, issue #162 for production Sparse, and issue #163
+for evidence-based fusion and optimization profiles.
+
 ### Retrieval Quality Benchmark
 
 Opt-in local suite under `benchmarks/` that imports pix chunking, identifier extraction, scorers,
@@ -357,8 +375,11 @@ All one-shot commands support `--json` for agent-ready structured output on stdo
 
 - A **Scorer** consumes **ChunkEntry** data and produces a **RankedChunk** list
 - **RRF** fuses N **RankedChunk** lists, each weighted by **Query Routing** output
+- Production currently selects RRF; Relative Score and DBSF remain benchmark fusion candidates until an
+  evidence-based production configuration passes holdout guardrails
 - **BM25 Index** is built once by the index pipeline, consumed by the BM25 **Scorer** at query time
-- Adding a retrieval path means: write a pure **Scorer** function + add it to `Effect.all` + add its list to **RRF**
+- Adding a retrieval path means: write a pure **Scorer** function, add it to `Effect.all`, and expose
+  its ranking through the production fusion seam
 
 ## Architecture Decisions
 
