@@ -28,15 +28,14 @@ const benchmarkConfigStore = (config: Config): typeof ConfigStore.Service => ({
 })
 
 const sqliteBenchmarkIndexLayer = (model: string, dtype: EmbeddingDtype) =>
-  Layer.provideMerge(
+  SqliteIndexStoreBase.pipe(
     Layer.provideMerge(
-      SqliteIndexStoreBase,
       Layer.merge(
         Layer.succeed(ConfigStore, benchmarkConfigStore(benchmarkConfig(model, dtype))),
         sqliteIndexDatabaseLayer(":memory:"),
       ),
     ),
-    layerNoop({}),
+    Layer.provideMerge(layerNoop({})),
   )
 
 /** Run one benchmark operation against the production SQLite index adapter in memory. */

@@ -44,7 +44,7 @@ const SEARCH_PROXY_MINIMUM_SAMPLES = ROUTER_SEARCH_STRATEGY.proxyMinimumSamples
 const SEARCH_HALVING_KEEP_FACTOR = ROUTER_SEARCH_STRATEGY.halvingKeepFactor
 const HALTON_PRIMES = [
   2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
-  101, 103, 107,
+  101, 103, 107, 109, 113, 127, 131, 137, 139, 149,
 ] as const
 
 const ZERO_COEFFICIENTS: ChannelCoefficients = {
@@ -570,15 +570,20 @@ const buildGlobalRouterSeeds = (
 ): readonly EvidenceRouterConfig[] => {
   if (baseSeeds.length === 0) return []
   const coefficientParameters = parameters.slice(CHANNELS.length)
+  if (coefficientParameters.length > HALTON_PRIMES.length)
+    throw new Error(
+      `Halton sequence needs ${coefficientParameters.length} primes, got ${HALTON_PRIMES.length}`,
+    )
   return Array.from({ length: SEARCH_GLOBAL_SCOUTS }, (_, pointIndex) =>
     coefficientParameters.reduce(
       (config, parameter, parameterIndex) => {
         const values = parameter.values
+        const prime = HALTON_PRIMES[parameterIndex]
+        if (prime === undefined)
+          throw new Error(`Halton sequence has no prime for parameter ${parameterIndex}`)
         const valueIndex = Math.min(
           values.length - 1,
-          Math.floor(
-            radicalInverse(pointIndex + 1, HALTON_PRIMES[parameterIndex]!) * values.length,
-          ),
+          Math.floor(radicalInverse(pointIndex + 1, prime) * values.length),
         )
         return parameter.update(config, values[valueIndex]!)
       },
@@ -872,6 +877,7 @@ export const optimizeEvidenceRouter = (
 ): readonly EvidenceRouterSearchResult[] => {
   const dynamicSelection = selectBestEvidenceRouter(development, fusion)
   const productionValidation = summarizeProductionRrf(validation)
+  const validationEvidence = prepareEvidenceSamples(validation)
   return dynamicSelection.selections.map((selection) => {
     const staticSelection = selectBestWeights(
       development,
@@ -892,11 +898,7 @@ export const optimizeEvidenceRouter = (
       staticDevelopment: staticSelection.quality,
       staticValidation: summarize(validation, staticSelection.weights, fusion),
       development: selection.quality,
-      validation: summarizeEvidenceRouter(
-        prepareEvidenceSamples(validation),
-        selection.config,
-        fusion,
-      ),
+      validation: summarizeEvidenceRouter(validationEvidence, selection.config, fusion),
       productionDevelopment: dynamicSelection.productionQuality,
       productionValidation,
       guardrailsMet: selection.guardrailsMet,

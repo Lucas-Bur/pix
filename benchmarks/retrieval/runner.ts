@@ -15,7 +15,7 @@ import { createAutoBoundEmbedder } from "../../src/services/embedder.js"
 import { loadCorpusManifests, prepareRepository } from "./corpus.js"
 import { loadEmbeddingCache, writeEmbeddingCache } from "./embedding-cache.js"
 import { buildQueryTermCoverage } from "./evidence-router.js"
-import { assignGroupedFolds } from "./folds.js"
+import { assignGroupedFolds, foldKey } from "./folds.js"
 import { FUSION_METHODS } from "./fusion.js"
 import {
   contextRecallAtBudget,
@@ -143,7 +143,11 @@ const selectManifests = (
   profile: BenchmarkProfile,
 ): readonly CorpusManifest[] => {
   const selected = selectValues(process.env.PIX_BENCH_REPOS)
-  if (selected) return manifests.filter((manifest) => selected.has(manifest.id))
+  if (selected) {
+    const unknown = [...selected].filter((id) => !manifests.some((manifest) => manifest.id === id))
+    if (unknown.length > 0) throw new Error(`Unknown PIX_BENCH_REPOS values: ${unknown.join(", ")}`)
+    return manifests.filter((manifest) => selected.has(manifest.id))
+  }
   return profile === "smoke" ? manifests.filter((manifest) => manifest.id === "fd") : manifests
 }
 
@@ -336,20 +340,22 @@ export const runRetrievalBenchmark = (
         preparationDurationMs: corpus.preparationDurationMs,
       })
 
-      const targetsByQuestion = manifest.questions.map((question) => {
+      const targetsByQuestion: (readonly ReadonlySet<number>[])[] = []
+      for (const question of manifest.questions) {
         const targets = resolveGoldTargets(
           question.groundTruth,
           corpus.chunks,
           corpus.identifiersByChunk,
         )
         const unresolved = question.groundTruth.filter((_, index) => targets[index].size === 0)
-        if (unresolved.length > 0) {
-          throw new Error(
-            `${question.id} has unresolved gold targets: ${unresolved.map((target) => `${target.file}::${target.symbol}`).join(", ")}`,
+        if (unresolved.length > 0)
+          return yield* Effect.fail(
+            new Error(
+              `${question.id} has unresolved gold targets: ${unresolved.map((target) => `${target.file}::${target.symbol}`).join(", ")}`,
+            ),
           )
-        }
-        return targets
-      })
+        targetsByQuestion.push(targets)
+      }
 
       const queries = manifest.questions.flatMap((question, questionIndex) =>
         QUERY_KINDS.map((queryKind) => ({
@@ -461,7 +467,7 @@ export const runRetrievalBenchmark = (
               const entry = queries[queryIndex]
               const question = manifest.questions[entry.questionIndex]
               const targets = targetsByQuestion[entry.questionIndex]
-              const groupedFold = groupedFoldAssignments.get(`${manifest.id}\0${question.id}`)
+              const groupedFold = groupedFoldAssignments.get(foldKey(manifest.id, question.id))
               if (groupedFold === undefined)
                 return yield* Effect.fail(
                   new Error(`No grouped fold assignment for ${manifest.id}/${question.id}`),

@@ -18,29 +18,9 @@ const percent = (value: number): string => `${(value * 100).toFixed(1)}%`
 
 const duration = (milliseconds: number): string => `${(milliseconds / 1_000).toFixed(2)} s`
 
-const weightedRouterAverage = (
-  rows: readonly EvidenceRouterSearchResult[],
-  select: (row: EvidenceRouterSearchResult) => number,
-): number => {
-  const samples = rows.reduce((sum, row) => sum + row.validationQueries, 0)
-  return samples === 0
-    ? 0
-    : rows.reduce((sum, row) => sum + select(row) * row.validationQueries, 0) / samples
-}
-
-const weightedFusionAverage = (
-  rows: readonly FusionSearchResult[],
-  select: (row: FusionSearchResult) => number,
-): number => {
-  const samples = rows.reduce((sum, row) => sum + row.validationQueries, 0)
-  return samples === 0
-    ? 0
-    : rows.reduce((sum, row) => sum + select(row) * row.validationQueries, 0) / samples
-}
-
-const weightedProductionAverage = (
-  rows: readonly ProductionRrfSearchResult[],
-  select: (row: ProductionRrfSearchResult) => number,
+const weightedAverage = <T extends { readonly validationQueries: number }>(
+  rows: readonly T[],
+  select: (row: T) => number,
 ): number => {
   const samples = rows.reduce((sum, row) => sum + row.validationQueries, 0)
   return samples === 0
@@ -163,7 +143,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
   )) {
     const [model, strategy] = key.split("\0")
     lines.push(
-      `| ${model} | ${strategy} | ${percent(weightedProductionAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedProductionAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedProductionAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedProductionAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedProductionAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
+      `| ${model} | ${strategy} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
     )
   }
 
@@ -217,7 +197,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
   for (const [key, rows] of fusionGroups) {
     const [model, fusion, strategy] = key.split("\0")
     lines.push(
-      `| ${model} | ${fusion} | ${strategy} | ${rows.map((row) => formatWeights(row.weights)).join("; ")} | ${percent(weightedFusionAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedFusionAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedFusionAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedFusionAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
+      `| ${model} | ${fusion} | ${strategy} | ${rows.map((row) => formatWeights(row.weights)).join("; ")} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
     )
   }
 
@@ -271,7 +251,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
   for (const [key, rows] of routerGroups) {
     const [model, fusion, objective, strategy] = key.split("\0")
     lines.push(
-      `| ${model} | ${fusion} | ${objective} | ${strategy} | ${rows.every((row) => row.guardrailsMet) ? "yes" : "no"} | ${percent(weightedRouterAverage(rows, (row) => row.productionValidation.recallAt5))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedRouterAverage(rows, (row) => row.productionValidation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.productionValidation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.productionValidation.recallAt50))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedRouterAverage(rows, (row) => row.productionValidation.contextRecallAt4096))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
+      `| ${model} | ${fusion} | ${objective} | ${strategy} | ${rows.every((row) => row.guardrailsMet) ? "yes" : "no"} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.contextRecallAt4096))} | ${percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
     )
   }
 
