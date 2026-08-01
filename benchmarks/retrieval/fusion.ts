@@ -3,7 +3,7 @@ import { rrfFuse } from "../../src/lib/retrieval/rrf.js"
 import type { ChannelName, ChannelRankings } from "./ranking.js"
 import type { ChannelWeights, FusionMethod } from "./types.js"
 
-const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dense"]
+const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dense", "sparse"]
 const DEFAULT_CANDIDATE_DEPTH = 200
 const NEUTRAL_NORMALIZED_SCORE = 0.5
 
@@ -52,6 +52,7 @@ const prepareFusionRankings = (
     camelcase: rankings.camelcase.slice(0, candidateDepth),
     bm25: rankings.bm25.slice(0, candidateDepth),
     dense: rankings.dense.slice(0, candidateDepth),
+    sparse: rankings.sparse.slice(0, candidateDepth),
   }
   const normalize =
     method === "relative-score" ? relativeScores : method === "dbsf" ? distributionScores : () => []
@@ -63,6 +64,7 @@ const prepareFusionRankings = (
       camelcase: normalize(lists.camelcase),
       bm25: normalize(lists.bm25),
       dense: normalize(lists.dense),
+      sparse: normalize(lists.sparse),
     },
   }
   const entries = cachedByKey ?? new Map<string, PreparedFusionRankings>()

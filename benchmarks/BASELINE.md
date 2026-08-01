@@ -1,5 +1,77 @@
 # Preliminary Retrieval Baseline
 
+## Schema 17: Experimental Sparse Smoke
+
+Schema 17 adds the benchmark-only Distill sparse ONNX channel while leaving production's four-channel
+RRF router unchanged. The first smoke artifact is
+`benchmarks/results/retrieval-2026-08-01T01-16-16.441Z.json`; the warm-cache rerun is
+`benchmarks/results/retrieval-2026-08-01T01-23-05.432Z.json`.
+
+The cold `fd` smoke run loaded the 67M document model in `16.19 s` and spent `7.44 s` encoding/cache
+writing. The warm rerun reported `cacheHit=yes`, `0.56 s` model load, and `0.00 s` chunk/cache work.
+Sparse-only `R@20` was `66.7%` for agent tasks, `80.0%` for identifiers, `60.0%` for natural questions,
+and `66.7%` for search phrases. Sparse-inclusive RRF matched the existing four-channel RRF at aggregate
+`R@20` on this smoke corpus; this is an implementation check, not holdout evidence for production.
+
+The warm full-corpus validate artifact is
+`benchmarks/results/retrieval-2026-08-01T01-58-14.247Z.json`. All three sparse caches hit. The static
+DBSF candidate with sparse included reached grouped `R@5/R@10/R@20/Context@4k = 60.6%/71.7%/79.4%/63.6%`
+and LORO `61.4%/73.1%/81.7%/67.5%`; the fit-all candidate selected `0.40/0.00/1.00/0.70/0.00`
+in Identity/CamelCase/BM25/Dense/Sparse order. The production four-channel RRF holdouts remained the
+Schema-16 values exactly (`55.0%/63.6%/70.3%/84.7%/58.6%` for both grouped and LORO). Sparse is
+therefore wired and measurable, but the current validate run does not justify production promotion.
+
+The matched MiniLM three-fusion artifact is `benchmarks/results/retrieval-2026-08-01T10-12-09.945Z.json`.
+Static holdouts were:
+
+| Fusion         | Grouped R@5 | Grouped R@10 | Grouped R@20 | Grouped Context@4k | LORO R@5 | LORO R@10 | LORO R@20 | LORO Context@4k |
+| -------------- | ----------: | -----------: | -----------: | -----------------: | -------: | --------: | --------: | --------------: |
+| RRF            |       62.8% |        72.2% |        75.8% |              66.1% |    60.8% |     70.8% |     78.6% |           65.8% |
+| Relative score |       58.3% |        69.7% |        83.1% |              64.4% |    60.8% |     71.1% |     83.3% |           66.1% |
+| DBSF           |       60.6% |        71.7% |        79.4% |              63.6% |    61.4% |     73.1% |     81.7% |           67.5% |
+
+Relative score is the strongest MiniLM static R@20 candidate. Its selected dynamic LORO candidates
+miss the production guardrail, so the fit-all values below are descriptive rather than deployment
+evidence. The fit-all sparse weights are fusion-specific: `0.10` for RRF, `0.25` for Relative Score,
+and `0.00` for DBSF.
+
+### Matched BGE Full Run
+
+The same schema-17 full profile was run with `Xenova/bge-small-en-v1.5` in
+`benchmarks/results/retrieval-2026-08-01T09-22-46.752Z.json`. Both model runs use the same three pinned
+repositories, `180` query representations, grouped 5-fold and leave-one-repository-out holdouts, all
+three fusion methods, and both static and evidence-router fit-all candidates.
+
+Sparse integration checks passed for both artifacts: all three repository caches hit, each artifact has
+`180` sparse and `180` `rrf+sparse` measurements, and all `180` `rrf` versus `rrf-no-sparse` control
+pairs are identical. The raw full-corpus rows are not holdouts, but they show the marginal effect before
+fusion tuning:
+
+| Model     | Dense-only R@20 | Sparse-only R@20 | RRF R@20 | RRF+sparse R@20 | Sparse delta | RRF Ctx@4k | RRF+sparse Ctx@4k |
+| --------- | --------------: | ---------------: | -------: | --------------: | -----------: | ---------: | ----------------: |
+| MiniLM    |           74.4% |            45.6% |    70.3% |           76.4% |       +6.1pp |      59.7% |             62.8% |
+| BGE-small |           81.9% |            45.6% |    73.1% |           75.0% |       +1.9pp |      58.6% |             60.6% |
+
+The holdout and static fit-all picture is:
+
+| Model     | Fusion         | Grouped R@20 | LORO R@20 | Fit-all weights I/C/B/D/S | Fit-all R@20 | Fit-all Ctx@4k |
+| --------- | -------------- | -----------: | --------: | ------------------------- | -----------: | -------------: |
+| MiniLM    | RRF            |        75.8% |     78.6% | 0.25/0.10/1.00/0.70/0.10  |        82.2% |          69.2% |
+| MiniLM    | Relative score |        83.1% |     83.3% | 0.30/0.30/1.00/0.50/0.25  |        84.7% |          66.9% |
+| MiniLM    | DBSF           |        79.4% |     81.7% | 0.40/0.00/1.00/0.70/0.00  |        83.9% |          64.7% |
+| BGE-small | RRF            |        86.4% |     81.1% | 0.10/0.20/0.67/1.00/0.00  |        87.8% |          68.6% |
+| BGE-small | Relative score |        86.7% |     88.3% | 0.20/0.25/0.80/1.00/0.00  |        89.4% |          69.4% |
+| BGE-small | DBSF           |        87.8% |     88.3% | 0.20/0.20/0.50/1.00/0.00  |        89.4% |          68.9% |
+
+The direct-objective evidence-router fit-all candidates also retain a positive sparse base weight:
+MiniLM uses `0.10/0.25/0.20` for RRF/Relative Score/DBSF and BGE uses `0.10/0.10/0.10`.
+The static `0.00` in the BGE fit-all rows is therefore not a missing channel. Static candidates are
+explicitly allowed to use `0` (`WEIGHT_LEVELS = [0, 0.5, 1, 2]`); BGE's stronger dense channel made
+Sparse redundant for that particular all-sample static objective. MiniLM still assigns Sparse positive
+fit-all weight for RRF and Relative Score, and raw equal-weight RRF improves by `6.1` R@20 points.
+Sparse is consequently a useful complementary benchmark channel, but its weight must remain model- and
+fusion-specific rather than being forced globally.
+
 ## Schema 16: Production RRF Guardrails And Objective-Specific Router Search
 
 Schema 16 adds an explicit holdout evaluation of the current production RRF query-length router,

@@ -173,10 +173,14 @@ candidate pools, and reranker top-50 candidate pools. Each candidate must remain
 guardrail of production RRF; grouped and leave-one-repository-out holdouts determine whether the
 objective-specific candidates generalize. The three objectives are reported separately because direct
 R@5 quality and reranker candidate-pool R@50 quality are different deployment goals.
+Schema 17 adds a benchmark-only OpenSearch Distill sparse channel. It uses the verified ONNX document
+export with max-pooled positive token logits and a matching static IDF query lookup; variable-length
+document vectors are cached separately under `benchmarks/.cache/sparse`. Sparse-inclusive rankings,
+five-channel score fusion, ten pairwise agreement signals, and separate sparse timing rows are recorded
+in schema-17 artifacts. Production remains on the four-channel RRF router and `.pix/index.db` until
+holdout evidence justifies a main-package sparse port and SQLite migration.
 New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with
-`PIX_BENCH_REPOS`, and cached under `benchmarks/.cache/repos/`. A future Sparse Embedder must be
-implemented and registered in the main package first, then evaluated through the same benchmark
-regression sequence before it can be considered an advantage.
+`PIX_BENCH_REPOS`, and cached under `benchmarks/.cache/repos/`.
 The router uses only runtime-observable query length and identifier shape, within-channel score
 separation, channel availability, and cross-channel rank agreement. Raw scores from different
 channels are never compared. A deterministic coarse-to-fine beam search starts with 64 Halton global

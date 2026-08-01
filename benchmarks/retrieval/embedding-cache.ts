@@ -21,7 +21,32 @@ const MetadataSchema = Schema.Struct({
 
 type Metadata = typeof MetadataSchema.Type
 
-const corpusHash = (chunks: readonly Chunk[]): string => {
+/** Write one JSON metadata file and one binary cache file under an already-known cache directory. */
+export const writeBenchmarkCacheFiles = <TMetadata extends object>(
+  directory: string,
+  metadataPath: string,
+  metadata: TMetadata,
+  vectorsPath: string,
+  binary: Uint8Array,
+  errorMessage: string,
+): Effect.Effect<void, Error> =>
+  Effect.gen(function* () {
+    yield* Effect.tryPromise({
+      try: () => mkdir(directory, { recursive: true }),
+      catch: (cause) => new Error(`Could not create ${errorMessage}`, { cause }),
+    })
+    yield* Effect.tryPromise({
+      try: () =>
+        Promise.all([
+          writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8"),
+          writeFile(vectorsPath, binary),
+        ]).then(() => undefined),
+      catch: (cause) => new Error(`Could not write ${errorMessage}`, { cause }),
+    })
+  })
+
+/** Hash the complete chunk identity and text contract used by benchmark caches. */
+export const corpusHash = (chunks: readonly Chunk[]): string => {
   const hash = createHash("sha256")
   for (const chunk of chunks) {
     hash.update(chunk.file)
@@ -96,10 +121,6 @@ export const writeEmbeddingCache = (
 ): Effect.Effect<void, Error> =>
   Effect.gen(function* () {
     const locations = cachePaths(manifest, model, device, batchSize)
-    yield* Effect.tryPromise({
-      try: () => mkdir(locations.directory, { recursive: true }),
-      catch: (cause) => new Error("Could not create benchmark embedding cache", { cause }),
-    })
     const metadata: Metadata = {
       schemaVersion: 1,
       repository: manifest.id,
@@ -114,12 +135,12 @@ export const writeEmbeddingCache = (
     const binary = Buffer.concat(
       vectors.map((vector) => Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength)),
     )
-    yield* Effect.tryPromise({
-      try: () =>
-        Promise.all([
-          writeFile(locations.metadata, `${JSON.stringify(metadata, null, 2)}\n`, "utf8"),
-          writeFile(locations.vectors, binary),
-        ]).then(() => undefined),
-      catch: (cause) => new Error("Could not write benchmark embedding cache", { cause }),
-    })
+    yield* writeBenchmarkCacheFiles(
+      locations.directory,
+      locations.metadata,
+      metadata,
+      locations.vectors,
+      binary,
+      "benchmark embedding cache",
+    )
   })

@@ -28,6 +28,16 @@ import {
 import { prepareCorpus, type PreparedCorpus } from "./prepare.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "./ranking.js"
 import { renderMarkdownReport } from "./report.js"
+import { loadSparseEmbeddingCache, writeSparseEmbeddingCache } from "./sparse-cache.js"
+import {
+  createSparseEncoder,
+  SPARSE_BATCH_SIZE,
+  SPARSE_DOCUMENT_MODEL,
+  SPARSE_TOKENIZER_MODEL,
+  type SparseEncoder,
+  type SparseVector,
+} from "./sparse-encoder.js"
+import { buildSparseIndex, rankSparse } from "./sparse-ranking.js"
 import { withSqliteBenchmarkStore } from "./sqlite-index.js"
 import {
   ROUTER_SEARCH_STRATEGY,
@@ -172,6 +182,27 @@ const embedTexts = (
     return vectors
   }).pipe(Effect.mapError((cause) => new Error(`Embedding failed for ${model}`, { cause })))
 
+const embedSparseTexts = (
+  texts: readonly string[],
+  encoder: SparseEncoder,
+): Effect.Effect<readonly SparseVector[], Error> =>
+  Effect.tryPromise({
+    try: async () => {
+      const vectors: SparseVector[] = []
+      let start = 0
+      while (start < texts.length) {
+        const currentIsLong = isLongInput(texts[start]!)
+        const next = texts[start + 1]
+        const nextIsLong = next !== undefined && isLongInput(next)
+        const batchSize = currentIsLong || nextIsLong ? 1 : SPARSE_BATCH_SIZE
+        vectors.push(...(await encoder.encodeDocuments(texts.slice(start, start + batchSize))))
+        start += batchSize
+      }
+      return vectors
+    },
+    catch: (cause) => new Error("Sparse document embedding failed", { cause }),
+  })
+
 const embedCorpus = (
   manifest: CorpusManifest,
   chunks: PreparedCorpus["chunks"],
@@ -281,6 +312,7 @@ export const runRetrievalBenchmark = (
     const models = selectModels()
     const repositories: BenchmarkArtifact["repositories"][number][] = []
     const embeddingRuns: BenchmarkArtifact["embeddingRuns"][number][] = []
+    const sparseEmbeddingRuns: BenchmarkArtifact["sparseEmbeddingRuns"][number][] = []
     const measurements: QueryMeasurement[] = []
     const sampleGroups = new Map<
       string,
@@ -319,6 +351,61 @@ export const runRetrievalBenchmark = (
         return targets
       })
 
+      const queries = manifest.questions.flatMap((question, questionIndex) =>
+        QUERY_KINDS.map((queryKind) => ({
+          questionIndex,
+          queryKind,
+          query: question.queries[queryKind],
+        })),
+      )
+      const sparseEncoder = yield* createSparseEncoder()
+      const sparseChunkStartedAt = performance.now()
+      const sparseCached = yield* loadSparseEmbeddingCache(
+        manifest,
+        SPARSE_DOCUMENT_MODEL,
+        SPARSE_TOKENIZER_MODEL,
+        SPARSE_BATCH_SIZE,
+        corpus.chunks,
+      )
+      let sparseVectors: readonly SparseVector[]
+      let sparseCacheHit: boolean
+      if (Option.isSome(sparseCached)) {
+        sparseVectors = sparseCached.value
+        sparseCacheHit = true
+      } else {
+        sparseVectors = yield* embedSparseTexts(
+          corpus.chunks.map((chunk) => chunk.text),
+          sparseEncoder,
+        )
+        sparseCacheHit = false
+        yield* writeSparseEmbeddingCache(
+          manifest,
+          SPARSE_DOCUMENT_MODEL,
+          SPARSE_TOKENIZER_MODEL,
+          SPARSE_BATCH_SIZE,
+          corpus.chunks,
+          sparseVectors,
+        )
+      }
+      const sparseChunkEmbeddingDurationMs = performance.now() - sparseChunkStartedAt
+      const sparseQueryStartedAt = performance.now()
+      const sparseQueryVectors = yield* Effect.tryPromise({
+        try: () => sparseEncoder.encodeQueries(queries.map((entry) => entry.query)),
+        catch: (cause) => new Error("Sparse query encoding failed", { cause }),
+      })
+      sparseEmbeddingRuns.push({
+        repository: manifest.id,
+        model: sparseEncoder.model,
+        tokenizerModel: sparseEncoder.tokenizerModel,
+        device: sparseEncoder.device,
+        batchSize: sparseEncoder.batchSize,
+        modelLoadDurationMs: sparseEncoder.modelLoadDurationMs,
+        chunkEmbeddingDurationMs: sparseChunkEmbeddingDurationMs,
+        queryEmbeddingDurationMs: performance.now() - sparseQueryStartedAt,
+        cacheHit: sparseCacheHit,
+      })
+      const sparseIndex = buildSparseIndex(sparseVectors)
+
       for (const model of models) {
         const info = MODEL_REGISTRY[model]
         if (info === undefined)
@@ -342,13 +429,6 @@ export const runRetrievalBenchmark = (
         )
         const chunkVectors = embedded.vectors
         const chunkEmbeddingDurationMs = performance.now() - embeddingStartedAt
-        const queries = manifest.questions.flatMap((question, questionIndex) =>
-          QUERY_KINDS.map((queryKind) => ({
-            questionIndex,
-            queryKind,
-            query: question.queries[queryKind],
-          })),
-        )
         const queryEmbeddingStartedAt = performance.now()
         const queryVectors = yield* embedTexts(
           queries.map((entry) => entry.query),
@@ -393,7 +473,8 @@ export const runRetrievalBenchmark = (
                 dims: info.dims,
                 dtype: info.defaultDtype,
               })
-              const rankings = { ...lexicalRankings, dense }
+              const sparse = rankSparse(sparseQueryVectors[queryIndex]!, sparseIndex)
+              const rankings = { ...lexicalRankings, dense, sparse }
               const channelDurationMs = performance.now() - channelStartedAt
               const sample: WeightSearchSample = {
                 repository: manifest.id,
@@ -463,6 +544,10 @@ export const runRetrievalBenchmark = (
           sampleGroups.set(groupKey, group)
         }
       }
+      yield* Effect.tryPromise({
+        try: () => sparseEncoder.dispose().then(() => undefined),
+        catch: (cause) => new Error("Could not dispose sparse benchmark encoder", { cause }),
+      })
     }
 
     const weightSearchStartedAt = performance.now()
@@ -626,7 +711,7 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 16,
+      schemaVersion: 17,
       benchmarkProfile: profile,
       generatedAt: new Date().toISOString(),
       searchStrategy: ROUTER_SEARCH_STRATEGY,
@@ -649,6 +734,7 @@ export const runRetrievalBenchmark = (
       models,
       repositories,
       embeddingRuns,
+      sparseEmbeddingRuns,
       measurements,
       weightSearch,
       recommendedWeights,

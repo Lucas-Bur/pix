@@ -11,7 +11,7 @@ import {
 } from "./evidence-router.js"
 import { fuseRankings } from "./fusion.js"
 import { contextRecallAtBudget, recallAt, reciprocalRank } from "./metrics.js"
-import type { ChannelName, ChannelRankings } from "./ranking.js"
+import { CHANNEL_NAMES, type ChannelName, type ChannelRankings } from "./ranking.js"
 import {
   ROUTER_OBJECTIVES,
   ROUTER_SEARCH_STRATEGY,
@@ -29,7 +29,7 @@ import {
   type WeightSearchResult,
 } from "./types.js"
 
-const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dense"]
+const CHANNELS: readonly ChannelName[] = CHANNEL_NAMES
 const WEIGHT_LEVELS = [0, 0.5, 1, 2] as const
 const STATIC_FINE_WEIGHT_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
 const DYNAMIC_BASE_LEVELS = Array.from({ length: 10 }, (_, index) => (index + 1) / 10)
@@ -52,6 +52,7 @@ const ZERO_COEFFICIENTS: ChannelCoefficients = {
   camelcase: 0,
   bm25: 0,
   dense: 0,
+  sparse: 0,
 }
 
 /** Precomputed query evidence used for cheap fusion and weight experiments. */
@@ -151,7 +152,7 @@ const summarizeEvidenceRouter = (
 const summarizeProductionRrf = (samples: readonly WeightSearchSample[]): QualitySummary =>
   summarizeRanked(
     samples,
-    (sample) => fuseWithWeights(sample.rankings, routeQuery(sample.query), "rrf"),
+    (sample) => fuseWithWeights(sample.rankings, { ...routeQuery(sample.query), sparse: 0 }, "rrf"),
     (sample) => sample.targets,
     (sample) => sample.chunks,
   )
@@ -268,22 +269,21 @@ const isBetter = (candidate: QualitySummary, current: QualitySummary): boolean =
 
 const weightCandidates = (): readonly ChannelWeights[] => {
   const candidates: ChannelWeights[] = []
-  for (const identity of WEIGHT_LEVELS) {
-    for (const camelcase of WEIGHT_LEVELS) {
-      for (const bm25 of WEIGHT_LEVELS) {
-        for (const dense of WEIGHT_LEVELS) {
-          if (identity + camelcase + bm25 + dense === 0) continue
-          const max = Math.max(identity, camelcase, bm25, dense)
-          candidates.push({
-            identity: identity / max,
-            camelcase: camelcase / max,
-            bm25: bm25 / max,
-            dense: dense / max,
-          })
-        }
-      }
-    }
-  }
+  for (const identity of WEIGHT_LEVELS)
+    for (const camelcase of WEIGHT_LEVELS)
+      for (const bm25 of WEIGHT_LEVELS)
+        for (const dense of WEIGHT_LEVELS)
+          for (const sparse of WEIGHT_LEVELS) {
+            if (identity + camelcase + bm25 + dense + sparse === 0) continue
+            const max = Math.max(identity, camelcase, bm25, dense, sparse)
+            candidates.push({
+              identity: identity / max,
+              camelcase: camelcase / max,
+              bm25: bm25 / max,
+              dense: dense / max,
+              sparse: sparse / max,
+            })
+          }
   return [
     ...new Map(
       candidates.map((weights) => [
@@ -304,7 +304,13 @@ const shapleyValues = (
   samples: readonly WeightSearchSample[],
   weights: ChannelWeights,
 ): ChannelWeights => {
-  const values: Record<ChannelName, number> = { identity: 0, camelcase: 0, bm25: 0, dense: 0 }
+  const values: Record<ChannelName, number> = {
+    identity: 0,
+    camelcase: 0,
+    bm25: 0,
+    dense: 0,
+    sparse: 0,
+  }
   const channelCount = CHANNELS.length
   const utility = (mask: number): number => {
     if (mask === 0) return 0
@@ -313,6 +319,7 @@ const shapleyValues = (
       camelcase: mask & 2 ? weights.camelcase : 0,
       bm25: mask & 4 ? weights.bm25 : 0,
       dense: mask & 8 ? weights.dense : 0,
+      sparse: mask & 16 ? weights.sparse : 0,
     }
     return summarize(samples, coalition).recallAt20
   }
@@ -345,6 +352,7 @@ const normalizeWeights = (weights: ChannelWeights): ChannelWeights => {
     camelcase: weights.camelcase / max,
     bm25: weights.bm25 / max,
     dense: weights.dense / max,
+    sparse: weights.sparse / max,
   }
 }
 
@@ -474,6 +482,7 @@ const positiveBaseWeights = (weights: ChannelWeights): ChannelWeights =>
     camelcase: Math.max(DYNAMIC_BASE_LEVELS[0], weights.camelcase),
     bm25: Math.max(DYNAMIC_BASE_LEVELS[0], weights.bm25),
     dense: Math.max(DYNAMIC_BASE_LEVELS[0], weights.dense),
+    sparse: Math.max(DYNAMIC_BASE_LEVELS[0], weights.sparse),
   })
 
 const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig => ({
@@ -579,7 +588,7 @@ const buildGlobalRouterSeeds = (
 }
 
 const coefficientsKey = (coefficients: ChannelCoefficients): string =>
-  CHANNELS.map((channel) => coefficients[channel].toFixed(2)).join(":")
+  CHANNELS.map((channel) => (coefficients[channel] ?? 0).toFixed(2)).join(":")
 
 const routerKey = (config: EvidenceRouterConfig): string =>
   [
