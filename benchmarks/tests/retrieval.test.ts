@@ -3,7 +3,7 @@ import { Effect } from "effect"
 
 import { assignGroupedFolds } from "../retrieval/folds.js"
 import { runRetrievalBenchmark } from "../retrieval/runner.js"
-import type { BenchmarkProfile } from "../retrieval/types.js"
+import { ROUTER_OBJECTIVES, type BenchmarkProfile } from "../retrieval/types.js"
 
 const foldQuestions = (prefix: string) =>
   Array.from({ length: 12 }, (_, index) => ({
@@ -74,14 +74,16 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.repositories.length).toBeGreaterThan(0)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(15)
+    expect(artifact.schemaVersion).toBe(16)
     expect(artifact.searchStrategy.algorithm).toBe(
-      "halton-global-scout-elitist-beam-successive-halving",
+      "halton-global-scout-elitist-beam-successive-halving-pareto",
     )
     expect(artifact.searchStrategy.globalScouts).toBe(64)
     expect(artifact.searchStrategy.proxySampleFraction).toBe(0.25)
     expect(artifact.searchStrategy.proxyMinimumSamples).toBe(32)
     expect(artifact.searchStrategy.halvingKeepFactor).toBe(8)
+    expect(artifact.searchStrategy.objectives).toEqual(ROUTER_OBJECTIVES)
+    expect(artifact.searchStrategy.guardrailTolerance).toBe(0.01)
     expect(artifact.timings.totalDurationMs).toBeGreaterThan(0)
     expect(Object.values(artifact.timings).every((duration) => duration >= 0)).toBe(true)
     expect(artifact.embeddingRuns.every((run) => run.queryEmbeddingDurationMs >= 0)).toBe(true)
@@ -89,14 +91,15 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
       artifact.models.length * fusionMethods * holdoutsPerModel,
     )
     expect(artifact.recommendedFusionWeights.length).toBe(artifact.models.length * fusionMethods)
+    expect(artifact.productionRrfSearch.length).toBe(artifact.models.length * holdoutsPerModel)
     expect(artifact.evidenceRouterSearch.length).toBe(
-      artifact.models.length * routerFusionMethods * holdoutsPerModel,
+      artifact.models.length * routerFusionMethods * ROUTER_OBJECTIVES.length * holdoutsPerModel,
     )
     expect(new Set(artifact.evidenceRouterSearch.map((row) => row.fusion)).size).toBe(
       routerFusionMethods,
     )
     expect(artifact.recommendedEvidenceRouters.length).toBe(
-      artifact.models.length * routerFusionMethods,
+      artifact.models.length * routerFusionMethods * ROUTER_OBJECTIVES.length,
     )
     expect(artifact.evidenceRouterSearch.every((row) => row.proxyEvaluations >= 0)).toBe(true)
     expect(artifact.evidenceRouterSearch.every((row) => row.fullEvaluations > 0)).toBe(true)
@@ -106,6 +109,7 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.recommendedWeights.length).toBe(0)
     expect(artifact.measurements.every((row) => row.recallAt20 >= row.recallAt10)).toBe(true)
     expect(artifact.measurements.every((row) => row.recallAt10 >= row.recallAt5)).toBe(true)
+    expect(artifact.measurements.every((row) => row.recallAt50 >= row.recallAt20)).toBe(true)
     expect(outputPath).toMatch(/benchmarks[\\/]results[\\/]retrieval-.*\.json$/)
   })
 

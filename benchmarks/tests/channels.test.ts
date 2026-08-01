@@ -12,6 +12,7 @@ import { fuseRankings } from "../retrieval/fusion.js"
 import { recallAt, resolveGoldTargets } from "../retrieval/metrics.js"
 import type { PreparedCorpus } from "../retrieval/prepare.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "../retrieval/ranking.js"
+import { ROUTER_OBJECTIVES } from "../retrieval/types.js"
 import { optimizeEvidenceRouter, optimizeWeights } from "../retrieval/weight-search.js"
 
 const texts = [
@@ -96,6 +97,12 @@ const makeEvidenceRouterSamples = () => {
       chunks: evidenceChunks,
     },
   ]
+}
+
+const selectTop20Router = <T extends { readonly objective: string }>(results: readonly T[]): T => {
+  const result = results.find((candidate) => candidate.objective === "reranker-top20")
+  if (result === undefined) throw new Error("Missing reranker-top20 router objective")
+  return result
 }
 
 describe("retrieval benchmark fixture", () => {
@@ -399,7 +406,7 @@ describe("retrieval benchmark fixture", () => {
   it("selects one evidence router across queries with different reliable channels", () => {
     const samples = makeEvidenceRouterSamples()
 
-    const result = optimizeEvidenceRouter(
+    const routerResults = optimizeEvidenceRouter(
       "fixture",
       "dbsf",
       "grouped-5-fold",
@@ -407,6 +414,9 @@ describe("retrieval benchmark fixture", () => {
       samples,
       samples,
     )
+    expect(routerResults.map((result) => result.objective)).toEqual([...ROUTER_OBJECTIVES])
+    expect(routerResults.every((result) => result.productionDevelopment.recallAt50 >= 0)).toBe(true)
+    const result = selectTop20Router(routerResults)
     expect(result.fusion).toBe("dbsf")
     expect(Object.values(result.config.baseWeights).every((weight) => weight > 0)).toBe(true)
     const influenceNames = [
@@ -433,33 +443,25 @@ describe("retrieval benchmark fixture", () => {
 
   it("keeps router fitting deterministic and independent of validation samples", () => {
     const development = makeEvidenceRouterSamples()
-    const first = optimizeEvidenceRouter(
-      "fixture",
-      "dbsf",
-      "grouped-5-fold",
-      "1",
-      development,
-      development,
+    const first = selectTop20Router(
+      optimizeEvidenceRouter("fixture", "dbsf", "grouped-5-fold", "1", development, development),
     )
-    const repeat = optimizeEvidenceRouter(
-      "fixture",
-      "dbsf",
-      "grouped-5-fold",
-      "1",
-      development,
-      development,
+    const repeat = selectTop20Router(
+      optimizeEvidenceRouter("fixture", "dbsf", "grouped-5-fold", "1", development, development),
     )
     const alteredValidation = development.map((sample) => ({
       ...sample,
       targets: [new Set([0])],
     }))
-    const withAlteredValidation = optimizeEvidenceRouter(
-      "fixture",
-      "dbsf",
-      "grouped-5-fold",
-      "1",
-      development,
-      alteredValidation,
+    const withAlteredValidation = selectTop20Router(
+      optimizeEvidenceRouter(
+        "fixture",
+        "dbsf",
+        "grouped-5-fold",
+        "1",
+        development,
+        alteredValidation,
+      ),
     )
 
     expect(repeat.config).toEqual(first.config)

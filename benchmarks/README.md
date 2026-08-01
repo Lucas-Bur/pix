@@ -204,20 +204,24 @@ The grid optimizes development `Recall@20`, then `Recall@10`, 4k context recall,
 weights are evaluated unchanged on its excluded samples. Only after cross-validation does the report
 fit a recommended deployment candidate on all available samples. Weight search limits each physical
 channel to its top 200 candidates; ordinary production-variant measurements still use complete lists.
+Schema 16 also evaluates the current production RRF query-length router unchanged and uses it as the
+baseline for objective guardrails.
 
 Static weight search treats the four authored query forms as separate query-form-informed strata. Evidence-router
 search deliberately combines all forms: it does not receive `identifier`, `searchPhrase`,
 `naturalQuestion`, or `agentTask` labels. Search starts from 64 deterministic Halton scout points and a
 six-candidate beam. Schema 15 uses successive halving: each candidate pool is first scored on a
 deterministic 25% proxy sample, stratified by repository and query form with a 32-sample minimum, then
-up to eight beam widths are evaluated on the full development set. The full-quality elite cache protects
-the best exact candidates across coordinate passes. Dynamic base weights range from 0.1 to 1 so a
-channel cannot be permanently deleted before its evidence is observed; static ablations may still use
-zero. Per-channel score/agreement coefficients range from 0 to 1. Identifier-shape and query-length
-slopes range from -1 to 1 so one query signal may boost one channel while damping another. This
-bounded coarse-to-fine search avoids the combinatorial explosion of a full 20-parameter product; it is
-deterministic but does not claim a global optimum. Exact metric ties prefer the lower-coefficient
-candidate.
+up to eight beam widths are evaluated on the full development set. Schema 16 keeps one shared search
+archive and selects objective-diverse candidates for `direct`, `reranker-top20`, and `reranker-top50`.
+The full-quality elite cache protects the best exact candidates across coordinate passes. Dynamic base
+weights range from 0.1 to 1 so a channel cannot be permanently deleted before its evidence is observed;
+static ablations may still use zero. Per-channel score/agreement coefficients range from 0 to 1.
+Identifier-shape and query-length slopes range from -1 to 1 so one query signal may boost one channel
+while damping another. This bounded coarse-to-fine search avoids the combinatorial explosion of a full
+20-parameter product; it is deterministic but does not claim a global optimum. Exact metric ties prefer
+the lower-coefficient candidate. Each objective must remain within the configured 1% development
+guardrail against production RRF before it can be recommended.
 
 The selected router is evaluated unchanged on the excluded intent fold or repository and compared
 with static weights selected on the same development samples. Finer steps increase the number of
@@ -250,8 +254,8 @@ whether a signal generalizes; it adds grouped 5-fold and LORO. Use `full` for a 
 selected model, evaluates all three fusion methods, and emits fit-all candidates plus active diagnostics.
 
 For every schema, treat grouped and LORO hold-outs as the regression gate and fit-all as the candidate
-preview. Compare dynamic routers with each other to choose the active fusion; compare dynamic with its
-matching static baseline only to measure the incremental value of the new signal. Record the winning
+preview. Compare each dynamic objective with production RRF and its matching static baseline; do not
+collapse direct retrieval and reranker candidate-pool objectives into one score. Record the winning
 metrics, fit-all parameters, runtime, and any regressions in `benchmarks/BASELINE.md` before committing.
 
 ## Adding A Sparse Embedder
@@ -261,6 +265,10 @@ registry, and exposed through the same embedder port used by the existing dense 
 then consumes it through the registry; it must not contain a benchmark-only implementation. Add a
 model entry with dimensions, dtype, device, and cache identity, run the adapter and project tests, and
 verify that embedding-cache keys distinguish the new model.
+
+Schema 16 is the fixed reference baseline for this comparison. Sparse evaluation keeps the existing
+corpora, folds, channel ablations, fusion methods, and router objectives unchanged; reranker work stays
+out of scope until sparse retrieval has been evaluated independently.
 
 The regression sequence for a new embedder is `bench:retrieval:fixture`, `bench:retrieval:corpus`,
 `bench:retrieval:smoke`, `bench:retrieval:develop`, `bench:retrieval:validate`, and finally `full` for
@@ -293,14 +301,15 @@ tests while manifests continue to own pinned revisions and exact gold targets.
 The sparse proposal is GitHub issue #159; issue #15 is the older closed `pix index` E2E issue. Sparse
 retrieval is a medium/high architectural change, not just another model: it needs a sparse output
 type and port, model/cache registration, SQLite migrations for token-weight pairs, a pure sparse
-scorer, fusion wiring, and benchmark regression rows. Issue #159 currently recommends the 67M
-Apache-2.0 OpenSearch v3 Distill ONNX model; the 133M GTE model is above the footprint ceiling. The
-recommended order is to complete the fusion seam first, then implement the sparse channel in the main
-package and evaluate it through the documented regression sequence.
+scorer, fusion wiring, and benchmark regression rows. Issue #159 proposes a head-to-head comparison of
+the Apache-2.0 OpenSearch v3 GTE and v3 Distill ONNX variants; Distill is the footprint-safe candidate,
+while GTE remains the larger quality comparison. The recommended order is to complete the fusion seam
+first, implement the sparse channel in the main package, and evaluate both candidates through the
+documented regression sequence.
 
 ## Metrics
 
-- `Recall@5/10/20`: fraction of authored gold targets represented by at least one returned chunk.
+- `Recall@5/10/20/50`: fraction of authored gold targets represented by at least one returned chunk.
 - `Success@10/20`: whether all authored targets for the question are represented.
 - `MRR`: reciprocal rank of the first relevant chunk; rank-sensitive but secondary for navigation.
 - `ContextRecall@Budget`: gold recall after packing complete ranked chunks into 2k, 4k, 8k, or 16k
@@ -316,14 +325,15 @@ individual gold ranks, timing, and every metric. The Markdown report includes qu
 marginal leave-one-channel-out contribution, cross-validation folds, Shapley values, and final fitted
 weight candidates. Schema 10 artifacts also include static fusion holdouts, fit-all fusion candidates,
 static-versus-dynamic router holdouts for each active fusion method, and the final router candidates
-fitted across all query forms. The router's fusion method and fit-all context metrics are recorded
-explicitly.
+fitted across all query forms. Schema 16 additionally records production RRF holdouts, Recall@50, the
+objective-specific router summaries, and development guardrail status. The router's fusion method and
+fit-all context metrics are recorded explicitly.
 
 ## Baseline Visualization
 
 `benchmarks/plot-baseline.html` is a standalone HTML viewer for the schema progression recorded in
 `benchmarks/BASELINE.md`. It plots the best grouped hold-out, LORO, and fit-all values per schema for
-`R@10`, `R@20`, and `Context@4k`, split by model (MiniLM vs. BGE-small) so model swaps and
+`R@10`, `R@20`, `R@50`, and `Context@4k`, split by model (MiniLM vs. BGE-small) so model swaps and
 comparison-only runs stay visible. Open the file directly in a browser; it needs no build step,
 server, or network access.
 
@@ -337,6 +347,8 @@ are not included in routine profile runs.
 Do not infer statistical significance from one repository or from the 15-question smoke corpus.
 Expand the authored questions and preserve pinned revisions before making a product-wide claim.
 
-The evidence router is currently benchmark-only. Promote a rule into production only when grouped
-intent folds and leave-one-repository-out both show that its dynamic holdout quality improves or
-matches the static baseline without unacceptable context-recall regressions.
+The evidence router is currently benchmark-only. Promote a scenario-specific rule into production only
+when grouped intent folds and leave-one-repository-out both show that its dynamic holdout quality
+improves or matches production RRF and the matching static baseline without unacceptable
+context-recall regressions. A reranker candidate objective is not evidence that a reranker itself is
+beneficial; evaluate reranker quality and latency separately.

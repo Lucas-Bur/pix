@@ -46,6 +46,7 @@ import {
   optimizeEvidenceRouter,
   optimizeFusionWeights,
   optimizeWeights,
+  evaluateProductionRrf,
   type WeightSearchSample,
 } from "./weight-search.js"
 
@@ -434,6 +435,7 @@ export const runRetrievalBenchmark = (
                   recallAt5: recallAt(ranked, targets, 5),
                   recallAt10: recallAt(ranked, targets, 10),
                   recallAt20: recallAt(ranked, targets, 20),
+                  recallAt50: recallAt(ranked, targets, 50),
                   successAt10: successAt(ranked, targets, 10),
                   successAt20: successAt(ranked, targets, 20),
                   reciprocalRank: reciprocalRank(ranked, targets),
@@ -501,6 +503,34 @@ export const runRetrievalBenchmark = (
     const weightSearchDurationMs = performance.now() - weightSearchStartedAt
 
     const fusionSearchStartedAt = performance.now()
+    const productionRrfSearch: BenchmarkArtifact["productionRrfSearch"][number][] = []
+    for (const [model, samples] of samplesByModel) {
+      const repositories = [...new Set(samples.map((sample) => sample.repository))]
+      for (let fold = 0; fold < config.groupedFolds; fold++) {
+        productionRrfSearch.push(
+          evaluateProductionRrf(
+            model,
+            groupedStrategy,
+            String(fold + 1),
+            samples.filter((sample) => sample.groupedFold !== fold),
+            samples.filter((sample) => sample.groupedFold === fold),
+          ),
+        )
+      }
+      if (config.repositoryHoldouts && repositories.length > 1) {
+        for (const repository of repositories) {
+          productionRrfSearch.push(
+            evaluateProductionRrf(
+              model,
+              "leave-one-repository-out",
+              repository,
+              samples.filter((sample) => sample.repository !== repository),
+              samples.filter((sample) => sample.repository === repository),
+            ),
+          )
+        }
+      }
+    }
     const fusionSearch: BenchmarkArtifact["fusionSearch"][number][] = []
     for (const [model, samples] of samplesByModel) {
       const repositories = [...new Set(samples.map((sample) => sample.repository))]
@@ -548,7 +578,7 @@ export const runRetrievalBenchmark = (
             `${model}: selecting ${fusion} evidence router for grouped fold ${fold + 1}/${config.groupedFolds}`,
           )
           evidenceRouterSearch.push(
-            optimizeEvidenceRouter(
+            ...optimizeEvidenceRouter(
               model,
               fusion,
               groupedStrategy,
@@ -565,7 +595,7 @@ export const runRetrievalBenchmark = (
               `${model}: selecting ${fusion} evidence router with ${repository} held out`,
             )
             evidenceRouterSearch.push(
-              optimizeEvidenceRouter(
+              ...optimizeEvidenceRouter(
                 model,
                 fusion,
                 "leave-one-repository-out",
@@ -580,7 +610,7 @@ export const runRetrievalBenchmark = (
     }
     reportProgress("fitting final evidence router on all samples")
     const recommendedEvidenceRouters = [...samplesByModel].flatMap(([model, samples]) =>
-      config.routerFusionMethods.map((fusion) =>
+      config.routerFusionMethods.flatMap((fusion) =>
         fitRecommendedEvidenceRouter(model, fusion, samples),
       ),
     )
@@ -596,7 +626,7 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 15,
+      schemaVersion: 16,
       benchmarkProfile: profile,
       generatedAt: new Date().toISOString(),
       searchStrategy: ROUTER_SEARCH_STRATEGY,
@@ -622,6 +652,7 @@ export const runRetrievalBenchmark = (
       measurements,
       weightSearch,
       recommendedWeights,
+      productionRrfSearch,
       fusionSearch,
       recommendedFusionWeights,
       evidenceRouterSearch,

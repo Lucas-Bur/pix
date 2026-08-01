@@ -4,6 +4,7 @@ import type {
   ChannelWeights,
   EvidenceRouterSearchResult,
   FusionSearchResult,
+  ProductionRrfSearchResult,
   QueryMeasurement,
 } from "./types.js"
 
@@ -29,6 +30,16 @@ const weightedRouterAverage = (
 const weightedFusionAverage = (
   rows: readonly FusionSearchResult[],
   select: (row: FusionSearchResult) => number,
+): number => {
+  const samples = rows.reduce((sum, row) => sum + row.validationQueries, 0)
+  return samples === 0
+    ? 0
+    : rows.reduce((sum, row) => sum + select(row) * row.validationQueries, 0) / samples
+}
+
+const weightedProductionAverage = (
+  rows: readonly ProductionRrfSearchResult[],
+  select: (row: ProductionRrfSearchResult) => number,
 ): number => {
   const samples = rows.reduce((sum, row) => sum + row.validationQueries, 0)
   return samples === 0
@@ -82,14 +93,14 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     `| ${duration(artifact.timings.totalDurationMs)} | ${duration(artifact.timings.corpusPreparationDurationMs)} | ${duration(artifact.timings.embeddingDurationMs)} | ${duration(artifact.timings.retrievalDurationMs)} | ${duration(artifact.timings.weightSearchDurationMs)} | ${duration(artifact.timings.fusionSearchDurationMs)} | ${duration(artifact.timings.evidenceRouterSearchDurationMs)} |`,
     "",
-    "| Repository | Model | Query form | Variant | R@5 | R@10 | R@20 | S@10 | S@20 | MRR | Ctx@2k | Ctx@4k |",
-    "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Repository | Model | Query form | Variant | R@5 | R@10 | R@20 | R@50 | S@10 | S@20 | MRR | Ctx@2k | Ctx@4k |",
+    "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   ]
 
   for (const [key, rows] of [...groups].sort(([left], [right]) => left.localeCompare(right))) {
     const [repository, model, queryKind, variant] = key.split("\0")
     lines.push(
-      `| ${repository} | ${model} | ${queryKind} | ${variant} | ${percent(average(rows, (row) => row.recallAt5))} | ${percent(average(rows, (row) => row.recallAt10))} | ${percent(average(rows, (row) => row.recallAt20))} | ${percent(average(rows, (row) => Number(row.successAt10)))} | ${percent(average(rows, (row) => Number(row.successAt20)))} | ${average(rows, (row) => row.reciprocalRank).toFixed(3)} | ${percent(average(rows, (row) => row.contextRecall["2048"] ?? 0))} | ${percent(average(rows, (row) => row.contextRecall["4096"] ?? 0))} |`,
+      `| ${repository} | ${model} | ${queryKind} | ${variant} | ${percent(average(rows, (row) => row.recallAt5))} | ${percent(average(rows, (row) => row.recallAt10))} | ${percent(average(rows, (row) => row.recallAt20))} | ${percent(average(rows, (row) => row.recallAt50))} | ${percent(average(rows, (row) => Number(row.successAt10)))} | ${percent(average(rows, (row) => Number(row.successAt20)))} | ${average(rows, (row) => row.reciprocalRank).toFixed(3)} | ${percent(average(rows, (row) => row.contextRecall["2048"] ?? 0))} | ${percent(average(rows, (row) => row.contextRecall["4096"] ?? 0))} |`,
     )
   }
 
@@ -118,6 +129,29 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     const full = recall("rrf")
     lines.push(
       `| ${repository} | ${model} | ${queryKind} | ${percent(full - recall("rrf-no-identity"))} | ${percent(full - recall("rrf-no-camelcase"))} | ${percent(full - recall("rrf-no-bm25"))} | ${percent(full - recall("rrf-no-dense"))} |`,
+    )
+  }
+
+  const productionGroups = new Map<string, ProductionRrfSearchResult[]>()
+  for (const result of artifact.productionRrfSearch) {
+    const key = `${result.model}\0${result.strategy}`
+    productionGroups.set(key, [...(productionGroups.get(key) ?? []), result])
+  }
+  lines.push(
+    "",
+    "## Production RRF Holdouts",
+    "",
+    "These rows evaluate the current production query-length router unchanged; they are the baseline for objective guardrails.",
+    "",
+    "| Model | Strategy | Validation R@5 | Validation R@10 | Validation R@20 | Validation R@50 | Validation Ctx@4k |",
+    "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+  )
+  for (const [key, rows] of [...productionGroups].sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    const [model, strategy] = key.split("\0")
+    lines.push(
+      `| ${model} | ${strategy} | ${percent(weightedProductionAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedProductionAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedProductionAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedProductionAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedProductionAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
     )
   }
 
@@ -194,38 +228,38 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Evidence Router Holdouts",
     "",
-    "One router is selected across all query forms using only observable query features, score separation, score geometry, query-term coverage, pairwise cross-channel agreement, and dense confidence. Static and dynamic validation columns use the same fusion method and excluded fold.",
+    "One shared search produces direct, reranker-top20, and reranker-top50 candidates. Production RRF is the guardrail baseline; static and dynamic validation columns use the same fusion method and excluded fold.",
     "",
-    "| Model | Fusion | Strategy | Fold | Proxy evals | Full evals | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
-    "| --- | --- | --- | --- | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Model | Fusion | Objective | Strategy | Fold | Guardrails | Proxy evals | Full evals | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Dynamic R@50 | Static Ctx@4k | Dynamic Ctx@4k |",
+    "| --- | --- | --- | --- | --- | --- | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.evidenceRouterSearch) {
     const baseWeights = formatWeights(result.config.baseWeights)
     const staticWeights = formatWeights(result.staticWeights)
     const influences = formatInfluences(result.config)
     lines.push(
-      `| ${result.model} | ${result.fusion} | ${result.strategy} | ${result.fold} | ${result.proxyEvaluations} | ${result.fullEvaluations} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticValidation.recallAt5)} | ${percent(result.validation.recallAt5)} | ${percent(result.staticValidation.recallAt10)} | ${percent(result.validation.recallAt10)} | ${percent(result.staticValidation.recallAt20)} | ${percent(result.validation.recallAt20)} | ${percent(result.staticValidation.contextRecallAt4096)} | ${percent(result.validation.contextRecallAt4096)} |`,
+      `| ${result.model} | ${result.fusion} | ${result.objective} | ${result.strategy} | ${result.fold} | ${result.guardrailsMet ? "yes" : "no"} | ${result.proxyEvaluations} | ${result.fullEvaluations} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticValidation.recallAt5)} | ${percent(result.validation.recallAt5)} | ${percent(result.staticValidation.recallAt10)} | ${percent(result.validation.recallAt10)} | ${percent(result.staticValidation.recallAt20)} | ${percent(result.validation.recallAt20)} | ${percent(result.validation.recallAt50)} | ${percent(result.staticValidation.contextRecallAt4096)} | ${percent(result.validation.contextRecallAt4096)} |`,
     )
   }
 
   const routerGroups = new Map<string, EvidenceRouterSearchResult[]>()
   for (const result of artifact.evidenceRouterSearch) {
-    const key = `${result.model}\0${result.fusion}\0${result.strategy}`
+    const key = `${result.model}\0${result.fusion}\0${result.objective}\0${result.strategy}`
     routerGroups.set(key, [...(routerGroups.get(key) ?? []), result])
   }
   lines.push(
     "",
     "## Evidence Router Summary",
     "",
-    "Validation metrics are weighted by each excluded fold's query count.",
+    "Validation metrics are weighted by each excluded fold's query count. Production RRF is shown beside the selected dynamic router.",
     "",
-    "| Model | Fusion | Strategy | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
-    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Model | Fusion | Objective | Strategy | Guardrails | Production R@5 | Dynamic R@5 | Production R@10 | Dynamic R@10 | Production R@20 | Dynamic R@20 | Production R@50 | Dynamic R@50 | Production Ctx@4k | Dynamic Ctx@4k |",
+    "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const [key, rows] of routerGroups) {
-    const [model, fusion, strategy] = key.split("\0")
+    const [model, fusion, objective, strategy] = key.split("\0")
     lines.push(
-      `| ${model} | ${fusion} | ${strategy} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt5))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.staticValidation.contextRecallAt4096))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
+      `| ${model} | ${fusion} | ${objective} | ${strategy} | ${rows.every((row) => row.guardrailsMet) ? "yes" : "no"} | ${percent(weightedRouterAverage(rows, (row) => row.productionValidation.recallAt5))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedRouterAverage(rows, (row) => row.productionValidation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedRouterAverage(rows, (row) => row.productionValidation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedRouterAverage(rows, (row) => row.productionValidation.recallAt50))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedRouterAverage(rows, (row) => row.productionValidation.contextRecallAt4096))} | ${percent(weightedRouterAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
     )
   }
 
@@ -233,17 +267,17 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Recommended Evidence Router",
     "",
-    "These candidates are fitted across all query forms only after grouped and repository holdouts have measured generalization.",
+    "These scenario-specific candidates are fitted across all query forms only after grouped and repository holdouts have measured generalization.",
     "",
-    "| Model | Fusion | Samples | Proxy evals | Full evals | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Static Ctx@4k | Dynamic Ctx@4k |",
-    "| --- | --- | ---: | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Model | Fusion | Objective | Guardrails | Samples | Proxy evals | Full evals | Static I/C/B/D | Dynamic base I/C/B/D | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Dynamic R@50 | Static Ctx@4k | Dynamic Ctx@4k |",
+    "| --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.recommendedEvidenceRouters) {
     const baseWeights = formatWeights(result.config.baseWeights)
     const staticWeights = formatWeights(result.staticWeights)
     const influences = formatInfluences(result.config)
     lines.push(
-      `| ${result.model} | ${result.fusion} | ${result.samples} | ${result.proxyEvaluations} | ${result.fullEvaluations} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticQuality.recallAt5)} | ${percent(result.fitQuality.recallAt5)} | ${percent(result.staticQuality.recallAt10)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.staticQuality.recallAt20)} | ${percent(result.fitQuality.recallAt20)} | ${percent(result.staticQuality.contextRecallAt4096)} | ${percent(result.fitQuality.contextRecallAt4096)} |`,
+      `| ${result.model} | ${result.fusion} | ${result.objective} | ${result.guardrailsMet ? "yes" : "no"} | ${result.samples} | ${result.proxyEvaluations} | ${result.fullEvaluations} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticQuality.recallAt5)} | ${percent(result.fitQuality.recallAt5)} | ${percent(result.staticQuality.recallAt10)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.staticQuality.recallAt20)} | ${percent(result.fitQuality.recallAt20)} | ${percent(result.fitQuality.recallAt50)} | ${percent(result.staticQuality.contextRecallAt4096)} | ${percent(result.fitQuality.contextRecallAt4096)} |`,
     )
   }
 

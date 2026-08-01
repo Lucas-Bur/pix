@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Retrieval-Baseline Fortschritt (Schema 2–16)</title>
+    <style>
+      :root {
+        --ink: #1f2430;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --paper: #ffffff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 2rem clamp(1rem, 4vw, 4rem) 4rem;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        background: #f8fafc;
+      }
+      h1 {
+        font-size: 1.35rem;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.05rem;
+        margin: 2.5rem 0 0.5rem;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 0.85rem;
+        margin: 0 0 1.5rem;
+        max-width: 72rem;
+        line-height: 1.5;
+      }
+      .note {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        font-size: 0.82rem;
+        color: #92400e;
+        margin: 1rem 0;
+        max-width: 72rem;
+        line-height: 1.5;
+      }
+      .model-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+        max-width: 72rem;
+        margin-bottom: 1.5rem;
+      }
+      .model-card {
+        flex: 1 1 620px;
+        min-width: 0;
+      }
+      .model-head {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.5rem;
+      }
+      .model-name {
+        font-weight: 700;
+        font-size: 0.95rem;
+      }
+      .model-tag {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        color: #fff;
+      }
+      .tag-mini {
+        background: #2563eb;
+      }
+      .tag-bge {
+        background: #ea580c;
+      }
+      .model-scope {
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+      .chart-card {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 1rem 1rem 0.75rem;
+      }
+      .chart-title {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin: 0 0 0.35rem;
+        color: var(--muted);
+      }
+      .chart-card svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.25rem;
+        font-size: 0.75rem;
+        color: var(--muted);
+        margin: 0.5rem 0 0.25rem;
+      }
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .swatch {
+        width: 14px;
+        height: 3px;
+        border-radius: 2px;
+        display: inline-block;
+      }
+      .swatch.solid {
+        height: 3px;
+      }
+      .swatch.dash {
+        height: 0;
+        border-top: 2px dashed;
+      }
+      .axis-label {
+        fill: var(--muted);
+        font-size: 11px;
+      }
+      .tick-label {
+        fill: var(--muted);
+        font-size: 10px;
+      }
+      .x-label {
+        fill: var(--ink);
+        font-size: 11px;
+        font-weight: 600;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.72rem;
+        margin-top: 0.5rem;
+      }
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 0.28rem 0.45rem;
+        text-align: right;
+      }
+      th {
+        background: #f1f5f9;
+        font-weight: 600;
+      }
+      th:first-child,
+      td:first-child {
+        text-align: left;
+      }
+      td.miss {
+        color: #cbd5e1;
+      }
+      .tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: rgba(31, 36, 48, 0.95);
+        color: #fff;
+        padding: 0.4rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        line-height: 1.4;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.08s;
+        z-index: 5;
+      }
+      .err {
+        color: #b91c1c;
+        border: 1px solid #fca5a5;
+        background: #fef2f2;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Retrieval-Baseline: Fortschritt über die Schemata</h1>
+    <p class="sub">
+      Datenquelle: <code>benchmarks/BASELINE.md</code> (Schema 2–16). Getrennt nach Modell:
+      <b>MiniLM</b> (Router-Experimente, Schemata 2–16) und <b>BGE-small</b> (erstmals als Vergleich
+      in Schema 4, aktives Modell ab Schema 12, vollständiger Vergleich in Schema 13). Pro Schema
+      ist der <b>beste</b> Wert des jeweiligen Modells über die aktiven Fusionen dargestellt – als
+      <b>gruppierter Holdout</b>, <b>LORO</b> und <b>Fit-All</b>-Vorschau. Schema 1 nutzt ein
+      anderes Protokoll und fehlt deshalb (siehe unten). Mauszeiger über einen Punkt zeigt die
+      zugrunde liegende Methode.
+    </p>
+
+    <div class="note">
+      Nicht jeder Datenpunkt ist mit jedem vergleichbar: Schema 2 hat noch keinen Router (Ø der vier
+      Query-Formen), Schema 7 vergleicht statische Fusionen ohne dynamischen Router, und in Schema 4
+      trägt BGE nur R@20/Context bei (kein R@10). Schema 12 ist der BGE-Milestone – dort ist BGE das
+      aktive Modell und MiniLM wird nur noch als Vergleich gemessen; Schema 13 ist der vollständige
+      BGE-Vergleich über alle drei Fusionen. Die Schemata 14–15 kehren zu MiniLM (DBSF) zurück und
+      messen Router-Optimierer- und Laufzeitverbesserungen bei unveränderten Holdout-Werten. Schema
+      16 bewertet separate Deployment-Objectives (<code>direct</code>, <code>reranker-top20</code>,
+      <code>reranker-top50</code>); pro Metrik ist das beste Objective eingetragen. Die
+      Fit-All-Reihe ist eine In-Sample-Vorschau, kein Generalisierungsnachweis.
+    </div>
+
+    <div id="app"></div>
+
+    <noscript><p class="err">Diese Seite benötigt JavaScript.</p></noscript>
+
+    <script>
+      "use strict"
+
+      const MODELS = {
+        mini: {
+          label: "MiniLM",
+          tag: "MiniLM",
+          cls: "tag-mini",
+          scope: "all-MiniLM-L6-v2 · Schemata 2–16",
+        },
+        bge: {
+          label: "BGE-small",
+          tag: "BGE-small",
+          cls: "tag-bge",
+          scope: "bge-small-en-v1.5 · Schema 4 (Vergleich), aktiv ab Schema 12",
+        },
+      }
+
+      const DATA = {
+        mini: {
+          r20: {
+            grouped: [
+              { s: 2, v: 78.9, m: "Ø der 4 Query-Formen (per-Form Gewichte)" },
+              { s: 3, v: 77.5, m: "Evidence-Router (gegruppt)" },
+              { s: 4, v: 78.0, m: "dynamischer Router (gegruppt, Vergleich im BGE-Run)" },
+              { s: 5, v: 78.1, m: "positive Basen (gegruppt)" },
+              { s: 6, v: 76.4, m: "Log2-Kernel (gegruppt)" },
+              { s: 7, v: 82.8, m: "Relative-Score-Fusion (kein dynamischer Router)" },
+              { s: 8, v: 80.8, m: "DBSF dynamisch (gegruppt 5-fold)" },
+              { s: 9, v: 82.2, m: "Relative-Score dynamisch (gegruppt)" },
+              { s: 10, v: 82.2, m: "Relative-Score dynamisch (gegruppt)" },
+              { s: 11, v: 83.3, m: "Relative-Score dynamisch (gegruppt)" },
+              { s: 12, v: 82.8, m: "Relative-Score dynamisch (gegruppt, Vergleich)" },
+              { s: 14, v: 78.1, m: "DBSF dynamisch (gegruppt 5-fold)" },
+              { s: 15, v: 78.1, m: "DBSF dynamisch (gegruppt 5-fold)" },
+              { s: 16, v: 80.3, m: "Objective reranker-top50 (gegruppt)" },
+            ],
+            loro: [
+              { s: 2, v: 79.7, m: "Ø der 4 Query-Formen (per-Form Gewichte)" },
+              { s: 3, v: 78.6, m: "Evidence-Router (LORO)" },
+              { s: 4, v: 80.3, m: "dynamischer Router (LORO, Vergleich im BGE-Run)" },
+              { s: 5, v: 80.3, m: "positive Basen (LORO)" },
+              { s: 6, v: 81.1, m: "Log2-Kernel (LORO)" },
+              { s: 7, v: 83.3, m: "Relative-Score-Fusion (kein dynamischer Router)" },
+              { s: 8, v: 80.3, m: "DBSF dynamisch (LORO)" },
+              { s: 9, v: 82.8, m: "Relative-Score dynamisch (LORO)" },
+              { s: 10, v: 83.3, m: "Relative-Score dynamisch (LORO)" },
+              { s: 11, v: 82.8, m: "Relative-Score dynamisch (LORO)" },
+              { s: 12, v: 83.6, m: "Relative-Score dynamisch (LORO, Vergleich)" },
+              { s: 14, v: 80.0, m: "DBSF dynamisch (LORO)" },
+              { s: 15, v: 80.0, m: "DBSF dynamisch (LORO)" },
+              { s: 16, v: 81.9, m: "Objective direct (LORO)" },
+            ],
+            fitall: [
+              { s: 3, v: 82.5, m: "Evidence-Router" },
+              { s: 4, v: 83.1, m: "dynamischer Router" },
+              { s: 5, v: 83.1, m: "positive Basen" },
+              { s: 6, v: 83.1, m: "Log2-Kernel" },
+              { s: 8, v: 83.9, m: "DBSF" },
+              { s: 9, v: 85.3, m: "Relative-Score" },
+              { s: 10, v: 85.3, m: "Relative-Score" },
+              { s: 11, v: 85.3, m: "Relative-Score" },
+              { s: 12, v: 85.8, m: "Relative-Score (Vergleich)" },
+              { s: 14, v: 83.9, m: "DBSF" },
+              { s: 15, v: 83.9, m: "DBSF" },
+              { s: 16, v: 84.2, m: "Objective reranker-top20" },
+            ],
+            r50: {
+              grouped: [{ s: 16, v: 89.2, m: "Objective reranker-top50 (gegruppt)" }],
+              loro: [{ s: 16, v: 89.4, m: "Objective reranker-top20 (LORO)" }],
+              fitall: [{ s: 16, v: 92.5, m: "Objective reranker-top50" }],
+            },
+          },
+          r10: {
+            grouped: [
+              { s: 3, v: 70.8, m: "Evidence-Router (gegruppt)" },
+              { s: 4, v: 68.0, m: "dynamischer Router (gegruppt, Vergleich im BGE-Run)" },
+              { s: 5, v: 68.1, m: "positive Basen (gegruppt)" },
+              { s: 6, v: 68.6, m: "Log2-Kernel (gegruppt)" },
+              { s: 7, v: 71.9, m: "DBSF-Fusion (kein dynamischer Router)" },
+              { s: 8, v: 72.5, m: "DBSF dynamisch (gegruppt 5-fold)" },
+              { s: 9, v: 72.8, m: "Relative-Score dynamisch (gegruppt)" },
+              { s: 10, v: 72.8, m: "Relative-Score dynamisch (gegruppt)" },
+              { s: 11, v: 72.5, m: "DBSF dynamisch (gegruppt)" },
+              { s: 12, v: 73.3, m: "Relative-Score dynamisch (gegruppt, Vergleich)" },
+              { s: 14, v: 73.6, m: "DBSF dynamisch (gegruppt 5-fold)" },
+              { s: 15, v: 73.6, m: "DBSF dynamisch (gegruppt 5-fold)" },
+              { s: 16, v: 74.2, m: "Objective reranker-top20 (gegruppt)" },
+            ],
+            loro: [
+              { s: 3, v: 70.8, m: "Evidence-Router (LORO)" },
+              { s: 4, v: 70.3, m: "dynamischer Router (LORO, Vergleich im BGE-Run)" },
+              { s: 5, v: 70.3, m: "positive Basen (LORO)" },
+              { s: 6, v: 69.7, m: "Log2-Kernel (LORO)" },
+              { s: 7, v: 72.5, m: "DBSF-Fusion (kein dynamischer Router)" },
+              { s: 8, v: 73.1, m: "DBSF dynamisch (LORO)" },
+              { s: 9, v: 73.1, m: "DBSF dynamisch (LORO)" },
+              { s: 10, v: 72.5, m: "DBSF dynamisch (LORO)" },
+              { s: 11, v: 72.5, m: "DBSF dynamisch (LORO)" },
+              { s: 12, v: 73.1, m: "DBSF dynamisch (LORO, Vergleich)" },
+              { s: 14, v: 73.1, m: "DBSF dynamisch (LORO)" },
+              { s: 15, v: 73.1, m: "DBSF dynamisch (LORO)" },
+              { s: 16, v: 73.6, m: "Objective direct (LORO)" },
+            ],
+            fitall: [
+              { s: 3, v: 73.1, m: "Evidence-Router" },
+              { s: 4, v: 68.6, m: "dynamischer Router" },
+              { s: 5, v: 68.6, m: "positive Basen" },
+              { s: 6, v: 69.2, m: "Log2-Kernel" },
+              { s: 8, v: 73.6, m: "DBSF" },
+              { s: 9, v: 74.4, m: "Relative-Score" },
+              { s: 10, v: 75.3, m: "DBSF" },
+              { s: 11, v: 73.6, m: "DBSF" },
+              { s: 12, v: 72.5, m: "Relative-Score (Vergleich)" },
+              { s: 14, v: 74.2, m: "DBSF" },
+              { s: 15, v: 74.2, m: "DBSF" },
+              { s: 16, v: 75.3, m: "Objective direct" },
+            ],
+          },
+          ctx: {
+            grouped: [
+              { s: 3, v: 66.1, m: "Evidence-Router (gegruppt)" },
+              { s: 4, v: 63.4, m: "dynamischer Router (gegruppt, Vergleich im BGE-Run)" },
+              { s: 5, v: 63.3, m: "positive Basen (gegruppt)" },
+              { s: 6, v: 64.4, m: "Log2-Kernel (gegruppt)" },
+              { s: 7, v: 65.0, m: "DBSF-Fusion (kein dynamischer Router)" },
+              { s: 8, v: 65.0, m: "DBSF dynamisch (gegruppt 5-fold)" },
+              { s: 9, v: 66.1, m: "Relative-Score dynamisch (gegruppt)" },
+              { s: 10, v: 66.7, m: "Relative-Score dynamisch (gegruppt)" },
+              { s: 11, v: 65.6, m: "Relative-Score dynamisch (gegruppt)" },
+              { s: 12, v: 66.1, m: "DBSF dynamisch (gegruppt, Vergleich)" },
+              { s: 14, v: 65.6, m: "DBSF dynamisch (gegruppt 5-fold)" },
+              { s: 15, v: 65.6, m: "DBSF dynamisch (gegruppt 5-fold)" },
+              { s: 16, v: 67.5, m: "Objective direct (gegruppt)" },
+            ],
+            loro: [
+              { s: 3, v: 67.5, m: "Evidence-Router (LORO)" },
+              { s: 4, v: 65.3, m: "dynamischer Router (LORO, Vergleich im BGE-Run)" },
+              { s: 5, v: 64.7, m: "positive Basen (LORO)" },
+              { s: 6, v: 65.3, m: "Log2-Kernel (LORO)" },
+              { s: 7, v: 66.9, m: "RRF-Fusion (kein dynamischer Router)" },
+              { s: 8, v: 64.2, m: "DBSF dynamisch (LORO)" },
+              { s: 9, v: 68.1, m: "RRF dynamisch (LORO)" },
+              { s: 10, v: 68.6, m: "DBSF dynamisch (LORO)" },
+              { s: 11, v: 68.6, m: "DBSF dynamisch (LORO)" },
+              { s: 12, v: 68.6, m: "DBSF dynamisch (LORO, Vergleich)" },
+              { s: 14, v: 69.2, m: "DBSF dynamisch (LORO)" },
+              { s: 15, v: 69.2, m: "DBSF dynamisch (LORO)" },
+              { s: 16, v: 66.4, m: "Objective direct (LORO)" },
+            ],
+            fitall: [
+              { s: 3, v: 64.4, m: "Evidence-Router" },
+              { s: 4, v: 63.3, m: "dynamischer Router" },
+              { s: 5, v: 63.3, m: "positive Basen" },
+              { s: 6, v: 62.8, m: "Log2-Kernel" },
+              { s: 8, v: 64.7, m: "DBSF" },
+              { s: 9, v: 66.4, m: "DBSF" },
+              { s: 10, v: 64.2, m: "Relative-Score" },
+              { s: 11, v: 65.8, m: "DBSF" },
+              { s: 12, v: 66.4, m: "DBSF (Vergleich)" },
+              { s: 14, v: 64.7, m: "DBSF" },
+              { s: 15, v: 65.3, m: "DBSF" },
+              { s: 16, v: 71.9, m: "Objective direct" },
+            ],
+          },
+        },
+        bge: {
+          r20: {
+            grouped: [
+              { s: 4, v: 85.6, m: "dynamischer Router (gegruppt)" },
+              { s: 12, v: 88.9, m: "DBSF dynamisch (gegruppt 5-fold)" },
+              { s: 13, v: 88.9, m: "Relative-Score dynamisch (gegruppt)" },
+            ],
+            loro: [
+              { s: 4, v: 82.8, m: "dynamischer Router (LORO)" },
+              { s: 12, v: 88.3, m: "DBSF dynamisch (LORO)" },
+              { s: 13, v: 88.3, m: "DBSF dynamisch (LORO)" },
+            ],
+            fitall: [
+              { s: 12, v: 90.0, m: "DBSF" },
+              { s: 13, v: 90.0, m: "DBSF" },
+            ],
+          },
+          r50: { grouped: [], loro: [], fitall: [] },
+          r10: {
+            grouped: [
+              { s: 12, v: 76.7, m: "Relative-Score dynamisch (gegruppt 5-fold)" },
+              { s: 13, v: 76.4, m: "RRF dynamisch (gegruppt)" },
+            ],
+            loro: [
+              { s: 12, v: 75.8, m: "DBSF dynamisch (LORO)" },
+              { s: 13, v: 75.8, m: "DBSF dynamisch (LORO)" },
+            ],
+            fitall: [
+              { s: 12, v: 77.8, m: "Relative-Score" },
+              { s: 13, v: 77.8, m: "Relative-Score" },
+            ],
+          },
+          ctx: {
+            grouped: [
+              { s: 4, v: 67.5, m: "dynamischer Router (gegruppt)" },
+              { s: 12, v: 68.9, m: "Relative-Score dynamisch (gegruppt 5-fold)" },
+              { s: 13, v: 70.0, m: "RRF dynamisch (gegruppt)" },
+            ],
+            loro: [
+              { s: 4, v: 67.8, m: "dynamischer Router (LORO)" },
+              { s: 12, v: 70.0, m: "RRF dynamisch (LORO)" },
+              { s: 13, v: 70.0, m: "RRF dynamisch (LORO)" },
+            ],
+            fitall: [
+              { s: 12, v: 71.1, m: "Relative-Score" },
+              { s: 13, v: 71.1, m: "Relative-Score" },
+            ],
+          },
+        },
+      }
+
+      const METRIC_META = [
+        { key: "r20", title: "Recall@20", ymin: 70, ymax: 95 },
+        { key: "r50", title: "Recall@50", ymin: 80, ymax: 100 },
+        { key: "r10", title: "Recall@10", ymin: 60, ymax: 85 },
+        { key: "ctx", title: "Context@4k", ymin: 55, ymax: 75 },
+      ]
+
+      const SERIES_META = [
+        { key: "grouped", label: "Bester gruppierter Holdout", color: "#2563eb", dash: false },
+        { key: "loro", label: "Bester LORO-Holdout", color: "#16a34a", dash: false },
+        { key: "fitall", label: "Fit-All-Vorschau (In-Sample)", color: "#9333ea", dash: true },
+      ]
+
+      const W = 1000,
+        H = 430
+      const M = { l: 64, r: 28, t: 30, b: 58 }
+      const SCHEMAS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+
+      function xFor(s) {
+        const i = SCHEMAS.indexOf(s)
+        return M.l + (i / (SCHEMAS.length - 1)) * (W - M.l - M.r)
+      }
+      function yFor(v, ymin, ymax) {
+        return M.t + ((ymax - v) / (ymax - ymin)) * (H - M.t - M.b)
+      }
+
+      function pathFor(points, ymin, ymax) {
+        let d = "",
+          prev = null
+        for (const p of points) {
+          const x = xFor(p.s),
+            y = yFor(p.v, ymin, ymax)
+          if (prev === null || prev.s + 1 !== p.s) d += `M ${x} ${y}`
+          else d += ` L ${x} ${y}`
+          prev = p
+        }
+        return d
+      }
+
+      function yTicks(ymin, ymax) {
+        const out = []
+        for (let v = Math.ceil(ymin / 5) * 5; v <= ymax; v += 5) out.push(v)
+        return out
+      }
+
+      function renderChart(metricData, metricMeta, modelMeta) {
+        const card = document.createElement("div")
+        card.className = "chart-card"
+        card.style.position = "relative"
+
+        const legend = document.createElement("div")
+        legend.className = "legend"
+        for (const m of SERIES_META) {
+          const s = document.createElement("span")
+          const sw = document.createElement("span")
+          sw.className = "swatch " + (m.dash ? "dash" : "solid")
+          sw.style.borderColor = m.color
+          sw.style.background = m.dash ? "transparent" : m.color
+          s.appendChild(sw)
+          s.appendChild(document.createTextNode(m.label))
+          legend.appendChild(s)
+        }
+        card.appendChild(legend)
+
+        const svgNS = "http://www.w3.org/2000/svg"
+        const svg = document.createElementNS(svgNS, "svg")
+        svg.setAttribute("viewBox", `0 0 ${W} ${H}`)
+        svg.setAttribute("role", "img")
+        card.appendChild(svg)
+
+        const tooltip = document.createElement("div")
+        tooltip.className = "tooltip"
+        card.appendChild(tooltip)
+
+        const { ymin, ymax } = metricMeta
+
+        // Grid + y ticks (5er-Schritte)
+        for (const val of yTicks(ymin, ymax)) {
+          const y = yFor(val, ymin, ymax)
+          const line = document.createElementNS(svgNS, "line")
+          line.setAttribute("x1", M.l)
+          line.setAttribute("x2", W - M.r)
+          line.setAttribute("y1", y)
+          line.setAttribute("y2", y)
+          line.setAttribute("stroke", "#e5e7eb")
+          line.setAttribute("stroke-width", 1)
+          svg.appendChild(line)
+          const t = document.createElementNS(svgNS, "text")
+          t.setAttribute("x", M.l - 8)
+          t.setAttribute("y", y + 3.5)
+          t.setAttribute("text-anchor", "end")
+          t.setAttribute("class", "tick-label")
+          t.textContent = val + "%"
+          svg.appendChild(t)
+        }
+
+        // Serie + Punkte
+        for (const meta of SERIES_META) {
+          const pts = metricData[meta.key]
+          if (!pts || pts.length === 0) continue
+
+          const path = document.createElementNS(svgNS, "path")
+          path.setAttribute("d", pathFor(pts, ymin, ymax))
+          path.setAttribute("fill", "none")
+          path.setAttribute("stroke", meta.color)
+          path.setAttribute("stroke-width", meta.dash ? 2 : 2.6)
+          if (meta.dash) path.setAttribute("stroke-dasharray", "6 4")
+          path.setAttribute("stroke-linejoin", "round")
+          path.setAttribute("stroke-linecap", "round")
+          svg.appendChild(path)
+
+          for (const p of pts) {
+            const cx = xFor(p.s),
+              cy = yFor(p.v, ymin, ymax)
+            const dot = document.createElementNS(svgNS, "circle")
+            dot.setAttribute("cx", cx)
+            dot.setAttribute("cy", cy)
+            dot.setAttribute("r", meta.dash ? 3.5 : 4.5)
+            dot.setAttribute("fill", meta.color)
+            dot.setAttribute("stroke", "#fff")
+            dot.setAttribute("stroke-width", 1.6)
+            svg.appendChild(dot)
+
+            const hit = document.createElementNS(svgNS, "circle")
+            hit.setAttribute("cx", cx)
+            hit.setAttribute("cy", cy)
+            hit.setAttribute("r", 12)
+            hit.setAttribute("fill", "transparent")
+            hit.style.cursor = "pointer"
+            hit.addEventListener("mousemove", (e) => {
+              tooltip.innerHTML = `<b>Schema ${p.s}</b> · ${p.v.toFixed(1)}% · ${modelMeta.label}<br>${meta.label}<br>${p.m}`
+              tooltip.style.opacity = "1"
+              const r = card.getBoundingClientRect()
+              let tx = e.clientX - r.left + 14,
+                ty = e.clientY - r.top - 8
+              if (tx + 280 > r.width) tx = e.clientX - r.left - 270
+              if (ty + 70 > r.height) ty = e.clientY - r.top - 70
+              tooltip.style.left = tx + "px"
+              tooltip.style.top = ty + "px"
+            })
+            hit.addEventListener("mouseleave", () => {
+              tooltip.style.opacity = "0"
+            })
+            svg.appendChild(hit)
+          }
+        }
+
+        // X-Achse
+        for (const s of SCHEMAS) {
+          const t = document.createElementNS(svgNS, "text")
+          t.setAttribute("x", xFor(s))
+          t.setAttribute("y", H - M.b + 14)
+          t.setAttribute("text-anchor", "middle")
+          t.setAttribute("class", "x-label")
+          t.textContent = "S" + s
+          svg.appendChild(t)
+        }
+        const axisLbl = document.createElementNS(svgNS, "text")
+        axisLbl.setAttribute("x", M.l)
+        axisLbl.setAttribute("y", H - 8)
+        axisLbl.setAttribute("class", "axis-label")
+        axisLbl.textContent = "Schema · Werte = beste Methode pro Schema und Modell (siehe Tooltip)"
+        svg.appendChild(axisLbl)
+
+        // Tabelle
+        const tbl = document.createElement("table")
+        const head = document.createElement("tr")
+        for (const h of ["Schema", ...SERIES_META.map((m) => m.label)]) {
+          const th = document.createElement("th")
+          th.textContent = h
+          head.appendChild(th)
+        }
+        tbl.appendChild(head)
+        for (const s of SCHEMAS) {
+          const row = document.createElement("tr")
+          const tdS = document.createElement("td")
+          tdS.textContent = "Schema " + s
+          row.appendChild(tdS)
+          for (const meta of SERIES_META) {
+            const td = document.createElement("td")
+            const pt = (metricData[meta.key] || []).find((p) => p.s === s)
+            if (pt) {
+              td.textContent = pt.v.toFixed(1) + "% · " + pt.m
+              td.title = pt.m
+            } else {
+              td.textContent = "–"
+              td.className = "miss"
+            }
+            row.appendChild(td)
+          }
+          tbl.appendChild(row)
+        }
+        card.appendChild(tbl)
+
+        return card
+      }
+
+      function renderModelPanel(modelKey, modelData) {
+        const panel = document.createElement("div")
+        panel.className = "model-card"
+
+        const head = document.createElement("div")
+        head.className = "model-head"
+        const tag = document.createElement("span")
+        tag.className = "model-tag " + MODELS[modelKey].cls
+        tag.textContent = MODELS[modelKey].tag
+        const scope = document.createElement("span")
+        scope.className = "model-scope"
+        scope.textContent = MODELS[modelKey].scope
+        head.appendChild(tag)
+        head.appendChild(scope)
+        panel.appendChild(head)
+
+        for (const meta of METRIC_META) {
+          const card = renderChart(modelData[meta.key], meta, MODELS[modelKey])
+          panel.appendChild(card)
+          if (meta.key !== METRIC_META[METRIC_META.length - 1].key) {
+            const spacer = document.createElement("div")
+            spacer.style.height = "1.5rem"
+            panel.appendChild(spacer)
+          }
+        }
+        return panel
+      }
+
+      const app = document.getElementById("app")
+      if (!app) throw new Error("app container missing")
+
+      for (const modelKey of Object.keys(MODELS)) {
+        const h2 = document.createElement("h2")
+        h2.textContent = MODELS[modelKey].label
+        app.appendChild(h2)
+        const grid = document.createElement("div")
+        grid.className = "model-grid"
+        grid.appendChild(renderModelPanel(modelKey, DATA[modelKey]))
+        app.appendChild(grid)
+      }
+
+      // Schema 1 Hinweis
+      const h2 = document.createElement("h2")
+      h2.textContent = "Schema 1 (historisch, anderes Protokoll)"
+      app.appendChild(h2)
+      const note = document.createElement("div")
+      note.className = "note"
+      note.innerHTML =
+        "Schema 1 nutzte ein anderes Protokoll (45 Fragen, pro Repository, Best-of-Ablation statt Router). " +
+        "Deshalb ist es nicht in den Linien enthalten. Best R@20 je Repository im Durchschnitt: " +
+        "<b>MiniLM 82.2%</b> (Effect 66.7 / FastAPI 80.0 / fd 100.0), <b>BGE-small 84.4%</b> (73.3 / 80.0 / 100.0). " +
+        "Direkte Vergleiche mit Schema 2+ sind laut Baseline-Dokument unzulässig."
+      app.appendChild(note)
+    </script>
+  </body>
+</html>

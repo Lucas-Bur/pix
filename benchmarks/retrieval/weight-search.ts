@@ -1,5 +1,6 @@
 import type { Chunk } from "../../src/domain/chunk.js"
 import type { RankedChunk } from "../../src/domain/ports.js"
+import { routeQuery } from "../../src/lib/retrieval/routing.js"
 import {
   buildRoutingEvidence,
   routeWithEvidence,
@@ -12,16 +13,19 @@ import { fuseRankings } from "./fusion.js"
 import { contextRecallAtBudget, recallAt, reciprocalRank } from "./metrics.js"
 import type { ChannelName, ChannelRankings } from "./ranking.js"
 import {
+  ROUTER_OBJECTIVES,
   ROUTER_SEARCH_STRATEGY,
   type ChannelWeights,
   type EvidenceRouterSearchResult,
   type FusionMethod,
   type FusionSearchResult,
+  type ProductionRrfSearchResult,
   type QualitySummary,
   type QueryKind,
   type RecommendedEvidenceRouter,
   type RecommendedFusionWeights,
   type RecommendedWeights,
+  type RouterObjective,
   type WeightSearchResult,
 } from "./types.js"
 
@@ -76,16 +80,18 @@ const fuseWithWeights = (
   fusion: FusionMethod = "rrf",
 ): readonly RankedChunk[] => fuseRankings(fusion, rankings, weights, SEARCH_CANDIDATE_DEPTH)
 
-const summarize = (
-  samples: readonly WeightSearchSample[],
-  weights: ChannelWeights,
-  fusion: FusionMethod = "rrf",
+const summarizeRanked = <T>(
+  samples: readonly T[],
+  rank: (sample: T) => readonly RankedChunk[],
+  targets: (sample: T) => readonly ReadonlySet<number>[],
+  chunks: (sample: T) => readonly Chunk[],
 ): QualitySummary => {
   if (samples.length === 0) {
     return {
       recallAt5: 0,
       recallAt10: 0,
       recallAt20: 0,
+      recallAt50: 0,
       contextRecallAt4096: 0,
       meanReciprocalRank: 0,
     }
@@ -93,60 +99,62 @@ const summarize = (
   let recall5 = 0
   let recall10 = 0
   let recall20 = 0
+  let recall50 = 0
   let contextRecall = 0
   let mrr = 0
   for (const sample of samples) {
-    const ranked = fuseWithWeights(sample.rankings, weights, fusion)
-    recall5 += recallAt(ranked, sample.targets, 5)
-    recall10 += recallAt(ranked, sample.targets, 10)
-    recall20 += recallAt(ranked, sample.targets, 20)
-    contextRecall += contextRecallAtBudget(ranked, sample.targets, sample.chunks, 4_096)
-    mrr += reciprocalRank(ranked, sample.targets)
+    const ranked = rank(sample)
+    const sampleTargets = targets(sample)
+    recall5 += recallAt(ranked, sampleTargets, 5)
+    recall10 += recallAt(ranked, sampleTargets, 10)
+    recall20 += recallAt(ranked, sampleTargets, 20)
+    recall50 += recallAt(ranked, sampleTargets, 50)
+    contextRecall += contextRecallAtBudget(ranked, sampleTargets, chunks(sample), 4_096)
+    mrr += reciprocalRank(ranked, sampleTargets)
   }
   return {
     recallAt5: recall5 / samples.length,
     recallAt10: recall10 / samples.length,
     recallAt20: recall20 / samples.length,
+    recallAt50: recall50 / samples.length,
     contextRecallAt4096: contextRecall / samples.length,
     meanReciprocalRank: mrr / samples.length,
   }
 }
 
+const summarize = (
+  samples: readonly WeightSearchSample[],
+  weights: ChannelWeights,
+  fusion: FusionMethod = "rrf",
+): QualitySummary =>
+  summarizeRanked(
+    samples,
+    (sample) => fuseWithWeights(sample.rankings, weights, fusion),
+    (sample) => sample.targets,
+    (sample) => sample.chunks,
+  )
+
 const summarizeEvidenceRouter = (
   samples: readonly EvidenceSearchSample[],
   config: EvidenceRouterConfig,
   fusion: FusionMethod,
-): QualitySummary => {
-  if (samples.length === 0) {
-    return {
-      recallAt5: 0,
-      recallAt10: 0,
-      recallAt20: 0,
-      contextRecallAt4096: 0,
-      meanReciprocalRank: 0,
-    }
-  }
-  let recall5 = 0
-  let recall10 = 0
-  let recall20 = 0
-  let contextRecall = 0
-  let mrr = 0
-  for (const { sample, evidence } of samples) {
-    const ranked = fuseWithWeights(sample.rankings, routeWithEvidence(evidence, config), fusion)
-    recall5 += recallAt(ranked, sample.targets, 5)
-    recall10 += recallAt(ranked, sample.targets, 10)
-    recall20 += recallAt(ranked, sample.targets, 20)
-    contextRecall += contextRecallAtBudget(ranked, sample.targets, sample.chunks, 4_096)
-    mrr += reciprocalRank(ranked, sample.targets)
-  }
-  return {
-    recallAt5: recall5 / samples.length,
-    recallAt10: recall10 / samples.length,
-    recallAt20: recall20 / samples.length,
-    contextRecallAt4096: contextRecall / samples.length,
-    meanReciprocalRank: mrr / samples.length,
-  }
-}
+): QualitySummary =>
+  summarizeRanked(
+    samples,
+    ({ sample, evidence }) =>
+      fuseWithWeights(sample.rankings, routeWithEvidence(evidence, config), fusion),
+    ({ sample }) => sample.targets,
+    ({ sample }) => sample.chunks,
+  )
+
+/** Evaluate the current production RRF router without fitting any benchmark weights. */
+const summarizeProductionRrf = (samples: readonly WeightSearchSample[]): QualitySummary =>
+  summarizeRanked(
+    samples,
+    (sample) => fuseWithWeights(sample.rankings, routeQuery(sample.query), "rrf"),
+    (sample) => sample.targets,
+    (sample) => sample.chunks,
+  )
 
 const prepareEvidenceSamples = (
   samples: readonly WeightSearchSample[],
@@ -183,25 +191,76 @@ const buildProxySamples = (
     .map(({ sample }) => sample)
 }
 
-const compareQuality = (left: QualitySummary, right: QualitySummary): number => {
-  const leftValues = [
-    left.recallAt20,
-    left.recallAt10,
-    left.contextRecallAt4096,
-    left.meanReciprocalRank,
-  ]
-  const rightValues = [
-    right.recallAt20,
-    right.recallAt10,
-    right.contextRecallAt4096,
-    right.meanReciprocalRank,
-  ]
-  for (let index = 0; index < leftValues.length; index++) {
-    if (leftValues[index] > rightValues[index]) return -1
-    if (leftValues[index] < rightValues[index]) return 1
+type QualityMetric =
+  | "recallAt5"
+  | "recallAt10"
+  | "recallAt20"
+  | "recallAt50"
+  | "contextRecallAt4096"
+  | "meanReciprocalRank"
+
+const OBJECTIVE_PRIORITIES: Readonly<Record<RouterObjective, readonly QualityMetric[]>> = {
+  direct: [
+    "recallAt5",
+    "recallAt10",
+    "contextRecallAt4096",
+    "recallAt20",
+    "recallAt50",
+    "meanReciprocalRank",
+  ],
+  "reranker-top20": [
+    "recallAt20",
+    "recallAt10",
+    "recallAt5",
+    "contextRecallAt4096",
+    "recallAt50",
+    "meanReciprocalRank",
+  ],
+  "reranker-top50": [
+    "recallAt50",
+    "recallAt20",
+    "recallAt10",
+    "recallAt5",
+    "contextRecallAt4096",
+    "meanReciprocalRank",
+  ],
+}
+
+const GUARDRAIL_METRICS: readonly QualityMetric[] = [
+  "recallAt5",
+  "recallAt10",
+  "recallAt20",
+  "recallAt50",
+  "contextRecallAt4096",
+]
+
+const isWithinGuardrails = (
+  quality: QualitySummary,
+  baseline: QualitySummary | undefined,
+): boolean =>
+  baseline === undefined ||
+  GUARDRAIL_METRICS.every(
+    (metric) => quality[metric] >= baseline[metric] - ROUTER_SEARCH_STRATEGY.guardrailTolerance,
+  )
+
+const compareObjectiveQuality = (
+  left: QualitySummary,
+  right: QualitySummary,
+  objective: RouterObjective,
+  baseline?: QualitySummary,
+): number => {
+  const leftGuardrails = isWithinGuardrails(left, baseline)
+  const rightGuardrails = isWithinGuardrails(right, baseline)
+  if (leftGuardrails !== rightGuardrails) return leftGuardrails ? -1 : 1
+  for (const metric of OBJECTIVE_PRIORITIES[objective]) {
+    if (left[metric] > right[metric]) return -1
+    if (left[metric] < right[metric]) return 1
   }
   return 0
 }
+
+const compareQuality = (left: QualitySummary, right: QualitySummary): number =>
+  compareObjectiveQuality(left, right, "reranker-top20")
 
 const isBetter = (candidate: QualitySummary, current: QualitySummary): boolean => {
   return compareQuality(candidate, current) < 0
@@ -298,6 +357,8 @@ const rankWeightCandidates = (
   limit: number,
   qualityCache: Map<string, QualitySummary>,
   fusion: FusionMethod,
+  objective: RouterObjective = "reranker-top20",
+  baseline?: QualitySummary,
 ): readonly WeightCandidate[] => {
   const unique = new Map<string, ChannelWeights>()
   for (const candidate of candidates) {
@@ -312,7 +373,11 @@ const rankWeightCandidates = (
       qualityCache.set(key, quality)
       return { weights, quality }
     })
-    .sort((left, right) => compareQuality(left.quality, right.quality))
+    .sort(
+      (left, right) =>
+        compareObjectiveQuality(left.quality, right.quality, objective, baseline) ||
+        activeChannelsKey(left.weights).localeCompare(activeChannelsKey(right.weights)),
+    )
     .slice(0, limit)
 }
 
@@ -325,6 +390,8 @@ const withWeight = (weights: ChannelWeights, channel: ChannelName, value: number
 const selectBestWeights = (
   samples: readonly WeightSearchSample[],
   fusion: FusionMethod = "rrf",
+  objective: RouterObjective = "reranker-top20",
+  baseline?: QualitySummary,
 ): { readonly weights: ChannelWeights; readonly quality: QualitySummary } => {
   const qualityCache = new Map<string, QualitySummary>()
   let beam = rankWeightCandidates(
@@ -333,6 +400,8 @@ const selectBestWeights = (
     SEARCH_BEAM_WIDTH,
     qualityCache,
     fusion,
+    objective,
+    baseline,
   )
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (const channel of CHANNELS) {
@@ -348,6 +417,8 @@ const selectBestWeights = (
         SEARCH_BEAM_WIDTH,
         qualityCache,
         fusion,
+        objective,
+        baseline,
       )
     }
   }
@@ -547,8 +618,45 @@ interface RouterSearchContext {
   readonly qualityCache: Map<string, QualitySummary>
   readonly proxyQualityCache: Map<string, QualitySummary>
   readonly elites: Map<string, RouterCandidate>
+  readonly archive: Map<string, RouterCandidate>
+  readonly baseline: QualitySummary
+  readonly proxyBaseline: QualitySummary
   readonly fusion: FusionMethod
   readonly stats: SearchEvaluationStats
+}
+
+const compareRouterCandidates = (
+  left: RouterCandidate,
+  right: RouterCandidate,
+  objective: RouterObjective,
+  baseline: QualitySummary,
+): number =>
+  compareObjectiveQuality(left.quality, right.quality, objective, baseline) ||
+  routerComplexity(left.config) - routerComplexity(right.config)
+
+const selectObjectiveCandidates = (
+  candidates: readonly RouterCandidate[],
+  limit: number,
+  baseline: QualitySummary,
+): readonly RouterCandidate[] => {
+  const selected = new Map<string, RouterCandidate>()
+  const perObjective = Math.max(1, Math.floor(limit / ROUTER_OBJECTIVES.length))
+  for (const objective of ROUTER_OBJECTIVES) {
+    const ranked = [...candidates]
+      .sort((left, right) => compareRouterCandidates(left, right, objective, baseline))
+      .slice(0, perObjective)
+    for (const candidate of ranked) selected.set(routerKey(candidate.config), candidate)
+  }
+  if (selected.size < limit) {
+    const fallback = [...candidates].sort((left, right) =>
+      compareRouterCandidates(left, right, "reranker-top20", baseline),
+    )
+    for (const candidate of fallback) {
+      selected.set(routerKey(candidate.config), candidate)
+      if (selected.size >= limit) break
+    }
+  }
+  return [...selected.values()].slice(0, limit)
 }
 
 const rankRouterCandidates = (
@@ -562,79 +670,81 @@ const rankRouterCandidates = (
   for (const config of configs) unique.set(routerKey(config), config)
   let fullCandidates = [...unique]
   if (useProxy && context.proxySamples.length < context.samples.length) {
-    const rankedProxy = fullCandidates
-      .map(([key, config]) => {
-        const cached = context.proxyQualityCache.get(key)
-        if (cached !== undefined) return { key, config, quality: cached }
-        const quality = summarizeEvidenceRouter(context.proxySamples, config, context.fusion)
-        context.proxyQualityCache.set(key, quality)
-        context.stats.proxyEvaluations++
-        return { key, config, quality }
-      })
-      .sort(
-        (left, right) =>
-          compareQuality(left.quality, right.quality) ||
-          routerComplexity(left.config) - routerComplexity(right.config),
-      )
-      .slice(0, limit * SEARCH_HALVING_KEEP_FACTOR)
-    const selected = new Map(rankedProxy.map((candidate) => [candidate.key, candidate.config]))
+    const rankedProxy = fullCandidates.map(([key, config]) => {
+      const cached = context.proxyQualityCache.get(key)
+      if (cached !== undefined) return { key, config, quality: cached }
+      const quality = summarizeEvidenceRouter(context.proxySamples, config, context.fusion)
+      context.proxyQualityCache.set(key, quality)
+      context.stats.proxyEvaluations++
+      return { key, config, quality }
+    })
+    const selectedProxy = selectObjectiveCandidates(
+      rankedProxy.map((candidate) => ({ config: candidate.config, quality: candidate.quality })),
+      limit * SEARCH_HALVING_KEEP_FACTOR,
+      context.proxyBaseline,
+    )
+    const selected = new Map(
+      selectedProxy.map((candidate) => [routerKey(candidate.config), candidate.config]),
+    )
     const protectedKeys = new Set([...protectedConfigs.map(routerKey), ...context.elites.keys()])
     for (const [key, config] of fullCandidates) {
       if (protectedKeys.has(key)) selected.set(key, config)
     }
     fullCandidates = [...selected]
   }
-  const rankedFull = fullCandidates
-    .map(([key, config]) => {
-      const cached = context.qualityCache.get(key)
-      if (cached !== undefined) return { config, quality: cached }
-      const quality = summarizeEvidenceRouter(context.samples, config, context.fusion)
-      context.qualityCache.set(key, quality)
-      context.stats.fullEvaluations++
-      return { config, quality }
-    })
-    .sort(
-      (left, right) =>
-        compareQuality(left.quality, right.quality) ||
-        routerComplexity(left.config) - routerComplexity(right.config),
-    )
-  const rankedElites = new Map(
-    [...context.elites.values(), ...rankedFull]
-      .sort(
-        (left, right) =>
-          compareQuality(left.quality, right.quality) ||
-          routerComplexity(left.config) - routerComplexity(right.config),
-      )
-      .slice(0, SEARCH_BEAM_WIDTH)
-      .map((candidate) => [routerKey(candidate.config), candidate]),
+  const rankedFull = fullCandidates.map(([key, config]) => {
+    const cached = context.qualityCache.get(key)
+    if (cached !== undefined) return { config, quality: cached }
+    const quality = summarizeEvidenceRouter(context.samples, config, context.fusion)
+    context.qualityCache.set(key, quality)
+    context.stats.fullEvaluations++
+    return { config, quality }
+  })
+  for (const candidate of rankedFull) context.archive.set(routerKey(candidate.config), candidate)
+  const rankedElites = selectObjectiveCandidates(
+    [...context.elites.values(), ...rankedFull],
+    SEARCH_BEAM_WIDTH,
+    context.baseline,
   )
   context.elites.clear()
-  for (const [key, candidate] of rankedElites) context.elites.set(key, candidate)
-  return rankedFull.slice(0, limit)
+  for (const candidate of rankedElites) context.elites.set(routerKey(candidate.config), candidate)
+  return selectObjectiveCandidates(rankedFull, limit, context.baseline)
+}
+
+interface EvidenceRouterSelection {
+  readonly objective: RouterObjective
+  readonly config: EvidenceRouterConfig
+  readonly quality: QualitySummary
+  readonly guardrailsMet: boolean
 }
 
 const selectBestEvidenceRouter = (
   samples: readonly WeightSearchSample[],
   fusion: FusionMethod,
 ): {
-  readonly config: EvidenceRouterConfig
-  readonly quality: QualitySummary
+  readonly selections: readonly EvidenceRouterSelection[]
+  readonly productionQuality: QualitySummary
   readonly proxyEvaluations: number
   readonly fullEvaluations: number
 } => {
   const evidenceSamples = prepareEvidenceSamples(samples)
+  const proxySamples = buildProxySamples(evidenceSamples)
+  const productionQuality = summarizeProductionRrf(samples)
   const stats: SearchEvaluationStats = { proxyEvaluations: 0, fullEvaluations: 0 }
   const searchContext: RouterSearchContext = {
     samples: evidenceSamples,
-    proxySamples: buildProxySamples(evidenceSamples),
+    proxySamples,
     qualityCache: new Map<string, QualitySummary>(),
     proxyQualityCache: new Map<string, QualitySummary>(),
     elites: new Map<string, RouterCandidate>(),
+    archive: new Map<string, RouterCandidate>(),
+    baseline: productionQuality,
+    proxyBaseline: summarizeProductionRrf(proxySamples.map(({ sample }) => sample)),
     fusion,
     stats,
   }
   const baseSeeds = [
-    selectBestWeights(samples, fusion).weights,
+    selectBestWeights(samples, fusion, "reranker-top20", productionQuality).weights,
     ...selectBestWeightsPerSubset(samples, fusion),
   ].map(emptyRouterConfig)
   const parameters = routerParameters()
@@ -661,7 +771,21 @@ const selectBestEvidenceRouter = (
       )
     }
   }
-  return { ...beam[0], ...stats }
+  const fallback = beam[0]
+  const candidates = [...searchContext.archive.values()]
+  const selections = ROUTER_OBJECTIVES.map((objective) => {
+    const candidate =
+      [...candidates].sort((left, right) =>
+        compareRouterCandidates(left, right, objective, productionQuality),
+      )[0] ?? fallback
+    return {
+      objective,
+      config: candidate.config,
+      quality: candidate.quality,
+      guardrailsMet: isWithinGuardrails(candidate.quality, productionQuality),
+    }
+  })
+  return { selections, productionQuality, ...stats }
 }
 
 /** Select weights on development samples, then evaluate unchanged on one validation fold. */
@@ -711,6 +835,23 @@ export const optimizeFusionWeights = (
   }
 }
 
+/** Evaluate the current production RRF router on one development/validation split. */
+export const evaluateProductionRrf = (
+  model: string,
+  strategy: ProductionRrfSearchResult["strategy"],
+  fold: string,
+  development: readonly WeightSearchSample[],
+  validation: readonly WeightSearchSample[],
+): ProductionRrfSearchResult => ({
+  model,
+  strategy,
+  fold,
+  developmentQueries: development.length,
+  validationQueries: validation.length,
+  development: summarizeProductionRrf(development),
+  validation: summarizeProductionRrf(validation),
+})
+
 /** Select one evidence-based router on development queries and evaluate it unchanged on a holdout. */
 export const optimizeEvidenceRouter = (
   model: string,
@@ -719,29 +860,41 @@ export const optimizeEvidenceRouter = (
   fold: string,
   development: readonly WeightSearchSample[],
   validation: readonly WeightSearchSample[],
-): EvidenceRouterSearchResult => {
-  const staticSelection = selectBestWeights(development, fusion)
+): readonly EvidenceRouterSearchResult[] => {
   const dynamicSelection = selectBestEvidenceRouter(development, fusion)
-  return {
-    model,
-    fusion,
-    strategy,
-    fold,
-    developmentQueries: development.length,
-    validationQueries: validation.length,
-    staticWeights: staticSelection.weights,
-    config: dynamicSelection.config,
-    staticDevelopment: staticSelection.quality,
-    staticValidation: summarize(validation, staticSelection.weights, fusion),
-    development: dynamicSelection.quality,
-    validation: summarizeEvidenceRouter(
-      prepareEvidenceSamples(validation),
-      dynamicSelection.config,
+  const productionValidation = summarizeProductionRrf(validation)
+  return dynamicSelection.selections.map((selection) => {
+    const staticSelection = selectBestWeights(
+      development,
       fusion,
-    ),
-    proxyEvaluations: dynamicSelection.proxyEvaluations,
-    fullEvaluations: dynamicSelection.fullEvaluations,
-  }
+      selection.objective,
+      dynamicSelection.productionQuality,
+    )
+    return {
+      model,
+      fusion,
+      objective: selection.objective,
+      strategy,
+      fold,
+      developmentQueries: development.length,
+      validationQueries: validation.length,
+      staticWeights: staticSelection.weights,
+      config: selection.config,
+      staticDevelopment: staticSelection.quality,
+      staticValidation: summarize(validation, staticSelection.weights, fusion),
+      development: selection.quality,
+      validation: summarizeEvidenceRouter(
+        prepareEvidenceSamples(validation),
+        selection.config,
+        fusion,
+      ),
+      productionDevelopment: dynamicSelection.productionQuality,
+      productionValidation,
+      guardrailsMet: selection.guardrailsMet,
+      proxyEvaluations: dynamicSelection.proxyEvaluations,
+      fullEvaluations: dynamicSelection.fullEvaluations,
+    }
+  })
 }
 
 /** Fit one deployment candidate on all samples after cross-validation has measured generalization. */
@@ -784,18 +937,28 @@ export const fitRecommendedEvidenceRouter = (
   model: string,
   fusion: FusionMethod,
   samples: readonly WeightSearchSample[],
-): RecommendedEvidenceRouter => {
-  const staticSelection = selectBestWeights(samples, fusion)
+): readonly RecommendedEvidenceRouter[] => {
   const dynamicSelection = selectBestEvidenceRouter(samples, fusion)
-  return {
-    model,
-    fusion,
-    samples: samples.length,
-    staticWeights: staticSelection.weights,
-    config: dynamicSelection.config,
-    staticQuality: staticSelection.quality,
-    fitQuality: dynamicSelection.quality,
-    proxyEvaluations: dynamicSelection.proxyEvaluations,
-    fullEvaluations: dynamicSelection.fullEvaluations,
-  }
+  return dynamicSelection.selections.map((selection) => {
+    const staticSelection = selectBestWeights(
+      samples,
+      fusion,
+      selection.objective,
+      dynamicSelection.productionQuality,
+    )
+    return {
+      model,
+      fusion,
+      objective: selection.objective,
+      samples: samples.length,
+      staticWeights: staticSelection.weights,
+      config: selection.config,
+      staticQuality: staticSelection.quality,
+      fitQuality: selection.quality,
+      productionQuality: dynamicSelection.productionQuality,
+      guardrailsMet: selection.guardrailsMet,
+      proxyEvaluations: dynamicSelection.proxyEvaluations,
+      fullEvaluations: dynamicSelection.fullEvaluations,
+    }
+  })
 }
