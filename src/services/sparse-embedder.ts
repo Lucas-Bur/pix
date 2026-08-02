@@ -13,6 +13,7 @@ import { loadFirstAvailableDevice } from "./device-detect.js"
 
 const DOCUMENT_MODULE = "document_0_MLMTransformer"
 const DOCUMENT_ONNX_MODULE = `${DOCUMENT_MODULE}/onnx`
+const IDF_DOWNLOAD_TIMEOUT_MS = 60_000
 
 /** Loaded tokenizer type inferred from Transformers.js. */
 type SparseTokenizer = Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>
@@ -29,6 +30,12 @@ interface QueryRuntime {
 const asModelLoadError = (model: string, message: string) => (cause: unknown) =>
   new ModelLoadError({ message, model, cause })
 
+const encodeModelPath = (model: string): string =>
+  model
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/")
+
 const loadTokenizer = (
   model: string,
   revision: string,
@@ -44,7 +51,10 @@ const loadIdf = (
   tokenizer: SparseTokenizer,
 ): Effect.Effect<readonly SparseTerm[], ModelLoadError> =>
   Effect.tryPromise(async () => {
-    const response = await fetch(`https://huggingface.co/${model}/resolve/${revision}/idf.json`)
+    const response = await fetch(
+      `https://huggingface.co/${encodeModelPath(model)}/resolve/${encodeURIComponent(revision)}/idf.json`,
+      { signal: AbortSignal.timeout(IDF_DOWNLOAD_TIMEOUT_MS) },
+    )
     if (!response.ok) throw new Error(`Sparse IDF download failed with HTTP ${response.status}`)
     const file = new Uint8Array(await response.arrayBuffer())
     const actualHash = createHash("sha256").update(file).digest("hex")
@@ -152,6 +162,9 @@ const make = Effect.gen(function* () {
           vocabularySize === undefined
         ) {
           throw new Error(`Unexpected sparse logits shape: ${logits.dims.join("x")}`)
+        }
+        if (logits.type !== "float32") {
+          throw new Error(`Unexpected sparse logits dtype: ${logits.type}`)
         }
         return poolSparseLogits(
           logits.data as Float32Array,

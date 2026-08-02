@@ -30,7 +30,7 @@ import type { SparseVector } from "../domain/sparse.js"
 import { getExtension, getFileExtension, getFilename } from "../lib/config/extension.js"
 import { mergeConfig } from "../lib/config/validation.js"
 import { contentHash } from "../lib/content-hash.js"
-import { embeddingCacheKey } from "../lib/embedding-cache.js"
+import { embeddingCacheKey, sparseEmbeddingCacheKey } from "../lib/embedding-cache.js"
 import { buildExtensionRegistry } from "../lib/registry.js"
 import { rebuildBm25Index } from "../lib/retrieval/bm25.js"
 import { buildIdentifierIndex, rebuildIdentifierIndex } from "../lib/retrieval/identifier-index.js"
@@ -435,9 +435,16 @@ const make = Effect.gen(function* () {
       const cacheHits = yield* Ref.make(0)
       const cacheMisses = yield* Ref.make(0)
       const cached = yield* indexStore.loadEmbeddingCache()
+      const cachedSparse = yield* indexStore.loadSparseEmbeddingCache()
       const dims = ctx.dims
       const available = new Map<string, CachedEmbedding>()
       const availableSparse = new Map<string, SparseVector>()
+      const historicalSparseCache = new Map(
+        cachedSparse.map((entry) => [
+          sparseEmbeddingCacheKey(entry.contentHash, entry.contract),
+          entry,
+        ]),
+      )
       for (const entry of cached) {
         available.set(
           embeddingCacheKey(
@@ -448,6 +455,14 @@ const make = Effect.gen(function* () {
           ),
           entry,
         )
+      }
+      for (const entry of cachedSparse) {
+        if (sparseContractsEqual(entry.contract, sparseEmbedder.contract)) {
+          availableSparse.set(
+            sparseEmbeddingCacheKey(entry.contentHash, entry.contract),
+            entry.vector,
+          )
+        }
       }
       if (Option.isSome(ctx.snapshot)) {
         for (const entry of ctx.snapshot.value.entries) {
@@ -470,7 +485,13 @@ const make = Effect.gen(function* () {
             cachedEntry,
           )
           if (ctx.sparseContractMatches) {
-            availableSparse.set(entry.contentHash, entry.sparseVector)
+            const cacheKey = sparseEmbeddingCacheKey(entry.contentHash, sparseEmbedder.contract)
+            availableSparse.set(cacheKey, entry.sparseVector)
+            historicalSparseCache.set(cacheKey, {
+              contentHash: entry.contentHash,
+              contract: sparseEmbedder.contract,
+              vector: entry.sparseVector,
+            })
           }
         }
       }
@@ -483,6 +504,9 @@ const make = Effect.gen(function* () {
             dims,
             ctx.config.embedder.dtype,
           ),
+        )
+        historicalSparseCache.delete(
+          sparseEmbeddingCacheKey(chunk.stored.contentHash, sparseEmbedder.contract),
         )
       }
       const retainedIndexes = new Map<number, number>()
@@ -534,17 +558,21 @@ const make = Effect.gen(function* () {
                   existingCacheHits -
                   missingByKey.size
                 const missing = [...missingByKey.entries()]
-                const missingSparseByHash = new Map<string, PreparedChunk>()
+                const missingSparseByKey = new Map<string, PreparedChunk>()
                 for (const chunk of batch) {
+                  const sparseKey = sparseEmbeddingCacheKey(
+                    chunk.stored.contentHash,
+                    sparseEmbedder.contract,
+                  )
                   if (
                     !chunk.sparseVector &&
-                    !availableSparse.has(chunk.stored.contentHash) &&
-                    !missingSparseByHash.has(chunk.stored.contentHash)
+                    !availableSparse.has(sparseKey) &&
+                    !missingSparseByKey.has(sparseKey)
                   ) {
-                    missingSparseByHash.set(chunk.stored.contentHash, chunk)
+                    missingSparseByKey.set(sparseKey, chunk)
                   }
                 }
-                const missingSparse = [...missingSparseByHash.entries()]
+                const missingSparse = [...missingSparseByKey.entries()]
                 const embedded =
                   missing.length > 0
                     ? yield* embedder.batch(missing.map(([, chunk]) => chunk.text ?? ""))
@@ -580,7 +608,11 @@ const make = Effect.gen(function* () {
                   return available.get(key)!.embedding
                 })
                 const sparseEmbeddings = batch.map(
-                  (chunk) => chunk.sparseVector ?? availableSparse.get(chunk.stored.contentHash)!,
+                  (chunk) =>
+                    chunk.sparseVector ??
+                    availableSparse.get(
+                      sparseEmbeddingCacheKey(chunk.stored.contentHash, sparseEmbedder.contract),
+                    )!,
                 )
                 yield* Ref.update(
                   cacheHits,
@@ -604,6 +636,7 @@ const make = Effect.gen(function* () {
           dims: ctx.dims,
           dtype: ctx.config.embedder.dtype,
           embeddingCache: [...historicalCache.values()],
+          sparseEmbeddingCache: [...historicalSparseCache.values()],
           sparseContract: sparseEmbedder.contract,
           sparseIdf,
         }),

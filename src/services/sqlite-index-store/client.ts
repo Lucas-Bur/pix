@@ -5,6 +5,7 @@ import { SqliteClient } from "@effect/sql-sqlite-node"
 import { getPlatformPackageName } from "@sqliteai/sqlite-vector"
 import { Context, Effect, Layer, Schema, String } from "effect"
 import { FileSystem } from "effect/FileSystem"
+import { SqlClient } from "effect/unstable/sql"
 
 import { IndexMigratorLive } from "./migrations.js"
 
@@ -38,7 +39,13 @@ export const sqliteIndexDatabaseLayer = (filename: string) => {
         }).pipe(
           Layer.tap((context) => {
             const sqlite = Context.get(context, SqliteClient.SqliteClient)
-            return sqlite.loadExtension(getVectorExtensionPath())
+            const sql = Context.get(context, SqlClient.SqlClient)
+            return Effect.all(
+              [sql`PRAGMA foreign_keys = ON`, sqlite.loadExtension(getVectorExtensionPath())],
+              {
+                discard: true,
+              },
+            )
           }),
         ),
       ),

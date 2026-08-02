@@ -13,6 +13,7 @@ import type {
   CachedEmbedding,
   ChunkEntry,
   ChunkMetadata,
+  CachedSparseEmbedding,
   IndexSnapshot,
   IndexStats,
   PersistIndexInput,
@@ -37,6 +38,7 @@ import {
   RetrievalIndexesRow,
   SparseIdfRow,
   SparseIndexMetaRow,
+  SparseEmbeddingCacheRow,
   SparseMatchRow,
   SparseTermRow,
 } from "./sqlite-index-store/schema.js"
@@ -202,6 +204,28 @@ const make = Effect.gen(function* () {
     `,
   })
 
+  const insertSparseCache = SqlSchema.void({
+    Request: SparseEmbeddingCacheRow.insert,
+    execute: ({
+      contentHash,
+      model,
+      modelRevision,
+      tokenizer,
+      tokenizerRevision,
+      idfRevision,
+      idfContentHash,
+      vector,
+    }) => sql`
+      INSERT OR REPLACE INTO sparse_embedding_cache (
+        content_hash, model, model_revision, tokenizer, tokenizer_revision,
+        idf_revision, idf_content_hash, vector_json
+      ) VALUES (
+        ${contentHash}, ${model}, ${modelRevision}, ${tokenizer}, ${tokenizerRevision},
+        ${idfRevision}, ${idfContentHash}, ${vector}
+      )
+    `,
+  })
+
   const selectMeta = SqlSchema.findOneOption({
     Request: Schema.Void,
     Result: IndexMetaRow,
@@ -302,6 +326,17 @@ const make = Effect.gen(function* () {
     `,
   })
 
+  const selectSparseCache = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: SparseEmbeddingCacheRow,
+    execute: () => sql`
+      SELECT content_hash, model, model_revision, tokenizer, tokenizer_revision,
+             idf_revision, idf_content_hash, vector_json AS vector
+      FROM sparse_embedding_cache
+      ORDER BY content_hash, model, model_revision, tokenizer_revision
+    `,
+  })
+
   const selectStatus = SqlSchema.findOne({
     Request: Schema.Void,
     Result: StatusRow,
@@ -321,6 +356,12 @@ const make = Effect.gen(function* () {
     Request: Schema.Void,
     Result: CacheCountRow,
     execute: () => sql`SELECT COUNT(*) AS count FROM embedding_cache`,
+  })
+
+  const selectSparseCacheCount = SqlSchema.findOne({
+    Request: Schema.Void,
+    Result: CacheCountRow,
+    execute: () => sql`SELECT COUNT(*) AS count FROM sparse_embedding_cache`,
   })
 
   const readMeta = () =>
@@ -460,6 +501,7 @@ const make = Effect.gen(function* () {
         yield* sql`DELETE FROM files`
         yield* sql`DELETE FROM chunks`
         yield* sql`DELETE FROM embedding_cache`
+        yield* sql`DELETE FROM sparse_embedding_cache`
 
         yield* Stream.runForEach(input.chunks, (batch) =>
           Effect.forEach(batch, ([chunk, embedding, sparseVector]) =>
@@ -505,6 +547,18 @@ const make = Effect.gen(function* () {
               dtype: entry.embedding.dtype,
               embedding: copyVector(entry.embedding.vector),
             })
+          }),
+        )
+        yield* Effect.forEach(input.sparseEmbeddingCache, (entry) =>
+          insertSparseCache({
+            contentHash: entry.contentHash,
+            model: entry.contract.model,
+            modelRevision: entry.contract.modelRevision,
+            tokenizer: entry.contract.tokenizer,
+            tokenizerRevision: entry.contract.tokenizerRevision,
+            idfRevision: entry.contract.idfRevision,
+            idfContentHash: entry.contract.idfContentHash,
+            vector: entry.vector,
           }),
         )
         yield* insertMeta({
@@ -643,11 +697,37 @@ const make = Effect.gen(function* () {
       Effect.mapError(asStoreError("read embedding cache")),
     )
 
+  const loadSparseEmbeddingCache = (): Effect.Effect<
+    readonly CachedSparseEmbedding[],
+    StoreError
+  > =>
+    selectSparseCache(undefined).pipe(
+      Effect.map((rows) =>
+        rows.map((row) => ({
+          contentHash: row.contentHash,
+          contract: {
+            model: row.model,
+            modelRevision: row.modelRevision,
+            tokenizer: row.tokenizer,
+            tokenizerRevision: row.tokenizerRevision,
+            idfRevision: row.idfRevision,
+            idfContentHash: row.idfContentHash,
+          },
+          vector: row.vector,
+        })),
+      ),
+      Effect.mapError(asStoreError("read sparse embedding cache")),
+    )
+
   const clearEmbeddingCache = (): Effect.Effect<boolean, StoreError> =>
     Effect.gen(function* () {
-      const { count } = yield* selectCacheCount(undefined)
+      const [{ count: denseCount }, { count: sparseCount }] = yield* Effect.all([
+        selectCacheCount(undefined),
+        selectSparseCacheCount(undefined),
+      ])
       yield* sql`DELETE FROM embedding_cache`
-      return count > 0
+      yield* sql`DELETE FROM sparse_embedding_cache`
+      return denseCount + sparseCount > 0
     }).pipe(Effect.mapError(asStoreError("clear embedding cache")))
 
   const loadIndexSnapshot = (): Effect.Effect<Option.Option<IndexSnapshot>, StoreError> =>
@@ -768,6 +848,7 @@ const make = Effect.gen(function* () {
     searchSparse,
     loadSource,
     loadEmbeddingCache,
+    loadSparseEmbeddingCache,
     clearEmbeddingCache,
     loadIndexSnapshot,
     getStatus,

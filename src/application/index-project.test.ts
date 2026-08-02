@@ -133,10 +133,12 @@ it.effect("IndexProject keeps only displaced embeddings in the historical cache"
     const fs = yield* FileSystem
     yield* index.index()
     expect(yield* store.loadEmbeddingCache()).toHaveLength(0)
+    expect(yield* store.loadSparseEmbeddingCache()).toHaveLength(0)
 
     yield* fs.writeFileString("src/a.ts", `${sourceFile}\nexport const changed = true`)
     yield* index.index()
     expect((yield* store.loadEmbeddingCache()).length).toBeGreaterThan(0)
+    expect((yield* store.loadSparseEmbeddingCache()).length).toBeGreaterThan(0)
 
     yield* fs.writeFileString("src/a.ts", sourceFile)
     const reverted = yield* index.index()

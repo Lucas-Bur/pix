@@ -68,7 +68,7 @@ const channelsForVariant = (variant: RetrievalVariant): readonly ChannelName[] =
       return ["bm25", "sparse"]
     case "dense+sparse":
       return ["dense", "sparse"]
-    case "rrf-no-sparse":
+    case "rrf-no-sparse": // Equal-weight five-channel control with Sparse removed.
       return ["identity", "camelcase", "bm25", "dense"]
     case "rrf-no-identity":
       return ["camelcase", "bm25", "dense"]

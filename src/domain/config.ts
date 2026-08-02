@@ -9,9 +9,11 @@ import {
   SPARSE_QUERY_REVISION,
 } from "./sparse.js"
 
+const DeviceSchema = Schema.Literals(["auto", "cpu", "cuda", "dml", "coreml", "webgpu", "wasm"])
+
 const EmbedderConfigSchema = Schema.Struct({
   model: Schema.String,
-  device: Schema.Literals(["auto", "cpu", "cuda", "dml", "coreml", "webgpu", "wasm"]),
+  device: DeviceSchema,
   dtype: EmbeddingDtypeSchema,
   batchSize: Schema.Number,
 })
@@ -24,7 +26,7 @@ const SparseEmbedderConfigSchema = Schema.Struct({
   queryModel: Schema.String,
   queryRevision: Schema.String,
   idfContentHash: Schema.String,
-  device: Schema.Literals(["auto", "cpu", "cuda", "dml", "coreml", "webgpu", "wasm"]),
+  device: DeviceSchema,
   batchSize: PositiveInt,
 })
 

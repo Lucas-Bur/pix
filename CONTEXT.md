@@ -34,11 +34,11 @@ Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable). Produ
 
 ### Embedding Cache
 
-Content-addressed reuse for embeddings displaced from the active index. Active and historical vectors live in separate tables inside `.pix/index.db`. Historical entries are keyed by exact embedded-text hash, model, dimensions, and dtype. `pix cache clear` removes only this history.
+Content-addressed reuse for Dense and learned Sparse embeddings displaced from the active index. Active and historical vectors live in separate tables inside `.pix/index.db`. Dense entries are keyed by exact embedded-text hash, model, dimensions, and dtype; Sparse entries use the exact embedded-text hash and full Sparse contract. `pix cache clear` removes both histories.
 
 ### Sparse Embedder
 
-Required learned lexical-semantic encoder using the pinned OpenSearch v3 Distill document ONNX export.
+The learned lexical-semantic encoder is required. It uses the pinned OpenSearch v3 Distill document ONNX export.
 Documents produce variable `(token_id, weight)` vectors through attended max pooling and
 `log1p(log1p(relu(value)))`. Queries run only the paired tokenizer; SQLite applies the persisted static
 IDF table. Model artifacts live in `.pix/cache/`. Default document batch size is 2 because logits scale
@@ -91,7 +91,7 @@ Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, ap
 
 ### IndexStore
 
-Owns `.pix/index.db`, which contains active chunks and Float32 Dense embedding BLOBs, learned Sparse metadata/IDF/postings, file observations, BM25, identifier postings, historical Dense embedding cache, and Effect SQL migration history. Complete streamed replacements run in one SQLite transaction. Editable config and aliases remain files.
+Owns `.pix/index.db`, which contains active chunks and Float32 Dense embedding BLOBs, learned Sparse metadata/IDF/postings, file observations, BM25, identifier postings, historical Dense and Sparse embedding caches, and Effect SQL migration history. Complete streamed replacements run in one SQLite transaction. Editable config and aliases remain files.
 
 ### Core Scope
 

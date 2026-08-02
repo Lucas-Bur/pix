@@ -386,6 +386,28 @@ describe("retrieval benchmark fixture", () => {
     expect(ranked[0].score).toBeCloseTo(1.4)
   })
 
+  it("normalizes relative scores from unsorted channel input", () => {
+    const ranked = fuseRankings(
+      "relative-score",
+      {
+        identity: [],
+        camelcase: [],
+        bm25: [
+          { chunkIndex: 0, score: 0 },
+          { chunkIndex: 1, score: 10 },
+        ],
+        dense: [],
+        sparse: [],
+      },
+      { identity: 0, camelcase: 0, bm25: 1, dense: 0, sparse: 0 },
+    )
+
+    expect(ranked).toEqual([
+      { chunkIndex: 1, score: 1 },
+      { chunkIndex: 0, score: 0 },
+    ])
+  })
+
   it("assigns neutral DBSF evidence to a constant channel", () => {
     const ranked = fuseRankings(
       "dbsf",

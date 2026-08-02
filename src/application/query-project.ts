@@ -167,16 +167,16 @@ const make = Effect.gen(function* () {
           validationErrors: buildChunkValidationErrors(malformedLines),
         }
       }
-      const [embedding, sparseQuery] = yield* Effect.all([
-        embedder.embed(queryText),
-        sparseEmbedder.tokenizeQuery(queryText),
-      ])
+      const [embedding, sparseQuery] = yield* Effect.all(
+        [embedder.embed(queryText), sparseEmbedder.tokenizeQuery(queryText)],
+        { concurrency: 2 },
+      )
 
       const lexicalRanks = rankBm25(queryText, bm25Index)
-      const [denseRanks, sparseRanks] = yield* Effect.all([
-        store.searchDense(embedding),
-        store.searchSparse(sparseQuery),
-      ])
+      const [denseRanks, sparseRanks] = yield* Effect.all(
+        [store.searchDense(embedding), store.searchSparse(sparseQuery)],
+        { concurrency: 2 },
+      )
       const identityRanks = rankIdentity(queryText, identifierIndex)
       const camelcaseRanks = rankCamelCase(queryText, identifierIndex)
 

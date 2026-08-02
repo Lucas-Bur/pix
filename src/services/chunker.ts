@@ -217,7 +217,7 @@ export const chunkTextWithConfig = (
   text: string,
   file: string,
   config: Config,
-  registry = buildExtensionRegistry(config.skipExtensions),
+  registry: ReturnType<typeof buildExtensionRegistry>,
 ): Effect.Effect<readonly Chunk[]> => {
   if (text === "") return Effect.succeed([])
 

@@ -13,7 +13,8 @@ const testLayer = Layer.provideMerge(
   }),
 )
 
-it.effect(
+// This adapter test downloads the pinned model; enable it explicitly for integration runs.
+it.effect.skipIf(process.env.PIX_RUN_MODEL_TESTS !== "1")(
   "SparseEmbedder loads the pinned model and encodes documents and queries",
   () =>
     Effect.gen(function* () {

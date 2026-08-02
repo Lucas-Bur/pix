@@ -123,12 +123,16 @@ export const buildQueryTermCoverage = (
   )
   const camelcaseTerms = [...new Set(splitIdentifier(query))]
   const coveredCamelcaseTerms = camelcaseTerms.filter(
-    (term) => (identifierIndex.split[term]?.length ?? 0) > 0,
+    (term) =>
+      Object.prototype.hasOwnProperty.call(identifierIndex.split, term) &&
+      identifierIndex.split[term].length > 0,
   ).length
 
   return {
     bm25Idf: totalIdf === 0 ? 0 : coveredIdf / totalIdf,
-    identity: identifierIndex.exact[query.toLowerCase()] === undefined ? 0 : 1,
+    identity: Object.prototype.hasOwnProperty.call(identifierIndex.exact, query.toLowerCase())
+      ? 1
+      : 0,
     camelcase: camelcaseTerms.length === 0 ? 0 : coveredCamelcaseTerms / camelcaseTerms.length,
   }
 }
@@ -339,7 +343,7 @@ const buildDenseConfidence = (ranking: ChannelRankings[ChannelName]): DenseConfi
     topScoreRelativeToMedian,
     robustDeviation,
     scoreTail,
-    confidence: (topScoreRelativeToMedian + robustDeviation + scoreTail) / 3,
+    confidence: (topScoreRelativeToMedian + robustDeviation + (1 - scoreTail)) / 3,
   }
 }
 

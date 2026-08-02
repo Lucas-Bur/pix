@@ -38,6 +38,27 @@ describe("DeviceDetection", () => {
     }),
   )
 
+  it.effect("loadFirstAvailableDevice reports the final error after exhausting devices", () =>
+    Effect.gen(function* () {
+      const attempted: string[] = []
+      const error = yield* Effect.flip(
+        loadFirstAvailableDevice("sparse-model", (device) =>
+          Effect.gen(function* () {
+            attempted.push(device)
+            return yield* new ModelLoadError({
+              message: `${device} unavailable`,
+              model: "sparse-model",
+            })
+          }),
+        ),
+      )
+
+      expect(error).toBeInstanceOf(ModelLoadError)
+      expect(error.message).toBe("cpu unavailable")
+      expect(attempted).toEqual(["cuda", "dml", "coreml", "webgpu", "wasm", "cpu"])
+    }),
+  )
+
   it.effect("detect returns 'cuda' when cuda succeeds", () =>
     Effect.gen(function* () {
       mockedPipeline.mockResolvedValue({} as any)

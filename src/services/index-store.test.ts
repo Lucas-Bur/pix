@@ -53,6 +53,9 @@ const storeFixture = (
   chunks: ReturnType<typeof makeChunk>[],
   embeddings: ReturnType<typeof makeEmbedding>[],
   embeddingCache: Parameters<IndexStore["Service"]["persistIndex"]>[0]["embeddingCache"] = [],
+  sparseEmbeddingCache: Parameters<
+    IndexStore["Service"]["persistIndex"]
+  >[0]["sparseEmbeddingCache"] = [],
 ) =>
   Effect.gen(function* () {
     const store = yield* IndexStore
@@ -67,6 +70,7 @@ const storeFixture = (
       dims: 384,
       dtype: "fp32",
       embeddingCache,
+      sparseEmbeddingCache,
       sparseContract: TEST_SPARSE_CONTRACT,
       sparseIdf: [],
     })
@@ -116,6 +120,15 @@ it.effect("IndexStore.persistIndex stores chunk metadata without source text", (
   }).pipe(Effect.provide(isLayer), Effect.scoped),
 )
 
+it.effect("IndexStore enables SQLite foreign-key enforcement", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const rows = yield* sql<{ readonly foreignKeys: number }>`PRAGMA foreign_keys`
+
+    expect(rows[0]?.foreignKeys).toBe(1)
+  }).pipe(Effect.provide(isLayer), Effect.scoped),
+)
+
 it.effect("IndexStore.clearEmbeddingCache removes persisted embeddings", () =>
   Effect.gen(function* () {
     const cached = makeEmbedding(0.25)
@@ -123,11 +136,26 @@ it.effect("IndexStore.clearEmbeddingCache removes persisted embeddings", () =>
       [makeChunk()],
       [makeEmbedding()],
       [{ contentHash: "cached", model: "test-model", embedding: cached }],
+      [
+        {
+          contentHash: "cached-sparse",
+          contract: TEST_SPARSE_CONTRACT,
+          vector: { terms: [{ tokenId: 7, weight: 2 }] },
+        },
+      ],
     )
     expect(yield* store.loadEmbeddingCache()).toHaveLength(1)
+    expect(yield* store.loadSparseEmbeddingCache()).toEqual([
+      {
+        contentHash: "cached-sparse",
+        contract: TEST_SPARSE_CONTRACT,
+        vector: { terms: [{ tokenId: 7, weight: 2 }] },
+      },
+    ])
 
     expect(yield* store.clearEmbeddingCache()).toBe(true)
     expect(yield* store.loadEmbeddingCache()).toHaveLength(0)
+    expect(yield* store.loadSparseEmbeddingCache()).toHaveLength(0)
   }).pipe(Effect.provide(isLayer), Effect.scoped),
 )
 
@@ -169,10 +197,18 @@ it.effect("IndexStore.reset preserves the historical embedding cache", () =>
       [makeChunk()],
       [makeEmbedding()],
       [{ contentHash: "cached", model: "test-model", embedding: cached }],
+      [
+        {
+          contentHash: "cached-sparse",
+          contract: TEST_SPARSE_CONTRACT,
+          vector: { terms: [{ tokenId: 7, weight: 2 }] },
+        },
+      ],
     )
     yield* store.reset()
 
     expect(yield* store.loadEmbeddingCache()).toHaveLength(1)
+    expect(yield* store.loadSparseEmbeddingCache()).toHaveLength(1)
     expect((yield* store.getStatus()).chunks).toBe(0)
   }).pipe(Effect.provide(indexStoreLayer()), Effect.scoped),
 )
@@ -305,6 +341,7 @@ it.effect("IndexStore.searchSparse executes exact IDF-weighted inner product in 
       dims: 384,
       dtype: "fp32",
       embeddingCache: [],
+      sparseEmbeddingCache: [],
       sparseContract: TEST_SPARSE_CONTRACT,
       sparseIdf: [{ tokenId: 7, weight: 3 }],
     })
@@ -334,6 +371,7 @@ it.effect("IndexStore.persistIndex replaces sparse postings without stale terms"
         dims: 384,
         dtype: "fp32" as const,
         embeddingCache: [],
+        sparseEmbeddingCache: [],
         sparseContract: TEST_SPARSE_CONTRACT,
         sparseIdf: [
           { tokenId: 7, weight: 1 },
@@ -491,6 +529,7 @@ it.effect("IndexStore.persistIndex rolls back when the stream fails mid-write", 
         dims: 384,
         dtype: "fp32",
         embeddingCache: [],
+        sparseEmbeddingCache: [],
         sparseContract: TEST_SPARSE_CONTRACT,
         sparseIdf: [],
       }),

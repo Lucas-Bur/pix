@@ -27,6 +27,7 @@ import {
   SparseEmbedder,
   type Bm25Index,
   type CachedEmbedding,
+  type CachedSparseEmbedding,
 } from "../../src/domain/ports.js"
 import { ChunkerBase } from "../../src/services/chunker.js"
 import { ConfigStoreLive } from "../../src/services/config-store.js"
@@ -47,6 +48,7 @@ export interface TestIndexSeed {
   readonly identifierIndex?: IdentifierIndexMaps
   readonly files?: readonly FileManifestEntry[]
   readonly embeddingCache?: readonly CachedEmbedding[]
+  readonly sparseEmbeddingCache?: readonly CachedSparseEmbedding[]
   readonly dims?: number
   readonly dtype?: EmbeddingDtype
 }
@@ -191,7 +193,9 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
               const store = yield* IndexStore
               yield* store.persistIndex({
                 chunks: Stream.succeed(
-                  indexSeed.chunks.map(([chunk, embedding]) => [chunk, embedding, { terms: [] }]),
+                  indexSeed.chunks.map(
+                    ([chunk, embedding]) => [chunk, embedding, { terms: [] }] as const,
+                  ),
                 ),
                 identifierIndex: indexSeed.identifierIndex ?? { exact: {}, split: {} },
                 bm25Index: indexSeed.bm25Index,
@@ -199,6 +203,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
                 dims: indexSeed.dims ?? 384,
                 dtype: indexSeed.dtype ?? "fp32",
                 embeddingCache: indexSeed.embeddingCache ?? [],
+                sparseEmbeddingCache: indexSeed.sparseEmbeddingCache ?? [],
                 sparseContract: TEST_SPARSE_CONTRACT,
                 sparseIdf: [],
               })

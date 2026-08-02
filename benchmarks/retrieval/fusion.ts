@@ -20,8 +20,12 @@ const preparedCache = new WeakMap<ChannelRankings, Map<string, PreparedFusionRan
 
 const relativeScores = (ranking: readonly RankedChunk[]): readonly number[] => {
   if (ranking.length === 0) return []
-  const max = ranking[0].score
-  const min = ranking[ranking.length - 1].score
+  let max = ranking[0].score
+  let min = ranking[0].score
+  for (const entry of ranking) {
+    if (entry.score > max) max = entry.score
+    if (entry.score < min) min = entry.score
+  }
   if (max === min) return ranking.map(() => NEUTRAL_NORMALIZED_SCORE)
   return ranking.map((entry) => (entry.score - min) / (max - min))
 }

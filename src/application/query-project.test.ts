@@ -83,6 +83,7 @@ const indexFixture = (
       dims: 384,
       dtype: "fp32",
       embeddingCache: [],
+      sparseEmbeddingCache: [],
       sparseContract: TEST_SPARSE_CONTRACT,
       sparseIdf,
     })

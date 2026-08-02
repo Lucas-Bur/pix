@@ -131,28 +131,31 @@ const selectValues = (value: string | undefined): ReadonlySet<string> | null =>
 const selectManifests = (
   manifests: readonly CorpusManifest[],
   profile: BenchmarkProfile,
-): readonly CorpusManifest[] => {
+): Effect.Effect<readonly CorpusManifest[], Error> => {
   const selected = selectValues(process.env.PIX_BENCH_REPOS)
   if (selected) {
     const unknown = [...selected].filter((id) => !manifests.some((manifest) => manifest.id === id))
-    if (unknown.length > 0) throw new Error(`Unknown PIX_BENCH_REPOS values: ${unknown.join(", ")}`)
-    return manifests.filter((manifest) => selected.has(manifest.id))
+    if (unknown.length > 0)
+      return Effect.fail(new Error(`Unknown PIX_BENCH_REPOS values: ${unknown.join(", ")}`))
+    return Effect.succeed(manifests.filter((manifest) => selected.has(manifest.id)))
   }
-  return profile === "smoke" ? manifests.filter((manifest) => manifest.id === "fd") : manifests
+  return Effect.succeed(
+    profile === "smoke" ? manifests.filter((manifest) => manifest.id === "fd") : manifests,
+  )
 }
 
-const selectModels = (): readonly string[] => {
+const selectModels = (): Effect.Effect<readonly string[], Error> => {
   const selected = selectValues(process.env.PIX_BENCH_MODELS)
   if (selected && selected.size !== 1)
-    throw new Error("PIX_BENCH_MODELS must select exactly one embedding model")
+    return Effect.fail(new Error("PIX_BENCH_MODELS must select exactly one embedding model"))
   const models = Object.keys(MODEL_REGISTRY).filter((model) =>
     selected ? selected.has(model) : model === "Xenova/all-MiniLM-L6-v2",
   )
   if (selected && models.length !== selected.size) {
     const unknown = [...selected].filter((model) => MODEL_REGISTRY[model] === undefined)
-    throw new Error(`Unknown PIX_BENCH_MODELS values: ${unknown.join(", ")}`)
+    return Effect.fail(new Error(`Unknown PIX_BENCH_MODELS values: ${unknown.join(", ")}`))
   }
-  return models
+  return Effect.succeed(models)
 }
 
 const embedTexts = (
@@ -223,6 +226,7 @@ const persistBenchmarkCorpus = (
       dims,
       dtype,
       embeddingCache: [],
+      sparseEmbeddingCache: [],
       sparseContract,
       sparseIdf,
     })
@@ -258,9 +262,9 @@ export const runRetrievalBenchmark = (
     const config = profileConfig(profile)
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
-    const manifests = selectManifests(yield* loadCorpusManifests(), profile)
+    const manifests = yield* selectManifests(yield* loadCorpusManifests(), profile)
     const groupedFoldAssignments = assignGroupedFolds(manifests, config.groupedFolds)
-    const models = selectModels()
+    const models = yield* selectModels()
     const repositories: BenchmarkArtifact["repositories"][number][] = []
     const embeddingRuns: BenchmarkArtifact["embeddingRuns"][number][] = []
     const sparseEmbeddingRuns: BenchmarkArtifact["sparseEmbeddingRuns"][number][] = []

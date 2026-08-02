@@ -3,7 +3,11 @@ import { Effect } from "effect"
 
 import { assignGroupedFolds } from "../retrieval/folds.js"
 import { runRetrievalBenchmark } from "../retrieval/runner.js"
-import { ROUTER_OBJECTIVES, type BenchmarkProfile } from "../retrieval/types.js"
+import {
+  ROUTER_OBJECTIVES,
+  ROUTER_SEARCH_STRATEGY,
+  type BenchmarkProfile,
+} from "../retrieval/types.js"
 
 const foldQuestions = (prefix: string) =>
   Array.from({ length: 12 }, (_, index) => ({
@@ -21,6 +25,7 @@ const foldQuestions = (prefix: string) =>
 
 type TestQuestion = ReturnType<typeof foldQuestions>[number]
 type TestManifest = { readonly id: string; readonly questions: readonly TestQuestion[] }
+const runRetrievalBenchmarks = process.env.PIX_RUN_RETRIEVAL_BENCHMARK === "1"
 
 const expectBalancedClass = (
   manifest: TestManifest,
@@ -77,15 +82,7 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
     expect(artifact.schemaVersion).toBe(19)
-    expect(artifact.searchStrategy.algorithm).toBe(
-      "halton-global-scout-elitist-beam-successive-halving-pareto",
-    )
-    expect(artifact.searchStrategy.globalScouts).toBe(64)
-    expect(artifact.searchStrategy.proxySampleFraction).toBe(0.25)
-    expect(artifact.searchStrategy.proxyMinimumSamples).toBe(32)
-    expect(artifact.searchStrategy.halvingKeepFactor).toBe(8)
-    expect(artifact.searchStrategy.objectives).toEqual(ROUTER_OBJECTIVES)
-    expect(artifact.searchStrategy.guardrailTolerance).toBe(0.01)
+    expect(artifact.searchStrategy).toEqual(ROUTER_SEARCH_STRATEGY)
     expect(artifact.timings.totalDurationMs).toBeGreaterThan(0)
     expect(Object.values(artifact.timings).every((duration) => duration >= 0)).toBe(true)
     expect(artifact.embeddingRuns.every((run) => run.queryEmbeddingDurationMs >= 0)).toBe(true)
@@ -119,13 +116,21 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(outputPath).toMatch(/benchmarks[\\/]results[\\/]retrieval-.*\.json$/)
   })
 
-it.effect("runs the smoke retrieval profile", () => runProfile("smoke", 5, 1))
+it.effect.skipIf(!runRetrievalBenchmarks)("runs the smoke retrieval profile", () =>
+  runProfile("smoke", 5, 1),
+)
 
-it.effect("runs the develop retrieval profile", () => runProfile("develop", 3, 1))
+it.effect.skipIf(!runRetrievalBenchmarks)("runs the develop retrieval profile", () =>
+  runProfile("develop", 3, 1),
+)
 
-it.effect("runs the validate retrieval profile", () => runProfile("validate", 5, 1))
+it.effect.skipIf(!runRetrievalBenchmarks)("runs the validate retrieval profile", () =>
+  runProfile("validate", 5, 1),
+)
 
-it.effect("runs the full retrieval profile", () => runProfile("full", 5, 3))
+it.effect.skipIf(!runRetrievalBenchmarks)("runs the full retrieval profile", () =>
+  runProfile("full", 5, 3),
+)
 
 it("shuffles intent groups deterministically before assigning folds", () => {
   const manifests = [

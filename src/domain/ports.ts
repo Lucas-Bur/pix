@@ -379,6 +379,8 @@ export interface PersistIndexInput<E = never> {
   readonly dtype: EmbeddingDtype
   /** Historical embeddings not already present in the active vectors file. */
   readonly embeddingCache: readonly CachedEmbedding[]
+  /** Historical sparse vectors not already present in the active postings. */
+  readonly sparseEmbeddingCache: readonly CachedSparseEmbedding[]
   /** Versioned sparse contract committed atomically with all sparse postings. */
   readonly sparseContract: SparseContract
   /** Static query-IDF table paired with the sparse contract. */
@@ -390,6 +392,13 @@ export interface CachedEmbedding {
   readonly contentHash: string
   readonly model: string
   readonly embedding: Embedding
+}
+
+/** Decoded sparse vector retained across index runs by content and sparse contract. */
+export interface CachedSparseEmbedding {
+  readonly contentHash: string
+  readonly contract: SparseContract
+  readonly vector: SparseVector
 }
 
 /** Committed index data used to plan an incremental refresh. */
@@ -447,7 +456,12 @@ export class IndexStore extends Context.Service<
     readonly loadSource: (request: SourceRequest) => Effect.Effect<SourceContent, StoreError>
     /** Load all valid content-addressed embeddings. Missing cache returns an empty list. */
     readonly loadEmbeddingCache: () => Effect.Effect<readonly CachedEmbedding[], StoreError>
-    /** Remove the optional embedding cache without touching the committed index. */
+    /** Load all valid content-addressed sparse vectors. Missing cache returns an empty list. */
+    readonly loadSparseEmbeddingCache: () => Effect.Effect<
+      readonly CachedSparseEmbedding[],
+      StoreError
+    >
+    /** Remove both optional embedding caches without touching the committed index. */
     readonly clearEmbeddingCache: () => Effect.Effect<boolean, StoreError | DiskFullError>
     /** Load the committed snapshot without comparing it to current config. */
     readonly loadIndexSnapshot: () => Effect.Effect<Option.Option<IndexSnapshot>, StoreError>
