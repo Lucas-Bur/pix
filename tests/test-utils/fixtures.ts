@@ -5,6 +5,14 @@ import { ConfigSchema } from "../../src/domain/config.js"
 import type { Config } from "../../src/domain/config.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
 import type { StoredChunk } from "../../src/domain/index-data.js"
+import {
+  SPARSE_DOCUMENT_MODEL,
+  SPARSE_DOCUMENT_REVISION,
+  SPARSE_IDF_CONTENT_HASH,
+  SPARSE_QUERY_MODEL,
+  SPARSE_QUERY_REVISION,
+} from "../../src/domain/sparse.js"
+import type { SparseContract } from "../../src/domain/sparse.js"
 import { contentHash } from "../../src/lib/content-hash.js"
 import { deepMerge } from "./merge.js"
 
@@ -18,6 +26,16 @@ export const makeConfigJson = (overrides?: DeepPartial<Config>): string =>
 export const TEST_CONFIG_JSON = makeConfigJson({
   embedder: { device: "auto", dtype: "fp32", batchSize: 16 },
 })
+
+/** Stable sparse contract shared by test adapters and persisted test fixtures. */
+export const TEST_SPARSE_CONTRACT: SparseContract = {
+  model: SPARSE_DOCUMENT_MODEL,
+  modelRevision: SPARSE_DOCUMENT_REVISION,
+  tokenizer: SPARSE_QUERY_MODEL,
+  tokenizerRevision: SPARSE_QUERY_REVISION,
+  idfRevision: SPARSE_QUERY_REVISION,
+  idfContentHash: SPARSE_IDF_CONTENT_HASH,
+}
 
 export const makeChunk = (overrides?: Partial<Chunk>): Chunk => {
   const base: Chunk = {

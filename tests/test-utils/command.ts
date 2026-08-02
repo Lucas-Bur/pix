@@ -160,6 +160,7 @@ export const makeFailingIndexStore = (
             malformedLines: 0,
           }),
     searchDense: () => Effect.succeed([]),
+    searchSparse: () => Effect.succeed([]),
     loadSource: () => Effect.succeed({ text: "", contextBefore: null, contextAfter: null }),
     loadEmbeddingCache: () => Effect.succeed([]),
     clearEmbeddingCache: () => Effect.succeed(false),

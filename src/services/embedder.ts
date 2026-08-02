@@ -16,7 +16,7 @@ import {
 } from "../domain/ports.js"
 import { resolveEmbedderConfig } from "../lib/embedder/resolve.js"
 import { ConfigStoreLive } from "./config-store.js"
-import { DEVICE_PRIORITY, DeviceDetectionLive } from "./device-detect.js"
+import { DeviceDetectionLive, loadFirstAvailableDevice } from "./device-detect.js"
 
 interface FallbackInfo {
   readonly originalDevice: string
@@ -123,21 +123,9 @@ export const createAutoBoundEmbedder = (cfg: {
   readonly dtype: EmbeddingDtype
   readonly dims: number
 }): Effect.Effect<AutoBoundEmbedder, ModelLoadError> =>
-  Effect.gen(function* () {
-    let lastError: ModelLoadError | undefined
-    for (const device of DEVICE_PRIORITY) {
-      const result = yield* createBoundEmbedder({ ...cfg, device }).pipe(Effect.result)
-      if (Result.isSuccess(result)) return { device, embedder: result.success }
-      lastError = result.failure
-    }
-    return yield* (
-      lastError ??
-        new ModelLoadError({
-          message: `No device available for model "${cfg.model}"`,
-          model: cfg.model,
-        })
-    )
-  })
+  loadFirstAvailableDevice(cfg.model, (device) => createBoundEmbedder({ ...cfg, device })).pipe(
+    Effect.map(({ device, value }) => ({ device, embedder: value })),
+  )
 
 const withGpuFallback = (
   model: string,

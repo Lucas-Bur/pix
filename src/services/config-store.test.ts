@@ -30,6 +30,11 @@ it.effect("ConfigStore.writeConfig creates .pix/config.json with defaults", () =
     expect(config.overlapLines).toBe(10)
     expect(config.skipExtensions).toEqual([])
     expect(config.embedder.batchSize).toBe(16)
+    expect(config.sparseEmbedder.model).toBe(
+      "raul3820/opensearch-neural-sparse-encoding-doc-v3-distill-onnx",
+    )
+    expect(config.sparseEmbedder.batchSize).toBe(2)
+    expect(config.sparseEmbedder.device).toBe("auto")
     expect(config.ignoredPaths).toEqual([
       ".pix",
       "node_modules",
@@ -106,6 +111,23 @@ it.effect("readConfig returns ConfigValidationError for invalid enum value", () 
     Effect.provide(
       // Intentionally invalid: device "cuda!" is not in the enum — tests ConfigValidationError path
       makeLayer({ ".pix/config.json": JSON.stringify(invalidConfig) }),
+    ),
+  ),
+)
+
+it.effect("readConfig rejects a non-positive sparse batch size", () =>
+  Effect.gen(function* () {
+    const result = expectLeft(yield* Effect.result((yield* ConfigStore).readConfig()))
+    expect(result._tag).toBe("ConfigValidationError")
+    expect(result.message).toContain('["sparseEmbedder"]["batchSize"]')
+  }).pipe(
+    Effect.provide(
+      makeLayer({
+        ".pix/config.json": JSON.stringify({
+          ...DEFAULT_CONFIG,
+          sparseEmbedder: { ...DEFAULT_CONFIG.sparseEmbedder, batchSize: 0 },
+        }),
+      }),
     ),
   ),
 )

@@ -20,11 +20,11 @@ Minimum chunk size: 20 characters (configurable `minChunkChars`).
 
 ### ChunkEntry
 
-Raw data loaded from the index and passed to scorers at query time. Contains chunk identity, exact source range, content hash, vector, and file location; no source text or context.
+Raw data loaded from the index and passed to scorers at query time. Contains chunk identity, exact source range, content hash, Dense vector, learned Sparse vector, and file location; no source text or context.
 
 ### Config
 
-Runtime configuration stored in `.pix/config.json`. Contains model name, device, dtype, chunk parameters (lines, overlap, minChunkChars, concurrency), embedder batch size, ignored paths, skip extensions.
+Runtime configuration stored in `.pix/config.json`. Contains Dense and Sparse model contracts, devices and batch sizes, Dense dtype, chunk parameters (lines, overlap, minChunkChars, concurrency), ignored paths, and skip extensions.
 Structurally healed on read: missing fields are filled from `DEFAULT_CONFIG` via deep-merge. Coupled rules (model exists in registry, dtype supported by model) are validated against `ModelRegistry`. Unsupported dtypes are auto-healed to the model's `defaultDtype`; unknown models produce `ConfigHealError`.
 
 ### Embedder
@@ -36,6 +36,14 @@ Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable). Produ
 
 Content-addressed reuse for embeddings displaced from the active index. Active and historical vectors live in separate tables inside `.pix/index.db`. Historical entries are keyed by exact embedded-text hash, model, dimensions, and dtype. `pix cache clear` removes only this history.
 
+### Sparse Embedder
+
+Required learned lexical-semantic encoder using the pinned OpenSearch v3 Distill document ONNX export.
+Documents produce variable `(token_id, weight)` vectors through attended max pooling and
+`log1p(log1p(relu(value)))`. Queries run only the paired tokenizer; SQLite applies the persisted static
+IDF table. Model artifacts live in `.pix/cache/`. Default document batch size is 2 because logits scale
+with batch size × sequence length × the 30,522-token vocabulary. See ADR-0020.
+
 ### ModelRegistry
 
 Port (`Context.Tag` in `src/domain/ports.ts`) for querying embedding model metadata: dimensions, supported dtypes, default dtype, description. `ModelRegistryLive` in `src/services/models.ts` wraps the static `MODEL_REGISTRY` record from `src/domain/models.ts`; test layers can inject a restricted fake registry to exercise coupled-validation edge cases. Two methods: `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. Follows the "two adapters = real seam" principle (live + test).
@@ -46,7 +54,7 @@ Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtype
 
 ### DeviceDetection
 
-Port (`Context.Tag` in `src/domain/ports.ts`) for detecting the best available compute device for embedding inference. Two methods: `detect(model, dtype) → DeviceType` (probes devices in priority order, returns first that loads the model) and `detectAll(model, dtype) → readonly DeviceType[]` (tests each device independently). The live adapter in `src/services/device-detect.ts` loads HuggingFace transformers with a GPU→CPU fallback chain (cuda → dml → coreml → webgpu → wasm → cpu). Used by `Embedder` for auto-detect and by `BenchProject` to enumerate available devices.
+Port (`Context.Tag` in `src/domain/ports.ts`) for detecting the best available compute device for embedding inference. Two methods: `detect(model, dtype) → DeviceType` (probes devices in priority order, returns first that loads the model) and `detectAll(model, dtype) → readonly DeviceType[]` (tests each independently). The live adapter in `src/services/device-detect.ts` uses the shared generic first-working-device loader with `cuda → dml → coreml → webgpu → wasm → cpu`. Dense supplies its Feature Extraction loader, Sparse supplies its Masked-LM loader, and `BenchProject` uses `detectAll` to enumerate Dense devices. Explicit devices bypass fallback.
 
 ### Config Healing
 
@@ -83,7 +91,7 @@ Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, ap
 
 ### IndexStore
 
-Owns `.pix/index.db`, which contains active chunks and Float32 embedding BLOBs, metadata, file observations, BM25, identifier postings, historical embedding cache, and Effect SQL migration history. Complete streamed replacements run in one SQLite transaction. Editable config and aliases remain files.
+Owns `.pix/index.db`, which contains active chunks and Float32 Dense embedding BLOBs, learned Sparse metadata/IDF/postings, file observations, BM25, identifier postings, historical Dense embedding cache, and Effect SQL migration history. Complete streamed replacements run in one SQLite transaction. Editable config and aliases remain files.
 
 ### Core Scope
 
@@ -91,7 +99,7 @@ init, incremental index, self-refreshing query, status, reset, and explicit embe
 
 ### Query Routing
 
-Token-count heuristic adjusting scorer weights before RRF fusion. Short queries (1-2 tokens) boost BM25 weight; long queries (8+ tokens) boost semantic weight. Default: equal weights. Inlined in `src/application/query-project.ts`.
+Token-count heuristic adjusting scorer weights before RRF fusion. Short queries (1-2 tokens) boost BM25 and reduce Dense; long queries (8+ tokens) boost Dense and reduce BM25. Identity, CamelCase, and learned Sparse retain fixed weights.
 
 ### Query API
 
@@ -129,11 +137,11 @@ Fuses N ranked lists by rank position: `Σ weight * 1 / (k + rank_in_path)`. Raw
 
 ### Fusion Strategy and Optimization Profiles
 
-Production currently uses RRF as the compatibility fusion for the four live channels. The schema-17
+Production currently uses RRF as the compatibility fusion for the five live channels. The schema-17
 benchmark compares RRF with per-channel Relative Score fusion and Distribution-Based Score Fusion
 (DBSF); these alternatives are benchmark candidates, not production behavior yet. The planned production
 seam is an explicit fusion method plus an evidence router, so Identity, CamelCase, BM25, Dense, and the
-future Sparse channel can participate without fusion-specific channel branches. The router may adjust
+learned Sparse channel participates without fusion-specific channel branches. The router may adjust
 each channel's base weight using score separation, score geometry, term coverage, pairwise agreement,
 dense confidence, identifier likelihood, query length, and channel availability.
 
@@ -195,8 +203,8 @@ Schema 17 adds a benchmark-only OpenSearch Distill sparse channel. It uses the v
 export with max-pooled positive token logits and a matching static IDF query lookup; variable-length
 document vectors are cached separately under `benchmarks/.cache/sparse`. Sparse-inclusive rankings,
 five-channel score fusion, ten pairwise agreement signals, and separate sparse timing rows are recorded
-in schema-17 artifacts. Production remains on the four-channel RRF router and `.pix/index.db` until
-holdout evidence justifies a main-package sparse port and SQLite migration.
+in schema-17 artifacts. ADR-0020 promotes the validated Sparse contract to the production five-channel
+RRF path and persists its IDF and postings in `.pix/index.db`.
 New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with
 `PIX_BENCH_REPOS`, and cached under `benchmarks/.cache/repos/`.
 The router uses only runtime-observable query length and identifier shape, within-channel score
@@ -214,7 +222,7 @@ under ignored `benchmarks/results/`. See `benchmarks/README.md` and `benchmarks/
 
 ### Scorer
 
-A retrieval path producing `RankedChunk[]`. BM25 and identifier scorers are pure functions over pre-built data. Dense ranking runs in SQLite through sqlite-vector; SQLite is the sole dense-ranking implementation and reference path.
+A retrieval path producing `RankedChunk[]`. BM25 and identifier scorers are pure functions over pre-built data. Dense ranking runs in SQLite through sqlite-vector; learned Sparse ranking runs in SQLite through indexed IDF/posting joins. SQLite is the sole implementation for both persisted-vector channels.
 
 ### Scorer Weight
 
@@ -287,7 +295,7 @@ Tests the full `Command.run` → all layers → CLI output path. Exercises the c
 
 ### Default Embedder (test)
 
-Zero-vector mock Embedder provided by `testLayer()`. Returns `Float32Array(384)` of zeros for every embedding. Used in Use Case and Command tests where real embeddings are irrelevant to the assertion.
+Zero-vector Dense Embedder and empty-vector Sparse Embedder provided by `testLayer()`. Used in Use Case and Command tests where model inference is irrelevant to the assertion.
 
 ### Memory FileSystem Layer
 
@@ -378,8 +386,8 @@ All one-shot commands support `--json` for agent-ready structured output on stdo
 - Production currently selects RRF; Relative Score and DBSF remain benchmark fusion candidates until an
   evidence-based production configuration passes holdout guardrails
 - **BM25 Index** is built once by the index pipeline, consumed by the BM25 **Scorer** at query time
-- Adding a retrieval path means: write a pure **Scorer** function, add it to `Effect.all`, and expose
-  its ranking through the production fusion seam
+- Retrieval channels expose `RankedChunk[]` through the production fusion seam. BM25 and identifiers
+  score in pure functions; Dense and Sparse rank natively through `IndexStore`.
 
 ## Architecture Decisions
 
@@ -456,7 +464,7 @@ Returns all files found during FS walk, applying `.gitignore` rules (unless `ign
 
 ### Config
 
-Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip. New fields include `embedder.batchSize` (default 16), `ignoreGitignore` (default false), and `vectorSearch` (`mode`: exact/auto/turboquant; `turboQuantThreshold`: default 50000). Updated `ignoredPaths` defaults: removed `.agents`, `.github`; added `.vite-hooks`, `.fallow`.
+Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip. Fields include `embedder.batchSize` (default 16), the pinned `sparseEmbedder` model/query contracts with document batch size 2, `ignoreGitignore` (default false), and `vectorSearch` (`mode`: exact/auto/turboquant; `turboQuantThreshold`: default 50000). Updated `ignoredPaths` defaults: removed `.agents`, `.github`; added `.vite-hooks`, `.fallow`.
 
 ### Extension→Processor mapping (Phase 2+)
 

@@ -271,13 +271,24 @@ const persistBenchmarkCorpus = (
       { vector: vectors[index]!, dims, dtype },
     ])
     yield* store.persistIndex({
-      chunks: Stream.succeed(pairs),
+      chunks: Stream.succeed(
+        pairs.map(([chunk, embedding]) => [chunk, embedding, { terms: [] }] as const),
+      ),
       identifierIndex: corpus.identifierIndex,
       bm25Index: corpus.bm25Index,
       files: [],
       dims,
       dtype,
       embeddingCache: [],
+      sparseContract: {
+        model: "raul3820/opensearch-neural-sparse-encoding-doc-v3-distill-onnx",
+        modelRevision: "7c40813e0264f105bca4c16cdc721c3a84170d52",
+        tokenizer: "opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill",
+        tokenizerRevision: "babf71f3c48695e2e53a978208e8aba48335e3c0",
+        idfRevision: "babf71f3c48695e2e53a978208e8aba48335e3c0",
+        idfContentHash: "da23a1c0b9252776cc8c6d70fd14723e218f484d489cd9027ac6e4065d5b9edd",
+      },
+      sparseIdf: [],
     })
   })
 

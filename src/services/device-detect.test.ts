@@ -5,7 +5,7 @@ import { vi } from "vitest"
 
 import { ModelLoadError } from "../domain/errors.js"
 import { DeviceDetection } from "../domain/ports.js"
-import { DeviceDetectionLive } from "./device-detect.js"
+import { DeviceDetectionLive, loadFirstAvailableDevice } from "./device-detect.js"
 
 vi.mock("@huggingface/transformers", () => ({
   pipeline: vi.fn(),
@@ -19,6 +19,25 @@ beforeEach(() => {
 })
 
 describe("DeviceDetection", () => {
+  it.effect("loadFirstAvailableDevice returns the value loaded on the first working device", () =>
+    Effect.gen(function* () {
+      const attempted: string[] = []
+      const loaded = yield* loadFirstAvailableDevice("sparse-model", (device) =>
+        Effect.gen(function* () {
+          attempted.push(device)
+          if (device === "coreml") return { runtime: "sparse" }
+          return yield* new ModelLoadError({
+            message: `${device} unavailable`,
+            model: "sparse-model",
+          })
+        }),
+      )
+
+      expect(loaded).toEqual({ device: "coreml", value: { runtime: "sparse" } })
+      expect(attempted).toEqual(["cuda", "dml", "coreml"])
+    }),
+  )
+
   it.effect("detect returns 'cuda' when cuda succeeds", () =>
     Effect.gen(function* () {
       mockedPipeline.mockResolvedValue({} as any)

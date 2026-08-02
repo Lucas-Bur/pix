@@ -5,6 +5,7 @@ import { ChunkerLive } from "../services/chunker.js"
 import { ContentExtractorLive } from "../services/content-extractor.js"
 import { IdentifierExtractorLive } from "../services/identifier-extractor.js"
 import { ScannerLive } from "../services/scanner.js"
+import { SparseEmbedderLive } from "../services/sparse-embedder.js"
 import { EmbedderLayer } from "./embedder-layer.js"
 import { IndexStoreLayer } from "./index-store-layer.js"
 
@@ -16,6 +17,7 @@ import { IndexStoreLayer } from "./index-store-layer.js"
 export const FullInfraLayer = Layer.mergeAll(
   IndexStoreLayer,
   EmbedderLayer,
+  SparseEmbedderLive.pipe(Layer.provide(NodeServices.layer)),
   ScannerLive.pipe(Layer.provide(NodeServices.layer)),
   ContentExtractorLive.pipe(Layer.provide(NodeServices.layer)),
   ChunkerLive.pipe(Layer.provide(NodeServices.layer)),

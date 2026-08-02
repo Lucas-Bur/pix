@@ -6,8 +6,8 @@ Proposed
 
 ## Context
 
-Production currently fuses four retrieval channels with weighted Reciprocal Rank Fusion (RRF): Identity,
-CamelCase, BM25, and Dense. The schema-17 benchmark adds the learned Sparse channel and compares three
+Production currently fuses five retrieval channels with weighted Reciprocal Rank Fusion (RRF): Identity,
+CamelCase, BM25, Dense, and learned Sparse. The schema-17 benchmark compares three
 fusion methods: RRF, per-channel Relative Score fusion, and Distribution-Based Score Fusion (DBSF).
 The benchmark shows that the best channel weights depend on the dense model, fusion method, query form,
 and ranking evidence. A single permanently hand-tuned RRF vector cannot express those differences.
@@ -47,7 +47,7 @@ Target metrics remain explicit: Recall@5, Recall@10, Recall@20, Recall@50, and c
 documented token budget. Runtime query-form labels are not inferred from benchmark labels; a future
 runtime profile or intent must be an explicit API/CLI choice.
 
-Production Sparse persistence and scoring are tracked separately in issue #162. Fusion implementation,
+Production Sparse persistence and scoring use the fixed compatibility weight documented in ADR-0020. Fusion implementation,
 evidence routing, and optimization profiles are tracked in issue #163.
 
 ## Rationale
@@ -71,7 +71,7 @@ may be added later.
 ## Consequences
 
 - RRF remains a safe fallback while fusion alternatives are benchmarked and rolled out deliberately.
-- Sparse can join the same fusion seam after the production channel work in #162.
+- Sparse participates in the same fusion seam with a fixed `1.0` weight until evidence routing lands.
 - Fusion configurations become versioned and explainable rather than scattered constants.
 - Every optimization result must distinguish fit-all quality from grouped and repository holdout quality.
 - Weighted aggregate improvements require per-form and per-repository guardrails before production use.

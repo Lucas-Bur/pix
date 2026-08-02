@@ -21,6 +21,8 @@ import type {
   SourceContent,
   SourceRequest,
 } from "../domain/ports.js"
+import { sparseContractsEqual } from "../domain/sparse.js"
+import type { SparseContract, SparseQuery, SparseTerm, SparseVector } from "../domain/sparse.js"
 import { contentHash } from "../lib/content-hash.js"
 import { ConfigStoreLive } from "./config-store.js"
 import { SqliteIndexDatabaseLive } from "./sqlite-index-store/client.js"
@@ -33,6 +35,10 @@ import {
   FileManifestRow,
   IndexMetaRow,
   RetrievalIndexesRow,
+  SparseIdfRow,
+  SparseIndexMetaRow,
+  SparseMatchRow,
+  SparseTermRow,
 } from "./sqlite-index-store/schema.js"
 
 const emptyStatus: {
@@ -118,6 +124,57 @@ const make = Effect.gen(function* () {
     `,
   })
 
+  const insertSparseMeta = SqlSchema.void({
+    Request: SparseIndexMetaRow.insert,
+    execute: ({
+      id,
+      model,
+      modelRevision,
+      tokenizer,
+      tokenizerRevision,
+      idfRevision,
+      idfContentHash,
+    }) =>
+      sql`INSERT INTO sparse_index_meta (
+        id, model, model_revision, tokenizer, tokenizer_revision, idf_revision, idf_content_hash
+      ) VALUES (
+        ${id}, ${model}, ${modelRevision}, ${tokenizer}, ${tokenizerRevision}, ${idfRevision},
+        ${idfContentHash}
+      )`,
+  })
+
+  const insertSparseTerms = (chunkOrdinal: number, vector: SparseVector) => {
+    return Effect.gen(function* () {
+      for (let start = 0; start < vector.terms.length; start += 500) {
+        const values = sql.join(
+          ", ",
+          false,
+        )(
+          vector.terms
+            .slice(start, start + 500)
+            .map(({ tokenId, weight }) => sql`(${chunkOrdinal}, ${tokenId}, ${weight})`),
+        )
+        yield* sql`INSERT INTO sparse_terms (chunk_ordinal, token_id, weight) VALUES ${values}`
+      }
+    })
+  }
+
+  const insertSparseIdf = (terms: readonly SparseTerm[]) => {
+    return Effect.gen(function* () {
+      for (let start = 0; start < terms.length; start += 500) {
+        const values = sql.join(
+          ", ",
+          false,
+        )(
+          terms
+            .slice(start, start + 500)
+            .map(({ tokenId, weight }) => sql`(${tokenId}, ${weight})`),
+        )
+        yield* sql`INSERT INTO sparse_idf (token_id, weight) VALUES ${values}`
+      }
+    })
+  }
+
   const insertFile = SqlSchema.void({
     Request: FileManifestRow.insert,
     execute: ({ file, mtimeMs, size, contentHash }) => sql`
@@ -162,6 +219,27 @@ const make = Effect.gen(function* () {
       FROM chunks
       ORDER BY ordinal
     `,
+  })
+
+  const selectSparseMeta = SqlSchema.findOneOption({
+    Request: Schema.Void,
+    Result: SparseIndexMetaRow,
+    execute: () => sql`SELECT
+      id, model, model_revision, tokenizer, tokenizer_revision, idf_revision, idf_content_hash
+      FROM sparse_index_meta WHERE id = 1`,
+  })
+
+  const selectSparseTerms = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: SparseTermRow,
+    execute: () => sql`SELECT chunk_ordinal, token_id, weight
+      FROM sparse_terms ORDER BY chunk_ordinal, token_id`,
+  })
+
+  const selectSparseIdf = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: SparseIdfRow,
+    execute: () => sql`SELECT token_id, weight FROM sparse_idf ORDER BY token_id`,
   })
 
   const selectChunkMetadata = SqlSchema.findAll({
@@ -232,7 +310,9 @@ const make = Effect.gen(function* () {
         COUNT(*) AS chunks,
         COUNT(DISTINCT file) AS files,
         COALESCE(SUM(end_line - start_line + 1), 0) AS total_lines,
-        COALESCE(SUM(length(embedding)), 0) AS byte_size
+        COALESCE(SUM(length(embedding)), 0) +
+          (SELECT COUNT(*) * 12 FROM sparse_terms) +
+          (SELECT COUNT(*) * 12 FROM sparse_idf) AS byte_size
       FROM chunks
     `,
   })
@@ -255,8 +335,25 @@ const make = Effect.gen(function* () {
       return meta.value
     })
 
+  const requireSparseContract = (): Effect.Effect<SparseContract, StoreError | NoIndexError> =>
+    Effect.gen(function* () {
+      const meta = yield* selectSparseMeta(undefined).pipe(
+        Effect.mapError(asStoreError("read sparse index metadata")),
+      )
+      if (Option.isNone(meta)) {
+        return yield* new NoIndexError({
+          message: "Sparse index data is missing. Re-index to fix.",
+        })
+      }
+      const { id: _id, ...contract } = meta.value
+      return contract
+    })
+
   const readChunks = (): Effect.Effect<readonly ChunkRow[], StoreError> =>
     selectChunks(undefined).pipe(Effect.mapError(asStoreError("read chunks")))
+
+  const readSparseTerms = (): Effect.Effect<readonly SparseTermRow[], StoreError> =>
+    selectSparseTerms(undefined).pipe(Effect.mapError(asStoreError("read sparse terms")))
 
   const readChunkMetadata = (): Effect.Effect<readonly ChunkMetadataRow[], StoreError> =>
     selectChunkMetadata(undefined).pipe(Effect.mapError(asStoreError("read chunk metadata")))
@@ -275,28 +372,38 @@ const make = Effect.gen(function* () {
   const toEntries = (
     rows: readonly ChunkRow[],
     dims: number,
+    sparseRows: readonly SparseTermRow[],
   ): Effect.Effect<readonly ChunkEntry[], VectorDecodeError> =>
-    Effect.forEach(rows, (row) =>
-      row.embedding.length === dims
-        ? Effect.succeed({
-            index: row.ordinal,
-            id: row.id,
-            idx: row.idx,
-            file: row.file,
-            startLine: row.startLine,
-            endLine: row.endLine,
-            startOffset: row.startOffset,
-            endOffset: row.endOffset,
-            contentHash: row.contentHash,
-            vector: row.embedding,
-          })
-        : Effect.fail(
-            new VectorDecodeError({
-              message: `Invalid vector dimensions for chunk ${row.id}: expected ${dims}, got ${row.embedding.length}`,
-              dtype: "fp32",
-            }),
-          ),
-    )
+    Effect.gen(function* () {
+      const termsByOrdinal = new Map<number, SparseTerm[]>()
+      for (const row of sparseRows) {
+        const terms = termsByOrdinal.get(row.chunkOrdinal) ?? []
+        terms.push({ tokenId: row.tokenId, weight: row.weight })
+        termsByOrdinal.set(row.chunkOrdinal, terms)
+      }
+      return yield* Effect.forEach(rows, (row) =>
+        row.embedding.length === dims
+          ? Effect.succeed({
+              index: row.ordinal,
+              id: row.id,
+              idx: row.idx,
+              file: row.file,
+              startLine: row.startLine,
+              endLine: row.endLine,
+              startOffset: row.startOffset,
+              endOffset: row.endOffset,
+              contentHash: row.contentHash,
+              vector: row.embedding,
+              sparseVector: { terms: termsByOrdinal.get(row.ordinal) ?? [] },
+            })
+          : Effect.fail(
+              new VectorDecodeError({
+                message: `Invalid vector dimensions for chunk ${row.id}: expected ${dims}, got ${row.embedding.length}`,
+                dtype: "fp32",
+              }),
+            ),
+      )
+    })
 
   const toMetadata = (rows: readonly ChunkMetadataRow[]): readonly ChunkMetadata[] =>
     rows.map((row) => ({
@@ -345,6 +452,9 @@ const make = Effect.gen(function* () {
       const seenFiles = new Set<string>()
 
       const transaction = Effect.gen(function* () {
+        yield* sql`DELETE FROM sparse_terms`
+        yield* sql`DELETE FROM sparse_idf`
+        yield* sql`DELETE FROM sparse_index_meta`
         yield* sql`DELETE FROM index_meta`
         yield* sql`DELETE FROM retrieval_indexes`
         yield* sql`DELETE FROM files`
@@ -352,7 +462,7 @@ const make = Effect.gen(function* () {
         yield* sql`DELETE FROM embedding_cache`
 
         yield* Stream.runForEach(input.chunks, (batch) =>
-          Effect.forEach(batch, ([chunk, embedding]) =>
+          Effect.forEach(batch, ([chunk, embedding, sparseVector]) =>
             Effect.gen(function* () {
               yield* validateVector(
                 embedding.vector,
@@ -362,9 +472,10 @@ const make = Effect.gen(function* () {
                 input.dtype,
               )
               yield* insertChunk({ ordinal, ...chunk, embedding: copyVector(embedding.vector) })
+              yield* insertSparseTerms(ordinal, sparseVector)
               ordinal++
               totalLines += chunk.endLine - chunk.startLine + 1
-              byteSize += embedding.vector.byteLength
+              byteSize += embedding.vector.byteLength + sparseVector.terms.length * 12
               seenFiles.add(chunk.file)
             }),
           ),
@@ -376,6 +487,8 @@ const make = Effect.gen(function* () {
           bm25Index: input.bm25Index,
           identifierIndex: input.identifierIndex,
         })
+        yield* insertSparseMeta({ id: 1, ...input.sparseContract })
+        yield* insertSparseIdf(input.sparseIdf)
         yield* Effect.forEach(input.embeddingCache, (entry) =>
           Effect.gen(function* () {
             yield* validateVector(
@@ -483,6 +596,39 @@ const make = Effect.gen(function* () {
       }))
     })
 
+  const searchSparse = (
+    query: SparseQuery,
+  ): Effect.Effect<readonly RankedChunk[], StoreError | NoIndexError> =>
+    Effect.gen(function* () {
+      const contract = yield* requireSparseContract()
+      if (!sparseContractsEqual(contract, query.contract)) {
+        return yield* new StoreError({
+          message: "Sparse query contract does not match the persisted index. Re-index to fix.",
+        })
+      }
+      if (query.tokenIds.length === 0) return []
+
+      const values = sql.join(", ", false)(query.tokenIds.map((tokenId) => sql`(${tokenId})`))
+      const search = SqlSchema.findAll({
+        Request: Schema.Void,
+        Result: SparseMatchRow,
+        execute: () => sql`
+          WITH query_tokens(token_id) AS (VALUES ${values})
+          SELECT sparse_terms.chunk_ordinal AS ordinal,
+                 SUM(sparse_idf.weight * sparse_terms.weight) AS score
+          FROM query_tokens
+          JOIN sparse_idf ON sparse_idf.token_id = query_tokens.token_id
+          JOIN sparse_terms ON sparse_terms.token_id = query_tokens.token_id
+          GROUP BY sparse_terms.chunk_ordinal
+          ORDER BY score DESC, sparse_terms.chunk_ordinal ASC
+        `,
+      })
+      const matches = yield* search(undefined).pipe(
+        Effect.mapError(asStoreError("search sparse index")),
+      )
+      return matches.map(({ ordinal, score }) => ({ chunkIndex: ordinal, score }))
+    })
+
   const loadEmbeddingCache = (): Effect.Effect<readonly CachedEmbedding[], StoreError> =>
     selectCache(undefined).pipe(
       Effect.map((rows) =>
@@ -508,8 +654,16 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const meta = yield* readMeta()
       if (Option.isNone(meta)) return Option.none()
+      const sparseMeta = yield* selectSparseMeta(undefined).pipe(
+        Effect.mapError(asStoreError("read sparse index metadata")),
+      )
+      if (Option.isNone(sparseMeta)) return Option.none()
       const rows = yield* readChunks()
-      const entries = yield* toEntries(rows, meta.value.dims).pipe(
+      const sparseRows = yield* readSparseTerms()
+      const sparseIdf = yield* selectSparseIdf(undefined).pipe(
+        Effect.mapError(asStoreError("read sparse IDF")),
+      )
+      const entries = yield* toEntries(rows, meta.value.dims, sparseRows).pipe(
         Effect.mapError(asStoreError("decode index snapshot vectors")),
       )
       const indexes = yield* readRetrievalIndexes()
@@ -523,6 +677,7 @@ const make = Effect.gen(function* () {
         lastIndex: meta.value.lastIndex,
       }
       const manifest: readonly FileManifestEntry[] = files
+      const { id: _id, ...sparseContract } = sparseMeta.value
       return Option.some({
         entries,
         bm25Index: indexes.bm25Index,
@@ -530,6 +685,8 @@ const make = Effect.gen(function* () {
         malformedLines: 0,
         meta: indexMeta,
         files: manifest,
+        sparseContract,
+        sparseIdf,
       })
     })
 
@@ -588,6 +745,9 @@ const make = Effect.gen(function* () {
       const status = yield* selectStatus(undefined)
       yield* sql.withTransaction(
         Effect.gen(function* () {
+          yield* sql`DELETE FROM sparse_terms`
+          yield* sql`DELETE FROM sparse_idf`
+          yield* sql`DELETE FROM sparse_index_meta`
           yield* sql`DELETE FROM index_meta`
           yield* sql`DELETE FROM retrieval_indexes`
           yield* sql`DELETE FROM files`
@@ -605,6 +765,7 @@ const make = Effect.gen(function* () {
     persistIndex,
     loadSearchData,
     searchDense,
+    searchSparse,
     loadSource,
     loadEmbeddingCache,
     clearEmbeddingCache,

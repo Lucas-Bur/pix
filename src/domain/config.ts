@@ -1,12 +1,31 @@
 import { Schema } from "effect"
 
 import { EmbeddingDtypeSchema } from "./dtype.js"
+import {
+  SPARSE_DOCUMENT_MODEL,
+  SPARSE_DOCUMENT_REVISION,
+  SPARSE_IDF_CONTENT_HASH,
+  SPARSE_QUERY_MODEL,
+  SPARSE_QUERY_REVISION,
+} from "./sparse.js"
 
 const EmbedderConfigSchema = Schema.Struct({
   model: Schema.String,
   device: Schema.Literals(["auto", "cpu", "cuda", "dml", "coreml", "webgpu", "wasm"]),
   dtype: EmbeddingDtypeSchema,
   batchSize: Schema.Number,
+})
+
+const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
+
+const SparseEmbedderConfigSchema = Schema.Struct({
+  model: Schema.String,
+  modelRevision: Schema.String,
+  queryModel: Schema.String,
+  queryRevision: Schema.String,
+  idfContentHash: Schema.String,
+  device: Schema.Literals(["auto", "cpu", "cuda", "dml", "coreml", "webgpu", "wasm"]),
+  batchSize: PositiveInt,
 })
 
 /** Available SQLite vector scan strategies. */
@@ -30,6 +49,7 @@ export const ConfigSchema = Schema.Struct({
   ignoredPaths: Schema.Array(Schema.String),
   ignoreGitignore: Schema.Boolean,
   embedder: EmbedderConfigSchema,
+  sparseEmbedder: SparseEmbedderConfigSchema,
   vectorSearch: VectorSearchConfigSchema,
 })
 
@@ -63,6 +83,15 @@ export const DEFAULT_CONFIG: Config = {
     device: "auto",
     dtype: "fp32",
     batchSize: 16,
+  },
+  sparseEmbedder: {
+    model: SPARSE_DOCUMENT_MODEL,
+    modelRevision: SPARSE_DOCUMENT_REVISION,
+    queryModel: SPARSE_QUERY_MODEL,
+    queryRevision: SPARSE_QUERY_REVISION,
+    idfContentHash: SPARSE_IDF_CONTENT_HASH,
+    device: "auto",
+    batchSize: 2,
   },
   vectorSearch: {
     mode: "exact",

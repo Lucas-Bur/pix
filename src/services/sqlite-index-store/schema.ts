@@ -89,6 +89,36 @@ export const DenseMatchRow = Schema.Struct({
 /** Schema-transformed request vector passed to sqlite-vector. */
 export const DenseSearchRequest = Schema.Struct({ embedding: Float32ArrayFromBlob })
 
+/** Persisted singleton describing the active learned sparse contract. */
+export class SparseIndexMetaRow extends Model.Class<SparseIndexMetaRow>("SparseIndexMetaRow")({
+  id: Schema.Number,
+  model: Schema.String,
+  modelRevision: Schema.String,
+  tokenizer: Schema.String,
+  tokenizerRevision: Schema.String,
+  idfRevision: Schema.String,
+  idfContentHash: Schema.String,
+}) {}
+
+/** One persisted non-zero sparse dimension attached to a chunk ordinal. */
+export class SparseTermRow extends Model.Class<SparseTermRow>("SparseTermRow")({
+  chunkOrdinal: Schema.Number,
+  tokenId: Schema.Number,
+  weight: Schema.Number,
+}) {}
+
+/** One static query-IDF weight persisted by tokenizer token ID. */
+export class SparseIdfRow extends Model.Class<SparseIdfRow>("SparseIdfRow")({
+  tokenId: Schema.Number,
+  weight: Schema.Number,
+}) {}
+
+/** Decoded result from exact sparse inner-product ranking. */
+export const SparseMatchRow = Schema.Struct({
+  ordinal: Schema.Number,
+  score: Schema.Number,
+})
+
 /** Persisted source-file observation used by incremental indexing. */
 export class FileManifestRow extends Model.Class<FileManifestRow>("FileManifestRow")({
   file: Schema.String,

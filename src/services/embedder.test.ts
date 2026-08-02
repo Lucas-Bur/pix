@@ -10,7 +10,10 @@ import { OnnxEmbedderLive } from "./embedder.js"
 
 const testLayer = Layer.provideMerge(
   OnnxEmbedderLive,
-  Layer.merge(memoryFsLayer({ ".pix/config.json": makeConfigJson() }), silentDisplay().layer),
+  Layer.merge(
+    memoryFsLayer({ ".pix/config.json": makeConfigJson({ embedder: { device: "cpu" } }) }),
+    silentDisplay().layer,
+  ),
 )
 
 it.effect("OnnxEmbedder.embed returns Embedding with correct dims and dtype", () =>

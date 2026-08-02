@@ -14,6 +14,7 @@ import {
   Scanner,
   Chunker,
   Embedder,
+  SparseEmbedder,
   IndexStore,
   ContentExtractor,
   IdentifierExtractor,
@@ -24,6 +25,8 @@ import {
   type IndexSnapshot,
   type CachedEmbedding,
 } from "../domain/ports.js"
+import { sparseContractsEqual } from "../domain/sparse.js"
+import type { SparseVector } from "../domain/sparse.js"
 import { getExtension, getFileExtension, getFilename } from "../lib/config/extension.js"
 import { mergeConfig } from "../lib/config/validation.js"
 import { contentHash } from "../lib/content-hash.js"
@@ -99,6 +102,7 @@ interface PreparedChunk {
   readonly stored: StoredChunk
   readonly text: string | null
   readonly embedding: Embedding | null
+  readonly sparseVector: SparseVector | null
   readonly oldIndex: number | null
 }
 
@@ -134,10 +138,11 @@ const retainedFile = (
 ): PreparedFileResult => ({
   manifest: { ...previous, mtimeMs: file.mtimeMs, size: file.size },
   reused: true,
-  chunks: entries.map(({ index, vector, ...stored }) => ({
+  chunks: entries.map(({ index, vector, sparseVector, ...stored }) => ({
     stored,
     text: null,
     embedding: { vector, dims: vector.length, dtype },
+    sparseVector: sparseVector,
     oldIndex: index,
   })),
 })
@@ -183,6 +188,7 @@ const prepareFile = ({
         stored: storedChunk(chunk),
         text: chunk.text,
         embedding: null,
+        sparseVector: null,
         oldIndex: null,
       })),
     }
@@ -259,6 +265,7 @@ const make = Effect.gen(function* () {
   const scanner = yield* Scanner
   const chunker = yield* Chunker
   const embedder = yield* Embedder
+  const sparseEmbedder = yield* SparseEmbedder
   const indexStore = yield* IndexStore
   const d = yield* Display
   const extractor = yield* ContentExtractor
@@ -272,6 +279,7 @@ const make = Effect.gen(function* () {
     readonly skipped: Ref.Ref<readonly SkippedEntry[]>
     readonly snapshot: Option.Option<IndexSnapshot>
     readonly contractMatches: boolean
+    readonly sparseContractMatches: boolean
     readonly dims: number
     readonly start: number
   }
@@ -286,12 +294,18 @@ const make = Effect.gen(function* () {
       const modelInfo = yield* modelRegistry.get(config.embedder.model)
       const dims = Option.match(modelInfo, { onNone: () => 0, onSome: (info) => info.dims })
       const snapshot = yield* indexStore.loadIndexSnapshot()
+      const sparseContractMatches = Option.match(snapshot, {
+        onNone: () => false,
+        onSome: ({ sparseContract }) =>
+          sparseContractsEqual(sparseContract, sparseEmbedder.contract),
+      })
       const contractMatches = Option.match(snapshot, {
         onNone: () => false,
-        onSome: ({ meta }) =>
+        onSome: ({ meta, sparseContract }) =>
           meta.model === config.embedder.model &&
           meta.dtype === config.embedder.dtype &&
-          meta.dims === dims,
+          meta.dims === dims &&
+          sparseContractsEqual(sparseContract, sparseEmbedder.contract),
       })
       const eff = mergeConfig(opts, config)
       const extensionRegistry = buildExtensionRegistry(eff.skipExtensions)
@@ -328,6 +342,7 @@ const make = Effect.gen(function* () {
         skipped,
         snapshot,
         contractMatches,
+        sparseContractMatches,
         dims,
         start: Date.now(),
       }
@@ -422,6 +437,7 @@ const make = Effect.gen(function* () {
       const cached = yield* indexStore.loadEmbeddingCache()
       const dims = ctx.dims
       const available = new Map<string, CachedEmbedding>()
+      const availableSparse = new Map<string, SparseVector>()
       for (const entry of cached) {
         available.set(
           embeddingCacheKey(
@@ -453,6 +469,9 @@ const make = Effect.gen(function* () {
             ),
             cachedEntry,
           )
+          if (ctx.sparseContractMatches) {
+            availableSparse.set(entry.contentHash, entry.sparseVector)
+          }
         }
       }
       const historicalCache = new Map(available)
@@ -479,6 +498,10 @@ const make = Effect.gen(function* () {
         newTexts,
         chunks.length,
       )
+      const sparseIdf =
+        ctx.sparseContractMatches && Option.isSome(ctx.snapshot)
+          ? ctx.snapshot.value.sparseIdf
+          : yield* sparseEmbedder.loadIdf()
 
       const stats = yield* d.progress(
         { message: `Writing index with ${totalChunks} chunks...`, max: totalChunks },
@@ -511,10 +534,35 @@ const make = Effect.gen(function* () {
                   existingCacheHits -
                   missingByKey.size
                 const missing = [...missingByKey.entries()]
+                const missingSparseByHash = new Map<string, PreparedChunk>()
+                for (const chunk of batch) {
+                  if (
+                    !chunk.sparseVector &&
+                    !availableSparse.has(chunk.stored.contentHash) &&
+                    !missingSparseByHash.has(chunk.stored.contentHash)
+                  ) {
+                    missingSparseByHash.set(chunk.stored.contentHash, chunk)
+                  }
+                }
+                const missingSparse = [...missingSparseByHash.entries()]
                 const embedded =
                   missing.length > 0
                     ? yield* embedder.batch(missing.map(([, chunk]) => chunk.text ?? ""))
                     : []
+                const sparseVectors: SparseVector[] = []
+                for (
+                  let start = 0;
+                  start < missingSparse.length;
+                  start += ctx.config.sparseEmbedder.batchSize
+                ) {
+                  const group = missingSparse.slice(
+                    start,
+                    start + ctx.config.sparseEmbedder.batchSize,
+                  )
+                  sparseVectors.push(
+                    ...(yield* sparseEmbedder.batch(group.map(([, chunk]) => chunk.text ?? ""))),
+                  )
+                }
                 for (let index = 0; index < missing.length; index++) {
                   const [key, chunk] = missing[index]!
                   available.set(key, {
@@ -523,11 +571,17 @@ const make = Effect.gen(function* () {
                     embedding: embedded[index]!,
                   })
                 }
+                for (let index = 0; index < missingSparse.length; index++) {
+                  availableSparse.set(missingSparse[index]![0], sparseVectors[index]!)
+                }
                 const embeddings = keys.map((key, index) => {
                   const retained = batch[index]!.embedding
                   if (retained) return retained
                   return available.get(key)!.embedding
                 })
+                const sparseEmbeddings = batch.map(
+                  (chunk) => chunk.sparseVector ?? availableSparse.get(chunk.stored.contentHash)!,
+                )
                 yield* Ref.update(
                   cacheHits,
                   (hits) => hits + existingCacheHits + duplicateCacheHits,
@@ -538,7 +592,9 @@ const make = Effect.gen(function* () {
                   message: `Writing ${count} of ${totalChunks} chunks`,
                   setTo: count,
                 })
-                return batch.map((chunk, i) => [chunk.stored, embeddings[i]!] as const)
+                return batch.map(
+                  (chunk, i) => [chunk.stored, embeddings[i]!, sparseEmbeddings[i]!] as const,
+                )
               }),
             ),
           ),
@@ -548,6 +604,8 @@ const make = Effect.gen(function* () {
           dims: ctx.dims,
           dtype: ctx.config.embedder.dtype,
           embeddingCache: [...historicalCache.values()],
+          sparseContract: sparseEmbedder.contract,
+          sparseIdf,
         }),
       )
       return {

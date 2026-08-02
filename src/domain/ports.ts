@@ -30,6 +30,7 @@ import type { Identifier } from "./identifier.js"
 import type { FileManifestEntry, StoredChunk } from "./index-data.js"
 import type { ModelInfo } from "./models.js"
 import type { QueryAlias, QueryAliasOptions } from "./query-alias.js"
+import type { SparseContract, SparseQuery, SparseTerm, SparseVector } from "./sparse.js"
 
 // === Index options ===
 
@@ -216,6 +217,25 @@ export class Embedder extends Context.Service<
   }
 >()("Embedder") {}
 
+/** Port for learned sparse document and query encoding. */
+export class SparseEmbedder extends Context.Service<
+  SparseEmbedder,
+  {
+    /** Versioned model/tokenizer/IDF contract used for persistence and reuse checks. */
+    readonly contract: SparseContract
+    /** Encode source chunks with the learned document transformer. */
+    readonly batch: (
+      texts: readonly string[],
+    ) => Effect.Effect<readonly SparseVector[], ModelLoadError | InferenceError>
+    /** Load and hash-verify the complete static query-IDF table for index persistence. */
+    readonly loadIdf: () => Effect.Effect<readonly SparseTerm[], ModelLoadError>
+    /** Tokenize a query for SQLite's persisted static IDF lookup. */
+    readonly tokenizeQuery: (
+      text: string,
+    ) => Effect.Effect<SparseQuery, ModelLoadError | InferenceError>
+  }
+>()("SparseEmbedder") {}
+
 // === DeviceDetection Port ===
 
 /** Port for detecting available embedding compute devices. */
@@ -264,6 +284,7 @@ export interface ChunkMetadata {
 /** Chunk metadata plus its vector, loaded only for incremental index planning. */
 export interface ChunkEntry extends ChunkMetadata {
   readonly vector: Float32Array
+  readonly sparseVector: SparseVector
 }
 
 /** All index data needed at query time for hybrid search. */
@@ -340,13 +361,13 @@ export interface SearchResponse {
 }
 
 /** One batch of `(chunk, embedding)` pairs handed to `IndexStore.persistIndex`. */
-export type ChunkBatch = ReadonlyArray<readonly [StoredChunk, Embedding]>
+export type ChunkBatch = ReadonlyArray<readonly [StoredChunk, Embedding, SparseVector]>
 
 /** Input handed to `IndexStore.persistIndex` — a stream of batches plus the identifier index. */
 export interface PersistIndexInput<E = never> {
   /** Stream of chunk/embedding batches. Drained lazily; each batch is persisted as it arrives. */
   readonly chunks: Stream.Stream<ChunkBatch, E>
-  /** Identifier index for the four-channel hybrid retrieval. */
+  /** Identifier index for the five-channel hybrid retrieval. */
   readonly identifierIndex: IdentifierIndexMaps
   /** Complete BM25 index for retained and newly processed chunks. */
   readonly bm25Index: Bm25Index
@@ -358,6 +379,10 @@ export interface PersistIndexInput<E = never> {
   readonly dtype: EmbeddingDtype
   /** Historical embeddings not already present in the active vectors file. */
   readonly embeddingCache: readonly CachedEmbedding[]
+  /** Versioned sparse contract committed atomically with all sparse postings. */
+  readonly sparseContract: SparseContract
+  /** Static query-IDF table paired with the sparse contract. */
+  readonly sparseIdf: readonly SparseTerm[]
 }
 
 /** Decoded embedding retained across index runs by content and embedding contract. */
@@ -372,6 +397,8 @@ export interface IndexSnapshot extends SearchData {
   readonly entries: readonly ChunkEntry[]
   readonly meta: IndexMeta
   readonly files: readonly FileManifestEntry[]
+  readonly sparseContract: SparseContract
+  readonly sparseIdf: readonly SparseTerm[]
 }
 
 /** Exact persisted range requested for lazy source hydration. */
@@ -412,6 +439,10 @@ export class IndexStore extends Context.Service<
     readonly searchDense: (
       embedding: Embedding,
     ) => Effect.Effect<readonly RankedChunk[], StoreError | NoIndexError | VectorDecodeError>
+    /** Rank active chunks by exact sparse inner product over indexed token postings. */
+    readonly searchSparse: (
+      query: SparseQuery,
+    ) => Effect.Effect<readonly RankedChunk[], StoreError | NoIndexError>
     /** Load and verify source text for one selected chunk. */
     readonly loadSource: (request: SourceRequest) => Effect.Effect<SourceContent, StoreError>
     /** Load all valid content-addressed embeddings. Missing cache returns an empty list. */

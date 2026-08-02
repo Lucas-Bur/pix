@@ -9,6 +9,7 @@ import {
   makeEmbedding,
   makeStoredChunk,
 } from "../../tests/test-utils/fixtures.js"
+import { TEST_SPARSE_CONTRACT } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { GetStatus } from "../application/get-status.js"
@@ -57,7 +58,7 @@ const storeFixture = (
     const store = yield* IndexStore
     yield* store.persistIndex({
       chunks: Stream.fromIterable(chunks).pipe(
-        Stream.map((chunk, i) => [makeStoredChunk(chunk), embeddings[i]!] as const),
+        Stream.map((chunk, i) => [makeStoredChunk(chunk), embeddings[i]!, { terms: [] }] as const),
         Stream.map((pair) => [pair] as const),
       ),
       identifierIndex: { exact: {}, split: {} },
@@ -66,6 +67,8 @@ const storeFixture = (
       dims: 384,
       dtype: "fp32",
       embeddingCache,
+      sparseContract: TEST_SPARSE_CONTRACT,
+      sparseIdf: [],
     })
     return store
   })
@@ -284,6 +287,83 @@ it.effect("IndexStore.searchDense rejects a query with the wrong dimensions", ()
   }).pipe(Effect.provide(indexStoreLayer()), Effect.scoped),
 )
 
+it.effect("IndexStore.searchSparse executes exact IDF-weighted inner product in SQLite", () =>
+  Effect.gen(function* () {
+    const store = yield* IndexStore
+    yield* store.persistIndex({
+      chunks: Stream.succeed([
+        [makeStoredChunk({ id: "first" }), makeEmbedding(), { terms: [{ tokenId: 7, weight: 2 }] }],
+        [
+          makeStoredChunk({ id: "second", idx: 1 }),
+          makeEmbedding(),
+          { terms: [{ tokenId: 7, weight: 1 }] },
+        ],
+      ]),
+      identifierIndex: { exact: {}, split: {} },
+      bm25Index: { avgChunkLength: 0, chunkLengths: [], docFreqs: {}, chunkTfs: {} },
+      files: [],
+      dims: 384,
+      dtype: "fp32",
+      embeddingCache: [],
+      sparseContract: TEST_SPARSE_CONTRACT,
+      sparseIdf: [{ tokenId: 7, weight: 3 }],
+    })
+
+    const results = yield* store.searchSparse({
+      tokenIds: [7],
+      contract: TEST_SPARSE_CONTRACT,
+    })
+    expect(results).toEqual([
+      { chunkIndex: 0, score: 6 },
+      { chunkIndex: 1, score: 3 },
+    ])
+  }).pipe(Effect.provide(indexStoreLayer()), Effect.scoped),
+)
+
+it.effect("IndexStore.persistIndex replaces sparse postings without stale terms", () =>
+  Effect.gen(function* () {
+    const store = yield* IndexStore
+    const persist = (tokenId: number) =>
+      store.persistIndex({
+        chunks: Stream.succeed([
+          [makeStoredChunk(), makeEmbedding(), { terms: [{ tokenId, weight: 1 }] }],
+        ]),
+        identifierIndex: { exact: {}, split: {} },
+        bm25Index: { avgChunkLength: 0, chunkLengths: [], docFreqs: {}, chunkTfs: {} },
+        files: [],
+        dims: 384,
+        dtype: "fp32" as const,
+        embeddingCache: [],
+        sparseContract: TEST_SPARSE_CONTRACT,
+        sparseIdf: [
+          { tokenId: 7, weight: 1 },
+          { tokenId: 8, weight: 1 },
+        ],
+      })
+
+    yield* persist(7)
+    yield* persist(8)
+
+    expect(yield* store.searchSparse({ tokenIds: [7], contract: TEST_SPARSE_CONTRACT })).toEqual([])
+    expect(yield* store.searchSparse({ tokenIds: [8], contract: TEST_SPARSE_CONTRACT })).toEqual([
+      { chunkIndex: 0, score: 1 },
+    ])
+  }).pipe(Effect.provide(indexStoreLayer()), Effect.scoped),
+)
+
+it.effect("IndexStore.searchSparse rejects a mismatched query contract", () =>
+  Effect.gen(function* () {
+    const store = yield* storeFixture([makeChunk()], [makeEmbedding()])
+    const result = yield* Effect.result(
+      store.searchSparse({
+        tokenIds: [7],
+        contract: { ...TEST_SPARSE_CONTRACT, idfRevision: "different" },
+      }),
+    )
+    expect(result._tag).toBe("Failure")
+  }).pipe(Effect.provide(indexStoreLayer()), Effect.scoped),
+)
+
 for (const vectorSearch of [
   { mode: "turboquant" as const, turboQuantThreshold: 50_000 },
   { mode: "auto" as const, turboQuantThreshold: 1 },
@@ -366,6 +446,10 @@ it.effect("IndexStore.reset deletes active retrieval indexes", () =>
       SELECT COUNT(*) AS count FROM retrieval_indexes
     `
     expect(rows[0]?.count).toBe(0)
+    const sparseMeta = yield* sql<{ readonly count: number }>`
+      SELECT COUNT(*) AS count FROM sparse_index_meta
+    `
+    expect(sparseMeta[0]?.count).toBe(0)
   }).pipe(Effect.provide(isLayer), Effect.scoped),
 )
 
@@ -388,7 +472,7 @@ it.effect("IndexStore.persistIndex rolls back when the stream fails mid-write", 
     )
 
     const okBatch = [
-      [makeStoredChunk({ id: "replacement", text: "replacement" }), makeEmbedding()],
+      [makeStoredChunk({ id: "replacement", text: "replacement" }), makeEmbedding(), { terms: [] }],
     ] as const
     const failingStream: Stream.Stream<typeof okBatch, StoreError> = Stream.fromEffect(
       Effect.succeed(okBatch),
@@ -407,6 +491,8 @@ it.effect("IndexStore.persistIndex rolls back when the stream fails mid-write", 
         dims: 384,
         dtype: "fp32",
         embeddingCache: [],
+        sparseContract: TEST_SPARSE_CONTRACT,
+        sparseIdf: [],
       }),
     )
     expect(result._tag).toBe("Failure")

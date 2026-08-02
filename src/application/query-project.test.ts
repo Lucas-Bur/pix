@@ -7,10 +7,12 @@ import {
   makeConfigJson,
   makeStoredChunk,
 } from "../../tests/test-utils/fixtures.js"
+import { TEST_SPARSE_CONTRACT } from "../../tests/test-utils/fixtures.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import { ModelMismatchError, NoIndexError } from "../domain/errors.js"
-import { ConfigStore, Embedder, IndexStore } from "../domain/ports.js"
+import { ConfigStore, Embedder, IndexStore, SparseEmbedder } from "../domain/ports.js"
+import type { SparseVector } from "../domain/sparse.js"
 import { buildBm25Index } from "../lib/retrieval/bm25.js"
 import { QueryProject } from "./query-project.js"
 
@@ -64,12 +66,16 @@ it.effect("QueryProject.queryProject fails with NoIndexError when no index exist
 const indexFixture = (
   chunks: Array<ReturnType<typeof makeChunk>>,
   embeddings: Array<ReturnType<typeof makeEmbedding>>,
+  sparseVectors: readonly SparseVector[] = chunks.map(() => ({ terms: [] })),
+  sparseIdf: Parameters<IndexStore["Service"]["persistIndex"]>[0]["sparseIdf"] = [],
 ) =>
   Effect.gen(function* () {
     const store = yield* IndexStore
     yield* store.persistIndex({
       chunks: Effect.succeed(
-        chunks.map((chunk, i) => [makeStoredChunk(chunk), embeddings[i]!] as const),
+        chunks.map(
+          (chunk, i) => [makeStoredChunk(chunk), embeddings[i]!, sparseVectors[i]!] as const,
+        ),
       ).pipe(Stream.fromEffect),
       identifierIndex: { exact: {}, split: {} },
       bm25Index: buildBm25Index(chunks.map((chunk, index) => ({ index, text: chunk.text }))),
@@ -77,6 +83,8 @@ const indexFixture = (
       dims: 384,
       dtype: "fp32",
       embeddingCache: [],
+      sparseContract: TEST_SPARSE_CONTRACT,
+      sparseIdf,
     })
   })
 
@@ -107,6 +115,40 @@ it.effect("QueryProject.queryProject returns hybrid-ranked results via RRF", () 
     expect(results.length).toBeGreaterThan(0)
     expect(results[0].file).toBe("src/handler.ts")
   }).pipe(Effect.provide(hybridLayer), Effect.scoped),
+)
+
+it.effect("QueryProject includes Sparse with its fixed RRF weight", () =>
+  Effect.gen(function* () {
+    yield* indexFixture(
+      [
+        makeChunk({ id: "dense-first", file: "src/dense.ts", text: "unrelated alpha" }),
+        makeChunk({ id: "sparse-first", idx: 1, file: "src/sparse.ts", text: "unrelated beta" }),
+      ],
+      [makeEmbedding(0.1), makeEmbedding(0.1)],
+      [{ terms: [] }, { terms: [{ tokenId: 7, weight: 4 }] }],
+      [{ tokenId: 7, weight: 2 }],
+    )
+
+    const { results } = yield* (yield* QueryProject).queryProject("concept", {
+      topK: 2,
+      noContent: true,
+    })
+    expect(results[0]?.file).toBe("src/sparse.ts")
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        contents: { ".pix/config.json": makeConfigJson() },
+        embedderLayer: nonZeroEmbedder,
+        sparseEmbedderLayer: Layer.succeed(SparseEmbedder, {
+          contract: TEST_SPARSE_CONTRACT,
+          batch: (texts) => Effect.succeed(texts.map(() => ({ terms: [] }))),
+          loadIdf: () => Effect.succeed([{ tokenId: 7, weight: 2 }]),
+          tokenizeQuery: () => Effect.succeed({ tokenIds: [7], contract: TEST_SPARSE_CONTRACT }),
+        }),
+      }),
+    ),
+    Effect.scoped,
+  ),
 )
 
 it.effect("QueryProject.queryProject respects ignorePaths with hybrid search", () =>
