@@ -72,9 +72,11 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
 
     expect(artifact.benchmarkProfile).toBe(profile)
     expect(artifact.repositories.length).toBeGreaterThan(0)
+    expect(artifact.evaluationCases.length).toBeGreaterThan(0)
+    expect(artifact.evaluationCases.every(({ groundTruth }) => groundTruth.length > 0)).toBe(true)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(17)
+    expect(artifact.schemaVersion).toBe(19)
     expect(artifact.searchStrategy.algorithm).toBe(
       "halton-global-scout-elitist-beam-successive-halving-pareto",
     )
@@ -88,7 +90,7 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(Object.values(artifact.timings).every((duration) => duration >= 0)).toBe(true)
     expect(artifact.embeddingRuns.every((run) => run.queryEmbeddingDurationMs >= 0)).toBe(true)
     expect(artifact.sparseEmbeddingRuns.length).toBe(artifact.repositories.length)
-    expect(artifact.sparseEmbeddingRuns.every((run) => run.queryEmbeddingDurationMs >= 0)).toBe(
+    expect(artifact.sparseEmbeddingRuns.every((run) => run.queryTokenizationDurationMs >= 0)).toBe(
       true,
     )
     expect(artifact.fusionSearch.length).toBe(

@@ -7,7 +7,7 @@ Proposed
 ## Context
 
 Production currently fuses five retrieval channels with weighted Reciprocal Rank Fusion (RRF): Identity,
-CamelCase, BM25, Dense, and learned Sparse. The schema-17 benchmark compares three
+CamelCase, BM25, Dense, and learned Sparse. The schema-19 benchmark compares three
 fusion methods: RRF, per-channel Relative Score fusion, and Distribution-Based Score Fusion (DBSF).
 The benchmark shows that the best channel weights depend on the dense model, fusion method, query form,
 and ranking evidence. A single permanently hand-tuned RRF vector cannot express those differences.
@@ -22,6 +22,10 @@ retrieval as a fallback for open-ended exploration.
 Keep RRF as the production compatibility/default fusion until an alternative passes the documented
 holdout guardrails. Add an explicit fusion seam and an evidence-based router rather than adding another
 channel-specific branch to RRF.
+
+Benchmarks compose production embedders and the production IndexStore with an in-memory SQLite database.
+They may add fusion candidates at the `RankedChunk[]` seam, but must not reimplement production encoding,
+persistence, or scoring. A fixed equal-weight RRF is always reported separately from production routing.
 
 The router configuration will contain:
 

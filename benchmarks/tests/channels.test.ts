@@ -12,8 +12,6 @@ import { fuseRankings } from "../retrieval/fusion.js"
 import { recallAt, resolveGoldTargets } from "../retrieval/metrics.js"
 import type { PreparedCorpus } from "../retrieval/prepare.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "../retrieval/ranking.js"
-import { sparseEntriesFromLogits } from "../retrieval/sparse-encoder.js"
-import { buildSparseIndex, rankSparse } from "../retrieval/sparse-ranking.js"
 import { ROUTER_OBJECTIVES } from "../retrieval/types.js"
 import { optimizeEvidenceRouter, optimizeWeights } from "../retrieval/weight-search.js"
 
@@ -112,16 +110,6 @@ const selectTop20Router = <T extends { readonly objective: string }>(results: re
 describe("retrieval benchmark fixture", () => {
   it("covers the benchmark's five-channel retrieval variants", () => {
     expect(new Set(RETRIEVAL_VARIANTS).size).toBe(21)
-  })
-
-  it("extracts positive max-pooled sparse weights and scores token intersections", () => {
-    const entries = sparseEntriesFromLogits([10, 2, -1, 10, 4, -2], 2, 3, [1, 1], new Set([0]))
-    expect(entries.map((entry) => entry.tokenId)).toEqual([1])
-
-    const index = buildSparseIndex([entries, [{ tokenId: 2, weight: 1 }]])
-    expect(rankSparse([{ tokenId: 1, weight: 2 }], index)).toEqual([
-      { chunkIndex: 0, score: entries[0]!.weight * 2 },
-    ])
   })
 
   it("isolates the exact identity channel without prefix false positives", () => {
@@ -352,16 +340,25 @@ describe("retrieval benchmark fixture", () => {
     expect(recallAt(ranked, targets, 1)).toBe(1)
   })
 
-  it("keeps production RRF unchanged and exposes sparse-inclusive RRF separately", () => {
+  it("keeps equal-weight RRF separate from production routing", () => {
     const rankings = {
-      identity: [],
+      identity: [
+        { chunkIndex: 0, score: 1 },
+        { chunkIndex: 1, score: 0.5 },
+      ],
       camelcase: [],
-      bm25: [],
+      bm25: [
+        { chunkIndex: 1, score: 1 },
+        { chunkIndex: 0, score: 0.5 },
+      ],
       dense: [],
-      sparse: [{ chunkIndex: 2, score: 1 }],
+      sparse: [],
     }
-    expect(fuseVariant("rrf", "sparse target", rankings)).toEqual([])
-    expect(fuseVariant("rrf+sparse", "sparse target", rankings)[0]?.chunkIndex).toBe(2)
+    const equal = fuseVariant("rrf-equal", "target", rankings)
+    const production = fuseVariant("rrf", "target", rankings)
+
+    expect(equal[0]?.score).toBe(equal[1]?.score)
+    expect(production[0]?.score).toBeGreaterThan(production[1]?.score ?? 0)
   })
 
   it("fuses channel-relative scores without comparing raw score scales", () => {

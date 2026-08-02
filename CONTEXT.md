@@ -199,12 +199,19 @@ candidate pools, and reranker top-50 candidate pools. Each candidate must remain
 guardrail of production RRF; grouped and leave-one-repository-out holdouts determine whether the
 objective-specific candidates generalize. The three objectives are reported separately because direct
 R@5 quality and reranker candidate-pool R@50 quality are different deployment goals.
-Schema 17 adds a benchmark-only OpenSearch Distill sparse channel. It uses the verified ONNX document
+Schema 17 (historical) adds a benchmark-only OpenSearch Distill sparse channel. It uses the verified ONNX document
 export with max-pooled positive token logits and a matching static IDF query lookup; variable-length
 document vectors are cached separately under `benchmarks/.cache/sparse`. Sparse-inclusive rankings,
 five-channel score fusion, ten pairwise agreement signals, and separate sparse timing rows are recorded
 in schema-17 artifacts. ADR-0020 promotes the validated Sparse contract to the production five-channel
 RRF path and persists its IDF and postings in `.pix/index.db`.
+Schema 19 removes the benchmark-owned Sparse encoder, in-process postings implementation, and separate
+embedding caches. Benchmarks
+compose the production SparseEmbedder and IndexStore around a migrated in-memory SQLite database;
+Dense and Sparse ranking therefore execute through the same adapters as product queries. Experimental
+fusion remains benchmark-owned. Every artifact includes the authored file-qualified ground truth and
+both the production RRF router and a fixed five-channel `1/1/1/1/1` RRF baseline. Channel combinations
+and leave-one-channel-out variants use equal weights so channel contribution is not confounded by routing.
 New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with
 `PIX_BENCH_REPOS`, and cached under `benchmarks/.cache/repos/`.
 The router uses only runtime-observable query length and identifier shape, within-channel score
@@ -217,8 +224,9 @@ current beam elites, so a later coordinate cannot regress the best development c
 development folds and evaluated unchanged against static weights on excluded intent folds and
 repositories; authored query-form labels remain informed reference strata and are not router inputs.
 This router remains benchmark-only until holdouts justify a production change.
-Repository and embedding caches live under ignored `benchmarks/.cache/`; generated artifacts live
-under ignored `benchmarks/results/`. See `benchmarks/README.md` and `benchmarks/BASELINE.md`.
+Repository checkouts live under ignored `benchmarks/.cache/repos/`; generated artifacts live under
+ignored `benchmarks/results/`. Dense and Sparse vectors are held only in the production in-memory
+SQLite adapter during a benchmark run. See `benchmarks/README.md` and `benchmarks/BASELINE.md`.
 
 ### Scorer
 

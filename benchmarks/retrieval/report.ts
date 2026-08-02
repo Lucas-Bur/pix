@@ -76,13 +76,13 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Sparse Encoder",
     "",
-    "Sparse document vectors are cached separately from dense Float32 embeddings; query vectors use the static IDF lookup and do not run the document transformer.",
+    "The production SparseEmbedder creates document vectors and tokenizes queries. The production SQLite IndexStore persists postings and IDF in the in-memory benchmark database, then computes exact query scores.",
     "",
-    "| Repository | Model | Tokenizer | Device | Model load | Chunk/cache | Query lookup | Cache hit |",
-    "| --- | --- | --- | --- | ---: | ---: | ---: | --- |",
+    "| Repository | Model | Tokenizer | Batch | Chunk embedding | Query tokenization |",
+    "| --- | --- | --- | ---: | ---: | ---: |",
     ...artifact.sparseEmbeddingRuns.map(
       (run) =>
-        `| ${run.repository} | ${run.model} | ${run.tokenizerModel} | ${run.device} | ${duration(run.modelLoadDurationMs)} | ${duration(run.chunkEmbeddingDurationMs)} | ${duration(run.queryEmbeddingDurationMs)} | ${run.cacheHit ? "yes" : "no"} |`,
+        `| ${run.repository} | ${run.model} | ${run.tokenizerModel} | ${run.batchSize} | ${duration(run.chunkEmbeddingDurationMs)} | ${duration(run.queryTokenizationDurationMs)} |`,
     ),
     "",
     "| Repository | Model | Query form | Variant | R@5 | R@10 | R@20 | R@50 | S@10 | S@20 | MRR | Ctx@2k | Ctx@4k |",
@@ -105,7 +105,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Marginal RRF Contribution at 20",
     "",
-    "Positive means the channel improves full RRF recall compared with removing it; Sparse compares the sparse-inclusive RRF variant with the existing four-channel RRF.",
+    "Positive means the channel improves the five-channel equal-weight RRF baseline compared with removing it.",
     "",
     "| Repository | Model | Query form | Identity | CamelCase | BM25 | Dense | Sparse |",
     "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
@@ -118,9 +118,9 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
       const selected = rows.filter((row) => row.variant === variant)
       return selected.length === 0 ? 0 : average(selected, (row) => row.recallAt20)
     }
-    const full = recall("rrf")
+    const full = recall("rrf-equal")
     lines.push(
-      `| ${repository} | ${model} | ${queryKind} | ${percent(full - recall("rrf-no-identity"))} | ${percent(full - recall("rrf-no-camelcase"))} | ${percent(full - recall("rrf-no-bm25"))} | ${percent(full - recall("rrf-no-dense"))} | ${percent(recall("rrf+sparse") - full)} |`,
+      `| ${repository} | ${model} | ${queryKind} | ${percent(full - recall("rrf-no-identity"))} | ${percent(full - recall("rrf-no-camelcase"))} | ${percent(full - recall("rrf-no-bm25"))} | ${percent(full - recall("rrf-no-dense"))} | ${percent(full - recall("rrf-no-sparse"))} |`,
     )
   }
 

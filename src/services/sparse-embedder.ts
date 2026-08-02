@@ -199,8 +199,8 @@ const make = Effect.gen(function* () {
   return { contract, batch, loadIdf: loadStaticIdf, tokenizeQuery } as const
 })
 
+/** Sparse embedder adapter without its ConfigStore dependency. */
+export const SparseEmbedderBase = Layer.effect(SparseEmbedder, make)
+
 /** Transformers.js adapter for learned sparse document and static-IDF query encoding. */
-export const SparseEmbedderLive = Layer.provideMerge(
-  Layer.effect(SparseEmbedder, make),
-  ConfigStoreLive,
-)
+export const SparseEmbedderLive = Layer.provideMerge(SparseEmbedderBase, ConfigStoreLive)

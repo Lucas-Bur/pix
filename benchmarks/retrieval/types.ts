@@ -94,8 +94,8 @@ export type RetrievalVariant =
   | "identifiers+sparse"
   | "bm25+sparse"
   | "dense+sparse"
+  | "rrf-equal"
   | "rrf"
-  | "rrf+sparse"
   | "rrf-no-sparse"
   | "rrf-no-identity"
   | "rrf-no-camelcase"
@@ -254,7 +254,7 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 17
+  readonly schemaVersion: 19
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   readonly generatedAt: string
@@ -275,6 +275,13 @@ export interface BenchmarkArtifact {
     readonly chunks: number
     readonly preparationDurationMs: number
   }>
+  /** Authored queries and exact file-qualified ground truth used for every retrieval variant. */
+  readonly evaluationCases: ReadonlyArray<{
+    readonly repository: string
+    readonly questionId: string
+    readonly queries: CorpusManifest["questions"][number]["queries"]
+    readonly groundTruth: readonly GoldLocation[]
+  }>
   readonly embeddingRuns: ReadonlyArray<{
     readonly repository: string
     readonly model: string
@@ -282,18 +289,14 @@ export interface BenchmarkArtifact {
     readonly batchSize: number
     readonly chunkEmbeddingDurationMs: number
     readonly queryEmbeddingDurationMs: number
-    readonly cacheHit: boolean
   }>
   readonly sparseEmbeddingRuns: ReadonlyArray<{
     readonly repository: string
     readonly model: string
     readonly tokenizerModel: string
-    readonly device: string
     readonly batchSize: number
-    readonly modelLoadDurationMs: number
     readonly chunkEmbeddingDurationMs: number
-    readonly queryEmbeddingDurationMs: number
-    readonly cacheHit: boolean
+    readonly queryTokenizationDurationMs: number
   }>
   readonly measurements: readonly QueryMeasurement[]
   readonly weightSearch: readonly WeightSearchResult[]

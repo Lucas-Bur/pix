@@ -33,8 +33,8 @@ export const RETRIEVAL_VARIANTS: readonly RetrievalVariant[] = [
   "identifiers+sparse",
   "bm25+sparse",
   "dense+sparse",
+  "rrf-equal",
   "rrf",
-  "rrf+sparse",
   "rrf-no-sparse",
   "rrf-no-identity",
   "rrf-no-camelcase",
@@ -78,10 +78,9 @@ const channelsForVariant = (variant: RetrievalVariant): readonly ChannelName[] =
       return ["identity", "camelcase", "dense"]
     case "rrf-no-dense":
       return ["identity", "camelcase", "bm25"]
-    case "rrf+sparse":
-      return [...CHANNEL_NAMES]
+    case "rrf-equal":
     case "rrf":
-      return ["identity", "camelcase", "bm25", "dense"]
+      return [...CHANNEL_NAMES]
   }
 }
 
@@ -104,10 +103,10 @@ export const fuseVariant = (
   const selected = channelsForVariant(variant)
   if (selected.length === 1) return lists[selected[0]]
 
-  const weights: ChannelWeights = {
-    ...routeQuery(query),
-    sparse: selected.includes("sparse") ? 1 : 0,
-  }
+  const weights: ChannelWeights =
+    variant === "rrf"
+      ? routeQuery(query)
+      : { identity: 1, camelcase: 1, bm25: 1, dense: 1, sparse: 1 }
   const present = selected.filter((channel) => lists[channel].length > 0)
   return rrfFuse(
     present.map((channel) => lists[channel]),

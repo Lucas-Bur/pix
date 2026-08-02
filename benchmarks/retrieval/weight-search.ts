@@ -152,7 +152,7 @@ const summarizeEvidenceRouter = (
 const summarizeProductionRrf = (samples: readonly WeightSearchSample[]): QualitySummary =>
   summarizeRanked(
     samples,
-    (sample) => fuseWithWeights(sample.rankings, { ...routeQuery(sample.query), sparse: 0 }, "rrf"),
+    (sample) => fuseWithWeights(sample.rankings, routeQuery(sample.query), "rrf"),
     (sample) => sample.targets,
     (sample) => sample.chunks,
   )

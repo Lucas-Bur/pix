@@ -1,5 +1,8 @@
 # Preliminary Retrieval Baseline
 
+The schema-17 entries below are historical artifacts from the benchmark-owned Sparse implementation.
+Current schema-19 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
+
 ## Schema 17: Experimental Sparse Smoke
 
 Schema 17 adds the benchmark-only Distill sparse ONNX channel while leaving production's four-channel
