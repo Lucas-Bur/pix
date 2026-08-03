@@ -479,7 +479,7 @@ describe("retrieval benchmark fixture", () => {
     expect(routerResults.every((result) => result.productionDevelopment.recallAt50 >= 0)).toBe(true)
     const result = selectTop20Router(routerResults)
     expect(result.fusion).toBe("dbsf")
-    expect(result.config.schemaVersion).toBe(1)
+    expect(result.config.fusion).toBe("dbsf")
     expect(result.searchDiagnostics.parameterCount).toBe(40)
     expect(Object.keys(result.searchDiagnostics.parameterLevels)).toHaveLength(40)
     expect(result.searchDiagnostics.proxyFullAgreement).toBeGreaterThanOrEqual(0)

@@ -4,7 +4,7 @@ import {
   decodeEvidenceRouterConfig,
   type ChannelCoefficients,
   type ChannelWeights,
-  type EvidenceRouterConfig as VersionedEvidenceRouterConfig,
+  type EvidenceRouterConfig as DecodedEvidenceRouterConfig,
   type EvidenceRouterParameters as EvidenceRouterConfig,
   type FusionMethod,
   PRODUCTION_COMPATIBILITY_CONFIG,
@@ -644,12 +644,11 @@ const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig =>
   queryLengthInfluence: ZERO_COEFFICIENTS,
 })
 
-const versionedRouterConfig = (
+const benchmarkRouterConfig = (
   fusion: FusionMethod,
   config: EvidenceRouterConfig,
-): VersionedEvidenceRouterConfig =>
+): DecodedEvidenceRouterConfig =>
   decodeEvidenceRouterConfig({
-    schemaVersion: 1,
     fusion,
     candidateDepth: SEARCH_CANDIDATE_DEPTH,
     ...config,
@@ -1266,7 +1265,7 @@ export const optimizeEvidenceRouter = (
       developmentQueries: development.length,
       validationQueries: validation.length,
       staticWeights: staticSelection.weights,
-      config: versionedRouterConfig(fusion, selection.config),
+      config: benchmarkRouterConfig(fusion, selection.config),
       staticDevelopment: staticSelection.quality,
       staticValidation: summarize(validation, staticSelection.weights, fusion, profile),
       development: selection.quality,
@@ -1363,7 +1362,7 @@ export const fitRecommendedEvidenceRouter = (
       objective: selection.objective,
       samples: samples.length,
       staticWeights: staticSelection.weights,
-      config: versionedRouterConfig(fusion, selection.config),
+      config: benchmarkRouterConfig(fusion, selection.config),
       staticQuality: staticSelection.quality,
       fitQuality: selection.quality,
       productionQuality: dynamicSelection.productionQuality,
