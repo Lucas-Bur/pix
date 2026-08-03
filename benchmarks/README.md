@@ -301,6 +301,10 @@ Relative Score and DBSF consume the same `ChannelRankings` interface and are eva
 reimplementing encoders, persistence, or scoring. `src/lib/retrieval/evidence-router.ts` is likewise
 shared by production configuration and benchmark evidence evaluation.
 
+`benchmarks/retrieval/optimization-profiles.ts` owns provisional profile seeds, and
+`benchmarks/retrieval/weight-search.ts` owns candidate search. A validated benchmark result is promoted
+to an explicit production configuration; production does not discover or optimize its own profile.
+
 The remaining architectural follow-up is a diagnostic retrieval snapshot from `IndexStore` if future
 benchmark work needs to inspect persisted channel evidence through the application boundary. Current
 benchmark preparation still uses a temporary SQLite index so ablations retain raw rankings and exact
@@ -308,7 +312,8 @@ gold resolution.
 
 The sparse proposal was GitHub issue #159; issue #15 is the older closed `pix index` E2E issue. Sparse
 retrieval is now a production adapter, SQLite schema, and query channel. The benchmark deliberately
-keeps only evaluation-specific fusion and validation logic outside production. The Apache-2.0 OpenSearch
+keeps profile seeds, optimizer search, holdout bookkeeping, and validation logic outside production.
+The Apache-2.0 OpenSearch
 v3 GTE comparison remains out of scope until the 67M Distill candidate has holdout evidence.
 
 ## Metrics

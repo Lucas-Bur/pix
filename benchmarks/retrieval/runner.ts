@@ -10,11 +10,7 @@ import type { StoredChunk } from "../../src/domain/index-data.js"
 import { MODEL_REGISTRY } from "../../src/domain/models.js"
 import type { BoundEmbedder } from "../../src/domain/ports.js"
 import { IndexStore, SparseEmbedder } from "../../src/domain/ports.js"
-import {
-  OPTIMIZATION_PROFILES,
-  type FusionMethod,
-  type OptimizationProfile,
-} from "../../src/domain/retrieval.js"
+import type { FusionMethod } from "../../src/domain/retrieval.js"
 import type { SparseContract, SparseTerm, SparseVector } from "../../src/domain/sparse.js"
 import { contentHash } from "../../src/lib/content-hash.js"
 import { createAutoBoundEmbedder } from "../../src/services/embedder.js"
@@ -30,6 +26,7 @@ import {
   resolveGoldTargets,
   successAt,
 } from "./metrics.js"
+import { OPTIMIZATION_PROFILES, type OptimizationProfile } from "./optimization-profiles.js"
 import { prepareCorpus, type PreparedCorpus } from "./prepare.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "./ranking.js"
 import { renderMarkdownReport } from "./report.js"
