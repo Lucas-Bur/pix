@@ -98,7 +98,7 @@ const ZERO_COEFFICIENTS: ChannelCoefficients = {
 }
 
 /** Explicit profile names accepted by the production query boundary. */
-export const PRODUCTION_PROFILE_NAMES = [
+const PRODUCTION_PROFILE_NAMES = [
   "compatibility",
   "balanced",
   "code-navigation",
