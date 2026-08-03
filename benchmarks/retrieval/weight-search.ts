@@ -26,6 +26,7 @@ import {
   type FusionSearchResult,
   type HoldoutQuality,
   type ProductionRrfSearchResult,
+  type PromotionStatus,
   type QualitySummary,
   type QueryKind,
   type RecommendedEvidenceRouter,
@@ -999,6 +1000,19 @@ interface EvidenceRouterSelection {
   readonly config: EvidenceRouterConfig
   readonly quality: QualitySummary
   readonly guardrailsMet: boolean
+  readonly promotionStatus: PromotionStatus
+}
+
+/** Keep a failed guardrail decision explicit instead of treating a fallback as promotable. */
+export const selectEligibleCandidate = <T>(
+  candidates: readonly T[],
+  isEligible: (candidate: T) => boolean,
+): { readonly candidate: T | undefined; readonly promotionStatus: PromotionStatus } => {
+  const candidate = candidates.find(isEligible)
+  return {
+    candidate,
+    promotionStatus: candidate === undefined ? "no-eligible-candidate" : "eligible",
+  }
 }
 
 const selectBestEvidenceRouter = (
@@ -1100,24 +1114,19 @@ const selectBestEvidenceRouter = (
     const rankedCandidates = [...candidates].sort((left, right) =>
       compareRouterCandidates(left, right, objective, productionQuality, profile),
     )
-    const candidate =
-      rankedCandidates.find((entry) =>
+    const { candidate: eligibleCandidate, promotionStatus } = selectEligibleCandidate(
+      rankedCandidates,
+      (entry) =>
         evidenceRouterGuardrailsMet(samples, entry.config, fusion, productionQuality, profile),
-      ) ??
-      rankedCandidates[0] ??
-      fallback
+    )
+    const candidate = eligibleCandidate ?? rankedCandidates[0] ?? fallback
     if (candidate === undefined) throw new Error("Evidence router search produced no candidate")
     return {
       objective,
       config: candidate.config,
       quality: candidate.quality,
-      guardrailsMet: evidenceRouterGuardrailsMet(
-        samples,
-        candidate.config,
-        fusion,
-        productionQuality,
-        profile,
-      ),
+      guardrailsMet: eligibleCandidate !== undefined,
+      promotionStatus,
     }
   })
   return {
@@ -1169,6 +1178,13 @@ export const optimizeFusionWeights = (
   const productionDevelopment = summarizeProductionRrf(development, profile)
   const holdoutProfile = unweightedProfile(profile)
   const validationQuality = summarize(validationSamples, selected.weights, fusion, profile)
+  const guardrailsMet = fusionGuardrailsMet(
+    development,
+    selected.weights,
+    fusion,
+    productionDevelopment,
+    profile,
+  )
   return {
     model,
     fusion,
@@ -1179,13 +1195,8 @@ export const optimizeFusionWeights = (
     weights: selected.weights,
     development: selected.quality,
     validation: validationQuality,
-    guardrailsMet: fusionGuardrailsMet(
-      development,
-      selected.weights,
-      fusion,
-      productionDevelopment,
-      profile,
-    ),
+    guardrailsMet,
+    promotionStatus: guardrailsMet ? "eligible" : "no-eligible-candidate",
     holdoutBreakdown: buildHoldoutBreakdown(
       validationSamples,
       (partition) => summarize(partition, selected.weights, fusion, holdoutProfile),
@@ -1263,6 +1274,7 @@ export const optimizeEvidenceRouter = (
       productionDevelopment: dynamicSelection.productionQuality,
       productionValidation,
       guardrailsMet: selection.guardrailsMet,
+      promotionStatus: selection.promotionStatus,
       proxyEvaluations: dynamicSelection.proxyEvaluations,
       fullEvaluations: dynamicSelection.fullEvaluations,
       searchDiagnostics: dynamicSelection.searchDiagnostics,
@@ -1308,19 +1320,21 @@ export const fitRecommendedFusionWeights = (
 ): RecommendedFusionWeights => {
   const selected = selectBestWeights(samples, fusion, "reranker-top20", undefined, profile)
   const productionQuality = summarizeProductionRrf(samples, profile)
+  const guardrailsMet = fusionGuardrailsMet(
+    samples,
+    selected.weights,
+    fusion,
+    productionQuality,
+    profile,
+  )
   return {
     model,
     fusion,
     samples: samples.length,
     weights: selected.weights,
     fitQuality: selected.quality,
-    guardrailsMet: fusionGuardrailsMet(
-      samples,
-      selected.weights,
-      fusion,
-      productionQuality,
-      profile,
-    ),
+    guardrailsMet,
+    promotionStatus: guardrailsMet ? "eligible" : "no-eligible-candidate",
   }
 }
 
@@ -1354,6 +1368,7 @@ export const fitRecommendedEvidenceRouter = (
       fitQuality: selection.quality,
       productionQuality: dynamicSelection.productionQuality,
       guardrailsMet: selection.guardrailsMet,
+      promotionStatus: selection.promotionStatus,
       proxyEvaluations: dynamicSelection.proxyEvaluations,
       fullEvaluations: dynamicSelection.fullEvaluations,
       searchDiagnostics: dynamicSelection.searchDiagnostics,

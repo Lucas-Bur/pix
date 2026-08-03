@@ -10,6 +10,7 @@ import type {
   FusionSearchResult,
   HoldoutQuality,
   ProductionRrfSearchResult,
+  PromotionStatus,
   QueryMeasurement,
 } from "./types.js"
 
@@ -19,6 +20,9 @@ const average = (rows: readonly QueryMeasurement[], select: (row: QueryMeasureme
   rows.reduce((sum, row) => sum + select(row), 0) / rows.length
 
 const percent = (value: number): string => `${(value * 100).toFixed(1)}%`
+
+const promotionLabel = (status: PromotionStatus): string =>
+  status === "eligible" ? "eligible" : "no eligible candidate"
 
 const duration = (milliseconds: number): string => `${(milliseconds / 1_000).toFixed(2)} s`
 
@@ -201,15 +205,15 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Static Fusion Holdouts",
     "",
-    "Each fusion method selects its own positive weights on development samples. Validation metrics are weighted by excluded query count.",
+    "Each fusion method selects its own positive weights on development samples. Validation metrics are weighted by excluded query count. A guardrail failure is reported as no eligible candidate and is diagnostic only.",
     "",
-    "| Model | Fusion | Strategy | Guardrails | Weights I/C/B/D/S by fold | Validation R@5 | Validation R@10 | Validation R@20 | Validation Ctx@4k |",
+    "| Model | Fusion | Strategy | Promotion | Weights I/C/B/D/S by fold | Validation R@5 | Validation R@10 | Validation R@20 | Validation Ctx@4k |",
     "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
   )
   for (const [key, rows] of fusionGroups) {
     const [model, fusion, strategy] = key.split("\0")
     lines.push(
-      `| ${model} | ${fusion} | ${strategy} | ${rows.every((row) => row.guardrailsMet) ? "yes" : "no"} | ${rows.map((row) => formatWeights(row.weights)).join("; ")} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
+      `| ${model} | ${fusion} | ${strategy} | ${promotionLabel(rows.every((row) => row.promotionStatus === "eligible") ? "eligible" : "no-eligible-candidate")} | ${rows.map((row) => formatWeights(row.weights)).join("; ")} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096))} |`,
     )
   }
 
@@ -219,12 +223,12 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "Fit-all candidates are descriptive; excluded-fold rows above measure generalization.",
     "",
-    "| Model | Fusion | Samples | Guardrails | Weights I/C/B/D/S | Fit R@5 | Fit R@10 | Fit R@20 | Fit Ctx@4k |",
+    "| Model | Fusion | Samples | Promotion | Weights I/C/B/D/S | Fit R@5 | Fit R@10 | Fit R@20 | Fit Ctx@4k |",
     "| --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.recommendedFusionWeights) {
     lines.push(
-      `| ${result.model} | ${result.fusion} | ${result.samples} | ${result.guardrailsMet ? "yes" : "no"} | ${formatWeights(result.weights)} | ${percent(result.fitQuality.recallAt5)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.fitQuality.recallAt20)} | ${percent(result.fitQuality.contextRecallAt4096)} |`,
+      `| ${result.model} | ${result.fusion} | ${result.samples} | ${promotionLabel(result.promotionStatus)} | ${formatWeights(result.weights)} | ${percent(result.fitQuality.recallAt5)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.fitQuality.recallAt20)} | ${percent(result.fitQuality.contextRecallAt4096)} |`,
     )
   }
 
@@ -232,9 +236,9 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Evidence Router Holdouts",
     "",
-    "One shared search produces direct, reranker-top20, and reranker-top50 candidates. Production RRF is the guardrail baseline; static and dynamic validation columns use the same fusion method and excluded fold.",
+    "One shared search produces direct, reranker-top20, and reranker-top50 candidates. Production RRF is the guardrail baseline; static and dynamic validation columns use the same fusion method and excluded fold. A no eligible candidate result must not be promoted.",
     "",
-    "| Model | Fusion | Objective | Strategy | Fold | Guardrails | Params | Proxy evals | Full evals | Proxy agreement | Static I/C/B/D/S | Dynamic base I/C/B/D/S | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Dynamic R@50 | Static Ctx@4k | Dynamic Ctx@4k |",
+    "| Model | Fusion | Objective | Strategy | Fold | Promotion | Params | Proxy evals | Full evals | Proxy agreement | Static I/C/B/D/S | Dynamic base I/C/B/D/S | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Dynamic R@50 | Static Ctx@4k | Dynamic Ctx@4k |",
     "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.evidenceRouterSearch) {
@@ -242,7 +246,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     const staticWeights = formatWeights(result.staticWeights)
     const influences = formatInfluences(result.config)
     lines.push(
-      `| ${result.model} | ${result.fusion} | ${result.objective} | ${result.strategy} | ${result.fold} | ${result.guardrailsMet ? "yes" : "no"} | ${result.searchDiagnostics.parameterCount} | ${result.proxyEvaluations} | ${result.fullEvaluations} | ${percent(result.searchDiagnostics.proxyFullAgreement)} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticValidation.recallAt5)} | ${percent(result.validation.recallAt5)} | ${percent(result.staticValidation.recallAt10)} | ${percent(result.validation.recallAt10)} | ${percent(result.staticValidation.recallAt20)} | ${percent(result.validation.recallAt20)} | ${percent(result.validation.recallAt50)} | ${percent(result.staticValidation.contextRecallAt4096)} | ${percent(result.validation.contextRecallAt4096)} |`,
+      `| ${result.model} | ${result.fusion} | ${result.objective} | ${result.strategy} | ${result.fold} | ${promotionLabel(result.promotionStatus)} | ${result.searchDiagnostics.parameterCount} | ${result.proxyEvaluations} | ${result.fullEvaluations} | ${percent(result.searchDiagnostics.proxyFullAgreement)} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticValidation.recallAt5)} | ${percent(result.validation.recallAt5)} | ${percent(result.staticValidation.recallAt10)} | ${percent(result.validation.recallAt10)} | ${percent(result.staticValidation.recallAt20)} | ${percent(result.validation.recallAt20)} | ${percent(result.validation.recallAt50)} | ${percent(result.staticValidation.contextRecallAt4096)} | ${percent(result.validation.contextRecallAt4096)} |`,
     )
   }
 
@@ -257,13 +261,13 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "Validation metrics are weighted by each excluded fold's query count. Production RRF is shown beside the selected dynamic router.",
     "",
-    "| Model | Fusion | Objective | Strategy | Guardrails | Production R@5 | Dynamic R@5 | Production R@10 | Dynamic R@10 | Production R@20 | Dynamic R@20 | Production R@50 | Dynamic R@50 | Production Ctx@4k | Dynamic Ctx@4k | Random R@20 | Random Ctx@4k |",
+    "| Model | Fusion | Objective | Strategy | Promotion | Production R@5 | Dynamic R@5 | Production R@10 | Dynamic R@10 | Production R@20 | Dynamic R@20 | Production R@50 | Dynamic R@50 | Production Ctx@4k | Dynamic Ctx@4k | Random R@20 | Random Ctx@4k |",
     "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const [key, rows] of routerGroups) {
     const [model, fusion, objective, strategy] = key.split("\0")
     lines.push(
-      `| ${model} | ${fusion} | ${objective} | ${strategy} | ${rows.every((row) => row.guardrailsMet) ? "yes" : "no"} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.contextRecallAt4096))} | ${percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096))} | ${percent(rows.reduce((sum, row) => sum + row.searchBaseline.validation.recallAt20, 0) / rows.length)} | ${percent(rows.reduce((sum, row) => sum + row.searchBaseline.validation.contextRecallAt4096, 0) / rows.length)} |`,
+      `| ${model} | ${fusion} | ${objective} | ${strategy} | ${promotionLabel(rows.every((row) => row.promotionStatus === "eligible") ? "eligible" : "no-eligible-candidate")} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.contextRecallAt4096))} | ${percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096))} | ${percent(rows.reduce((sum, row) => sum + row.searchBaseline.validation.recallAt20, 0) / rows.length)} | ${percent(rows.reduce((sum, row) => sum + row.searchBaseline.validation.contextRecallAt4096, 0) / rows.length)} |`,
     )
   }
 
@@ -311,7 +315,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "These scenario-specific candidates are fitted across all query forms only after grouped and repository holdouts have measured generalization.",
     "",
-    "| Model | Fusion | Objective | Guardrails | Samples | Proxy evals | Full evals | Static I/C/B/D/S | Dynamic base I/C/B/D/S | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Dynamic R@50 | Static Ctx@4k | Dynamic Ctx@4k |",
+    "| Model | Fusion | Objective | Promotion | Samples | Proxy evals | Full evals | Static I/C/B/D/S | Dynamic base I/C/B/D/S | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Dynamic R@50 | Static Ctx@4k | Dynamic Ctx@4k |",
     "| --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.recommendedEvidenceRouters) {
@@ -319,7 +323,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     const staticWeights = formatWeights(result.staticWeights)
     const influences = formatInfluences(result.config)
     lines.push(
-      `| ${result.model} | ${result.fusion} | ${result.objective} | ${result.guardrailsMet ? "yes" : "no"} | ${result.samples} | ${result.proxyEvaluations} | ${result.fullEvaluations} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticQuality.recallAt5)} | ${percent(result.fitQuality.recallAt5)} | ${percent(result.staticQuality.recallAt10)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.staticQuality.recallAt20)} | ${percent(result.fitQuality.recallAt20)} | ${percent(result.fitQuality.recallAt50)} | ${percent(result.staticQuality.contextRecallAt4096)} | ${percent(result.fitQuality.contextRecallAt4096)} |`,
+      `| ${result.model} | ${result.fusion} | ${result.objective} | ${promotionLabel(result.promotionStatus)} | ${result.samples} | ${result.proxyEvaluations} | ${result.fullEvaluations} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticQuality.recallAt5)} | ${percent(result.fitQuality.recallAt5)} | ${percent(result.staticQuality.recallAt10)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.staticQuality.recallAt20)} | ${percent(result.fitQuality.recallAt20)} | ${percent(result.fitQuality.recallAt50)} | ${percent(result.staticQuality.contextRecallAt4096)} | ${percent(result.fitQuality.contextRecallAt4096)} |`,
     )
   }
 

@@ -232,6 +232,8 @@ while damping another. This bounded coarse-to-fine search avoids the combinatori
 20-parameter product; it is deterministic but does not claim a global optimum. Exact metric ties prefer
 the lower-coefficient candidate. Each objective must remain within the configured 1% development
 guardrail against production RRF before it can be recommended.
+If no candidate satisfies those guardrails, the artifact records `promotionStatus: no-eligible-candidate`;
+the best non-eligible candidate remains diagnostic only and must not be promoted.
 
 The selected router is evaluated unchanged on the excluded intent fold or repository and compared
 with static weights selected on the same development samples. Finer steps increase the number of

@@ -89,7 +89,7 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.evaluationCases.every(({ groundTruth }) => groundTruth.length > 0)).toBe(true)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(19)
+    expect(artifact.schemaVersion).toBe(20)
     expect(artifact.searchStrategy).toEqual(ROUTER_SEARCH_STRATEGY)
     expect(artifact.timings.totalDurationMs).toBeGreaterThan(0)
     expect(Object.values(artifact.timings).every((duration) => duration >= 0)).toBe(true)

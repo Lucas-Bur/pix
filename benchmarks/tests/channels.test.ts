@@ -13,7 +13,11 @@ import { recallAt, resolveGoldTargets } from "../retrieval/metrics.js"
 import type { PreparedCorpus } from "../retrieval/prepare.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "../retrieval/ranking.js"
 import { ROUTER_OBJECTIVES } from "../retrieval/types.js"
-import { optimizeEvidenceRouter, optimizeWeights } from "../retrieval/weight-search.js"
+import {
+  optimizeEvidenceRouter,
+  optimizeWeights,
+  selectEligibleCandidate,
+} from "../retrieval/weight-search.js"
 
 const texts = [
   "export function loadProjectConfiguration() { return config }",
@@ -512,6 +516,15 @@ describe("retrieval benchmark fixture", () => {
     )
     expect(totalInfluence).toBeGreaterThan(0)
     expect(result.validation.recallAt20).toBeGreaterThan(result.staticValidation.recallAt20)
+  })
+
+  it("does not treat a guardrail-failing fallback as promotable", () => {
+    const selection = selectEligibleCandidate([{ name: "fallback" }], () => false)
+
+    expect(selection).toEqual({
+      candidate: undefined,
+      promotionStatus: "no-eligible-candidate",
+    })
   })
 
   it("keeps router fitting deterministic and independent of validation samples", () => {
