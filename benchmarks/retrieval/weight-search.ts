@@ -7,6 +7,7 @@ import {
   type EvidenceRouterConfig as VersionedEvidenceRouterConfig,
   type EvidenceRouterParameters as EvidenceRouterConfig,
   type FusionMethod,
+  PRODUCTION_COMPATIBILITY_CONFIG,
 } from "../../src/domain/retrieval.js"
 import {
   buildRoutingEvidence,
@@ -14,7 +15,6 @@ import {
   type QueryTermCoverage,
   type RoutingEvidence,
 } from "../../src/lib/retrieval/evidence-router.js"
-import { routeQuery } from "../../src/lib/retrieval/routing.js"
 import { fuseRankings } from "./fusion.js"
 import { contextRecallAtBudget, recallAt, reciprocalRank } from "./metrics.js"
 import { SEARCH_PRIORITY_PROFILE, type OptimizationProfile } from "./optimization-profiles.js"
@@ -182,7 +182,15 @@ const summarizeProductionRrf = (
 ): QualitySummary =>
   summarizeRanked(
     samples,
-    (sample) => fuseWithWeights(sample.rankings, routeQuery(sample.query), "rrf"),
+    (sample) =>
+      fuseWithWeights(
+        sample.rankings,
+        routeWithEvidence(
+          buildRoutingEvidence(sample.query, sample.rankings, sample.termCoverage),
+          PRODUCTION_COMPATIBILITY_CONFIG,
+        ),
+        PRODUCTION_COMPATIBILITY_CONFIG.fusion,
+      ),
     (sample) => sample.targets,
     (sample) => sample.chunks,
     (sample) => profile.queryFormWeights[sample.queryKind],

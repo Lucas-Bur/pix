@@ -60,6 +60,16 @@ it.effect("pix query with --top flag clamps to valid range", () => {
   })
 })
 
+it.effect("pix query accepts an explicit production profile", () => {
+  const { ref, effect } = runQuery(["--json", "--profile", "code-navigation", "search term"])
+  return Effect.gen(function* () {
+    yield* effect
+    yield* expectJsonEntry(ref, (data) => {
+      expect(resultsOf(data).length).toBeGreaterThan(0)
+    })
+  })
+})
+
 it.effect("pix query --json with failing embedder produces error JSON", () => {
   const { ref, layer } = silentDisplay()
   return assertCommandError(run(["query", "--json", "test"]), ref).pipe(

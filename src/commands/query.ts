@@ -7,7 +7,7 @@ import { queryCommandConfig } from "./query-options.js"
 
 /**
  * CLI command: pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P]
- * [--only-path P] [--max-characters N] [--no-content] [--copy]
+ * [--only-path P] [--max-characters N] [--no-content] [--profile NAME] [--copy]
  */
 export const queryCommand = Command.make("query", queryCommandConfig, (input) =>
   executeQuery(
@@ -19,6 +19,7 @@ export const queryCommand = Command.make("query", queryCommandConfig, (input) =>
       onlyPath: input.onlyPath,
       maxCharacters: Option.getOrUndefined(input.maxCharacters),
       noContent: input.noContent,
+      profile: Option.getOrUndefined(input.profile),
     },
     input.copy,
   ).pipe(Effect.catch(reportError)),

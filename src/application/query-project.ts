@@ -14,16 +14,21 @@ import {
 import { ConfigStore, Embedder, IndexStore, SparseEmbedder } from "../domain/ports.js"
 import type { ChunkMetadata, SearchOptions, SearchResponse, SearchResult } from "../domain/ports.js"
 import {
-  PRODUCTION_COMPATIBILITY_CONFIG,
+  type EvidenceRouterConfig,
+  resolveProductionProfile,
   type ChannelRankings,
   type ChannelWeights,
 } from "../domain/retrieval.js"
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
 import { rankBm25 } from "../lib/retrieval/bm25.js"
 import { rankCamelCase } from "../lib/retrieval/camelcase.js"
+import {
+  buildQueryTermCoverage,
+  buildRoutingEvidence,
+  routeWithEvidence,
+} from "../lib/retrieval/evidence-router.js"
 import { fuseRankings } from "../lib/retrieval/fusion.js"
 import { rankIdentity } from "../lib/retrieval/identity.js"
-import { routeQuery } from "../lib/retrieval/routing.js"
 import { K } from "../lib/retrieval/rrf.js"
 
 type PathFilter = { ignores(path: string): boolean }
@@ -83,6 +88,7 @@ export const filterResults = <T extends Pick<SearchResult, "file">>(
 const fuseResults = (
   rankings: ChannelRankings,
   weights: ChannelWeights,
+  config: EvidenceRouterConfig,
   entryMap: Map<number, ChunkMetadata>,
 ): RankedResult[] => {
   const sumWeights =
@@ -91,7 +97,7 @@ const fuseResults = (
     (rankings.bm25.length > 0 ? weights.bm25 : 0) +
     (rankings.dense.length > 0 ? weights.dense : 0) +
     (rankings.sparse.length > 0 ? weights.sparse : 0)
-  const fused = fuseRankings(PRODUCTION_COMPATIBILITY_CONFIG.fusion, rankings, weights)
+  const fused = fuseRankings(config.fusion, rankings, weights, config.candidateDepth)
   const results: RankedResult[] = []
   for (const { chunkIndex, score } of fused) {
     const entry = entryMap.get(chunkIndex)
@@ -184,7 +190,6 @@ const make = Effect.gen(function* () {
       const camelcaseRanks = rankCamelCase(queryText, identifierIndex)
 
       const entryMap = new Map(entries.map((e) => [e.index, e]))
-      const weights = routeQuery(queryText)
       // Only pass channels that produced hits -- otherwise their weight still
       // gets included in the sum that normalizes rel, and absent channels
       // would lower rel even when BM25 + Dense had strong matches.
@@ -195,8 +200,15 @@ const make = Effect.gen(function* () {
         dense: denseRanks,
         sparse: sparseRanks,
       }
+      const profile = resolveProductionProfile(options?.profile)
+      const evidence = buildRoutingEvidence(
+        queryText,
+        rankings,
+        buildQueryTermCoverage(queryText, bm25Index, identifierIndex),
+      )
+      const weights = routeWithEvidence(evidence, profile.config)
       const results = Object.values(rankings).some((list) => list.length > 0)
-        ? fuseResults(rankings, weights, entryMap)
+        ? fuseResults(rankings, weights, profile.config, entryMap)
         : []
       const filtered = filterResults(results, options)
 

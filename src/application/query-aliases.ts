@@ -20,6 +20,7 @@ const savedOptions = (request: AliasAddRequest): QueryAliasOptions => ({
     request.onlyPath.length > 0 && { onlyPath: request.onlyPath }),
   ...(request.maxCharacters !== undefined && { maxCharacters: request.maxCharacters }),
   ...(request.noContent === true && { noContent: true }),
+  ...(request.profile !== undefined && { profile: request.profile }),
 })
 
 /** Create or replace a query alias. */
@@ -58,6 +59,7 @@ const resolveAliasQuery = (alias: QueryAlias, request: AliasRunRequest): QueryRe
       : alias.options.onlyPath,
   maxCharacters: request.maxCharacters ?? alias.options.maxCharacters,
   noContent: request.noContent === true || alias.options.noContent === true,
+  profile: request.profile ?? alias.options.profile,
 })
 
 /** Resolve a saved alias into a shared query request. */

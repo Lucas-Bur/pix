@@ -15,6 +15,12 @@ export const queryAliasFlags = {
   onlyPath: Flag.string("only-path").pipe(Flag.atLeast(0)),
   maxCharacters: Flag.integer("max-characters").pipe(Flag.optional),
   noContent: Flag.boolean("no-content").pipe(Flag.withDefault(false)),
+  profile: Flag.choice("profile", [
+    "compatibility",
+    "balanced",
+    "code-navigation",
+    "natural-language",
+  ]).pipe(Flag.optional),
 } satisfies Record<QueryOptionName, unknown>
 
 /** CLI flags accepted by `pix alias run` and `pix run`. */
@@ -32,6 +38,7 @@ const queryCommandRetrievalFlags = {
   onlyPath: queryAliasFlags.onlyPath,
   maxCharacters: queryAliasFlags.maxCharacters,
   noContent: queryAliasFlags.noContent,
+  profile: queryAliasFlags.profile,
 } satisfies Record<QueryOptionName, unknown>
 
 /** CLI config accepted by `pix query`. */

@@ -1,15 +1,16 @@
 import type { RankedChunk } from "../../src/domain/ports.js"
 import {
   CHANNEL_NAMES as DOMAIN_CHANNEL_NAMES,
+  PRODUCTION_COMPATIBILITY_CONFIG,
   type ChannelName,
   type ChannelRankings,
   type ChannelWeights,
 } from "../../src/domain/retrieval.js"
 import { rankBm25 } from "../../src/lib/retrieval/bm25.js"
 import { rankCamelCase } from "../../src/lib/retrieval/camelcase.js"
+import { buildRoutingEvidence, routeWithEvidence } from "../../src/lib/retrieval/evidence-router.js"
 import { fuseRankings } from "../../src/lib/retrieval/fusion.js"
 import { rankIdentity } from "../../src/lib/retrieval/identity.js"
-import { routeQuery } from "../../src/lib/retrieval/routing.js"
 import type { PreparedCorpus } from "./prepare.js"
 import type { RetrievalVariant } from "./types.js"
 
@@ -105,10 +106,6 @@ export const fuseVariant = (
   const selected = channelsForVariant(variant)
   if (selected.length === 1) return lists[selected[0]]
 
-  const weights: ChannelWeights =
-    variant === "rrf"
-      ? routeQuery(query)
-      : { identity: 1, camelcase: 1, bm25: 1, dense: 1, sparse: 1 }
   const selectedRankings: ChannelRankings = {
     identity: selected.includes("identity") ? lists.identity : [],
     camelcase: selected.includes("camelcase") ? lists.camelcase : [],
@@ -116,5 +113,17 @@ export const fuseVariant = (
     dense: selected.includes("dense") ? lists.dense : [],
     sparse: selected.includes("sparse") ? lists.sparse : [],
   }
-  return fuseRankings("rrf", selectedRankings, weights)
+  const weights: ChannelWeights =
+    variant === "rrf"
+      ? routeWithEvidence(
+          buildRoutingEvidence(query, selectedRankings),
+          PRODUCTION_COMPATIBILITY_CONFIG,
+        )
+      : { identity: 1, camelcase: 1, bm25: 1, dense: 1, sparse: 1 }
+  return fuseRankings(
+    variant === "rrf" ? PRODUCTION_COMPATIBILITY_CONFIG.fusion : "rrf",
+    selectedRankings,
+    weights,
+    PRODUCTION_COMPATIBILITY_CONFIG.candidateDepth,
+  )
 }
