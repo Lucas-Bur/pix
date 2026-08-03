@@ -109,6 +109,7 @@ Limit an exploratory run with comma-separated environment variables:
 ```powershell
 $env:PIX_BENCH_REPOS = "fd"
 $env:PIX_BENCH_MODELS = "Xenova/all-MiniLM-L6-v2"
+$env:PIX_BENCH_OPTIMIZATION_PROFILE = "search-priority"
 vp run bench:retrieval:validate
 ```
 
@@ -203,6 +204,11 @@ Weight selection uses two grouped strategies:
 - Leave-one-repository-out: calibrate on two repositories and validate on the third. This is emitted
   only when multiple repositories are selected in the same run.
 
+Candidate selection is development-only. Grouped and repository holdouts are reported separately; the
+artifact records nested cross-validation as the final promotion plan rather than presenting fit-all
+quality as an untouched final test. The Markdown report also emits unweighted query-form and repository
+holdout rows with candidate-versus-production guardrail metrics.
+
 The grid optimizes development `Recall@20`, then `Recall@10`, 4k context recall, and MRR. Each fold's
 weights are evaluated unchanged on its excluded samples. Only after cross-validation does the report
 fit a recommended deployment candidate on all available samples. Weight search limits each physical
@@ -213,9 +219,10 @@ baseline for objective guardrails.
 Static weight search treats the four authored query forms as separate query-form-informed strata. Evidence-router
 search deliberately combines all forms: it does not receive `identifier`, `searchPhrase`,
 `naturalQuestion`, or `agentTask` labels. Search starts from 64 deterministic Halton scout points and a
-six-candidate beam. Schema 15 uses successive halving: each candidate pool is first scored on a
+six-candidate beam. The current search uses one-stage proxy promotion: each candidate pool is first scored on a
 deterministic 25% proxy sample, stratified by repository and query form with a 32-sample minimum, then
-up to eight beam widths are evaluated on the full development set. Schema 16 keeps one shared search
+up to eight beam widths are evaluated on the full development set. It is not called successive halving because
+there is only one proxy fidelity stage. Schema 16 keeps one shared search
 archive and selects objective-diverse candidates for `direct`, `reranker-top20`, and `reranker-top50`.
 The full-quality elite cache protects the best exact candidates across coordinate passes. Dynamic base
 weights range from 0.1 to 1 so a channel cannot be permanently deleted before its evidence is observed;
@@ -248,7 +255,7 @@ Schema 12 adds dense confidence from the dense score distribution: top score rel
 MAD-based robust deviation, and score-tail strength. It is evaluated with the same active fusion
 matrix; model- and repository-specific calibration remains a later extension.
 Schema 17 extends pairwise agreement to all ten pairs of the five benchmark channels and records a
-benchmark-only Distill sparse ONNX channel. Production RRF remains four-channel and unchanged.
+benchmark-only Distill sparse ONNX channel. Production RRF now consumes the same five-channel seam.
 
 ## Operating Procedure
 
@@ -284,23 +291,20 @@ explicitly rather than silently changing token limits or corpus preparation for 
 
 ## Architecture Follow-Up
 
-The benchmark already reuses the main package for chunking, BM25, identifier indexing, identity and
-CamelCase scoring, dense scoring, RRF, model metadata, and embedder creation. It intentionally keeps
-the research router, exact holdout bookkeeping, and score-normalized Relative Score/DBSF experiments
-local while those behaviors are still changing.
+The benchmark reuses the main package for chunking, BM25, identifier indexing, all five physical
+channels, fusion methods, evidence signals, model metadata, and embedder creation. It keeps exact
+holdout bookkeeping, gold resolution, and search diagnostics local because those are evaluation
+concerns rather than product query behavior.
 
-The remaining duplication is bounded but real: `benchmarks/retrieval/prepare.ts` rebuilds in-memory
-indexes instead of using `.pix/index.db`, and `benchmarks/retrieval/fusion.ts` contains fusion
-formulas that production does not yet expose. The benchmark needs raw per-channel rankings and exact
-gold resolution, which the current `QueryProject` response does not provide. Moving everything to the
-production query API now would hide the evidence needed for ablations.
+`src/lib/retrieval/fusion.ts` is the production fusion seam. RRF remains the compatibility default;
+Relative Score and DBSF consume the same `ChannelRankings` interface and are evaluated without
+reimplementing encoders, persistence, or scoring. `src/lib/retrieval/evidence-router.ts` is likewise
+shared by production configuration and benchmark evidence evaluation.
 
-The next architectural refactor should introduce an injectable fusion seam in the main package: the
-production default remains RRF, while Relative Score and DBSF become reusable fusion adapters that
-the benchmark can provide and the application can test independently. A diagnostic retrieval snapshot
-from `IndexStore` should expose persisted entries, BM25/identifier data, and per-channel rankings.
-After that seam exists, benchmark preparation can use a temporary SQLite index for production-parity
-tests while manifests continue to own pinned revisions and exact gold targets.
+The remaining architectural follow-up is a diagnostic retrieval snapshot from `IndexStore` if future
+benchmark work needs to inspect persisted channel evidence through the application boundary. Current
+benchmark preparation still uses a temporary SQLite index so ablations retain raw rankings and exact
+gold resolution.
 
 The sparse proposal was GitHub issue #159; issue #15 is the older closed `pix index` E2E issue. Sparse
 retrieval is now a production adapter, SQLite schema, and query channel. The benchmark deliberately

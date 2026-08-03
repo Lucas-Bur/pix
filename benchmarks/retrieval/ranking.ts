@@ -1,18 +1,20 @@
 import type { RankedChunk } from "../../src/domain/ports.js"
+import {
+  CHANNEL_NAMES as DOMAIN_CHANNEL_NAMES,
+  type ChannelName,
+  type ChannelRankings,
+  type ChannelWeights,
+} from "../../src/domain/retrieval.js"
 import { rankBm25 } from "../../src/lib/retrieval/bm25.js"
 import { rankCamelCase } from "../../src/lib/retrieval/camelcase.js"
+import { fuseRankings } from "../../src/lib/retrieval/fusion.js"
 import { rankIdentity } from "../../src/lib/retrieval/identity.js"
 import { routeQuery } from "../../src/lib/retrieval/routing.js"
-import { rrfFuse } from "../../src/lib/retrieval/rrf.js"
 import type { PreparedCorpus } from "./prepare.js"
-import type { ChannelWeights, RetrievalVariant } from "./types.js"
+import type { RetrievalVariant } from "./types.js"
 
-/** Physical retrieval channel participating in RRF. */
-export const CHANNEL_NAMES = ["identity", "camelcase", "bm25", "dense", "sparse"] as const
-export type ChannelName = (typeof CHANNEL_NAMES)[number]
-
-/** Rankings produced once per query by each physical retrieval channel. */
-export type ChannelRankings = Readonly<Record<ChannelName, readonly RankedChunk[]>>
+export const CHANNEL_NAMES = DOMAIN_CHANNEL_NAMES
+export type { ChannelName, ChannelRankings }
 
 /** Rankings produced by the lexical channels before dense search is delegated to SQLite. */
 export type LexicalChannelRankings = Pick<ChannelRankings, "identity" | "camelcase" | "bm25">
@@ -107,9 +109,12 @@ export const fuseVariant = (
     variant === "rrf"
       ? routeQuery(query)
       : { identity: 1, camelcase: 1, bm25: 1, dense: 1, sparse: 1 }
-  const present = selected.filter((channel) => lists[channel].length > 0)
-  return rrfFuse(
-    present.map((channel) => lists[channel]),
-    present.map((channel) => weights[channel]),
-  )
+  const selectedRankings: ChannelRankings = {
+    identity: selected.includes("identity") ? lists.identity : [],
+    camelcase: selected.includes("camelcase") ? lists.camelcase : [],
+    bm25: selected.includes("bm25") ? lists.bm25 : [],
+    dense: selected.includes("dense") ? lists.dense : [],
+    sparse: selected.includes("sparse") ? lists.sparse : [],
+  }
+  return fuseRankings("rrf", selectedRankings, weights)
 }

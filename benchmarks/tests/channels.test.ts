@@ -472,6 +472,22 @@ describe("retrieval benchmark fixture", () => {
     expect(routerResults.every((result) => result.productionDevelopment.recallAt50 >= 0)).toBe(true)
     const result = selectTop20Router(routerResults)
     expect(result.fusion).toBe("dbsf")
+    expect(result.config.schemaVersion).toBe(1)
+    expect(result.searchDiagnostics.parameterCount).toBe(40)
+    expect(Object.keys(result.searchDiagnostics.parameterLevels)).toHaveLength(40)
+    expect(result.searchDiagnostics.proxyFullAgreement).toBeGreaterThanOrEqual(0)
+    expect(result.searchDiagnostics.proxyFullAgreement).toBeLessThanOrEqual(1)
+    expect(result.searchBaseline.algorithm).toBe("random-scout")
+    expect(result.searchBaseline.candidates).toBeGreaterThan(0)
+    expect(result.searchBaseline.validation.recallAt20).toBeGreaterThanOrEqual(0)
+    expect(
+      result.holdoutBreakdown.map(({ dimension, name }) => `${dimension}:${name}`).sort(),
+    ).toEqual(["query-form:naturalQuestion", "query-form:searchPhrase", "repository:fixture"])
+    expect(
+      result.holdoutBreakdown.every(
+        ({ candidate, baseline }) => candidate.recallAt20 >= 0 && baseline.recallAt20 >= 0,
+      ),
+    ).toBe(true)
     expect(Object.values(result.config.baseWeights).every((weight) => weight > 0)).toBe(true)
     const influenceNames = [
       "scoreInfluence",

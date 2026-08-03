@@ -12,19 +12,19 @@ import {
   type AllStoreErrors,
 } from "../domain/errors.js"
 import { ConfigStore, Embedder, IndexStore, SparseEmbedder } from "../domain/ports.js"
-import type {
-  ChunkMetadata,
-  RankedChunk,
-  SearchOptions,
-  SearchResponse,
-  SearchResult,
-} from "../domain/ports.js"
+import type { ChunkMetadata, SearchOptions, SearchResponse, SearchResult } from "../domain/ports.js"
+import {
+  PRODUCTION_COMPATIBILITY_CONFIG,
+  type ChannelRankings,
+  type ChannelWeights,
+} from "../domain/retrieval.js"
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
 import { rankBm25 } from "../lib/retrieval/bm25.js"
 import { rankCamelCase } from "../lib/retrieval/camelcase.js"
+import { fuseRankings } from "../lib/retrieval/fusion.js"
 import { rankIdentity } from "../lib/retrieval/identity.js"
 import { routeQuery } from "../lib/retrieval/routing.js"
-import { K, rrfFuse } from "../lib/retrieval/rrf.js"
+import { K } from "../lib/retrieval/rrf.js"
 
 type PathFilter = { ignores(path: string): boolean }
 
@@ -81,14 +81,17 @@ export const filterResults = <T extends Pick<SearchResult, "file">>(
 }
 
 const fuseResults = (
-  channels: readonly { readonly list: readonly RankedChunk[]; readonly weight: number }[],
+  rankings: ChannelRankings,
+  weights: ChannelWeights,
   entryMap: Map<number, ChunkMetadata>,
 ): RankedResult[] => {
-  const sumWeights = channels.reduce((a, c) => a + c.weight, 0)
-  const fused = rrfFuse(
-    channels.map((c) => c.list),
-    channels.map((c) => c.weight),
-  )
+  const sumWeights =
+    (rankings.identity.length > 0 ? weights.identity : 0) +
+    (rankings.camelcase.length > 0 ? weights.camelcase : 0) +
+    (rankings.bm25.length > 0 ? weights.bm25 : 0) +
+    (rankings.dense.length > 0 ? weights.dense : 0) +
+    (rankings.sparse.length > 0 ? weights.sparse : 0)
+  const fused = fuseRankings(PRODUCTION_COMPATIBILITY_CONFIG.fusion, rankings, weights)
   const results: RankedResult[] = []
   for (const { chunkIndex, score } of fused) {
     const entry = entryMap.get(chunkIndex)
@@ -185,14 +188,16 @@ const make = Effect.gen(function* () {
       // Only pass channels that produced hits -- otherwise their weight still
       // gets included in the sum that normalizes rel, and absent channels
       // would lower rel even when BM25 + Dense had strong matches.
-      const channels = [
-        { list: identityRanks, weight: weights.identity },
-        { list: camelcaseRanks, weight: weights.camelcase },
-        { list: lexicalRanks, weight: weights.bm25 },
-        { list: denseRanks, weight: weights.dense },
-        { list: sparseRanks, weight: weights.sparse },
-      ].filter((channel) => channel.list.length > 0)
-      const results = channels.length === 0 ? [] : fuseResults(channels, entryMap)
+      const rankings = {
+        identity: identityRanks,
+        camelcase: camelcaseRanks,
+        bm25: lexicalRanks,
+        dense: denseRanks,
+        sparse: sparseRanks,
+      }
+      const results = Object.values(rankings).some((list) => list.length > 0)
+        ? fuseResults(rankings, weights, entryMap)
+        : []
       const filtered = filterResults(results, options)
 
       const topK = options?.topK

@@ -1,6 +1,10 @@
 import { Schema } from "effect"
 
-import type { EvidenceRouterConfig } from "./evidence-router.js"
+import type {
+  EvidenceRouterConfig,
+  FusionMethod as ProductionFusionMethod,
+  OptimizationProfile,
+} from "../../src/domain/retrieval.js"
 
 /** Benchmark repository size band used for report segmentation. */
 const RepositorySizeSchema = Schema.Literals(["small", "medium", "large"])
@@ -52,7 +56,7 @@ export type GoldLocation = typeof GoldLocationSchema.Type
 export type QueryKind = keyof typeof QueryFormsSchema.Type
 
 /** Score or rank fusion algorithm evaluated with independently tuned channel weights. */
-export type FusionMethod = "rrf" | "relative-score" | "dbsf"
+type FusionMethod = ProductionFusionMethod
 
 /** Product retrieval scenario used to choose a router candidate. */
 export const ROUTER_OBJECTIVES = ["direct", "reranker-top20", "reranker-top50"] as const
@@ -60,16 +64,19 @@ export type RouterObjective = (typeof ROUTER_OBJECTIVES)[number]
 
 /** Versioned evidence-router search strategy recorded in every benchmark artifact. */
 export const ROUTER_SEARCH_STRATEGY = {
-  algorithm: "halton-global-scout-elitist-beam-successive-halving-pareto",
+  algorithm: "halton-global-scout-elitist-beam-proxy-promotion",
   globalScouts: 64,
   beamWidth: 6,
   coordinatePasses: 2,
   candidateDepth: 200,
   proxySampleFraction: 0.25,
   proxyMinimumSamples: 32,
-  halvingKeepFactor: 8,
+  proxyPromotionFactor: 8,
   objectives: ROUTER_OBJECTIVES,
   guardrailTolerance: 0.01,
+  seed: 0,
+  normalization: "per-channel-max-weight",
+  tieBreaking: "guardrails>objective>complexity>stable-key",
 } as const
 
 /** Runtime/coverage trade-off selected for one benchmark invocation. */
@@ -129,7 +136,7 @@ export interface QueryMeasurement {
 }
 
 /** Static fusion weights searched for one model and query representation. */
-export interface ChannelWeights {
+interface ChannelWeights {
   readonly identity: number
   readonly camelcase: number
   readonly bm25: number
@@ -145,6 +152,16 @@ export interface QualitySummary {
   readonly recallAt50: number
   readonly contextRecallAt4096: number
   readonly meanReciprocalRank: number
+}
+
+/** Quality and guardrail outcome for one query-form or repository holdout partition. */
+export interface HoldoutQuality {
+  readonly dimension: "query-form" | "repository"
+  readonly name: string
+  readonly queries: number
+  readonly candidate: QualitySummary
+  readonly baseline: QualitySummary
+  readonly guardrailsMet: boolean
 }
 
 /** One cross-validation fold with weights selected without its validation samples. */
@@ -181,6 +198,8 @@ export interface FusionSearchResult {
   readonly weights: ChannelWeights
   readonly development: QualitySummary
   readonly validation: QualitySummary
+  readonly guardrailsMet: boolean
+  readonly holdoutBreakdown: readonly HoldoutQuality[]
 }
 
 /** Holdout evaluation of the current production RRF query-routing weights. */
@@ -201,6 +220,40 @@ export interface RecommendedFusionWeights {
   readonly samples: number
   readonly weights: ChannelWeights
   readonly fitQuality: QualitySummary
+  readonly guardrailsMet: boolean
+}
+
+/** Search accounting needed to interpret a router candidate and its budget. */
+export interface RouterSearchDiagnostics {
+  readonly parameterCount: number
+  readonly parameterLevels: Readonly<Record<string, readonly number[]>>
+  readonly rawCandidates: number
+  readonly uniqueCandidates: number
+  readonly proxyEvaluations: number
+  readonly fullEvaluations: number
+  readonly proxyCacheHits: number
+  readonly fullCacheHits: number
+  readonly proxyPromotions: number
+  readonly proxyFullAgreement: number
+  readonly protectedEliteCount: number
+}
+
+/** Holdout comparison against a deterministic random-search baseline. */
+export interface SearchBaselineComparison {
+  readonly algorithm: "random-scout"
+  readonly seed: number
+  readonly candidates: number
+  readonly development: QualitySummary
+  readonly validation: QualitySummary
+}
+
+/** Explicit separation between candidate selection, holdouts, and final promotion evidence. */
+export interface ValidationProtocol {
+  readonly selection: "development-only"
+  readonly holdouts: readonly ValidationStrategy[]
+  readonly finalTest: "nested-cross-validation-plan"
+  readonly nestedOuterFolds: number
+  readonly nestedInnerFolds: number
 }
 
 /** One holdout evaluation of a router selected from query and channel evidence. */
@@ -223,6 +276,9 @@ export interface EvidenceRouterSearchResult {
   readonly guardrailsMet: boolean
   readonly proxyEvaluations: number
   readonly fullEvaluations: number
+  readonly searchDiagnostics: RouterSearchDiagnostics
+  readonly searchBaseline: SearchBaselineComparison
+  readonly holdoutBreakdown: readonly HoldoutQuality[]
 }
 
 /** Evidence-router candidate fitted on all samples after holdout evaluation. */
@@ -239,6 +295,7 @@ export interface RecommendedEvidenceRouter {
   readonly guardrailsMet: boolean
   readonly proxyEvaluations: number
   readonly fullEvaluations: number
+  readonly searchDiagnostics: RouterSearchDiagnostics
 }
 
 /** Compute-time breakdown for one benchmark invocation, excluding artifact file serialization. */
@@ -257,6 +314,9 @@ export interface BenchmarkArtifact {
   readonly schemaVersion: 19
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
+  /** Versioned objective profile used for candidate selection and aggregate metrics. */
+  readonly optimizationProfile: OptimizationProfile
+  readonly validationProtocol: ValidationProtocol
   readonly generatedAt: string
   readonly searchStrategy: typeof ROUTER_SEARCH_STRATEGY
   readonly timings: BenchmarkTimings

@@ -137,15 +137,15 @@ Fuses N ranked lists by rank position: `Σ weight * 1 / (k + rank_in_path)`. Raw
 
 ### Fusion Strategy and Optimization Profiles
 
-Production currently uses RRF as the compatibility fusion for the five live channels. The schema-17
+Production currently uses RRF as the compatibility fusion for the five live channels. The schema-19
 benchmark compares RRF with per-channel Relative Score fusion and Distribution-Based Score Fusion
-(DBSF); these alternatives are benchmark candidates, not production behavior yet. The planned production
+(DBSF); these alternatives are reusable production candidates, not the active default yet. The production
 seam is an explicit fusion method plus an evidence router, so Identity, CamelCase, BM25, Dense, and the
-learned Sparse channel participates without fusion-specific channel branches. The router may adjust
+learned Sparse channel participate without fusion-specific channel branches. The router may adjust
 each channel's base weight using score separation, score geometry, term coverage, pairwise agreement,
 dense confidence, identifier likelihood, query length, and channel availability.
 
-The benchmark currently weights the four authored query forms equally. The next optimization objective is
+The benchmark's default `search-priority` profile weights the four authored query forms as
 intent-weighted: `identifier=1`, `agentTask=2`, `naturalQuestion=3`, and `searchPhrase=4`, while still
 reporting unweighted per-form results and holdout guardrails. This is an evaluation objective, not an
 implicit runtime query label. Future explicit profiles such as `balanced`, `code-navigation`, and
@@ -192,7 +192,7 @@ Short-profile fusion runs use Relative Score and DBSF; the full profile also run
 comparisons.
 Schema 14 records the router search strategy and compute-time breakdown in each artifact, including
 corpus preparation, embedding, retrieval, static fusion search, and evidence-router search duration.
-Schema 15 adds deterministic successive halving to the evidence-router search. Schema 16 evaluates the
+Schema 15 adds deterministic one-stage proxy promotion to the evidence-router search. Schema 16 evaluates the
 current production RRF query-length router as an explicit holdout baseline, adds Recall@50, and uses one
 shared Pareto search to select objective-specific candidates for direct retrieval, reranker top-20
 candidate pools, and reranker top-50 candidate pools. Each candidate must remain within a 1% development
@@ -206,7 +206,8 @@ five-channel score fusion, ten pairwise agreement signals, and separate sparse t
 in schema-17 artifacts. ADR-0020 promotes the validated Sparse contract to the production five-channel
 RRF path and persists its IDF and postings in `.pix/index.db`.
 Schema 19 removes the benchmark-owned Sparse encoder, in-process postings implementation, and separate
-embedding caches. Benchmarks
+embedding caches. Benchmark profile fitting remains benchmark-owned, while the fusion adapters and
+evidence signals are shared with production. Benchmarks
 compose the production SparseEmbedder and IndexStore around a migrated in-memory SQLite database;
 Dense and Sparse ranking therefore execute through the same adapters as product queries. Experimental
 fusion remains benchmark-owned. Every artifact includes the authored file-qualified ground truth and
@@ -391,8 +392,8 @@ All one-shot commands support `--json` for agent-ready structured output on stdo
 
 - A **Scorer** consumes **ChunkEntry** data and produces a **RankedChunk** list
 - **RRF** fuses N **RankedChunk** lists, each weighted by **Query Routing** output
-- Production currently selects RRF; Relative Score and DBSF remain benchmark fusion candidates until an
-  evidence-based production configuration passes holdout guardrails
+- Production currently selects RRF; Relative Score and DBSF remain inactive until an evidence-based
+  production configuration passes holdout guardrails
 - **BM25 Index** is built once by the index pipeline, consumed by the BM25 **Scorer** at query time
 - Retrieval channels expose `RankedChunk[]` through the production fusion seam. BM25 and identifiers
   score in pure functions; Dense and Sparse rank natively through `IndexStore`.
