@@ -99,7 +99,10 @@ init, incremental index, self-refreshing query, status, reset, and explicit embe
 
 ### Query Routing
 
-Token-count heuristic adjusting scorer weights before RRF fusion. Short queries (1-2 tokens) boost BM25 and reduce Dense; long queries (8+ tokens) boost Dense and reduce BM25. Identity, CamelCase, and learned Sparse retain fixed weights.
+Evidence-based routing adjusts scorer weights before fusion using channel availability, score geometry,
+term coverage, pairwise agreement, dense confidence, identifier shape, and explicit query-length bands.
+The compatibility profile keeps the existing behavior: short queries (1-2 tokens) boost BM25 and reduce
+Dense; long queries (8+ tokens) boost Dense and reduce BM25. Other profiles are explicitly selected.
 
 ### Query API
 
@@ -152,6 +155,10 @@ implicit runtime query label. Future explicit profiles such as `balanced`, `code
 `basic-exploration` may choose different query-form priorities, channel priors, and target metrics
 (Recall@5/10/20/50 and context recall). See ADR-0019, issue #162 for production Sparse, and issue #163
 for evidence-based fusion and optimization profiles.
+
+Production queries accept an explicit `profile` selection. `compatibility` is the validated default;
+`balanced`, `code-navigation`, and `natural-language` are opt-in experimental candidates until their
+weights and evidence influences are promoted from benchmark holdouts.
 
 Benchmark-owned profile seeds and optimizer search live under `benchmarks/retrieval/`; production keeps
 only the active validated router configuration and reusable fusion/evidence seams. A benchmark result is
@@ -383,7 +390,7 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 
 - `pix init` — Create `.pix/config.json`. Prompts for model selection (human mode); `--json` uses default model.
 - `pix index` — Incrementally refresh the index. Unchanged files reuse chunk metadata, vectors, BM25 terms, and identifier postings; changed chunks use the embedding cache before inference.
-- `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content]` — Ensure the index is fresh, then run hybrid search. Missing indexes, source changes, and model/dtype changes are repaired automatically. Source text loads only after top-K selection; `--no-content` performs no source reads.
+- `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content] [--profile NAME]` — Ensure the index is fresh, then run hybrid search. Missing indexes, source changes, and model/dtype changes are repaired automatically. Source text loads only after top-K selection; `--no-content` performs no source reads. Profiles are explicit: `compatibility` (default), `balanced`, `code-navigation`, or `natural-language`.
 - `pix mcp` — Run the host-managed MCP stdio server exposing the shared read-only query API.
 - `pix status` — Show index statistics
 - `pix reset` — Delete the active SQLite index snapshot while retaining historical embeddings

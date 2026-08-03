@@ -28,7 +28,17 @@ const aliasAddCommand = Command.make(
     ...queryAliasFlags,
     json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
-  ({ name, queryText, top, contextLines, ignorePath, onlyPath, maxCharacters, noContent }) =>
+  ({
+    name,
+    queryText,
+    top,
+    contextLines,
+    ignorePath,
+    onlyPath,
+    maxCharacters,
+    noContent,
+    profile,
+  }) =>
     Effect.gen(function* () {
       const d = yield* Display
       const alias = yield* addAlias({
@@ -40,6 +50,7 @@ const aliasAddCommand = Command.make(
         onlyPath,
         maxCharacters: Option.getOrUndefined(maxCharacters),
         noContent,
+        profile: Option.getOrUndefined(profile),
       })
       yield* d.json(alias)
       yield* d.log(`Saved alias "${alias.name}"`, "success")
@@ -92,6 +103,7 @@ const aliasRunCommand = Command.make("run", aliasRunConfig, ({ aliasName, ...fla
       onlyPath: flags.onlyPath,
       maxCharacters: Option.getOrUndefined(flags.maxCharacters),
       noContent: flags.noContent,
+      profile: Option.getOrUndefined(flags.profile),
     })
     yield* executeQuery(request, flags.copy)
   }).pipe(Effect.catch(reportError)),

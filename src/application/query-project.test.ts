@@ -112,6 +112,7 @@ it.effect("QueryProject.queryProject returns hybrid-ranked results via RRF", () 
     const { results } = yield* (yield* QueryProject).queryProject("handleRequest", {
       topK: 5,
       noContent: true,
+      profile: "code-navigation",
     })
     expect(results.length).toBeGreaterThan(0)
     expect(results[0].file).toBe("src/handler.ts")

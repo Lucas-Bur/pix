@@ -363,7 +363,7 @@ export const buildRoutingEvidence = (
   return {
     tokenCount,
     identifierLikelihood,
-    queryLengthSignal: clamp((tokenCount - 2) / 6),
+    queryLengthSignal: tokenCount <= 2 ? 0 : tokenCount >= 8 ? 1 : 0.5,
     termCoverage,
     pairwiseAgreement,
     denseConfidence,

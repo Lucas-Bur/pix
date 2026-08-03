@@ -48,8 +48,9 @@ The first benchmark optimization profile will weight query forms as:
 The weighted objective must be applied consistently to proxy search, full candidate search, holdout
 comparison, and diagnostics. Reports must retain unweighted per-query-form and per-repository metrics.
 Target metrics remain explicit: Recall@5, Recall@10, Recall@20, Recall@50, and context recall at the
-documented token budget. Runtime query-form labels are not inferred from benchmark labels; a future
-runtime profile or intent must be an explicit API/CLI choice.
+documented token budget. Runtime query-form labels are not inferred from benchmark labels. Production
+profile selection is an explicit API/CLI choice; benchmark profiles remain evaluation objectives and
+must be promoted through holdout evidence before replacing the compatibility default.
 
 Production Sparse persistence and scoring use the fixed compatibility weight documented in ADR-0020. Fusion implementation,
 evidence routing, and optimization profiles are tracked in issue #163.

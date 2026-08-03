@@ -181,7 +181,10 @@ describe("retrieval benchmark fixture", () => {
     }
     const shortWeights = routeWithEvidence(buildRoutingEvidence("target", rankings), config)
     const longWeights = routeWithEvidence(
-      buildRoutingEvidence("find the implementation that handles this target", rankings),
+      buildRoutingEvidence(
+        "find the implementation that handles this target in this repository",
+        rankings,
+      ),
       config,
     )
 

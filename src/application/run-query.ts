@@ -23,6 +23,7 @@ export const runQuery = (input: QueryRequest) =>
       ...(request.onlyPath.length > 0 && { onlyPaths: request.onlyPath }),
       contextLines: request.contextLines,
       noContent: request.noContent,
+      profile: request.profile,
     })
     const results = request.noContent
       ? response.results

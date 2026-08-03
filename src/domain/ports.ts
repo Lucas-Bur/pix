@@ -30,6 +30,7 @@ import type { Identifier } from "./identifier.js"
 import type { FileManifestEntry, StoredChunk } from "./index-data.js"
 import type { ModelInfo } from "./models.js"
 import type { QueryAlias, QueryAliasOptions } from "./query-alias.js"
+import type { ProductionProfileName } from "./retrieval.js"
 import type { SparseContract, SparseQuery, SparseTerm, SparseVector } from "./sparse.js"
 
 // === Index options ===
@@ -317,6 +318,8 @@ export interface SearchOptions {
   readonly contextLines?: number
   /** Skip source hydration and return metadata-only results. */
   readonly noContent?: boolean
+  /** Explicit production retrieval profile. */
+  readonly profile?: ProductionProfileName
 }
 
 /** A single search result from a semantic query. Results are sorted by similarity score descending. */

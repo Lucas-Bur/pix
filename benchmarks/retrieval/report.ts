@@ -145,7 +145,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Production RRF Holdouts",
     "",
-    "These rows evaluate the current production query-length router unchanged; they are the baseline for objective guardrails.",
+    "These rows evaluate the current production compatibility evidence router unchanged; they are the baseline for objective guardrails.",
     "",
     "| Model | Strategy | Validation R@5 | Validation R@10 | Validation R@20 | Validation R@50 | Validation Ctx@4k |",
     "| --- | --- | ---: | ---: | ---: | ---: | ---: |",

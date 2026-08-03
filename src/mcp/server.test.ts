@@ -99,6 +99,10 @@ it.effect("the MCP query tool publishes guidance and parameter descriptions", ()
       "properties.noContent.anyOf.0.description",
       expect.stringContaining("without loading source text"),
     )
+    expect(queryTool?.inputSchema).toHaveProperty(
+      "properties.profile.anyOf.0.description",
+      expect.stringContaining("production retrieval profile"),
+    )
   }),
 )
 

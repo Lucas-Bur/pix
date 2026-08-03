@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 
 import { ChunkValidationErrorSchema } from "./errors.js"
+import { ProductionProfileNameSchema, type ProductionProfileName } from "./retrieval.js"
 
 const Int = Schema.Int
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
@@ -13,6 +14,7 @@ export const QUERY_DEFAULTS = {
   ignorePath: [] as readonly string[],
   onlyPath: [] as readonly string[],
   noContent: false,
+  profile: "compatibility" as const,
 } as const
 
 /** Transport-independent retrieval options. Runtime output controls are excluded. */
@@ -50,6 +52,13 @@ export const QueryOptionsSchema = Schema.Struct({
     Schema.Boolean.pipe(
       Schema.annotate({
         description: "Return file and line metadata without loading source text.",
+      }),
+    ),
+  ),
+  profile: Schema.optional(
+    ProductionProfileNameSchema.pipe(
+      Schema.annotate({
+        description: "Explicit production retrieval profile; defaults to compatibility.",
       }),
     ),
   ),
@@ -114,6 +123,7 @@ export interface NormalizedQueryRequest {
   readonly onlyPath: readonly string[]
   readonly maxCharacters: number | undefined
   readonly noContent: boolean
+  readonly profile: ProductionProfileName
 }
 
 /** Apply defaults shared by CLI, aliases, and MCP. */
@@ -125,6 +135,7 @@ export const normalizeQueryRequest = (request: QueryRequest): NormalizedQueryReq
   onlyPath: request.onlyPath ?? QUERY_DEFAULTS.onlyPath,
   maxCharacters: request.maxCharacters,
   noContent: request.noContent ?? QUERY_DEFAULTS.noContent,
+  profile: request.profile ?? QUERY_DEFAULTS.profile,
 })
 
 /** Query options that may be saved in an alias. */

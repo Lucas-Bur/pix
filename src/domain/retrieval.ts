@@ -97,6 +97,45 @@ const ZERO_COEFFICIENTS: ChannelCoefficients = {
   sparse: 0,
 }
 
+/** Explicit profile names accepted by the production query boundary. */
+export const PRODUCTION_PROFILE_NAMES = [
+  "compatibility",
+  "balanced",
+  "code-navigation",
+  "natural-language",
+] as const
+
+/** Production retrieval profile name. */
+export const ProductionProfileNameSchema = Schema.Literals(PRODUCTION_PROFILE_NAMES)
+
+/** Production profile selected explicitly by a query caller. */
+export type ProductionProfileName = typeof ProductionProfileNameSchema.Type
+
+/** Resolved production profile configuration. */
+export interface ProductionProfile {
+  readonly name: ProductionProfileName
+  readonly config: EvidenceRouterConfig
+  readonly experimental: boolean
+}
+
+const makeProductionProfileConfig = (
+  baseWeights: ChannelWeights,
+  queryLengthInfluence: ChannelCoefficients = ZERO_COEFFICIENTS,
+): EvidenceRouterConfig =>
+  decodeEvidenceRouterConfig({
+    schemaVersion: 1,
+    fusion: "rrf",
+    candidateDepth: 200,
+    baseWeights,
+    scoreInfluence: ZERO_COEFFICIENTS,
+    geometryInfluence: ZERO_COEFFICIENTS,
+    termCoverageInfluence: ZERO_COEFFICIENTS,
+    pairwiseAgreementInfluence: ZERO_COEFFICIENTS,
+    denseConfidenceInfluence: ZERO_COEFFICIENTS,
+    identifierInfluence: ZERO_COEFFICIENTS,
+    queryLengthInfluence,
+  })
+
 /**
  * Current production compatibility profile; RRF remains the default until a benchmark validates a
  * change.
@@ -118,5 +157,52 @@ export const PRODUCTION_COMPATIBILITY_CONFIG = decodeEvidenceRouterConfig({
   pairwiseAgreementInfluence: ZERO_COEFFICIENTS,
   denseConfidenceInfluence: ZERO_COEFFICIENTS,
   identifierInfluence: ZERO_COEFFICIENTS,
-  queryLengthInfluence: ZERO_COEFFICIENTS,
+  queryLengthInfluence: { ...ZERO_COEFFICIENTS, bm25: -1, dense: 1 },
 })
+
+/** Explicitly selectable production profiles; non-compatibility profiles remain opt-in candidates. */
+export const PRODUCTION_PROFILES = {
+  compatibility: {
+    name: "compatibility",
+    config: PRODUCTION_COMPATIBILITY_CONFIG,
+    experimental: false,
+  },
+  balanced: {
+    name: "balanced",
+    config: makeProductionProfileConfig({
+      identity: 1,
+      camelcase: 1,
+      bm25: 1,
+      dense: 1,
+      sparse: 1,
+    }),
+    experimental: true,
+  },
+  "code-navigation": {
+    name: "code-navigation",
+    config: makeProductionProfileConfig({
+      identity: 4,
+      camelcase: 2,
+      bm25: 1.5,
+      dense: 0.5,
+      sparse: 1,
+    }),
+    experimental: true,
+  },
+  "natural-language": {
+    name: "natural-language",
+    config: makeProductionProfileConfig({
+      identity: 0.5,
+      camelcase: 0.5,
+      bm25: 1,
+      dense: 2,
+      sparse: 1.5,
+    }),
+    experimental: true,
+  },
+} as const satisfies Readonly<Record<ProductionProfileName, ProductionProfile>>
+
+/** Resolve a caller-selected profile; compatibility is the safe default. */
+export const resolveProductionProfile = (
+  name: ProductionProfileName = "compatibility",
+): ProductionProfile => PRODUCTION_PROFILES[name]
