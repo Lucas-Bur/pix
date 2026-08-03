@@ -68,6 +68,30 @@ describe("fuseRankings", () => {
     expect(translated.map((entry) => entry.score)).toEqual(first.map((entry) => entry.score))
   })
 
+  it("combines overlapping normalized channels with deterministic ties", () => {
+    const ranked = fuseRankings(
+      "relative-score",
+      {
+        ...emptyRankings,
+        bm25: [
+          { chunkIndex: 0, score: 10 },
+          { chunkIndex: 1, score: 0 },
+        ],
+        dense: [
+          { chunkIndex: 1, score: 10 },
+          { chunkIndex: 2, score: 0 },
+        ],
+      },
+      weights,
+    )
+
+    expect(ranked).toEqual([
+      { chunkIndex: 0, score: 1 },
+      { chunkIndex: 1, score: 1 },
+      { chunkIndex: 2, score: 0 },
+    ])
+  })
+
   it("keeps constant and single-result DBSF channels finite", () => {
     const ranked = fuseRankings(
       "dbsf",
