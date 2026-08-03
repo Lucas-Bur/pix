@@ -26,6 +26,6 @@ export const rrfFuse = (
   for (const [chunkIndex, score] of scoreMap) {
     results.push({ chunkIndex, score })
   }
-  results.sort((a, b) => b.score - a.score)
+  results.sort((a, b) => b.score - a.score || a.chunkIndex - b.chunkIndex)
   return results
 }

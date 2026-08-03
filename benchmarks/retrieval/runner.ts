@@ -10,6 +10,11 @@ import type { StoredChunk } from "../../src/domain/index-data.js"
 import { MODEL_REGISTRY } from "../../src/domain/models.js"
 import type { BoundEmbedder } from "../../src/domain/ports.js"
 import { IndexStore, SparseEmbedder } from "../../src/domain/ports.js"
+import {
+  OPTIMIZATION_PROFILES,
+  type FusionMethod,
+  type OptimizationProfile,
+} from "../../src/domain/retrieval.js"
 import type { SparseContract, SparseTerm, SparseVector } from "../../src/domain/sparse.js"
 import { contentHash } from "../../src/lib/content-hash.js"
 import { createAutoBoundEmbedder } from "../../src/services/embedder.js"
@@ -34,7 +39,6 @@ import {
   type BenchmarkArtifact,
   type BenchmarkProfile,
   type CorpusManifest,
-  type FusionMethod,
   type QueryKind,
   type QueryMeasurement,
   type ValidationStrategy,
@@ -158,6 +162,17 @@ const selectModels = (): Effect.Effect<readonly string[], Error> => {
   return Effect.succeed(models)
 }
 
+const selectOptimizationProfile = (): Effect.Effect<OptimizationProfile, Error> => {
+  const requested = process.env.PIX_BENCH_OPTIMIZATION_PROFILE
+  if (requested === undefined) return Effect.succeed(OPTIMIZATION_PROFILES["search-priority"])
+  const selected = Object.values(OPTIMIZATION_PROFILES).find(
+    (profile) => profile.name === requested,
+  )
+  return selected === undefined
+    ? Effect.fail(new Error(`Unknown PIX_BENCH_OPTIMIZATION_PROFILE value: ${requested}`))
+    : Effect.succeed(selected)
+}
+
 const embedTexts = (
   texts: readonly string[],
   model: string,
@@ -260,6 +275,7 @@ export const runRetrievalBenchmark = (
   Effect.gen(function* () {
     const benchmarkStartedAt = performance.now()
     const config = profileConfig(profile)
+    const optimizationProfile = yield* selectOptimizationProfile()
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
     const manifests = yield* selectManifests(yield* loadCorpusManifests(), profile)
@@ -492,6 +508,7 @@ export const runRetrievalBenchmark = (
               String(fold + 1),
               group.samples.filter((sample) => sample.groupedFold !== fold),
               group.samples.filter((sample) => sample.groupedFold === fold),
+              optimizationProfile,
             ),
           )
           const repositories = [...new Set(group.samples.map((sample) => sample.repository))]
@@ -505,6 +522,7 @@ export const runRetrievalBenchmark = (
                     repository,
                     group.samples.filter((sample) => sample.repository !== repository),
                     group.samples.filter((sample) => sample.repository === repository),
+                    optimizationProfile,
                   ),
                 )
               : []
@@ -513,7 +531,7 @@ export const runRetrievalBenchmark = (
       : []
     const recommendedWeights = config.legacyDiagnostics
       ? [...sampleGroups.values()].map((group) =>
-          fitRecommendedWeights(group.model, group.queryKind, group.samples),
+          fitRecommendedWeights(group.model, group.queryKind, group.samples, optimizationProfile),
         )
       : []
     const weightSearchDurationMs = performance.now() - weightSearchStartedAt
@@ -530,6 +548,7 @@ export const runRetrievalBenchmark = (
             String(fold + 1),
             samples.filter((sample) => sample.groupedFold !== fold),
             samples.filter((sample) => sample.groupedFold === fold),
+            optimizationProfile,
           ),
         )
       }
@@ -542,6 +561,7 @@ export const runRetrievalBenchmark = (
               repository,
               samples.filter((sample) => sample.repository !== repository),
               samples.filter((sample) => sample.repository === repository),
+              optimizationProfile,
             ),
           )
         }
@@ -561,6 +581,7 @@ export const runRetrievalBenchmark = (
               String(fold + 1),
               samples.filter((sample) => sample.groupedFold !== fold),
               samples.filter((sample) => sample.groupedFold === fold),
+              optimizationProfile,
             ),
           )
         }
@@ -574,6 +595,7 @@ export const runRetrievalBenchmark = (
                 repository,
                 samples.filter((sample) => sample.repository !== repository),
                 samples.filter((sample) => sample.repository === repository),
+                optimizationProfile,
               ),
             )
           }
@@ -581,7 +603,9 @@ export const runRetrievalBenchmark = (
       }
     }
     const recommendedFusionWeights = [...samplesByModel].flatMap(([model, samples]) =>
-      config.fusionMethods.map((fusion) => fitRecommendedFusionWeights(model, fusion, samples)),
+      config.fusionMethods.map((fusion) =>
+        fitRecommendedFusionWeights(model, fusion, samples, optimizationProfile),
+      ),
     )
     const fusionSearchDurationMs = performance.now() - fusionSearchStartedAt
 
@@ -601,6 +625,7 @@ export const runRetrievalBenchmark = (
               String(fold + 1),
               samples.filter((sample) => sample.groupedFold !== fold),
               samples.filter((sample) => sample.groupedFold === fold),
+              optimizationProfile,
             ),
           )
         }
@@ -618,6 +643,7 @@ export const runRetrievalBenchmark = (
                 repository,
                 samples.filter((sample) => sample.repository !== repository),
                 samples.filter((sample) => sample.repository === repository),
+                optimizationProfile,
               ),
             )
           }
@@ -627,7 +653,7 @@ export const runRetrievalBenchmark = (
     reportProgress("fitting final evidence router on all samples")
     const recommendedEvidenceRouters = [...samplesByModel].flatMap(([model, samples]) =>
       config.routerFusionMethods.flatMap((fusion) =>
-        fitRecommendedEvidenceRouter(model, fusion, samples),
+        fitRecommendedEvidenceRouter(model, fusion, samples, optimizationProfile),
       ),
     )
     const evidenceRouterSearchDurationMs = performance.now() - evidenceRouterSearchStartedAt
@@ -644,6 +670,16 @@ export const runRetrievalBenchmark = (
     const artifact: BenchmarkArtifact = {
       schemaVersion: 19,
       benchmarkProfile: profile,
+      optimizationProfile,
+      validationProtocol: {
+        selection: "development-only",
+        holdouts: config.repositoryHoldouts
+          ? [groupedStrategy, "leave-one-repository-out"]
+          : [groupedStrategy],
+        finalTest: "nested-cross-validation-plan",
+        nestedOuterFolds: config.groupedFolds,
+        nestedInnerFolds: Math.max(3, config.groupedFolds - 2),
+      },
       generatedAt: new Date().toISOString(),
       searchStrategy: ROUTER_SEARCH_STRATEGY,
       timings: {

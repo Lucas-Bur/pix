@@ -76,6 +76,14 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     const routerFusionMethods = profile === "full" ? 3 : 1
 
     expect(artifact.benchmarkProfile).toBe(profile)
+    expect(artifact.optimizationProfile.queryFormWeights).toEqual({
+      identifier: 1,
+      agentTask: 2,
+      naturalQuestion: 3,
+      searchPhrase: 4,
+    })
+    expect(artifact.validationProtocol.selection).toBe("development-only")
+    expect(artifact.validationProtocol.finalTest).toBe("nested-cross-validation-plan")
     expect(artifact.repositories.length).toBeGreaterThan(0)
     expect(artifact.evaluationCases.length).toBeGreaterThan(0)
     expect(artifact.evaluationCases.every(({ groundTruth }) => groundTruth.length > 0)).toBe(true)

@@ -1,31 +1,40 @@
 import type { Chunk } from "../../src/domain/chunk.js"
 import type { RankedChunk } from "../../src/domain/ports.js"
-import { routeQuery } from "../../src/lib/retrieval/routing.js"
+import {
+  SEARCH_PRIORITY_PROFILE,
+  decodeEvidenceRouterConfig,
+  type ChannelCoefficients,
+  type ChannelWeights,
+  type EvidenceRouterConfig as VersionedEvidenceRouterConfig,
+  type EvidenceRouterParameters as EvidenceRouterConfig,
+  type FusionMethod,
+  type OptimizationProfile,
+} from "../../src/domain/retrieval.js"
 import {
   buildRoutingEvidence,
   routeWithEvidence,
-  type ChannelCoefficients,
-  type EvidenceRouterConfig,
   type QueryTermCoverage,
   type RoutingEvidence,
-} from "./evidence-router.js"
+} from "../../src/lib/retrieval/evidence-router.js"
+import { routeQuery } from "../../src/lib/retrieval/routing.js"
 import { fuseRankings } from "./fusion.js"
 import { contextRecallAtBudget, recallAt, reciprocalRank } from "./metrics.js"
 import { CHANNEL_NAMES, type ChannelName, type ChannelRankings } from "./ranking.js"
 import {
   ROUTER_OBJECTIVES,
   ROUTER_SEARCH_STRATEGY,
-  type ChannelWeights,
   type EvidenceRouterSearchResult,
-  type FusionMethod,
   type FusionSearchResult,
+  type HoldoutQuality,
   type ProductionRrfSearchResult,
   type QualitySummary,
   type QueryKind,
   type RecommendedEvidenceRouter,
   type RecommendedFusionWeights,
   type RecommendedWeights,
+  type RouterSearchDiagnostics,
   type RouterObjective,
+  type SearchBaselineComparison,
   type WeightSearchResult,
 } from "./types.js"
 
@@ -41,7 +50,7 @@ const SEARCH_PASSES = ROUTER_SEARCH_STRATEGY.coordinatePasses
 const SEARCH_GLOBAL_SCOUTS = ROUTER_SEARCH_STRATEGY.globalScouts
 const SEARCH_PROXY_SAMPLE_FRACTION = ROUTER_SEARCH_STRATEGY.proxySampleFraction
 const SEARCH_PROXY_MINIMUM_SAMPLES = ROUTER_SEARCH_STRATEGY.proxyMinimumSamples
-const SEARCH_HALVING_KEEP_FACTOR = ROUTER_SEARCH_STRATEGY.halvingKeepFactor
+const SEARCH_PROXY_PROMOTION_FACTOR = ROUTER_SEARCH_STRATEGY.proxyPromotionFactor
 const HALTON_PRIMES = [
   2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
   101, 103, 107, 109, 113, 127, 131, 137, 139, 149,
@@ -86,6 +95,7 @@ const summarizeRanked = <T>(
   rank: (sample: T) => readonly RankedChunk[],
   targets: (sample: T) => readonly ReadonlySet<number>[],
   chunks: (sample: T) => readonly Chunk[],
+  sampleWeight: (sample: T) => number = () => 1,
 ): QualitySummary => {
   if (samples.length === 0) {
     return {
@@ -103,23 +113,37 @@ const summarizeRanked = <T>(
   let recall50 = 0
   let contextRecall = 0
   let mrr = 0
+  let totalWeight = 0
   for (const sample of samples) {
+    const weight = sampleWeight(sample)
+    if (weight <= 0) continue
     const ranked = rank(sample)
     const sampleTargets = targets(sample)
-    recall5 += recallAt(ranked, sampleTargets, 5)
-    recall10 += recallAt(ranked, sampleTargets, 10)
-    recall20 += recallAt(ranked, sampleTargets, 20)
-    recall50 += recallAt(ranked, sampleTargets, 50)
-    contextRecall += contextRecallAtBudget(ranked, sampleTargets, chunks(sample), 4_096)
-    mrr += reciprocalRank(ranked, sampleTargets)
+    recall5 += weight * recallAt(ranked, sampleTargets, 5)
+    recall10 += weight * recallAt(ranked, sampleTargets, 10)
+    recall20 += weight * recallAt(ranked, sampleTargets, 20)
+    recall50 += weight * recallAt(ranked, sampleTargets, 50)
+    contextRecall += weight * contextRecallAtBudget(ranked, sampleTargets, chunks(sample), 4_096)
+    mrr += weight * reciprocalRank(ranked, sampleTargets)
+    totalWeight += weight
+  }
+  if (totalWeight === 0) {
+    return {
+      recallAt5: 0,
+      recallAt10: 0,
+      recallAt20: 0,
+      recallAt50: 0,
+      contextRecallAt4096: 0,
+      meanReciprocalRank: 0,
+    }
   }
   return {
-    recallAt5: recall5 / samples.length,
-    recallAt10: recall10 / samples.length,
-    recallAt20: recall20 / samples.length,
-    recallAt50: recall50 / samples.length,
-    contextRecallAt4096: contextRecall / samples.length,
-    meanReciprocalRank: mrr / samples.length,
+    recallAt5: recall5 / totalWeight,
+    recallAt10: recall10 / totalWeight,
+    recallAt20: recall20 / totalWeight,
+    recallAt50: recall50 / totalWeight,
+    contextRecallAt4096: contextRecall / totalWeight,
+    meanReciprocalRank: mrr / totalWeight,
   }
 }
 
@@ -127,18 +151,21 @@ const summarize = (
   samples: readonly WeightSearchSample[],
   weights: ChannelWeights,
   fusion: FusionMethod = "rrf",
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): QualitySummary =>
   summarizeRanked(
     samples,
     (sample) => fuseWithWeights(sample.rankings, weights, fusion),
     (sample) => sample.targets,
     (sample) => sample.chunks,
+    (sample) => profile.queryFormWeights[sample.queryKind],
   )
 
 const summarizeEvidenceRouter = (
   samples: readonly EvidenceSearchSample[],
   config: EvidenceRouterConfig,
   fusion: FusionMethod,
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): QualitySummary =>
   summarizeRanked(
     samples,
@@ -146,15 +173,20 @@ const summarizeEvidenceRouter = (
       fuseWithWeights(sample.rankings, routeWithEvidence(evidence, config), fusion),
     ({ sample }) => sample.targets,
     ({ sample }) => sample.chunks,
+    ({ sample }) => profile.queryFormWeights[sample.queryKind],
   )
 
 /** Evaluate the current production RRF router without fitting any benchmark weights. */
-const summarizeProductionRrf = (samples: readonly WeightSearchSample[]): QualitySummary =>
+const summarizeProductionRrf = (
+  samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+): QualitySummary =>
   summarizeRanked(
     samples,
     (sample) => fuseWithWeights(sample.rankings, routeQuery(sample.query), "rrf"),
     (sample) => sample.targets,
     (sample) => sample.chunks,
+    (sample) => profile.queryFormWeights[sample.queryKind],
   )
 
 const prepareEvidenceSamples = (
@@ -164,6 +196,56 @@ const prepareEvidenceSamples = (
     sample,
     evidence: buildRoutingEvidence(sample.query, sample.rankings, sample.termCoverage),
   }))
+
+const evidenceRouterGuardrailsMet = (
+  samples: readonly WeightSearchSample[],
+  config: EvidenceRouterConfig,
+  fusion: FusionMethod,
+  baseline: QualitySummary,
+  profile: OptimizationProfile,
+): boolean => {
+  const holdoutProfile = unweightedProfile(profile)
+  const evaluate = (partition: readonly WeightSearchSample[]): boolean => {
+    const candidate = summarizeEvidenceRouter(
+      prepareEvidenceSamples(partition),
+      config,
+      fusion,
+      holdoutProfile,
+    )
+    return isWithinGuardrails(
+      candidate,
+      summarizeProductionRrf(partition, holdoutProfile),
+      holdoutProfile,
+    )
+  }
+  return (
+    isWithinGuardrails(
+      summarizeEvidenceRouter(prepareEvidenceSamples(samples), config, fusion, profile),
+      baseline,
+      profile,
+    ) && guardrailPartitions(samples).every((partition) => evaluate(partition.samples))
+  )
+}
+
+const fusionGuardrailsMet = (
+  samples: readonly WeightSearchSample[],
+  weights: ChannelWeights,
+  fusion: FusionMethod,
+  baseline: QualitySummary,
+  profile: OptimizationProfile,
+): boolean => {
+  const holdoutProfile = unweightedProfile(profile)
+  const evaluate = (partition: readonly WeightSearchSample[]): boolean =>
+    isWithinGuardrails(
+      summarize(partition, weights, fusion, holdoutProfile),
+      summarizeProductionRrf(partition, holdoutProfile),
+      holdoutProfile,
+    )
+  return (
+    isWithinGuardrails(summarize(samples, weights, fusion, profile), baseline, profile) &&
+    guardrailPartitions(samples).every((partition) => evaluate(partition.samples))
+  )
+}
 
 const buildProxySamples = (
   samples: readonly EvidenceSearchSample[],
@@ -227,44 +309,92 @@ const OBJECTIVE_PRIORITIES: Readonly<Record<RouterObjective, readonly QualityMet
   ],
 }
 
-const GUARDRAIL_METRICS: readonly QualityMetric[] = [
-  "recallAt5",
-  "recallAt10",
-  "recallAt20",
-  "recallAt50",
-  "contextRecallAt4096",
-]
-
 const isWithinGuardrails = (
   quality: QualitySummary,
   baseline: QualitySummary | undefined,
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): boolean =>
   baseline === undefined ||
-  GUARDRAIL_METRICS.every(
-    (metric) => quality[metric] >= baseline[metric] - ROUTER_SEARCH_STRATEGY.guardrailTolerance,
+  profile.metricObjective.guardrailMetrics.every(
+    (metric) => quality[metric] >= baseline[metric] - profile.metricObjective.guardrailTolerance,
   )
+
+const unweightedProfile = (profile: OptimizationProfile): OptimizationProfile => ({
+  ...profile,
+  queryFormWeights: { identifier: 1, agentTask: 1, naturalQuestion: 1, searchPhrase: 1 },
+})
+
+interface GuardrailPartition {
+  readonly dimension: HoldoutQuality["dimension"]
+  readonly name: string
+  readonly samples: readonly WeightSearchSample[]
+}
+
+const guardrailPartitions = (
+  samples: readonly WeightSearchSample[],
+): readonly GuardrailPartition[] => {
+  const partitions = new Map<string, WeightSearchSample[]>()
+  for (const sample of samples) {
+    const groups = [
+      { dimension: "query-form" as const, name: sample.queryKind },
+      { dimension: "repository" as const, name: sample.repository },
+    ]
+    for (const group of groups) {
+      const key = `${group.dimension}:${group.name}`
+      const partition = partitions.get(key) ?? []
+      partition.push(sample)
+      partitions.set(key, partition)
+    }
+  }
+  return [...partitions].map(([key, partition]) => {
+    const separator = key.indexOf(":")
+    return {
+      dimension: key.slice(0, separator) as GuardrailPartition["dimension"],
+      name: key.slice(separator + 1),
+      samples: partition,
+    }
+  })
+}
+
+const buildHoldoutBreakdown = (
+  samples: readonly WeightSearchSample[],
+  candidate: (samples: readonly WeightSearchSample[]) => QualitySummary,
+  profile: OptimizationProfile,
+): readonly HoldoutQuality[] => {
+  const holdoutProfile = unweightedProfile(profile)
+  return guardrailPartitions(samples).map((partition) => {
+    const candidateQuality = candidate(partition.samples)
+    const baseline = summarizeProductionRrf(partition.samples, holdoutProfile)
+    return {
+      dimension: partition.dimension,
+      name: partition.name,
+      queries: partition.samples.length,
+      candidate: candidateQuality,
+      baseline,
+      guardrailsMet: isWithinGuardrails(candidateQuality, baseline, holdoutProfile),
+    }
+  })
+}
 
 const compareObjectiveQuality = (
   left: QualitySummary,
   right: QualitySummary,
   objective: RouterObjective,
   baseline?: QualitySummary,
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): number => {
-  const leftGuardrails = isWithinGuardrails(left, baseline)
-  const rightGuardrails = isWithinGuardrails(right, baseline)
+  const leftGuardrails = isWithinGuardrails(left, baseline, profile)
+  const rightGuardrails = isWithinGuardrails(right, baseline, profile)
   if (leftGuardrails !== rightGuardrails) return leftGuardrails ? -1 : 1
-  for (const metric of OBJECTIVE_PRIORITIES[objective]) {
+  const priorities =
+    profile.metricObjective.name === objective
+      ? profile.metricObjective.priority
+      : OBJECTIVE_PRIORITIES[objective]
+  for (const metric of priorities) {
     if (left[metric] > right[metric]) return -1
     if (left[metric] < right[metric]) return 1
   }
   return 0
-}
-
-const compareQuality = (left: QualitySummary, right: QualitySummary): number =>
-  compareObjectiveQuality(left, right, "reranker-top20")
-
-const isBetter = (candidate: QualitySummary, current: QualitySummary): boolean => {
-  return compareQuality(candidate, current) < 0
 }
 
 const weightCandidates = (): readonly ChannelWeights[] => {
@@ -303,6 +433,7 @@ const factorial = (value: number): number => {
 const shapleyValues = (
   samples: readonly WeightSearchSample[],
   weights: ChannelWeights,
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): ChannelWeights => {
   const values: Record<ChannelName, number> = {
     identity: 0,
@@ -321,7 +452,7 @@ const shapleyValues = (
       dense: mask & 8 ? weights.dense : 0,
       sparse: mask & 16 ? weights.sparse : 0,
     }
-    return summarize(samples, coalition).recallAt20
+    return summarize(samples, coalition, "rrf", profile).recallAt20
   }
 
   for (let channelIndex = 0; channelIndex < channelCount; channelIndex++) {
@@ -367,6 +498,7 @@ const rankWeightCandidates = (
   fusion: FusionMethod,
   objective: RouterObjective = "reranker-top20",
   baseline?: QualitySummary,
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): readonly WeightCandidate[] => {
   const unique = new Map<string, ChannelWeights>()
   for (const candidate of candidates) {
@@ -377,13 +509,13 @@ const rankWeightCandidates = (
     .map(([key, weights]) => {
       const cached = qualityCache.get(key)
       if (cached !== undefined) return { weights, quality: cached }
-      const quality = summarize(samples, weights, fusion)
+      const quality = summarize(samples, weights, fusion, profile)
       qualityCache.set(key, quality)
       return { weights, quality }
     })
     .sort(
       (left, right) =>
-        compareObjectiveQuality(left.quality, right.quality, objective, baseline) ||
+        compareObjectiveQuality(left.quality, right.quality, objective, baseline, profile) ||
         activeChannelsKey(left.weights).localeCompare(activeChannelsKey(right.weights)),
     )
     .slice(0, limit)
@@ -400,6 +532,7 @@ const selectBestWeights = (
   fusion: FusionMethod = "rrf",
   objective: RouterObjective = "reranker-top20",
   baseline?: QualitySummary,
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): { readonly weights: ChannelWeights; readonly quality: QualitySummary } => {
   const qualityCache = new Map<string, QualitySummary>()
   let beam = rankWeightCandidates(
@@ -410,6 +543,7 @@ const selectBestWeights = (
     fusion,
     objective,
     baseline,
+    profile,
   )
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (const channel of CHANNELS) {
@@ -427,6 +561,7 @@ const selectBestWeights = (
         fusion,
         objective,
         baseline,
+        profile,
       )
     }
   }
@@ -439,6 +574,7 @@ const activeChannelsKey = (weights: ChannelWeights): string =>
 const selectBestWeightsPerSubset = (
   samples: readonly WeightSearchSample[],
   fusion: FusionMethod,
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): readonly ChannelWeights[] => {
   const selected = new Map<
     string,
@@ -446,9 +582,12 @@ const selectBestWeightsPerSubset = (
   >()
   for (const weights of weightCandidates()) {
     const key = activeChannelsKey(weights)
-    const quality = summarize(samples, weights, fusion)
+    const quality = summarize(samples, weights, fusion, profile)
     const current = selected.get(key)
-    if (current === undefined || isBetter(quality, current.quality))
+    if (
+      current === undefined ||
+      compareObjectiveQuality(quality, current.quality, "reranker-top20", undefined, profile) < 0
+    )
       selected.set(key, { weights, quality })
   }
   return [...selected.values()].map((entry) => entry.weights)
@@ -466,6 +605,7 @@ type InfluenceName =
 
 /** One coordinate and its discrete values in the fine-grained router search. */
 interface RouterParameter {
+  readonly name: string
   readonly values: readonly number[]
   readonly update: (config: EvidenceRouterConfig, value: number) => EvidenceRouterConfig
 }
@@ -496,6 +636,17 @@ const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig =>
   queryLengthInfluence: ZERO_COEFFICIENTS,
 })
 
+const versionedRouterConfig = (
+  fusion: FusionMethod,
+  config: EvidenceRouterConfig,
+): VersionedEvidenceRouterConfig =>
+  decodeEvidenceRouterConfig({
+    schemaVersion: 1,
+    fusion,
+    candidateDepth: SEARCH_CANDIDATE_DEPTH,
+    ...config,
+  })
+
 const withInfluence = (
   config: EvidenceRouterConfig,
   influence: InfluenceName,
@@ -523,6 +674,7 @@ const withInfluence = (
 
 const routerParameters = (): readonly RouterParameter[] => {
   const parameters: RouterParameter[] = CHANNELS.map((channel) => ({
+    name: `baseWeights.${channel}`,
     values: DYNAMIC_BASE_LEVELS,
     update: (config, value) => ({
       ...config,
@@ -544,6 +696,7 @@ const routerParameters = (): readonly RouterParameter[] => {
   for (const { name, values } of influences) {
     for (const channel of CHANNELS) {
       parameters.push({
+        name: `${name}.${channel}`,
         values,
         update: (config, value) => withInfluence(config, name, channel, value),
       })
@@ -551,6 +704,28 @@ const routerParameters = (): readonly RouterParameter[] => {
   }
   return parameters
 }
+
+const buildSearchDiagnostics = (
+  parameters: readonly RouterParameter[],
+  stats: SearchEvaluationStats,
+): RouterSearchDiagnostics => ({
+  parameterCount: parameters.length,
+  parameterLevels: Object.fromEntries(
+    parameters.map((parameter) => [parameter.name, parameter.values]),
+  ),
+  rawCandidates: stats.rawCandidates,
+  uniqueCandidates: stats.uniqueCandidates,
+  proxyEvaluations: stats.proxyEvaluations,
+  fullEvaluations: stats.fullEvaluations,
+  proxyCacheHits: stats.proxyCacheHits,
+  fullCacheHits: stats.fullCacheHits,
+  proxyPromotions: stats.proxyPromotions,
+  proxyFullAgreement:
+    stats.proxyAgreementComparisons === 0
+      ? 1
+      : stats.proxyAgreementMatches / stats.proxyAgreementComparisons,
+  protectedEliteCount: stats.protectedEliteCount,
+})
 
 const radicalInverse = (index: number, base: number): number => {
   let remaining = index
@@ -592,6 +767,33 @@ const buildGlobalRouterSeeds = (
   )
 }
 
+const nextRandom = (state: number): readonly [number, number] => {
+  let next = state | 0
+  next ^= next << 13
+  next ^= next >>> 17
+  next ^= next << 5
+  const unsigned = next >>> 0
+  return [unsigned, unsigned / 4_294_967_296]
+}
+
+const buildRandomRouterSeeds = (
+  baseSeed: EvidenceRouterConfig,
+  parameters: readonly RouterParameter[],
+): readonly EvidenceRouterConfig[] => {
+  let state = ROUTER_SEARCH_STRATEGY.seed || 1
+  return Array.from({ length: SEARCH_GLOBAL_SCOUTS }, () =>
+    parameters.reduce((config, parameter) => {
+      const [next, unit] = nextRandom(state)
+      state = next
+      const valueIndex = Math.min(
+        parameter.values.length - 1,
+        Math.floor(unit * parameter.values.length),
+      )
+      return parameter.update(config, parameter.values[valueIndex]!)
+    }, baseSeed),
+  )
+}
+
 const coefficientsKey = (coefficients: ChannelCoefficients): string =>
   CHANNELS.map((channel) => (coefficients[channel] ?? 0).toFixed(2)).join(":")
 
@@ -622,8 +824,16 @@ const routerComplexity = (config: EvidenceRouterConfig): number =>
   )
 
 interface SearchEvaluationStats {
+  rawCandidates: number
+  uniqueCandidates: number
   proxyEvaluations: number
   fullEvaluations: number
+  proxyCacheHits: number
+  fullCacheHits: number
+  proxyPromotions: number
+  proxyAgreementMatches: number
+  proxyAgreementComparisons: number
+  protectedEliteCount: number
 }
 
 interface RouterSearchContext {
@@ -636,6 +846,7 @@ interface RouterSearchContext {
   readonly baseline: QualitySummary
   readonly proxyBaseline: QualitySummary
   readonly fusion: FusionMethod
+  readonly profile: OptimizationProfile
   readonly stats: SearchEvaluationStats
 }
 
@@ -644,26 +855,46 @@ const compareRouterCandidates = (
   right: RouterCandidate,
   objective: RouterObjective,
   baseline: QualitySummary,
+  profile: OptimizationProfile,
 ): number =>
-  compareObjectiveQuality(left.quality, right.quality, objective, baseline) ||
+  compareObjectiveQuality(left.quality, right.quality, objective, baseline, profile) ||
   routerComplexity(left.config) - routerComplexity(right.config)
+
+const selectRandomRouter = (
+  samples: readonly EvidenceSearchSample[],
+  baseSeed: EvidenceRouterConfig,
+  parameters: readonly RouterParameter[],
+  fusion: FusionMethod,
+  baseline: QualitySummary,
+  profile: OptimizationProfile,
+): { readonly candidate: RouterCandidate; readonly candidates: number } => {
+  const candidates = buildRandomRouterSeeds(baseSeed, parameters).map((config) => ({
+    config,
+    quality: summarizeEvidenceRouter(samples, config, fusion, profile),
+  }))
+  const candidate = [...candidates].sort((left, right) =>
+    compareRouterCandidates(left, right, "reranker-top20", baseline, profile),
+  )[0] ?? { config: baseSeed, quality: summarizeEvidenceRouter(samples, baseSeed, fusion, profile) }
+  return { candidate, candidates: candidates.length }
+}
 
 const selectObjectiveCandidates = (
   candidates: readonly RouterCandidate[],
   limit: number,
   baseline: QualitySummary,
+  profile: OptimizationProfile,
 ): readonly RouterCandidate[] => {
   const selected = new Map<string, RouterCandidate>()
   const perObjective = Math.max(1, Math.floor(limit / ROUTER_OBJECTIVES.length))
   for (const objective of ROUTER_OBJECTIVES) {
     const ranked = [...candidates]
-      .sort((left, right) => compareRouterCandidates(left, right, objective, baseline))
+      .sort((left, right) => compareRouterCandidates(left, right, objective, baseline, profile))
       .slice(0, perObjective)
     for (const candidate of ranked) selected.set(routerKey(candidate.config), candidate)
   }
   if (selected.size < limit) {
     const fallback = [...candidates].sort((left, right) =>
-      compareRouterCandidates(left, right, "reranker-top20", baseline),
+      compareRouterCandidates(left, right, "reranker-top20", baseline, profile),
     )
     for (const candidate of fallback) {
       selected.set(routerKey(candidate.config), candidate)
@@ -682,24 +913,39 @@ const rankRouterCandidates = (
 ): readonly RouterCandidate[] => {
   const unique = new Map<string, EvidenceRouterConfig>()
   for (const config of configs) unique.set(routerKey(config), config)
+  context.stats.rawCandidates += configs.length
+  context.stats.uniqueCandidates += unique.size
+  context.stats.protectedEliteCount += protectedConfigs.length + context.elites.size
   let fullCandidates = [...unique]
+  let proxyKeys: readonly string[] = []
   if (useProxy && context.proxySamples.length < context.samples.length) {
     const rankedProxy = fullCandidates.map(([key, config]) => {
       const cached = context.proxyQualityCache.get(key)
-      if (cached !== undefined) return { key, config, quality: cached }
-      const quality = summarizeEvidenceRouter(context.proxySamples, config, context.fusion)
+      if (cached !== undefined) {
+        context.stats.proxyCacheHits++
+        return { key, config, quality: cached }
+      }
+      const quality = summarizeEvidenceRouter(
+        context.proxySamples,
+        config,
+        context.fusion,
+        context.profile,
+      )
       context.proxyQualityCache.set(key, quality)
       context.stats.proxyEvaluations++
       return { key, config, quality }
     })
     const selectedProxy = selectObjectiveCandidates(
       rankedProxy.map((candidate) => ({ config: candidate.config, quality: candidate.quality })),
-      limit * SEARCH_HALVING_KEEP_FACTOR,
+      limit * SEARCH_PROXY_PROMOTION_FACTOR,
       context.proxyBaseline,
+      context.profile,
     )
     const selected = new Map(
       selectedProxy.map((candidate) => [routerKey(candidate.config), candidate.config]),
     )
+    proxyKeys = selectedProxy.map((candidate) => routerKey(candidate.config))
+    context.stats.proxyPromotions += proxyKeys.length
     const protectedKeys = new Set([...protectedConfigs.map(routerKey), ...context.elites.keys()])
     for (const [key, config] of fullCandidates) {
       if (protectedKeys.has(key)) selected.set(key, config)
@@ -708,21 +954,37 @@ const rankRouterCandidates = (
   }
   const rankedFull = fullCandidates.map(([key, config]) => {
     const cached = context.qualityCache.get(key)
-    if (cached !== undefined) return { config, quality: cached }
-    const quality = summarizeEvidenceRouter(context.samples, config, context.fusion)
+    if (cached !== undefined) {
+      context.stats.fullCacheHits++
+      return { config, quality: cached }
+    }
+    const quality = summarizeEvidenceRouter(
+      context.samples,
+      config,
+      context.fusion,
+      context.profile,
+    )
     context.qualityCache.set(key, quality)
     context.stats.fullEvaluations++
     return { config, quality }
   })
+  if (proxyKeys.length > 0) {
+    const fullKeys = new Set(
+      rankedFull.slice(0, proxyKeys.length).map((candidate) => routerKey(candidate.config)),
+    )
+    context.stats.proxyAgreementComparisons += proxyKeys.length
+    context.stats.proxyAgreementMatches += proxyKeys.filter((key) => fullKeys.has(key)).length
+  }
   for (const candidate of rankedFull) context.archive.set(routerKey(candidate.config), candidate)
   const rankedElites = selectObjectiveCandidates(
     [...context.elites.values(), ...rankedFull],
     SEARCH_BEAM_WIDTH,
     context.baseline,
+    context.profile,
   )
   context.elites.clear()
   for (const candidate of rankedElites) context.elites.set(routerKey(candidate.config), candidate)
-  return selectObjectiveCandidates(rankedFull, limit, context.baseline)
+  return selectObjectiveCandidates(rankedFull, limit, context.baseline, context.profile)
 }
 
 interface EvidenceRouterSelection {
@@ -735,16 +997,31 @@ interface EvidenceRouterSelection {
 const selectBestEvidenceRouter = (
   samples: readonly WeightSearchSample[],
   fusion: FusionMethod,
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): {
   readonly selections: readonly EvidenceRouterSelection[]
   readonly productionQuality: QualitySummary
   readonly proxyEvaluations: number
   readonly fullEvaluations: number
+  readonly searchDiagnostics: RouterSearchDiagnostics
+  readonly randomCandidate: RouterCandidate
+  readonly randomCandidates: number
 } => {
   const evidenceSamples = prepareEvidenceSamples(samples)
   const proxySamples = buildProxySamples(evidenceSamples)
-  const productionQuality = summarizeProductionRrf(samples)
-  const stats: SearchEvaluationStats = { proxyEvaluations: 0, fullEvaluations: 0 }
+  const productionQuality = summarizeProductionRrf(samples, profile)
+  const stats: SearchEvaluationStats = {
+    rawCandidates: 0,
+    uniqueCandidates: 0,
+    proxyEvaluations: 0,
+    fullEvaluations: 0,
+    proxyCacheHits: 0,
+    fullCacheHits: 0,
+    proxyPromotions: 0,
+    proxyAgreementMatches: 0,
+    proxyAgreementComparisons: 0,
+    protectedEliteCount: 0,
+  }
   const searchContext: RouterSearchContext = {
     samples: evidenceSamples,
     proxySamples,
@@ -753,15 +1030,40 @@ const selectBestEvidenceRouter = (
     elites: new Map<string, RouterCandidate>(),
     archive: new Map<string, RouterCandidate>(),
     baseline: productionQuality,
-    proxyBaseline: summarizeProductionRrf(proxySamples.map(({ sample }) => sample)),
+    proxyBaseline: summarizeProductionRrf(
+      proxySamples.map(({ sample }) => sample),
+      profile,
+    ),
     fusion,
+    profile,
     stats,
   }
+  const profileSeed: EvidenceRouterConfig = {
+    baseWeights: profile.fusionConfig.baseWeights,
+    scoreInfluence: profile.fusionConfig.scoreInfluence,
+    geometryInfluence: profile.fusionConfig.geometryInfluence,
+    termCoverageInfluence: profile.fusionConfig.termCoverageInfluence,
+    pairwiseAgreementInfluence: profile.fusionConfig.pairwiseAgreementInfluence,
+    denseConfidenceInfluence: profile.fusionConfig.denseConfidenceInfluence,
+    identifierInfluence: profile.fusionConfig.identifierInfluence,
+    queryLengthInfluence: profile.fusionConfig.queryLengthInfluence,
+  }
   const baseSeeds = [
-    selectBestWeights(samples, fusion, "reranker-top20", productionQuality).weights,
-    ...selectBestWeightsPerSubset(samples, fusion),
+    selectBestWeights(samples, fusion, "reranker-top20", productionQuality, profile).weights,
+    ...selectBestWeightsPerSubset(samples, fusion, profile),
   ].map(emptyRouterConfig)
+  baseSeeds.unshift(profileSeed)
   const parameters = routerParameters()
+  const randomBaseSeed = baseSeeds[0]
+  if (randomBaseSeed === undefined) throw new Error("Evidence router search has no base seed")
+  const randomSearch = selectRandomRouter(
+    evidenceSamples,
+    randomBaseSeed,
+    parameters,
+    fusion,
+    productionQuality,
+    profile,
+  )
   let beam = rankRouterCandidates(
     searchContext,
     [...baseSeeds, ...buildGlobalRouterSeeds(baseSeeds, parameters)],
@@ -788,18 +1090,37 @@ const selectBestEvidenceRouter = (
   const fallback = beam[0]
   const candidates = [...searchContext.archive.values()]
   const selections = ROUTER_OBJECTIVES.map((objective) => {
+    const rankedCandidates = [...candidates].sort((left, right) =>
+      compareRouterCandidates(left, right, objective, productionQuality, profile),
+    )
     const candidate =
-      [...candidates].sort((left, right) =>
-        compareRouterCandidates(left, right, objective, productionQuality),
-      )[0] ?? fallback
+      rankedCandidates.find((entry) =>
+        evidenceRouterGuardrailsMet(samples, entry.config, fusion, productionQuality, profile),
+      ) ??
+      rankedCandidates[0] ??
+      fallback
+    if (candidate === undefined) throw new Error("Evidence router search produced no candidate")
     return {
       objective,
       config: candidate.config,
       quality: candidate.quality,
-      guardrailsMet: isWithinGuardrails(candidate.quality, productionQuality),
+      guardrailsMet: evidenceRouterGuardrailsMet(
+        samples,
+        candidate.config,
+        fusion,
+        productionQuality,
+        profile,
+      ),
     }
   })
-  return { selections, productionQuality, ...stats }
+  return {
+    selections,
+    productionQuality,
+    searchDiagnostics: buildSearchDiagnostics(parameters, stats),
+    randomCandidate: randomSearch.candidate,
+    randomCandidates: randomSearch.candidates,
+    ...stats,
+  }
 }
 
 /** Select weights on development samples, then evaluate unchanged on one validation fold. */
@@ -810,8 +1131,9 @@ export const optimizeWeights = (
   fold: string,
   development: readonly WeightSearchSample[],
   validation: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): WeightSearchResult => {
-  const selected = selectBestWeights(development)
+  const selected = selectBestWeights(development, "rrf", "reranker-top20", undefined, profile)
   return {
     model,
     queryKind,
@@ -821,8 +1143,8 @@ export const optimizeWeights = (
     validationQueries: validation.length,
     weights: selected.weights,
     development: selected.quality,
-    validation: summarize(validation, selected.weights),
-    shapleyRecallAt20: shapleyValues(validation, selected.weights),
+    validation: summarize(validation, selected.weights, "rrf", profile),
+    shapleyRecallAt20: shapleyValues(validation, selected.weights, profile),
   }
 }
 
@@ -833,19 +1155,35 @@ export const optimizeFusionWeights = (
   strategy: FusionSearchResult["strategy"],
   fold: string,
   development: readonly WeightSearchSample[],
-  validation: readonly WeightSearchSample[],
+  validationSamples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): FusionSearchResult => {
-  const selected = selectBestWeights(development, fusion)
+  const selected = selectBestWeights(development, fusion, "reranker-top20", undefined, profile)
+  const productionDevelopment = summarizeProductionRrf(development, profile)
+  const holdoutProfile = unweightedProfile(profile)
+  const validationQuality = summarize(validationSamples, selected.weights, fusion, profile)
   return {
     model,
     fusion,
     strategy,
     fold,
     developmentQueries: development.length,
-    validationQueries: validation.length,
+    validationQueries: validationSamples.length,
     weights: selected.weights,
     development: selected.quality,
-    validation: summarize(validation, selected.weights, fusion),
+    validation: validationQuality,
+    guardrailsMet: fusionGuardrailsMet(
+      development,
+      selected.weights,
+      fusion,
+      productionDevelopment,
+      profile,
+    ),
+    holdoutBreakdown: buildHoldoutBreakdown(
+      validationSamples,
+      (partition) => summarize(partition, selected.weights, fusion, holdoutProfile),
+      profile,
+    ),
   }
 }
 
@@ -856,14 +1194,15 @@ export const evaluateProductionRrf = (
   fold: string,
   development: readonly WeightSearchSample[],
   validation: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): ProductionRrfSearchResult => ({
   model,
   strategy,
   fold,
   developmentQueries: development.length,
   validationQueries: validation.length,
-  development: summarizeProductionRrf(development),
-  validation: summarizeProductionRrf(validation),
+  development: summarizeProductionRrf(development, profile),
+  validation: summarizeProductionRrf(validation, profile),
 })
 
 /** Select one evidence-based router on development queries and evaluate it unchanged on a holdout. */
@@ -874,16 +1213,31 @@ export const optimizeEvidenceRouter = (
   fold: string,
   development: readonly WeightSearchSample[],
   validation: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): readonly EvidenceRouterSearchResult[] => {
-  const dynamicSelection = selectBestEvidenceRouter(development, fusion)
-  const productionValidation = summarizeProductionRrf(validation)
+  const dynamicSelection = selectBestEvidenceRouter(development, fusion, profile)
+  const productionValidation = summarizeProductionRrf(validation, profile)
   const validationEvidence = prepareEvidenceSamples(validation)
+  const holdoutProfile = unweightedProfile(profile)
+  const randomBaseline: SearchBaselineComparison = {
+    algorithm: "random-scout",
+    seed: ROUTER_SEARCH_STRATEGY.seed,
+    candidates: dynamicSelection.randomCandidates,
+    development: dynamicSelection.randomCandidate.quality,
+    validation: summarizeEvidenceRouter(
+      validationEvidence,
+      dynamicSelection.randomCandidate.config,
+      fusion,
+      profile,
+    ),
+  }
   return dynamicSelection.selections.map((selection) => {
     const staticSelection = selectBestWeights(
       development,
       fusion,
       selection.objective,
       dynamicSelection.productionQuality,
+      profile,
     )
     return {
       model,
@@ -894,16 +1248,29 @@ export const optimizeEvidenceRouter = (
       developmentQueries: development.length,
       validationQueries: validation.length,
       staticWeights: staticSelection.weights,
-      config: selection.config,
+      config: versionedRouterConfig(fusion, selection.config),
       staticDevelopment: staticSelection.quality,
-      staticValidation: summarize(validation, staticSelection.weights, fusion),
+      staticValidation: summarize(validation, staticSelection.weights, fusion, profile),
       development: selection.quality,
-      validation: summarizeEvidenceRouter(validationEvidence, selection.config, fusion),
+      validation: summarizeEvidenceRouter(validationEvidence, selection.config, fusion, profile),
       productionDevelopment: dynamicSelection.productionQuality,
       productionValidation,
       guardrailsMet: selection.guardrailsMet,
       proxyEvaluations: dynamicSelection.proxyEvaluations,
       fullEvaluations: dynamicSelection.fullEvaluations,
+      searchDiagnostics: dynamicSelection.searchDiagnostics,
+      searchBaseline: randomBaseline,
+      holdoutBreakdown: buildHoldoutBreakdown(
+        validation,
+        (partition) =>
+          summarizeEvidenceRouter(
+            prepareEvidenceSamples(partition),
+            selection.config,
+            fusion,
+            holdoutProfile,
+          ),
+        profile,
+      ),
     }
   })
 }
@@ -913,8 +1280,9 @@ export const fitRecommendedWeights = (
   model: string,
   queryKind: QueryKind,
   samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): RecommendedWeights => {
-  const selected = selectBestWeights(samples)
+  const selected = selectBestWeights(samples, "rrf", "reranker-top20", undefined, profile)
   return {
     model,
     queryKind,
@@ -929,14 +1297,23 @@ export const fitRecommendedFusionWeights = (
   model: string,
   fusion: FusionMethod,
   samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): RecommendedFusionWeights => {
-  const selected = selectBestWeights(samples, fusion)
+  const selected = selectBestWeights(samples, fusion, "reranker-top20", undefined, profile)
+  const productionQuality = summarizeProductionRrf(samples, profile)
   return {
     model,
     fusion,
     samples: samples.length,
     weights: selected.weights,
     fitQuality: selected.quality,
+    guardrailsMet: fusionGuardrailsMet(
+      samples,
+      selected.weights,
+      fusion,
+      productionQuality,
+      profile,
+    ),
   }
 }
 
@@ -948,14 +1325,16 @@ export const fitRecommendedEvidenceRouter = (
   model: string,
   fusion: FusionMethod,
   samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): readonly RecommendedEvidenceRouter[] => {
-  const dynamicSelection = selectBestEvidenceRouter(samples, fusion)
+  const dynamicSelection = selectBestEvidenceRouter(samples, fusion, profile)
   return dynamicSelection.selections.map((selection) => {
     const staticSelection = selectBestWeights(
       samples,
       fusion,
       selection.objective,
       dynamicSelection.productionQuality,
+      profile,
     )
     return {
       model,
@@ -963,13 +1342,14 @@ export const fitRecommendedEvidenceRouter = (
       objective: selection.objective,
       samples: samples.length,
       staticWeights: staticSelection.weights,
-      config: selection.config,
+      config: versionedRouterConfig(fusion, selection.config),
       staticQuality: staticSelection.quality,
       fitQuality: selection.quality,
       productionQuality: dynamicSelection.productionQuality,
       guardrailsMet: selection.guardrailsMet,
       proxyEvaluations: dynamicSelection.proxyEvaluations,
       fullEvaluations: dynamicSelection.fullEvaluations,
+      searchDiagnostics: dynamicSelection.searchDiagnostics,
     }
   })
 }
