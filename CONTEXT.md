@@ -153,6 +153,10 @@ implicit runtime query label. Future explicit profiles such as `balanced`, `code
 (Recall@5/10/20/50 and context recall). See ADR-0019, issue #162 for production Sparse, and issue #163
 for evidence-based fusion and optimization profiles.
 
+Benchmark-owned profile seeds and optimizer search live under `benchmarks/retrieval/`; production keeps
+only the active validated router configuration and reusable fusion/evidence seams. A benchmark result is
+promoted explicitly rather than making the production package responsible for discovering its own profile.
+
 ### Retrieval Quality Benchmark
 
 Opt-in local suite under `benchmarks/` that imports pix chunking, identifier extraction, scorers,
@@ -206,11 +210,11 @@ five-channel score fusion, ten pairwise agreement signals, and separate sparse t
 in schema-17 artifacts. ADR-0020 promotes the validated Sparse contract to the production five-channel
 RRF path and persists its IDF and postings in `.pix/index.db`.
 Schema 19 removes the benchmark-owned Sparse encoder, in-process postings implementation, and separate
-embedding caches. Benchmark profile fitting remains benchmark-owned, while the fusion adapters and
-evidence signals are shared with production. Benchmarks
+embedding caches. Benchmark profile fitting and optimizer search remain benchmark-owned, while the
+fusion adapters and evidence signals are shared with production. Benchmarks
 compose the production SparseEmbedder and IndexStore around a migrated in-memory SQLite database;
 Dense and Sparse ranking therefore execute through the same adapters as product queries. Experimental
-fusion remains benchmark-owned. Every artifact includes the authored file-qualified ground truth and
+profile fitting remains benchmark-owned. Every artifact includes the authored file-qualified ground truth and
 both the production RRF router and a fixed five-channel `1/1/1/1/1` RRF baseline. Channel combinations
 and leave-one-channel-out variants use equal weights so channel contribution is not confounded by routing.
 New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with

@@ -1,14 +1,12 @@
 import type { Chunk } from "../../src/domain/chunk.js"
 import type { RankedChunk } from "../../src/domain/ports.js"
 import {
-  SEARCH_PRIORITY_PROFILE,
   decodeEvidenceRouterConfig,
   type ChannelCoefficients,
   type ChannelWeights,
   type EvidenceRouterConfig as VersionedEvidenceRouterConfig,
   type EvidenceRouterParameters as EvidenceRouterConfig,
   type FusionMethod,
-  type OptimizationProfile,
 } from "../../src/domain/retrieval.js"
 import {
   buildRoutingEvidence,
@@ -19,6 +17,7 @@ import {
 import { routeQuery } from "../../src/lib/retrieval/routing.js"
 import { fuseRankings } from "./fusion.js"
 import { contextRecallAtBudget, recallAt, reciprocalRank } from "./metrics.js"
+import { SEARCH_PRIORITY_PROFILE, type OptimizationProfile } from "./optimization-profiles.js"
 import { CHANNEL_NAMES, type ChannelName, type ChannelRankings } from "./ranking.js"
 import {
   ROUTER_OBJECTIVES,

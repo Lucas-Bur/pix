@@ -3,8 +3,8 @@ import { Schema } from "effect"
 import type {
   EvidenceRouterConfig,
   FusionMethod as ProductionFusionMethod,
-  OptimizationProfile,
 } from "../../src/domain/retrieval.js"
+import type { OptimizationProfile } from "./optimization-profiles.js"
 
 /** Benchmark repository size band used for report segmentation. */
 const RepositorySizeSchema = Schema.Literals(["small", "medium", "large"])
