@@ -35,7 +35,8 @@ into `.pix/cache/`. Later indexing and queries are local; Sparse query weighting
 All one-shot commands support `--json` for structured output on stdout — ideal for piping to AI agents.
 Use `--profile compatibility|balanced|code-navigation|natural-language` to select the production
 retrieval profile explicitly. Compatibility is the default; the other profiles remain experimental until
-benchmark holdouts validate their weights.
+benchmark holdouts validate their weights. Profile selection is request-scoped and is also available on
+alias-run and the MCP `profile` argument; it is not a global `.pix/config.json` setting.
 
 ## MCP Server
 

@@ -154,6 +154,9 @@ export interface QualitySummary {
   readonly meanReciprocalRank: number
 }
 
+/** Whether a benchmark candidate is eligible for production promotion. */
+export type PromotionStatus = "eligible" | "no-eligible-candidate"
+
 /** Quality and guardrail outcome for one query-form or repository holdout partition. */
 export interface HoldoutQuality {
   readonly dimension: "query-form" | "repository"
@@ -199,6 +202,7 @@ export interface FusionSearchResult {
   readonly development: QualitySummary
   readonly validation: QualitySummary
   readonly guardrailsMet: boolean
+  readonly promotionStatus: PromotionStatus
   readonly holdoutBreakdown: readonly HoldoutQuality[]
 }
 
@@ -221,6 +225,7 @@ export interface RecommendedFusionWeights {
   readonly weights: ChannelWeights
   readonly fitQuality: QualitySummary
   readonly guardrailsMet: boolean
+  readonly promotionStatus: PromotionStatus
 }
 
 /** Search accounting needed to interpret a router candidate and its budget. */
@@ -274,6 +279,7 @@ export interface EvidenceRouterSearchResult {
   readonly productionDevelopment: QualitySummary
   readonly productionValidation: QualitySummary
   readonly guardrailsMet: boolean
+  readonly promotionStatus: PromotionStatus
   readonly proxyEvaluations: number
   readonly fullEvaluations: number
   readonly searchDiagnostics: RouterSearchDiagnostics
@@ -293,6 +299,7 @@ export interface RecommendedEvidenceRouter {
   readonly fitQuality: QualitySummary
   readonly productionQuality: QualitySummary
   readonly guardrailsMet: boolean
+  readonly promotionStatus: PromotionStatus
   readonly proxyEvaluations: number
   readonly fullEvaluations: number
   readonly searchDiagnostics: RouterSearchDiagnostics
@@ -311,7 +318,7 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 19
+  readonly schemaVersion: 20
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   /** Versioned objective profile used for candidate selection and aggregate metrics. */
