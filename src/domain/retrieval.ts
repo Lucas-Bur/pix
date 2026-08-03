@@ -72,7 +72,7 @@ const EvidenceRouterParameterFields = {
 export const EvidenceRouterParametersSchema = Schema.Struct(EvidenceRouterParameterFields)
 
 /** Versioned, explainable production fusion and evidence-router configuration. */
-export const EvidenceRouterConfigSchema = Schema.Struct({
+const EvidenceRouterConfigSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   fusion: FusionMethodSchema,
   candidateDepth: PositiveInt,
