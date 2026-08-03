@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.24.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.23.0...pix-v0.24.0) (2026-08-03)
+
+
+### Features
+
+* add dense confidence and BGE full benchmark ([e515b67](https://github.com/Lucas-Bur/pix/commit/e515b679a59c9dc8eb67dd7c2b3ac782827fd935))
+* add dense confidence and BGE full benchmark ([c3f7595](https://github.com/Lucas-Bur/pix/commit/c3f75954ec27740da22a6cc98f54971fa8fe0ad4))
+* add pairwise agreement routing ([da72413](https://github.com/Lucas-Bur/pix/commit/da724133ffd8684f547993fbde64e67541fcdf34))
+* add pairwise agreement routing ([e68bfb9](https://github.com/Lucas-Bur/pix/commit/e68bfb986434a5cde48ea80fc93dd46d06b95adb))
+* add query term coverage routing ([8debf06](https://github.com/Lucas-Bur/pix/commit/8debf06d520c98d8404bf3f2b5b8ef2def62dfcb))
+* add query term coverage routing ([e0e5d48](https://github.com/Lucas-Bur/pix/commit/e0e5d4848e7774b6d4609dda7c496cd2adf308de))
+* add retrieval quality benchmark ([a8fdd92](https://github.com/Lucas-Bur/pix/commit/a8fdd926932171d9493f8c8a582e9d463ff8b692))
+* add retrieval quality benchmark ([f6b90d8](https://github.com/Lucas-Bur/pix/commit/f6b90d8c7fa024f8c3341d0f1f9de344bfa701eb))
+* add score geometry routing ([b8a41e7](https://github.com/Lucas-Bur/pix/commit/b8a41e775faecbb237d98c4530b3111d8536e801))
+* add score geometry routing ([08fc524](https://github.com/Lucas-Bur/pix/commit/08fc524e47a22c17fd1b9c61528c1049880113c1))
+* benchmark sparse retrieval channel ([0a39089](https://github.com/Lucas-Bur/pix/commit/0a3908960c976bce72d3e8a56b2c6782a697ed08))
+* compare normalized score fusion ([e05a11f](https://github.com/Lucas-Bur/pix/commit/e05a11f0783a42ec6cd63cd4d7a31cf768712cc3))
+* compare normalized score fusion ([41133ea](https://github.com/Lucas-Bur/pix/commit/41133ead5e3ab7e01d9ef3d194dc5ee14a9323ab))
+* enrich MCP tool metadata ([22590f2](https://github.com/Lucas-Bur/pix/commit/22590f246cd6a9a73ab861f95e63ee8b12d93373))
+* integrate learned sparse retrieval ([b61382f](https://github.com/Lucas-Bur/pix/commit/b61382f8f8d973af0e993c21baad1ded619f67ba))
+* integrate learned sparse retrieval ([5fd852c](https://github.com/Lucas-Bur/pix/commit/5fd852ca1955b93f7a9d6e65e579ef4eae4b7265))
+* require positive dynamic router bases ([e4c8d6e](https://github.com/Lucas-Bur/pix/commit/e4c8d6ec656261487446e550870029343b93a3dc))
+* require positive dynamic router bases ([40f97a6](https://github.com/Lucas-Bur/pix/commit/40f97a671dac648010537f34616147c0a11d335b))
+* route dynamic weights through DBSF ([4d266de](https://github.com/Lucas-Bur/pix/commit/4d266de744a5c3ccc5000738ff0e0a2153e8a3f1))
+* route dynamic weights through DBSF ([8aa758f](https://github.com/Lucas-Bur/pix/commit/8aa758ff1216111644c53dcee3d5a6a90f029c0e))
+* use symmetric evidence weighting ([c4ffa5d](https://github.com/Lucas-Bur/pix/commit/c4ffa5d2189f72f2d1cd23e193ce5b28835ca776))
+* use symmetric evidence weighting ([c24883a](https://github.com/Lucas-Bur/pix/commit/c24883a2c27b22529c45ec26b001da507e67de68))
+
+
+### Bug Fixes
+
+* address CodeRabbit review findings ([21cf75b](https://github.com/Lucas-Bur/pix/commit/21cf75b16ffdef71f5142b0d093559c469eae966))
+* address retrieval benchmark review feedback ([c00d44b](https://github.com/Lucas-Bur/pix/commit/c00d44b064aa23b5175a59f2b4b804f9e0352363))
+
+
+### Performance Improvements
+
+* add benchmark timing telemetry ([928eddd](https://github.com/Lucas-Bur/pix/commit/928eddd62fca573114c4db380c4684be7221f924))
+* add benchmark timing telemetry ([e40f32d](https://github.com/Lucas-Bur/pix/commit/e40f32d4c28599a48a7e532b6f6c8ce80ddfb11b))
+* add objective-aware retrieval baseline ([d8ea2ee](https://github.com/Lucas-Bur/pix/commit/d8ea2eee65ac43c95a655698aafdc32bbb8142e3))
+* add objective-aware retrieval baseline ([0c05bc2](https://github.com/Lucas-Bur/pix/commit/0c05bc28a044ac6fd93a6ff522822a7a9dffc041))
+* add successive halving router search ([2f92428](https://github.com/Lucas-Bur/pix/commit/2f9242891a199f377daddc12e4761702285798bc))
+* add successive halving router search ([1754725](https://github.com/Lucas-Bur/pix/commit/17547252c85be4991a0cbb6e99c8d34505977d20))
+* broaden evidence router search ([a24e57a](https://github.com/Lucas-Bur/pix/commit/a24e57a955de16b6fdb1bc38ae1c8865700ffd94))
+* broaden evidence router search ([abeff67](https://github.com/Lucas-Bur/pix/commit/abeff67a1107b01c1b5b3048ea7c1b411363c7a8))
+
 ## [0.23.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.22.0...pix-v0.23.0) (2026-07-24)
 
 
