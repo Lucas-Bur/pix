@@ -2,13 +2,14 @@ import type { RankedChunk } from "../../src/domain/ports.js"
 import { rankBm25 } from "../../src/lib/retrieval/bm25.js"
 import { rankCamelCase } from "../../src/lib/retrieval/camelcase.js"
 import { rankIdentity } from "../../src/lib/retrieval/identity.js"
-import { routeQuery, type RetrievalWeights } from "../../src/lib/retrieval/routing.js"
+import { routeQuery } from "../../src/lib/retrieval/routing.js"
 import { rrfFuse } from "../../src/lib/retrieval/rrf.js"
 import type { PreparedCorpus } from "./prepare.js"
-import type { RetrievalVariant } from "./types.js"
+import type { ChannelWeights, RetrievalVariant } from "./types.js"
 
 /** Physical retrieval channel participating in RRF. */
-export type ChannelName = keyof RetrievalWeights
+export const CHANNEL_NAMES = ["identity", "camelcase", "bm25", "dense", "sparse"] as const
+export type ChannelName = (typeof CHANNEL_NAMES)[number]
 
 /** Rankings produced once per query by each physical retrieval channel. */
 export type ChannelRankings = Readonly<Record<ChannelName, readonly RankedChunk[]>>
@@ -22,13 +23,19 @@ export const RETRIEVAL_VARIANTS: readonly RetrievalVariant[] = [
   "camelcase",
   "bm25",
   "dense",
+  "sparse",
   "identifiers",
   "identity+bm25",
   "identity+dense",
   "camelcase+bm25",
   "camelcase+dense",
   "bm25+dense",
+  "identifiers+sparse",
+  "bm25+sparse",
+  "dense+sparse",
+  "rrf-equal",
   "rrf",
+  "rrf-no-sparse",
   "rrf-no-identity",
   "rrf-no-camelcase",
   "rrf-no-bm25",
@@ -41,6 +48,7 @@ const channelsForVariant = (variant: RetrievalVariant): readonly ChannelName[] =
     case "camelcase":
     case "bm25":
     case "dense":
+    case "sparse":
       return [variant]
     case "identifiers":
       return ["identity", "camelcase"]
@@ -54,6 +62,14 @@ const channelsForVariant = (variant: RetrievalVariant): readonly ChannelName[] =
       return ["camelcase", "dense"]
     case "bm25+dense":
       return ["bm25", "dense"]
+    case "identifiers+sparse":
+      return ["identity", "camelcase", "sparse"]
+    case "bm25+sparse":
+      return ["bm25", "sparse"]
+    case "dense+sparse":
+      return ["dense", "sparse"]
+    case "rrf-no-sparse": // Equal-weight five-channel control with Sparse removed.
+      return ["identity", "camelcase", "bm25", "dense"]
     case "rrf-no-identity":
       return ["camelcase", "bm25", "dense"]
     case "rrf-no-camelcase":
@@ -62,8 +78,9 @@ const channelsForVariant = (variant: RetrievalVariant): readonly ChannelName[] =
       return ["identity", "camelcase", "dense"]
     case "rrf-no-dense":
       return ["identity", "camelcase", "bm25"]
+    case "rrf-equal":
     case "rrf":
-      return ["identity", "camelcase", "bm25", "dense"]
+      return [...CHANNEL_NAMES]
   }
 }
 
@@ -86,7 +103,10 @@ export const fuseVariant = (
   const selected = channelsForVariant(variant)
   if (selected.length === 1) return lists[selected[0]]
 
-  const weights = routeQuery(query)
+  const weights: ChannelWeights =
+    variant === "rrf"
+      ? routeQuery(query)
+      : { identity: 1, camelcase: 1, bm25: 1, dense: 1, sparse: 1 }
   const present = selected.filter((channel) => lists[channel].length > 0)
   return rrfFuse(
     present.map((channel) => lists[channel]),

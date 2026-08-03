@@ -35,9 +35,13 @@ export interface PairwiseAgreementEvidence {
   readonly identityCamelcase: number
   readonly identityBm25: number
   readonly identityDense: number
+  readonly identitySparse: number
   readonly camelcaseBm25: number
   readonly camelcaseDense: number
+  readonly camelcaseSparse: number
   readonly bm25Dense: number
+  readonly bm25Sparse: number
+  readonly denseSparse: number
 }
 
 /** Robust confidence measurements derived only from one dense score distribution. */
@@ -87,6 +91,7 @@ export interface ChannelCoefficients {
   readonly camelcase: number
   readonly bm25: number
   readonly dense: number
+  readonly sparse: number
 }
 
 const clamp = (value: number): number => Math.max(0, Math.min(1, value))
@@ -118,12 +123,16 @@ export const buildQueryTermCoverage = (
   )
   const camelcaseTerms = [...new Set(splitIdentifier(query))]
   const coveredCamelcaseTerms = camelcaseTerms.filter(
-    (term) => (identifierIndex.split[term]?.length ?? 0) > 0,
+    (term) =>
+      Object.prototype.hasOwnProperty.call(identifierIndex.split, term) &&
+      identifierIndex.split[term].length > 0,
   ).length
 
   return {
     bm25Idf: totalIdf === 0 ? 0 : coveredIdf / totalIdf,
-    identity: identifierIndex.exact[query.toLowerCase()] === undefined ? 0 : 1,
+    identity: Object.prototype.hasOwnProperty.call(identifierIndex.exact, query.toLowerCase())
+      ? 1
+      : 0,
     camelcase: camelcaseTerms.length === 0 ? 0 : coveredCamelcaseTerms / camelcaseTerms.length,
   }
 }
@@ -248,9 +257,13 @@ const buildPairwiseAgreement = (rankings: ChannelRankings): PairwiseAgreementEvi
   identityCamelcase: pairAgreement(rankings.identity, rankings.camelcase),
   identityBm25: pairAgreement(rankings.identity, rankings.bm25),
   identityDense: pairAgreement(rankings.identity, rankings.dense),
+  identitySparse: pairAgreement(rankings.identity, rankings.sparse),
   camelcaseBm25: pairAgreement(rankings.camelcase, rankings.bm25),
   camelcaseDense: pairAgreement(rankings.camelcase, rankings.dense),
+  camelcaseSparse: pairAgreement(rankings.camelcase, rankings.sparse),
   bm25Dense: pairAgreement(rankings.bm25, rankings.dense),
+  bm25Sparse: pairAgreement(rankings.bm25, rankings.sparse),
+  denseSparse: pairAgreement(rankings.dense, rankings.sparse),
 })
 
 const channelPairwiseAgreement = (
@@ -259,13 +272,45 @@ const channelPairwiseAgreement = (
 ): number => {
   switch (channel) {
     case "identity":
-      return (pairwise.identityCamelcase + pairwise.identityBm25 + pairwise.identityDense) / 3
+      return (
+        (pairwise.identityCamelcase +
+          pairwise.identityBm25 +
+          pairwise.identityDense +
+          pairwise.identitySparse) /
+        4
+      )
     case "camelcase":
-      return (pairwise.identityCamelcase + pairwise.camelcaseBm25 + pairwise.camelcaseDense) / 3
+      return (
+        (pairwise.identityCamelcase +
+          pairwise.camelcaseBm25 +
+          pairwise.camelcaseDense +
+          pairwise.camelcaseSparse) /
+        4
+      )
     case "bm25":
-      return (pairwise.identityBm25 + pairwise.camelcaseBm25 + pairwise.bm25Dense) / 3
+      return (
+        (pairwise.identityBm25 +
+          pairwise.camelcaseBm25 +
+          pairwise.bm25Dense +
+          pairwise.bm25Sparse) /
+        4
+      )
     case "dense":
-      return (pairwise.identityDense + pairwise.camelcaseDense + pairwise.bm25Dense) / 3
+      return (
+        (pairwise.identityDense +
+          pairwise.camelcaseDense +
+          pairwise.bm25Dense +
+          pairwise.denseSparse) /
+        4
+      )
+    case "sparse":
+      return (
+        (pairwise.identitySparse +
+          pairwise.camelcaseSparse +
+          pairwise.bm25Sparse +
+          pairwise.denseSparse) /
+        4
+      )
   }
 }
 
@@ -298,7 +343,7 @@ const buildDenseConfidence = (ranking: ChannelRankings[ChannelName]): DenseConfi
     topScoreRelativeToMedian,
     robustDeviation,
     scoreTail,
-    confidence: (topScoreRelativeToMedian + robustDeviation + scoreTail) / 3,
+    confidence: (topScoreRelativeToMedian + robustDeviation + (1 - scoreTail)) / 3,
   }
 }
 
@@ -322,6 +367,8 @@ export const buildRoutingEvidence = (
         return termCoverage.bm25Idf
       case "dense":
         return 0.5
+      case "sparse":
+        return 0.5
     }
   }
   const channelEvidence = (channel: ChannelName): ChannelEvidence => ({
@@ -344,6 +391,7 @@ export const buildRoutingEvidence = (
       camelcase: channelEvidence("camelcase"),
       bm25: channelEvidence("bm25"),
       dense: channelEvidence("dense"),
+      sparse: channelEvidence("sparse"),
     },
   }
 }
@@ -388,5 +436,6 @@ export const routeWithEvidence = (
     camelcase: weight("camelcase"),
     bm25: weight("bm25"),
     dense: weight("dense"),
+    sparse: weight("sparse"),
   }
 }

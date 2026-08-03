@@ -84,13 +84,19 @@ export type RetrievalVariant =
   | "camelcase"
   | "bm25"
   | "dense"
+  | "sparse"
   | "identifiers"
   | "identity+bm25"
   | "identity+dense"
   | "camelcase+bm25"
   | "camelcase+dense"
   | "bm25+dense"
+  | "identifiers+sparse"
+  | "bm25+sparse"
+  | "dense+sparse"
+  | "rrf-equal"
   | "rrf"
+  | "rrf-no-sparse"
   | "rrf-no-identity"
   | "rrf-no-camelcase"
   | "rrf-no-bm25"
@@ -122,12 +128,13 @@ export interface QueryMeasurement {
   readonly queryDurationMs: number
 }
 
-/** Static RRF weights searched for one model and query representation. */
+/** Static fusion weights searched for one model and query representation. */
 export interface ChannelWeights {
   readonly identity: number
   readonly camelcase: number
   readonly bm25: number
   readonly dense: number
+  readonly sparse: number
 }
 
 /** Aggregate quality objective used for development and holdout evaluation. */
@@ -247,7 +254,7 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 16
+  readonly schemaVersion: 19
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   readonly generatedAt: string
@@ -268,6 +275,13 @@ export interface BenchmarkArtifact {
     readonly chunks: number
     readonly preparationDurationMs: number
   }>
+  /** Authored queries and exact file-qualified ground truth used for every retrieval variant. */
+  readonly evaluationCases: ReadonlyArray<{
+    readonly repository: string
+    readonly questionId: string
+    readonly queries: CorpusManifest["questions"][number]["queries"]
+    readonly groundTruth: readonly GoldLocation[]
+  }>
   readonly embeddingRuns: ReadonlyArray<{
     readonly repository: string
     readonly model: string
@@ -275,7 +289,14 @@ export interface BenchmarkArtifact {
     readonly batchSize: number
     readonly chunkEmbeddingDurationMs: number
     readonly queryEmbeddingDurationMs: number
-    readonly cacheHit: boolean
+  }>
+  readonly sparseEmbeddingRuns: ReadonlyArray<{
+    readonly repository: string
+    readonly model: string
+    readonly tokenizerModel: string
+    readonly batchSize: number
+    readonly chunkEmbeddingDurationMs: number
+    readonly queryTokenizationDurationMs: number
   }>
   readonly measurements: readonly QueryMeasurement[]
   readonly weightSearch: readonly WeightSearchResult[]

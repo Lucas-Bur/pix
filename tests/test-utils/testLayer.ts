@@ -24,8 +24,10 @@ import {
   IndexStore,
   QueryAliasStore,
   Scanner,
+  SparseEmbedder,
   type Bm25Index,
   type CachedEmbedding,
+  type CachedSparseEmbedding,
 } from "../../src/domain/ports.js"
 import { ChunkerBase } from "../../src/services/chunker.js"
 import { ConfigStoreLive } from "../../src/services/config-store.js"
@@ -35,6 +37,7 @@ import { ModelRegistryLive } from "../../src/services/models.js"
 import { QueryAliasStoreLive } from "../../src/services/query-alias-store.js"
 import { SqliteIndexStoreBase } from "../../src/services/sqlite-index-store.js"
 import { sqliteIndexDatabaseLayer } from "../../src/services/sqlite-index-store/client.js"
+import { TEST_SPARSE_CONTRACT } from "./fixtures.js"
 import { memoryFsLayer } from "./memfs.js"
 import { silentDisplay } from "./silentDisplay.js"
 
@@ -45,6 +48,7 @@ export interface TestIndexSeed {
   readonly identifierIndex?: IdentifierIndexMaps
   readonly files?: readonly FileManifestEntry[]
   readonly embeddingCache?: readonly CachedEmbedding[]
+  readonly sparseEmbeddingCache?: readonly CachedSparseEmbedding[]
   readonly dims?: number
   readonly dtype?: EmbeddingDtype
 }
@@ -53,6 +57,7 @@ export interface TestLayerOptions {
   readonly contents?: FileTree
   readonly scannerLayer?: Layer.Layer<Scanner, never, FileSystem>
   readonly embedderLayer?: Layer.Layer<Embedder, never, FileSystem>
+  readonly sparseEmbedderLayer?: Layer.Layer<SparseEmbedder, never, FileSystem>
   readonly configStoreLayer?: Layer.Layer<ConfigStore, never, FileSystem>
   readonly indexStoreLayer?: Layer.Layer<
     IndexStore,
@@ -95,6 +100,13 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
     }),
 })
 
+const defaultSparseEmbedderLayer = Layer.succeed(SparseEmbedder, {
+  contract: TEST_SPARSE_CONTRACT,
+  batch: (texts: readonly string[]) => Effect.succeed(texts.map(() => ({ terms: [] as const }))),
+  loadIdf: () => Effect.succeed([]),
+  tokenizeQuery: () => Effect.succeed({ tokenIds: [], contract: TEST_SPARSE_CONTRACT }),
+})
+
 const defaultDeviceDetectionLayer = Layer.succeed(DeviceDetection, {
   detect: () => Effect.succeed("cpu" as const),
   detectAll: () => Effect.succeed(["cpu"] as const),
@@ -109,13 +121,14 @@ const requireClosedLayer = <A, E>(testLayer: Layer.Layer<A, E, never>): Layer.La
 
 /**
  * Builds the full application layer for integration testing. Replaces real FileSystem with
- * in-memory variant and mocks Scanner + Embedder. Mirrors the layer structure in `src/index.ts`.
+ * in-memory variant and mocks Scanner plus Dense/Sparse embedders. Mirrors the production layers.
  */
 export const testLayer = (opts: TestLayerOptions = {}) => {
   const {
     contents = {},
     scannerLayer,
     embedderLayer,
+    sparseEmbedderLayer,
     configStoreLayer,
     indexStoreLayer,
     identifierExtractorLayer,
@@ -143,6 +156,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
     ModelRegistryLive,
     scannerLayer ?? defaultScannerLayer,
     embedderLayer ?? defaultEmbedderLayer,
+    sparseEmbedderLayer ?? defaultSparseEmbedderLayer,
     configuredIndexStore,
     queryAliasStoreLayer ?? QueryAliasStoreLive,
     ContentExtractorLive,
@@ -178,13 +192,20 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
             Effect.gen(function* () {
               const store = yield* IndexStore
               yield* store.persistIndex({
-                chunks: Stream.succeed(indexSeed.chunks),
+                chunks: Stream.succeed(
+                  indexSeed.chunks.map(
+                    ([chunk, embedding]) => [chunk, embedding, { terms: [] }] as const,
+                  ),
+                ),
                 identifierIndex: indexSeed.identifierIndex ?? { exact: {}, split: {} },
                 bm25Index: indexSeed.bm25Index,
                 files: indexSeed.files ?? [],
                 dims: indexSeed.dims ?? 384,
                 dtype: indexSeed.dtype ?? "fp32",
                 embeddingCache: indexSeed.embeddingCache ?? [],
+                sparseEmbeddingCache: indexSeed.sparseEmbeddingCache ?? [],
+                sparseContract: TEST_SPARSE_CONTRACT,
+                sparseIdf: [],
               })
             }),
           ),

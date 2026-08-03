@@ -16,6 +16,15 @@ const runGit = (args: readonly string[]): Effect.Effect<string, Error> =>
     catch: (cause) => new Error(`git ${args.join(" ")} failed`, { cause }),
   }).pipe(Effect.map((result) => result.stdout))
 
+const fetchRevision = (destination: string, revision: string): Effect.Effect<string, Error> =>
+  runGit(["-C", destination, "fetch", "--depth=1", "origin", revision]).pipe(
+    Effect.catch(() =>
+      runGit(["-C", destination, "fetch", "--all", "--tags", "--unshallow"]).pipe(
+        Effect.catch(() => runGit(["-C", destination, "fetch", "--all", "--tags"])),
+      ),
+    ),
+  )
+
 /** Load and validate every authored corpus manifest in deterministic filename order. */
 export const loadCorpusManifests = (): Effect.Effect<readonly CorpusManifest[], Error> =>
   Effect.gen(function* () {
@@ -65,7 +74,7 @@ export const prepareRepository = (manifest: CorpusManifest): Effect.Effect<strin
         destination,
       ])
     }
-    yield* runGit(["-C", destination, "fetch", "--depth=1", "origin", manifest.revision])
+    yield* fetchRevision(destination, manifest.revision)
     yield* runGit(["-C", destination, "checkout", "--detach", manifest.revision])
     return destination
   })

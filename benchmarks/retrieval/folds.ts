@@ -20,7 +20,8 @@ interface FoldCounts {
   readonly total: number[]
 }
 
-const foldKey = (repositoryId: string, questionId: string): string =>
+/** Build the stable key shared by fold assignment and benchmark lookup. */
+export const foldKey = (repositoryId: string, questionId: string): string =>
   `${repositoryId}\0${questionId}`
 
 const stableHash = (value: string): number => {

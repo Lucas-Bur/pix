@@ -3,7 +3,7 @@ import { rrfFuse } from "../../src/lib/retrieval/rrf.js"
 import type { ChannelName, ChannelRankings } from "./ranking.js"
 import type { ChannelWeights, FusionMethod } from "./types.js"
 
-const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dense"]
+const CHANNELS: readonly ChannelName[] = ["identity", "camelcase", "bm25", "dense", "sparse"]
 const DEFAULT_CANDIDATE_DEPTH = 200
 const NEUTRAL_NORMALIZED_SCORE = 0.5
 
@@ -20,8 +20,12 @@ const preparedCache = new WeakMap<ChannelRankings, Map<string, PreparedFusionRan
 
 const relativeScores = (ranking: readonly RankedChunk[]): readonly number[] => {
   if (ranking.length === 0) return []
-  const max = ranking[0].score
-  const min = ranking[ranking.length - 1].score
+  let max = ranking[0].score
+  let min = ranking[0].score
+  for (const entry of ranking) {
+    if (entry.score > max) max = entry.score
+    if (entry.score < min) min = entry.score
+  }
   if (max === min) return ranking.map(() => NEUTRAL_NORMALIZED_SCORE)
   return ranking.map((entry) => (entry.score - min) / (max - min))
 }
@@ -52,6 +56,7 @@ const prepareFusionRankings = (
     camelcase: rankings.camelcase.slice(0, candidateDepth),
     bm25: rankings.bm25.slice(0, candidateDepth),
     dense: rankings.dense.slice(0, candidateDepth),
+    sparse: rankings.sparse.slice(0, candidateDepth),
   }
   const normalize =
     method === "relative-score" ? relativeScores : method === "dbsf" ? distributionScores : () => []
@@ -63,6 +68,7 @@ const prepareFusionRankings = (
       camelcase: normalize(lists.camelcase),
       bm25: normalize(lists.bm25),
       dense: normalize(lists.dense),
+      sparse: normalize(lists.sparse),
     },
   }
   const entries = cachedByKey ?? new Map<string, PreparedFusionRankings>()

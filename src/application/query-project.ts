@@ -11,7 +11,7 @@ import {
   type AllEmbedderErrors,
   type AllStoreErrors,
 } from "../domain/errors.js"
-import { ConfigStore, Embedder, IndexStore } from "../domain/ports.js"
+import { ConfigStore, Embedder, IndexStore, SparseEmbedder } from "../domain/ports.js"
 import type {
   ChunkMetadata,
   RankedChunk,
@@ -131,6 +131,7 @@ export class QueryProject extends Context.Service<
 
 const make = Effect.gen(function* () {
   const embedder = yield* Embedder
+  const sparseEmbedder = yield* SparseEmbedder
   const store = yield* IndexStore
   const configStore = yield* ConfigStore
 
@@ -166,10 +167,16 @@ const make = Effect.gen(function* () {
           validationErrors: buildChunkValidationErrors(malformedLines),
         }
       }
-      const embedding = yield* embedder.embed(queryText)
+      const [embedding, sparseQuery] = yield* Effect.all(
+        [embedder.embed(queryText), sparseEmbedder.tokenizeQuery(queryText)],
+        { concurrency: 2 },
+      )
 
       const lexicalRanks = rankBm25(queryText, bm25Index)
-      const denseRanks = yield* store.searchDense(embedding)
+      const [denseRanks, sparseRanks] = yield* Effect.all(
+        [store.searchDense(embedding), store.searchSparse(sparseQuery)],
+        { concurrency: 2 },
+      )
       const identityRanks = rankIdentity(queryText, identifierIndex)
       const camelcaseRanks = rankCamelCase(queryText, identifierIndex)
 
@@ -183,6 +190,7 @@ const make = Effect.gen(function* () {
         { list: camelcaseRanks, weight: weights.camelcase },
         { list: lexicalRanks, weight: weights.bm25 },
         { list: denseRanks, weight: weights.dense },
+        { list: sparseRanks, weight: weights.sparse },
       ].filter((channel) => channel.list.length > 0)
       const results = channels.length === 0 ? [] : fuseResults(channels, entryMap)
       const filtered = filterResults(results, options)

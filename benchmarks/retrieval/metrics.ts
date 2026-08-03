@@ -7,12 +7,11 @@ export type ChunkIdentifiers = ReadonlyMap<number, ReadonlySet<string>>
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-const containsDeclaration = (text: string, symbol: string): boolean => {
+const declarationPattern = (symbol: string): RegExp => {
   const name = escapeRegExp(symbol)
-  const declaration = new RegExp(
+  return new RegExp(
     `(?:async\\s+def|def|class|function|interface|type|const|let|var|fn|struct|enum|trait|static)\\s+${name}\\b`,
   )
-  return declaration.test(text)
 }
 
 /** Resolve each file-qualified gold symbol to all chunks containing that exact identifier. */
@@ -23,13 +22,12 @@ export const resolveGoldTargets = (
 ): readonly ReadonlySet<number>[] =>
   gold.map((target) => {
     const indexes = new Set<number>()
+    const declaration = declarationPattern(target.symbol)
+    const lowerSymbol = target.symbol.toLowerCase()
     for (let index = 0; index < chunks.length; index++) {
       const chunk = chunks[index]
       if (chunk.file !== target.file) continue
-      if (
-        identifiers.get(index)?.has(target.symbol.toLowerCase()) ||
-        containsDeclaration(chunk.text, target.symbol)
-      ) {
+      if (identifiers.get(index)?.has(lowerSymbol) || declaration.test(chunk.text)) {
         indexes.add(index)
       }
     }
@@ -89,14 +87,17 @@ export const contextRecallAtBudget = (
   budget: number,
 ): number => {
   let consumed = 0
-  let count = 0
+  let rankedPrefix = 0
   for (const entry of ranked) {
     const chunk = chunks[entry.chunkIndex]
-    if (chunk === undefined) continue
+    if (chunk === undefined) {
+      rankedPrefix++
+      continue
+    }
     const tokens = estimateContextTokens(chunk)
     if (consumed + tokens > budget) break
     consumed += tokens
-    count++
+    rankedPrefix++
   }
-  return recallAt(ranked, targets, count)
+  return recallAt(ranked, targets, rankedPrefix)
 }

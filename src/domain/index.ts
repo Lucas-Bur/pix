@@ -2,7 +2,7 @@ import { Schema } from "effect"
 
 import { ChunkValidationErrorSchema } from "./errors.js"
 
-const PositiveInt = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))
+const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
 
 /** Transport-independent options for refreshing a pix index. */
 export const IndexRequestSchema = Schema.Struct({

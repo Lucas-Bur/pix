@@ -26,6 +26,8 @@ generations. Query also loaded every Float32 vector into JavaScript for exact co
   RRF channels. SQLite `rowid` is only an implementation detail used to join vector scan results.
 - Run exact cosine search with sqlite-vector `vector_full_scan` by default. SQLite is the sole dense
   ranking implementation; do not maintain a duplicate JavaScript cosine-search oracle.
+- Store learned Sparse metadata, static query IDF, and document token postings in ordinary STRICT
+  tables; execute exact Sparse inner product through indexed SQL joins. See ADR-0020.
 - Support `exact`, `auto`, and `turboquant` modes. `auto` uses TurboQuant only at or above
   `vectorSearch.turboQuantThreshold`; TurboQuant uses four-bit quantization. Persist completed
   quantization state in index metadata so reopened stores reuse sqlite-vector's shared DB state.

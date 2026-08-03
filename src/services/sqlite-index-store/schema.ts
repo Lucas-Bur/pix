@@ -43,6 +43,15 @@ const IdentifierIndexSchema = Schema.Struct({
   split: Schema.Record(Schema.String, Schema.Array(Schema.Number)),
 })
 
+const SparseVectorSchema = Schema.Struct({
+  terms: Schema.Array(
+    Schema.Struct({
+      tokenId: Schema.Int,
+      weight: Schema.Number,
+    }),
+  ),
+})
+
 /** Persisted singleton describing the active index snapshot. */
 export class IndexMetaRow extends Model.Class<IndexMetaRow>("IndexMetaRow")({
   id: Schema.Number,
@@ -89,6 +98,36 @@ export const DenseMatchRow = Schema.Struct({
 /** Schema-transformed request vector passed to sqlite-vector. */
 export const DenseSearchRequest = Schema.Struct({ embedding: Float32ArrayFromBlob })
 
+/** Persisted singleton describing the active learned sparse contract. */
+export class SparseIndexMetaRow extends Model.Class<SparseIndexMetaRow>("SparseIndexMetaRow")({
+  id: Schema.Int,
+  model: Schema.String,
+  modelRevision: Schema.String,
+  tokenizer: Schema.String,
+  tokenizerRevision: Schema.String,
+  idfRevision: Schema.String,
+  idfContentHash: Schema.String,
+}) {}
+
+/** One persisted non-zero sparse dimension attached to a chunk ordinal. */
+export class SparseTermRow extends Model.Class<SparseTermRow>("SparseTermRow")({
+  chunkOrdinal: Schema.Int,
+  tokenId: Schema.Int,
+  weight: Schema.Number,
+}) {}
+
+/** One static query-IDF weight persisted by tokenizer token ID. */
+export class SparseIdfRow extends Model.Class<SparseIdfRow>("SparseIdfRow")({
+  tokenId: Schema.Int,
+  weight: Schema.Number,
+}) {}
+
+/** Decoded result from exact sparse inner-product ranking. */
+export const SparseMatchRow = Schema.Struct({
+  ordinal: Schema.Int,
+  score: Schema.Number,
+})
+
 /** Persisted source-file observation used by incremental indexing. */
 export class FileManifestRow extends Model.Class<FileManifestRow>("FileManifestRow")({
   file: Schema.String,
@@ -111,4 +150,18 @@ export class EmbeddingCacheRow extends Model.Class<EmbeddingCacheRow>("Embedding
   dims: Schema.Number,
   dtype: EmbeddingDtypeSchema,
   embedding: Float32ArrayFromBlob,
+}) {}
+
+/** Historical content-addressed Sparse vector retained outside the active snapshot. */
+export class SparseEmbeddingCacheRow extends Model.Class<SparseEmbeddingCacheRow>(
+  "SparseEmbeddingCacheRow",
+)({
+  contentHash: Schema.String,
+  model: Schema.String,
+  modelRevision: Schema.String,
+  tokenizer: Schema.String,
+  tokenizerRevision: Schema.String,
+  idfRevision: Schema.String,
+  idfContentHash: Schema.String,
+  vector: Schema.fromJsonString(SparseVectorSchema),
 }) {}

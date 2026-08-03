@@ -1,22 +1,14 @@
 import { beforeEach, describe, expect, it } from "@effect/vitest"
-import { pipeline as mockPipeline } from "@huggingface/transformers"
 import { Effect, Exit, Layer, Ref } from "effect"
 import { vi } from "vitest"
 
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
-import { ModelLoadError } from "../domain/errors.js"
+import { InferenceError, ModelLoadError } from "../domain/errors.js"
 import type { EmbedderDeviceConfig } from "../domain/ports.js"
 import { Embedder } from "../domain/ports.js"
-import { OnnxEmbedderLive } from "./embedder.js"
-
-vi.mock("@huggingface/transformers", () => ({
-  pipeline: vi.fn(),
-  env: { cacheDir: ".pix/cache" },
-}))
-
-const mockedPipeline = vi.mocked(mockPipeline)
+import { createAutoBoundEmbedder, OnnxEmbedderLive } from "./embedder.js"
 
 const DIMS = 384
 
@@ -24,6 +16,21 @@ type MockExtractor = (input: string | string[]) => Promise<{
   data: Float32Array
   dims: number[]
 }>
+
+type MockPipeline = (
+  task: string,
+  model: string,
+  options: { device: string; dtype: string },
+) => Promise<MockExtractor>
+
+const { mockedPipeline } = vi.hoisted(() => ({
+  mockedPipeline: vi.fn<MockPipeline>(),
+}))
+
+vi.mock("@huggingface/transformers", () => ({
+  pipeline: mockedPipeline,
+  env: { cacheDir: ".pix/cache" },
+}))
 
 const makeMockExtractor = (): MockExtractor => {
   const fn = vi.fn(async (input: string | string[]) => {
@@ -46,7 +53,7 @@ const buildLayer = (configJson: string) => {
 
 const defaultCpuLayer = () => {
   const extractor = makeMockExtractor()
-  mockedPipeline.mockResolvedValue(extractor as never)
+  mockedPipeline.mockResolvedValue(extractor)
   return buildLayer(
     makeConfigJson({
       embedder: { model: "Xenova/all-MiniLM-L6-v2", device: "cpu", dtype: "fp32", batchSize: 16 },
@@ -57,9 +64,9 @@ const defaultCpuLayer = () => {
 const gpuFallbackLayer = (configDevice: "auto" | "cpu" = "auto") => {
   const extractor = makeMockExtractor()
   mockedPipeline
-    .mockResolvedValueOnce(extractor as never)
+    .mockResolvedValueOnce(extractor)
     .mockRejectedValueOnce(new Error("cuda not available"))
-    .mockResolvedValueOnce(extractor as never)
+    .mockResolvedValueOnce(extractor)
   return buildLayer(
     makeConfigJson({
       embedder: {
@@ -121,6 +128,43 @@ describe("OnnxEmbedder GPU fallback", () => {
       expect(warnEntry).toBeDefined()
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
+
+  it.effect("returns a model-load error when every automatic device fails", () => {
+    mockedPipeline.mockRejectedValue(new Error("device unavailable"))
+
+    return Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        createAutoBoundEmbedder({
+          model: "Xenova/all-MiniLM-L6-v2",
+          dtype: "fp32",
+          dims: DIMS,
+        }),
+      )
+      expect(error).toBeInstanceOf(ModelLoadError)
+    })
+  })
+})
+
+describe("OnnxEmbedder inference errors", () => {
+  it.effect("wraps single and batch inference failures", () => {
+    const extractor = vi.fn(async (input: string | string[]) => {
+      throw new Error(Array.isArray(input) ? "batch failed" : "single failed")
+    })
+    mockedPipeline.mockResolvedValue(extractor)
+    const { layer } = buildLayer(
+      makeConfigJson({
+        embedder: { model: "Xenova/all-MiniLM-L6-v2", device: "cpu", dtype: "fp32", batchSize: 16 },
+      }),
+    )
+
+    return Effect.gen(function* () {
+      const embedder = yield* Embedder
+      const singleError = yield* Effect.flip(embedder.embed("single"))
+      const batchError = yield* Effect.flip(embedder.batch(["one", "two"]))
+      expect(singleError).toBeInstanceOf(InferenceError)
+      expect(batchError).toBeInstanceOf(InferenceError)
+    }).pipe(Effect.provide(layer), Effect.scoped)
+  })
 })
 
 describe("OnnxEmbedder createForDevice", () => {
@@ -164,7 +208,7 @@ describe("OnnxEmbedder createForDevice", () => {
 describe("OnnxEmbedder config validation", () => {
   it.effect("passes an unknown model through to the pipeline", () => {
     const extractor = makeMockExtractor()
-    mockedPipeline.mockResolvedValue(extractor as never)
+    mockedPipeline.mockResolvedValue(extractor)
     const { layer } = buildLayer(
       makeConfigJson({
         embedder: { model: "unknown/model", device: "cpu", dtype: "fp32", batchSize: 16 },
@@ -184,7 +228,7 @@ describe("OnnxEmbedder config validation", () => {
 
   it.effect("passes the configured dtype through to the pipeline", () => {
     const extractor = makeMockExtractor()
-    mockedPipeline.mockResolvedValue(extractor as never)
+    mockedPipeline.mockResolvedValue(extractor)
     const { layer } = buildLayer(
       makeConfigJson({
         embedder: { model: "Xenova/all-MiniLM-L6-v2", device: "cpu", dtype: "q4", batchSize: 16 },

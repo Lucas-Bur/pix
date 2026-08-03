@@ -2,9 +2,9 @@ import { Schema } from "effect"
 
 import { ChunkValidationErrorSchema } from "./errors.js"
 
-const Int = Schema.Number.check(Schema.isInt())
-const PositiveInt = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))
-const NonNegativeInt = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))
+const Int = Schema.Int
+const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
+const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 
 /** Defaults shared by every query transport. */
 export const QUERY_DEFAULTS = {

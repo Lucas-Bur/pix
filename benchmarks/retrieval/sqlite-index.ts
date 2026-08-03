@@ -3,7 +3,8 @@ import { layerNoop } from "effect/FileSystem"
 
 import { DEFAULT_CONFIG, type Config } from "../../src/domain/config.js"
 import type { EmbeddingDtype } from "../../src/domain/dtype.js"
-import { ConfigStore, IndexStore } from "../../src/domain/ports.js"
+import { ConfigStore, IndexStore, SparseEmbedder } from "../../src/domain/ports.js"
+import { SparseEmbedderBase } from "../../src/services/sparse-embedder.js"
 import { SqliteIndexStoreBase } from "../../src/services/sqlite-index-store.js"
 import { sqliteIndexDatabaseLayer } from "../../src/services/sqlite-index-store/client.js"
 
@@ -27,22 +28,21 @@ const benchmarkConfigStore = (config: Config): typeof ConfigStore.Service => ({
   configExists: () => Effect.succeed(true),
 })
 
-const sqliteBenchmarkIndexLayer = (model: string, dtype: EmbeddingDtype) =>
-  Layer.provideMerge(
+const sqliteBenchmarkLayer = (model: string, dtype: EmbeddingDtype) =>
+  Layer.merge(SqliteIndexStoreBase, SparseEmbedderBase).pipe(
     Layer.provideMerge(
-      SqliteIndexStoreBase,
       Layer.merge(
         Layer.succeed(ConfigStore, benchmarkConfigStore(benchmarkConfig(model, dtype))),
         sqliteIndexDatabaseLayer(":memory:"),
       ),
     ),
-    layerNoop({}),
+    Layer.provideMerge(layerNoop({})),
   )
 
-/** Run one benchmark operation against the production SQLite index adapter in memory. */
+/** Run one benchmark operation against production retrieval adapters and an in-memory index. */
 export const withSqliteBenchmarkStore = <A, E>(
   model: string,
   dtype: EmbeddingDtype,
-  effect: Effect.Effect<A, E, IndexStore>,
+  effect: Effect.Effect<A, E, IndexStore | SparseEmbedder>,
 ): Effect.Effect<A, E | Error> =>
-  Effect.scoped(effect.pipe(Effect.provide(sqliteBenchmarkIndexLayer(model, dtype))))
+  Effect.scoped(effect.pipe(Effect.provide(sqliteBenchmarkLayer(model, dtype))))

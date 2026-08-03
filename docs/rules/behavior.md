@@ -28,5 +28,5 @@
 - Adapters (`src/services/`) implement ports as `Effect.Layer`
 - Dependency injection via Effect layers
 - Current state:
-  - Ports exist for: ConfigStore, Scanner, ContentExtractor, Chunker, IdentifierExtractor, Embedder, IndexStore, Display, Clipboard, QueryAliasStore, ModelRegistry, DeviceDetection
+  - Ports exist for: ConfigStore, Scanner, ContentExtractor, Chunker, IdentifierExtractor, Embedder, SparseEmbedder, IndexStore, Display, Clipboard, QueryAliasStore, ModelRegistry, DeviceDetection
   - Each port has at least one live adapter; most have a test/fake adapter too

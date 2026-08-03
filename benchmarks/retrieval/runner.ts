@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 
-import { Effect, Option, Stream } from "effect"
+import { Effect, Stream } from "effect"
 
 import type { Embedding } from "../../src/domain/chunk.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
@@ -9,13 +9,13 @@ import type { EmbeddingDtype } from "../../src/domain/dtype.js"
 import type { StoredChunk } from "../../src/domain/index-data.js"
 import { MODEL_REGISTRY } from "../../src/domain/models.js"
 import type { BoundEmbedder } from "../../src/domain/ports.js"
-import { IndexStore } from "../../src/domain/ports.js"
+import { IndexStore, SparseEmbedder } from "../../src/domain/ports.js"
+import type { SparseContract, SparseTerm, SparseVector } from "../../src/domain/sparse.js"
 import { contentHash } from "../../src/lib/content-hash.js"
 import { createAutoBoundEmbedder } from "../../src/services/embedder.js"
 import { loadCorpusManifests, prepareRepository } from "./corpus.js"
-import { loadEmbeddingCache, writeEmbeddingCache } from "./embedding-cache.js"
 import { buildQueryTermCoverage } from "./evidence-router.js"
-import { assignGroupedFolds } from "./folds.js"
+import { assignGroupedFolds, foldKey } from "./folds.js"
 import { FUSION_METHODS } from "./fusion.js"
 import {
   contextRecallAtBudget,
@@ -131,24 +131,31 @@ const selectValues = (value: string | undefined): ReadonlySet<string> | null =>
 const selectManifests = (
   manifests: readonly CorpusManifest[],
   profile: BenchmarkProfile,
-): readonly CorpusManifest[] => {
+): Effect.Effect<readonly CorpusManifest[], Error> => {
   const selected = selectValues(process.env.PIX_BENCH_REPOS)
-  if (selected) return manifests.filter((manifest) => selected.has(manifest.id))
-  return profile === "smoke" ? manifests.filter((manifest) => manifest.id === "fd") : manifests
+  if (selected) {
+    const unknown = [...selected].filter((id) => !manifests.some((manifest) => manifest.id === id))
+    if (unknown.length > 0)
+      return Effect.fail(new Error(`Unknown PIX_BENCH_REPOS values: ${unknown.join(", ")}`))
+    return Effect.succeed(manifests.filter((manifest) => selected.has(manifest.id)))
+  }
+  return Effect.succeed(
+    profile === "smoke" ? manifests.filter((manifest) => manifest.id === "fd") : manifests,
+  )
 }
 
-const selectModels = (): readonly string[] => {
+const selectModels = (): Effect.Effect<readonly string[], Error> => {
   const selected = selectValues(process.env.PIX_BENCH_MODELS)
   if (selected && selected.size !== 1)
-    throw new Error("PIX_BENCH_MODELS must select exactly one embedding model")
+    return Effect.fail(new Error("PIX_BENCH_MODELS must select exactly one embedding model"))
   const models = Object.keys(MODEL_REGISTRY).filter((model) =>
     selected ? selected.has(model) : model === "Xenova/all-MiniLM-L6-v2",
   )
   if (selected && models.length !== selected.size) {
     const unknown = [...selected].filter((model) => MODEL_REGISTRY[model] === undefined)
-    throw new Error(`Unknown PIX_BENCH_MODELS values: ${unknown.join(", ")}`)
+    return Effect.fail(new Error(`Unknown PIX_BENCH_MODELS values: ${unknown.join(", ")}`))
   }
-  return models
+  return Effect.succeed(models)
 }
 
 const embedTexts = (
@@ -172,51 +179,20 @@ const embedTexts = (
     return vectors
   }).pipe(Effect.mapError((cause) => new Error(`Embedding failed for ${model}`, { cause })))
 
-const embedCorpus = (
-  manifest: CorpusManifest,
-  chunks: PreparedCorpus["chunks"],
-  model: string,
-  device: string,
-  embedder: BoundEmbedder,
-): Effect.Effect<
-  {
-    readonly vectors: readonly Float32Array[]
-    readonly cacheHit: boolean
-    readonly device: string
-  },
-  Error
-> => {
-  const info = MODEL_REGISTRY[model]
-  if (info === undefined) return Effect.fail(new Error(`Unknown embedding model ${model}`))
-  return Effect.gen(function* () {
-    const cached = yield* loadEmbeddingCache(
-      manifest,
-      model,
-      device,
-      EMBEDDING_BATCH_SIZE,
-      info.dims,
-      chunks,
-    )
-    if (Option.isSome(cached)) {
-      return { vectors: cached.value, cacheHit: true, device }
+const embedSparseTexts = (
+  texts: readonly string[],
+  embedder: typeof SparseEmbedder.Service,
+): Effect.Effect<readonly SparseVector[], Error> =>
+  Effect.gen(function* () {
+    const vectors: SparseVector[] = []
+    let start = 0
+    while (start < texts.length) {
+      const batch = texts.slice(start, start + DEFAULT_CONFIG.sparseEmbedder.batchSize)
+      vectors.push(...(yield* embedder.batch(batch)))
+      start += DEFAULT_CONFIG.sparseEmbedder.batchSize
     }
-    const vectors = yield* embedTexts(
-      chunks.map((chunk) => chunk.text),
-      model,
-      embedder,
-    )
-    yield* writeEmbeddingCache(
-      manifest,
-      model,
-      device,
-      EMBEDDING_BATCH_SIZE,
-      info.dims,
-      chunks,
-      vectors,
-    )
-    return { vectors, cacheHit: false, device }
-  })
-}
+    return vectors
+  }).pipe(Effect.mapError((cause) => new Error("Sparse document embedding failed", { cause })))
 
 const toStoredChunk = (chunk: PreparedCorpus["chunks"][number]): StoredChunk => {
   const { text, ...location } = chunk
@@ -227,8 +203,11 @@ const persistBenchmarkCorpus = (
   store: typeof IndexStore.Service,
   corpus: PreparedCorpus,
   vectors: readonly Float32Array[],
+  sparseVectors: readonly SparseVector[],
   dims: number,
   dtype: EmbeddingDtype,
+  sparseContract: SparseContract,
+  sparseIdf: readonly SparseTerm[],
 ): Effect.Effect<void, Error> =>
   Effect.gen(function* () {
     const pairs = corpus.chunks.map((chunk, index): readonly [StoredChunk, Embedding] => [
@@ -236,13 +215,20 @@ const persistBenchmarkCorpus = (
       { vector: vectors[index]!, dims, dtype },
     ])
     yield* store.persistIndex({
-      chunks: Stream.succeed(pairs),
+      chunks: Stream.succeed(
+        pairs.map(
+          ([chunk, embedding], index) => [chunk, embedding, sparseVectors[index]!] as const,
+        ),
+      ),
       identifierIndex: corpus.identifierIndex,
       bm25Index: corpus.bm25Index,
       files: [],
       dims,
       dtype,
       embeddingCache: [],
+      sparseEmbeddingCache: [],
+      sparseContract,
+      sparseIdf,
     })
   })
 
@@ -276,11 +262,12 @@ export const runRetrievalBenchmark = (
     const config = profileConfig(profile)
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
-    const manifests = selectManifests(yield* loadCorpusManifests(), profile)
+    const manifests = yield* selectManifests(yield* loadCorpusManifests(), profile)
     const groupedFoldAssignments = assignGroupedFolds(manifests, config.groupedFolds)
-    const models = selectModels()
+    const models = yield* selectModels()
     const repositories: BenchmarkArtifact["repositories"][number][] = []
     const embeddingRuns: BenchmarkArtifact["embeddingRuns"][number][] = []
+    const sparseEmbeddingRuns: BenchmarkArtifact["sparseEmbeddingRuns"][number][] = []
     const measurements: QueryMeasurement[] = []
     const sampleGroups = new Map<
       string,
@@ -304,21 +291,30 @@ export const runRetrievalBenchmark = (
         preparationDurationMs: corpus.preparationDurationMs,
       })
 
-      const targetsByQuestion = manifest.questions.map((question) => {
+      const targetsByQuestion: (readonly ReadonlySet<number>[])[] = []
+      for (const question of manifest.questions) {
         const targets = resolveGoldTargets(
           question.groundTruth,
           corpus.chunks,
           corpus.identifiersByChunk,
         )
         const unresolved = question.groundTruth.filter((_, index) => targets[index].size === 0)
-        if (unresolved.length > 0) {
-          throw new Error(
-            `${question.id} has unresolved gold targets: ${unresolved.map((target) => `${target.file}::${target.symbol}`).join(", ")}`,
+        if (unresolved.length > 0)
+          return yield* Effect.fail(
+            new Error(
+              `${question.id} has unresolved gold targets: ${unresolved.map((target) => `${target.file}::${target.symbol}`).join(", ")}`,
+            ),
           )
-        }
-        return targets
-      })
+        targetsByQuestion.push(targets)
+      }
 
+      const queries = manifest.questions.flatMap((question, questionIndex) =>
+        QUERY_KINDS.map((queryKind) => ({
+          questionIndex,
+          queryKind,
+          query: question.queries[queryKind],
+        })),
+      )
       for (const model of models) {
         const info = MODEL_REGISTRY[model]
         if (info === undefined)
@@ -333,22 +329,12 @@ export const runRetrievalBenchmark = (
           ),
         )
         const embeddingStartedAt = performance.now()
-        const embedded = yield* embedCorpus(
-          manifest,
-          corpus.chunks,
+        const chunkVectors = yield* embedTexts(
+          corpus.chunks.map((chunk) => chunk.text),
           model,
-          bound.device,
           bound.embedder,
         )
-        const chunkVectors = embedded.vectors
         const chunkEmbeddingDurationMs = performance.now() - embeddingStartedAt
-        const queries = manifest.questions.flatMap((question, questionIndex) =>
-          QUERY_KINDS.map((queryKind) => ({
-            questionIndex,
-            queryKind,
-            query: question.queries[queryKind],
-          })),
-        )
         const queryEmbeddingStartedAt = performance.now()
         const queryVectors = yield* embedTexts(
           queries.map((entry) => entry.query),
@@ -358,11 +344,10 @@ export const runRetrievalBenchmark = (
         embeddingRuns.push({
           repository: manifest.id,
           model,
-          device: embedded.device,
+          device: bound.device,
           batchSize: EMBEDDING_BATCH_SIZE,
           chunkEmbeddingDurationMs,
           queryEmbeddingDurationMs: performance.now() - queryEmbeddingStartedAt,
-          cacheHit: embedded.cacheHit,
         })
 
         const retrievalStartedAt = performance.now()
@@ -371,7 +356,37 @@ export const runRetrievalBenchmark = (
           info.defaultDtype,
           Effect.gen(function* () {
             const store = yield* IndexStore
-            yield* persistBenchmarkCorpus(store, corpus, chunkVectors, info.dims, info.defaultDtype)
+            const sparseEmbedder = yield* SparseEmbedder
+            const sparseStartedAt = performance.now()
+            const sparseVectors = yield* embedSparseTexts(
+              corpus.chunks.map((chunk) => chunk.text),
+              sparseEmbedder,
+            )
+            const sparseChunkEmbeddingDurationMs = performance.now() - sparseStartedAt
+            const sparseIdf = yield* sparseEmbedder.loadIdf()
+            const sparseQueryStartedAt = performance.now()
+            const sparseQueries = yield* Effect.forEach(queries, ({ query }) =>
+              sparseEmbedder.tokenizeQuery(query),
+            )
+            const sparseQueryTokenizationDurationMs = performance.now() - sparseQueryStartedAt
+            yield* persistBenchmarkCorpus(
+              store,
+              corpus,
+              chunkVectors,
+              sparseVectors,
+              info.dims,
+              info.defaultDtype,
+              sparseEmbedder.contract,
+              sparseIdf,
+            )
+            sparseEmbeddingRuns.push({
+              repository: manifest.id,
+              model: sparseEmbedder.contract.model,
+              tokenizerModel: sparseEmbedder.contract.tokenizer,
+              batchSize: DEFAULT_CONFIG.sparseEmbedder.batchSize,
+              chunkEmbeddingDurationMs: sparseChunkEmbeddingDurationMs,
+              queryTokenizationDurationMs: sparseQueryTokenizationDurationMs,
+            })
             const searchData = yield* store.loadSearchData()
             const modelMeasurements: QueryMeasurement[] = []
             const modelSamples: WeightSearchSample[] = []
@@ -381,7 +396,7 @@ export const runRetrievalBenchmark = (
               const entry = queries[queryIndex]
               const question = manifest.questions[entry.questionIndex]
               const targets = targetsByQuestion[entry.questionIndex]
-              const groupedFold = groupedFoldAssignments.get(`${manifest.id}\0${question.id}`)
+              const groupedFold = groupedFoldAssignments.get(foldKey(manifest.id, question.id))
               if (groupedFold === undefined)
                 return yield* Effect.fail(
                   new Error(`No grouped fold assignment for ${manifest.id}/${question.id}`),
@@ -393,7 +408,8 @@ export const runRetrievalBenchmark = (
                 dims: info.dims,
                 dtype: info.defaultDtype,
               })
-              const rankings = { ...lexicalRankings, dense }
+              const sparse = yield* store.searchSparse(sparseQueries[queryIndex]!)
+              const rankings = { ...lexicalRankings, dense, sparse }
               const channelDurationMs = performance.now() - channelStartedAt
               const sample: WeightSearchSample = {
                 repository: manifest.id,
@@ -626,7 +642,7 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 16,
+      schemaVersion: 19,
       benchmarkProfile: profile,
       generatedAt: new Date().toISOString(),
       searchStrategy: ROUTER_SEARCH_STRATEGY,
@@ -648,7 +664,16 @@ export const runRetrievalBenchmark = (
       contextBudgets: CONTEXT_BUDGETS,
       models,
       repositories,
+      evaluationCases: manifests.flatMap((manifest) =>
+        manifest.questions.map((question) => ({
+          repository: manifest.id,
+          questionId: question.id,
+          queries: question.queries,
+          groundTruth: question.groundTruth,
+        })),
+      ),
       embeddingRuns,
+      sparseEmbeddingRuns,
       measurements,
       weightSearch,
       recommendedWeights,

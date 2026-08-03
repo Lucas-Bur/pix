@@ -1,18 +1,32 @@
-import { Effect, Layer, Ref, Result } from "effect"
+import { Effect, Layer, Result } from "effect"
 
 import type { DeviceType } from "../domain/device.js"
 import { ModelLoadError } from "../domain/errors.js"
 import { DeviceDetection } from "../domain/ports.js"
 
 /** Device order used by automatic embedding inference selection. */
-export const DEVICE_PRIORITY: readonly DeviceType[] = [
-  "cuda",
-  "dml",
-  "coreml",
-  "webgpu",
-  "wasm",
-  "cpu",
-]
+const DEVICE_PRIORITY: readonly DeviceType[] = ["cuda", "dml", "coreml", "webgpu", "wasm", "cpu"]
+
+/** Load a model once on the first working device in the shared automatic priority order. */
+export const loadFirstAvailableDevice = <A>(
+  model: string,
+  load: (device: DeviceType) => Effect.Effect<A, ModelLoadError>,
+): Effect.Effect<{ readonly device: DeviceType; readonly value: A }, ModelLoadError> =>
+  Effect.gen(function* () {
+    let lastError: ModelLoadError | undefined
+    for (const device of DEVICE_PRIORITY) {
+      const result = yield* load(device).pipe(Effect.result)
+      if (Result.isSuccess(result)) return { device, value: result.success }
+      lastError = result.failure
+    }
+    return yield* (
+      lastError ??
+        new ModelLoadError({
+          message: `No device available for model "${model}"`,
+          model,
+        })
+    )
+  })
 
 const tryDevice = (
   model: string,
@@ -43,31 +57,9 @@ const make = Effect.gen(function* () {
   )
 
   const detect = (model: string, dtype: string): Effect.Effect<DeviceType, ModelLoadError> =>
-    Effect.gen(function* () {
-      const lastError = yield* Ref.make<ModelLoadError | undefined>(undefined)
-
-      for (const device of DEVICE_PRIORITY) {
-        const result = yield* tryDevice(model, dtype, device, () => Promise.resolve(pipeline)).pipe(
-          Effect.catch((e) =>
-            Ref.set(lastError, e).pipe(
-              Effect.flatMap(() => Effect.succeed<DeviceType | undefined>(undefined)),
-            ),
-          ),
-        )
-        if (result !== undefined) {
-          return result
-        }
-      }
-
-      const err = yield* Ref.get(lastError)
-      return yield* (
-        err ??
-          new ModelLoadError({
-            message: `No device available for model "${model}"`,
-            model,
-          })
-      )
-    })
+    loadFirstAvailableDevice(model, (device) =>
+      tryDevice(model, dtype, device, () => Promise.resolve(pipeline)),
+    ).pipe(Effect.map(({ device }) => device))
 
   const detectAll = (model: string, dtype: string): Effect.Effect<readonly DeviceType[], never> =>
     Effect.gen(function* () {

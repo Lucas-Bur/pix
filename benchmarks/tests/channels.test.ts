@@ -51,7 +51,7 @@ const corpus: PreparedCorpus = {
   preparationDurationMs: 0,
 }
 
-const zeroChannelCoefficients = { identity: 0, camelcase: 0, bm25: 0, dense: 0 }
+const zeroChannelCoefficients = { identity: 0, camelcase: 0, bm25: 0, dense: 0, sparse: 0 }
 
 const makeEvidenceRouterSamples = () => {
   const ranked = (target: number, offset: number, separated: boolean) =>
@@ -77,6 +77,7 @@ const makeEvidenceRouterSamples = () => {
         camelcase: [],
         bm25: ranked(90, 0, true),
         dense: ranked(90, 30, false),
+        sparse: [],
       },
       targets: [new Set([90])],
       chunks: evidenceChunks,
@@ -92,6 +93,7 @@ const makeEvidenceRouterSamples = () => {
         camelcase: [],
         bm25: ranked(91, 0, false),
         dense: ranked(91, 30, true),
+        sparse: [],
       },
       targets: [new Set([91])],
       chunks: evidenceChunks,
@@ -106,8 +108,8 @@ const selectTop20Router = <T extends { readonly objective: string }>(results: re
 }
 
 describe("retrieval benchmark fixture", () => {
-  it("covers every non-empty subset of four channels", () => {
-    expect(new Set(RETRIEVAL_VARIANTS).size).toBe(15)
+  it("covers the benchmark's five-channel retrieval variants", () => {
+    expect(new Set(RETRIEVAL_VARIANTS).size).toBe(21)
   })
 
   it("isolates the exact identity channel without prefix false positives", () => {
@@ -139,10 +141,11 @@ describe("retrieval benchmark fixture", () => {
         { chunkIndex: 2, score: 0.51 },
         { chunkIndex: 3, score: 0.5 },
       ],
+      sparse: [],
     }
     const evidence = buildRoutingEvidence("find project configuration", rankings)
     const weights = routeWithEvidence(evidence, {
-      baseWeights: { identity: 0, camelcase: 0, bm25: 1, dense: 1 },
+      baseWeights: { identity: 0, camelcase: 0, bm25: 1, dense: 1, sparse: 0 },
       scoreInfluence: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
       geometryInfluence: zeroChannelCoefficients,
       termCoverageInfluence: zeroChannelCoefficients,
@@ -164,9 +167,10 @@ describe("retrieval benchmark fixture", () => {
       camelcase: [],
       bm25: [],
       dense: [{ chunkIndex: 1, score: 1 }],
+      sparse: [],
     }
     const config = {
-      baseWeights: { identity: 1, camelcase: 0, bm25: 0, dense: 1 },
+      baseWeights: { identity: 1, camelcase: 0, bm25: 0, dense: 1, sparse: 0 },
       scoreInfluence: zeroChannelCoefficients,
       geometryInfluence: zeroChannelCoefficients,
       termCoverageInfluence: zeroChannelCoefficients,
@@ -199,10 +203,11 @@ describe("retrieval benchmark fixture", () => {
         { chunkIndex: 1, score: 0.5 },
         { chunkIndex: 2, score: 0.5 },
       ],
+      sparse: [],
     }
     const evidence = buildRoutingEvidence("find the target", rankings)
     const weights = routeWithEvidence(evidence, {
-      baseWeights: { identity: 0, camelcase: 0, bm25: 1, dense: 1 },
+      baseWeights: { identity: 0, camelcase: 0, bm25: 1, dense: 1, sparse: 0 },
       scoreInfluence: zeroChannelCoefficients,
       geometryInfluence: { ...zeroChannelCoefficients, bm25: 1, dense: 1 },
       termCoverageInfluence: zeroChannelCoefficients,
@@ -256,10 +261,11 @@ describe("retrieval benchmark fixture", () => {
         { chunkIndex: 0, score: 0.9 },
         { chunkIndex: 5, score: 0.8 },
       ],
+      sparse: [],
     }
     const evidence = buildRoutingEvidence("find target", rankings)
     const weights = routeWithEvidence(evidence, {
-      baseWeights: { identity: 1, camelcase: 0, bm25: 1, dense: 0 },
+      baseWeights: { identity: 1, camelcase: 0, bm25: 1, dense: 0, sparse: 0 },
       scoreInfluence: zeroChannelCoefficients,
       geometryInfluence: zeroChannelCoefficients,
       termCoverageInfluence: zeroChannelCoefficients,
@@ -281,9 +287,10 @@ describe("retrieval benchmark fixture", () => {
       camelcase: [],
       bm25: [],
       dense,
+      sparse: [],
     })
     const config = {
-      baseWeights: { identity: 0, camelcase: 0, bm25: 0, dense: 1 },
+      baseWeights: { identity: 0, camelcase: 0, bm25: 0, dense: 1, sparse: 0 },
       scoreInfluence: zeroChannelCoefficients,
       geometryInfluence: zeroChannelCoefficients,
       termCoverageInfluence: zeroChannelCoefficients,
@@ -322,6 +329,7 @@ describe("retrieval benchmark fixture", () => {
     const ranked = fuseVariant("rrf", query, {
       ...rankLexicalChannels(query, corpus),
       dense: [{ chunkIndex: 0, score: 1 }],
+      sparse: [],
     })
     const targets = resolveGoldTargets(
       [{ file: "src/chunk-0.ts", symbol: "loadProjectConfiguration" }],
@@ -330,6 +338,27 @@ describe("retrieval benchmark fixture", () => {
     )
     expect(targets[0]).toEqual(new Set([0]))
     expect(recallAt(ranked, targets, 1)).toBe(1)
+  })
+
+  it("keeps equal-weight RRF separate from production routing", () => {
+    const rankings = {
+      identity: [
+        { chunkIndex: 0, score: 1 },
+        { chunkIndex: 1, score: 0.5 },
+      ],
+      camelcase: [],
+      bm25: [
+        { chunkIndex: 1, score: 1 },
+        { chunkIndex: 0, score: 0.5 },
+      ],
+      dense: [],
+      sparse: [],
+    }
+    const equal = fuseVariant("rrf-equal", "target", rankings)
+    const production = fuseVariant("rrf", "target", rankings)
+
+    expect(equal[0]?.score).toBe(equal[1]?.score)
+    expect(production[0]?.score).toBeGreaterThan(production[1]?.score ?? 0)
   })
 
   it("fuses channel-relative scores without comparing raw score scales", () => {
@@ -348,12 +377,35 @@ describe("retrieval benchmark fixture", () => {
           { chunkIndex: 1, score: 0.59 },
           { chunkIndex: 0, score: 0.58 },
         ],
+        sparse: [],
       },
-      { identity: 0, camelcase: 0, bm25: 1, dense: 1 },
+      { identity: 0, camelcase: 0, bm25: 1, dense: 1, sparse: 0 },
     )
 
     expect(ranked[0].chunkIndex).toBe(1)
     expect(ranked[0].score).toBeCloseTo(1.4)
+  })
+
+  it("normalizes relative scores from unsorted channel input", () => {
+    const ranked = fuseRankings(
+      "relative-score",
+      {
+        identity: [],
+        camelcase: [],
+        bm25: [
+          { chunkIndex: 0, score: 0 },
+          { chunkIndex: 1, score: 10 },
+        ],
+        dense: [],
+        sparse: [],
+      },
+      { identity: 0, camelcase: 0, bm25: 1, dense: 0, sparse: 0 },
+    )
+
+    expect(ranked).toEqual([
+      { chunkIndex: 1, score: 1 },
+      { chunkIndex: 0, score: 0 },
+    ])
   })
 
   it("assigns neutral DBSF evidence to a constant channel", () => {
@@ -364,8 +416,9 @@ describe("retrieval benchmark fixture", () => {
         camelcase: [],
         bm25: [],
         dense: [],
+        sparse: [],
       },
-      { identity: 1, camelcase: 0, bm25: 0, dense: 0 },
+      { identity: 1, camelcase: 0, bm25: 0, dense: 0, sparse: 0 },
     )
 
     expect(ranked).toEqual([{ chunkIndex: 0, score: 0.5 }])
@@ -383,6 +436,7 @@ describe("retrieval benchmark fixture", () => {
         camelcase: [{ chunkIndex: 1, score: 1 }],
         bm25: [{ chunkIndex: 2, score: 1 }],
         dense: [{ chunkIndex: 3, score: 1 }],
+        sparse: [],
       },
       targets: [new Set([0])],
       chunks,

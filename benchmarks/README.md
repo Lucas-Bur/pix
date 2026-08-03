@@ -8,7 +8,7 @@ surface.
 
 The suite answers five questions independently:
 
-1. Do identity, CamelCase, BM25, and dense retrieval each contribute useful candidates?
+1. Do identity, CamelCase, BM25, dense, and sparse retrieval each contribute useful candidates?
 2. Does production-weighted RRF improve `Recall@K` over individual channels and combinations?
 3. Does full RRF reduce the quality gap between a small general embedder and a code-specific one?
 4. How much authored ground truth fits into fixed context budgets?
@@ -26,12 +26,12 @@ complementary candidate generators and learns when their evidence is trustworthy
 on one large retriever followed by an expensive reranker.
 
 This ordering matters because retrieval and reranking solve different problems. Identity, CamelCase,
-BM25, and a small dense model can contribute candidates that another channel misses. Evidence-aware
+BM25, a small dense model, and the experimental sparse channel can contribute candidates that another channel misses. Evidence-aware
 fusion improves the candidate pool itself; a reranker can only reorder candidates already present.
 Sending 100 weak candidates through a reranker also spends compute on work that better routing may
 avoid. The intended pipeline is therefore:
 
-1. Generate complementary candidates with small local channels.
+1. Generate complementary candidates with small local channels, including sparse token-weight postings.
 2. Use query and channel evidence to suppress noise and fuse a compact high-recall set.
 3. Pack the strongest complete chunks into the available context budget.
 4. Add a reranker only if holdout results show that gold locations consistently enter a small
@@ -95,16 +95,16 @@ vp run bench:retrieval:full
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
-diagnostics. The selected profile is recorded in schema-10 artifacts without changing retrieval
+diagnostics. The selected profile is recorded in schema-19 artifacts without changing retrieval
 semantics. The full profile includes all three fusion methods; short profiles intentionally omit RRF
 to keep development runs fast.
 
 The first run clones repositories into `benchmarks/.cache/repos` and downloads missing Hugging Face
-models. The highest-priority working device is selected automatically and recorded in the artifact.
-The maximum embedding batch size is two; unusually long chunks run individually. Chunk vectors are
-cached by corpus content, revision, dimensions, model, device, and batch size, so interrupted or split
-matrix runs can resume without repeating successful embeddings. Both caches are local and excluded
-from Git. Limit an exploratory run with comma-separated environment variables:
+models. Dense and Sparse use the production embedders and their automatic device selection.
+The maximum embedding batch size is two; unusually long chunks run individually. Each benchmark model
+run creates a fresh migrated in-memory SQLite index and computes its Dense and Sparse vectors once.
+The production adapters own persistence and ranking; no benchmark embedding or Sparse cache exists.
+Limit an exploratory run with comma-separated environment variables:
 
 ```powershell
 $env:PIX_BENCH_REPOS = "fd"
@@ -160,13 +160,16 @@ the corpus uses a shared hard token limit for every model.
 
 ## Matrix
 
-Each model embeds a repository and all query representations once. Those vectors and the four
-physical channel rankings are reused for every fusion experiment:
+Each dense model embeds a repository and all query representations once. The production SparseEmbedder
+encodes the same chunks and tokenizes queries. The production IndexStore persists all vectors and the
+static IDF in an in-memory SQLite database; SQLite performs Dense and Sparse ranking. The five physical
+channel rankings are reused for every fusion experiment:
 
-- each physical channel: identity, CamelCase, BM25, dense
-- all 15 non-empty channel subsets
-- production-weighted RRF and leave-one-channel-out diagnostics
-- a coarse relative weight grid with 255 raw configurations followed by bounded 0.1-step refinement
+- each physical channel: identity, CamelCase, BM25, dense, sparse
+- the existing ablations plus sparse-only, sparse pairings, and sparse-inclusive RRF
+- a fixed five-channel `1/1/1/1/1` RRF baseline, equal-weight combinations and ablations
+- production-weighted RRF imported directly from the production query router
+- a coarse relative weight grid with 1,023 raw configurations followed by bounded 0.1-step refinement
 - exact Shapley contribution for holdout `Recall@20`
 - static Weighted RRF, relative-score, and distribution-based score fusion with independently tuned
   weights
@@ -244,6 +247,8 @@ Relative Score and DBSF.
 Schema 12 adds dense confidence from the dense score distribution: top score relative to the median,
 MAD-based robust deviation, and score-tail strength. It is evaluated with the same active fusion
 matrix; model- and repository-specific calibration remains a later extension.
+Schema 17 extends pairwise agreement to all ten pairs of the five benchmark channels and records a
+benchmark-only Distill sparse ONNX channel. Production RRF remains four-channel and unchanged.
 
 ## Operating Procedure
 
@@ -258,21 +263,20 @@ preview. Compare each dynamic objective with production RRF and its matching sta
 collapse direct retrieval and reranker candidate-pool objectives into one score. Record the winning
 metrics, fit-all parameters, runtime, and any regressions in `benchmarks/BASELINE.md` before committing.
 
-## Adding A Sparse Embedder
+## Sparse Channel
 
-A future sparse embedder must be implemented first in the main package, registered in the model
-registry, and exposed through the same embedder port used by the existing dense models. The benchmark
-then consumes it through the registry; it must not contain a benchmark-only implementation. Add a
-model entry with dimensions, dtype, device, and cache identity, run the adapter and project tests, and
-verify that embedding-cache keys distinguish the new model.
+The benchmark uses the production SparseEmbedder and production IndexStore. Variable-length token-weight
+rows and the static IDF table are persisted in the migrated in-memory SQLite adapter for the duration of
+the run; no benchmark Sparse encoder, scorer, or cache exists.
 
-Schema 16 is the fixed reference baseline for this comparison. Sparse evaluation keeps the existing
-corpora, folds, channel ablations, fusion methods, and router objectives unchanged; reranker work stays
-out of scope until sparse retrieval has been evaluated independently.
+Schema 16 remains the historical production-RRF reference. Schema 19 keeps the existing corpora, folds,
+fusion methods, and router objectives, adds the fixed equal-weight five-channel RRF baseline, and records
+production Sparse timings separately. Reranker work stays out of scope until sparse retrieval has been
+evaluated independently.
 
-The regression sequence for a new embedder is `bench:retrieval:fixture`, `bench:retrieval:corpus`,
+The regression sequence for the sparse channel is `bench:retrieval:fixture`, `bench:retrieval:corpus`,
 `bench:retrieval:smoke`, `bench:retrieval:develop`, `bench:retrieval:validate`, and finally `full` for
-the milestone comparison. Keep all existing models and channels unchanged, compare dense or
+the milestone comparison. Keep all existing models and production channels unchanged, compare dense or
 sparse-only quality, active-fusion recall, context recall, indexing cost, memory, and query latency,
 and preserve the pinned corpora. A new embedder is beneficial only when its hold-out gain justifies
 its local cost; fit-all gains alone are not sufficient. Record unsupported devices or repositories
@@ -298,14 +302,10 @@ from `IndexStore` should expose persisted entries, BM25/identifier data, and per
 After that seam exists, benchmark preparation can use a temporary SQLite index for production-parity
 tests while manifests continue to own pinned revisions and exact gold targets.
 
-The sparse proposal is GitHub issue #159; issue #15 is the older closed `pix index` E2E issue. Sparse
-retrieval is a medium/high architectural change, not just another model: it needs a sparse output
-type and port, model/cache registration, SQLite migrations for token-weight pairs, a pure sparse
-scorer, fusion wiring, and benchmark regression rows. Issue #159 proposes a head-to-head comparison of
-the Apache-2.0 OpenSearch v3 GTE and v3 Distill ONNX variants; Distill is the footprint-safe candidate,
-while GTE remains the larger quality comparison. The recommended order is to complete the fusion seam
-first, implement the sparse channel in the main package, and evaluate both candidates through the
-documented regression sequence.
+The sparse proposal was GitHub issue #159; issue #15 is the older closed `pix index` E2E issue. Sparse
+retrieval is now a production adapter, SQLite schema, and query channel. The benchmark deliberately
+keeps only evaluation-specific fusion and validation logic outside production. The Apache-2.0 OpenSearch
+v3 GTE comparison remains out of scope until the 67M Distill candidate has holdout evidence.
 
 ## Metrics
 
@@ -321,7 +321,9 @@ output size without introducing an LLM or provider-specific tokenizer.
 
 Each run writes ignored JSON and Markdown artifacts under `benchmarks/results`. JSON rows retain the
 repository, revision, language, size, category, difficulty, query form, grouped fold, model, variant,
-individual gold ranks, timing, and every metric. The Markdown report includes quality by query form,
+individual gold ranks, timing, and every metric. Schema 19 stores each authored query and its exact
+file-qualified ground truth once, records productive Sparse timings, and adds
+the fixed equal-weight RRF baseline. The Markdown report includes quality by query form,
 marginal leave-one-channel-out contribution, cross-validation folds, Shapley values, and final fitted
 weight candidates. Schema 10 artifacts also include static fusion holdouts, fit-all fusion candidates,
 static-versus-dynamic router holdouts for each active fusion method, and the final router candidates

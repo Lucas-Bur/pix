@@ -5,6 +5,7 @@ import { loadCorpusManifests, prepareRepository } from "../retrieval/corpus.js"
 import { resolveGoldTargets } from "../retrieval/metrics.js"
 import { prepareCorpus } from "../retrieval/prepare.js"
 
+// This validation intentionally reads real pinned checkouts; memfs is used by other adapter tests.
 it.effect("resolves every authored gold symbol in each pinned corpus", () =>
   Effect.gen(function* () {
     const manifests = yield* loadCorpusManifests()

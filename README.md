@@ -17,16 +17,20 @@ pix index
 pix query "authentication middleware"
 ```
 
+The first index downloads both the Dense model and the pinned OpenSearch learned Sparse document model
+into `.pix/cache/`. Later indexing and queries are local; Sparse query weighting is persisted in
+`.pix/index.db` and does not run the document transformer.
+
 ## Commands
 
-| Command                      | Description                                                                                                                            | JSON flag |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `pix init`                   | Create `.pix/config.json` with defaults                                                                                                | `--json`  |
-| `pix index`                  | Scan, chunk, embed, and store project files                                                                                            | `--json`  |
-| `pix query "<text>" [flags]` | Semantic search via cosine similarity (`--top`, `--context-lines`, `--ignore-path`, `--only-path`, `--max-characters`, `--no-content`) | `--json`  |
-| `pix mcp`                    | Run the host-managed MCP stdio server with the same retrieval options as `pix query`                                                   | —         |
-| `pix status`                 | Show index statistics                                                                                                                  | `--json`  |
-| `pix reset`                  | Delete index files (chunks + vectors)                                                                                                  | `--json`  |
+| Command                      | Description                                                                                                              | JSON flag |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------- |
+| `pix init`                   | Create `.pix/config.json` with defaults                                                                                  | `--json`  |
+| `pix index`                  | Scan, chunk, embed, and store project files                                                                              | `--json`  |
+| `pix query "<text>" [flags]` | Five-channel RRF search (`--top`, `--context-lines`, `--ignore-path`, `--only-path`, `--max-characters`, `--no-content`) | `--json`  |
+| `pix mcp`                    | Run the host-managed MCP stdio server with the same retrieval options as `pix query`                                     | —         |
+| `pix status`                 | Show index statistics                                                                                                    | `--json`  |
+| `pix reset`                  | Delete index files (chunks + vectors)                                                                                    | `--json`  |
 
 All one-shot commands support `--json` for structured output on stdout — ideal for piping to AI agents.
 
