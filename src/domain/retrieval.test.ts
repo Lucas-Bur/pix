@@ -7,11 +7,9 @@ import {
   resolveProductionProfile,
 } from "./retrieval.js"
 
-it("defines the versioned RRF compatibility configuration", () => {
-  expect(PRODUCTION_COMPATIBILITY_CONFIG).toMatchObject({
-    schemaVersion: 1,
-    fusion: "rrf",
-  })
+it("defines the RRF compatibility configuration", () => {
+  expect(PRODUCTION_COMPATIBILITY_CONFIG).toMatchObject({ fusion: "rrf" })
+  expect("schemaVersion" in PRODUCTION_COMPATIBILITY_CONFIG).toBe(false)
 })
 
 it("rejects malformed production configurations", () => {

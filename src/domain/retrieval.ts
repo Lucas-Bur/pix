@@ -71,9 +71,8 @@ const EvidenceRouterParameterFields = {
 /** Evidence-router parameters that a validated benchmark candidate can promote to production. */
 export const EvidenceRouterParametersSchema = Schema.Struct(EvidenceRouterParameterFields)
 
-/** Versioned, explainable production fusion and evidence-router configuration. */
+/** Explainable production fusion and evidence-router configuration. */
 const EvidenceRouterConfigSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
   fusion: FusionMethodSchema,
   candidateDepth: PositiveInt,
   ...EvidenceRouterParameterFields,
@@ -123,7 +122,6 @@ const makeProductionProfileConfig = (
   queryLengthInfluence: ChannelCoefficients = ZERO_COEFFICIENTS,
 ): EvidenceRouterConfig =>
   decodeEvidenceRouterConfig({
-    schemaVersion: 1,
     fusion: "rrf",
     candidateDepth: 200,
     baseWeights,
@@ -141,7 +139,6 @@ const makeProductionProfileConfig = (
  * change.
  */
 export const PRODUCTION_COMPATIBILITY_CONFIG = decodeEvidenceRouterConfig({
-  schemaVersion: 1,
   fusion: "rrf",
   candidateDepth: 200,
   baseWeights: {
