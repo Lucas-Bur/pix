@@ -7,7 +7,7 @@ import {
   type EvidenceRouterConfig as DecodedEvidenceRouterConfig,
   type EvidenceRouterParameters as EvidenceRouterConfig,
   type FusionMethod,
-  PRODUCTION_COMPATIBILITY_CONFIG,
+  PRODUCTION_RRF_BASELINE_CONFIG,
 } from "../../src/domain/retrieval.js"
 import {
   buildRoutingEvidence,
@@ -176,7 +176,7 @@ const summarizeEvidenceRouter = (
     ({ sample }) => profile.queryFormWeights[sample.queryKind],
   )
 
-/** Evaluate the current production RRF router without fitting any benchmark weights. */
+/** Evaluate the historical production RRF router without fitting any benchmark weights. */
 const summarizeProductionRrf = (
   samples: readonly WeightSearchSample[],
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
@@ -188,9 +188,9 @@ const summarizeProductionRrf = (
         sample.rankings,
         routeWithEvidence(
           buildRoutingEvidence(sample.query, sample.rankings, sample.termCoverage),
-          PRODUCTION_COMPATIBILITY_CONFIG,
+          PRODUCTION_RRF_BASELINE_CONFIG,
         ),
-        PRODUCTION_COMPATIBILITY_CONFIG.fusion,
+        PRODUCTION_RRF_BASELINE_CONFIG.fusion,
       ),
     (sample) => sample.targets,
     (sample) => sample.chunks,

@@ -2,13 +2,13 @@
 
 ## Status
 
-Proposed
+Accepted (provisional DBSF rollout)
 
 ## Context
 
-Production currently fuses five retrieval channels with weighted Reciprocal Rank Fusion (RRF): Identity,
-CamelCase, BM25, Dense, and learned Sparse. The schema-19 benchmark compares three
-fusion methods: RRF, per-channel Relative Score fusion, and Distribution-Based Score Fusion (DBSF).
+Production currently fuses five retrieval channels: Identity, CamelCase, BM25, Dense, and learned Sparse.
+The schema-20 benchmark compares three fusion methods: RRF, per-channel Relative Score fusion, and
+Distribution-Based Score Fusion (DBSF).
 The benchmark shows that the best channel weights depend on the dense model, fusion method, query form,
 and ranking evidence. A single permanently hand-tuned RRF vector cannot express those differences.
 
@@ -19,9 +19,11 @@ retrieval as a fallback for open-ended exploration.
 
 ## Decision
 
-Keep RRF as the production compatibility/default fusion until an alternative passes the documented
-holdout guardrails. Add an explicit fusion seam and an evidence-based router rather than adding another
-channel-specific branch to RRF.
+Keep the explicit fusion seam and evidence-based router rather than adding another channel-specific branch
+to RRF. Activate DBSF as the production compatibility/default fusion based on the `search-priority` full
+benchmark: fit-all R@5 is `80.7%` versus `68.7%` for Relative Score, and fit-all Context@4k is `81.3%`
+versus `73.3%`. Retain RRF as an explicit historical guardrail and rollback baseline while the broader
+matrix validation continues in issue #166.
 
 Benchmarks compose production embedders and the production IndexStore with an in-memory SQLite database.
 They may add fusion candidates at the `RankedChunk[]` seam, but must not reimplement production encoding,
@@ -34,7 +36,7 @@ The router configuration will contain:
 - term-coverage, pairwise-agreement, and dense-confidence influences
 - identifier-likelihood and query-length influences
 - channel-availability handling
-- a versioned fusion method and optimization profile
+- a validated fusion method and optimization profile
 
 The first benchmark optimization profile will weight query forms as:
 
@@ -49,16 +51,16 @@ The weighted objective must be applied consistently to proxy search, full candid
 comparison, and diagnostics. Reports must retain unweighted per-query-form and per-repository metrics.
 Target metrics remain explicit: Recall@5, Recall@10, Recall@20, Recall@50, and context recall at the
 documented token budget. Runtime query-form labels are not inferred from benchmark labels. Production
-profile selection is an explicit API/CLI choice; benchmark profiles remain evaluation objectives and
-must be promoted through holdout evidence before replacing the compatibility default.
+profile selection is an explicit API/CLI choice; benchmark profile weights and evidence influences remain
+evaluation objectives and require holdout evidence before they are promoted into additional runtime profiles.
 
 Production Sparse persistence and scoring use the fixed compatibility weight documented in ADR-0020. Fusion implementation,
 evidence routing, and optimization profiles are tracked in issue #163.
 
 ## Rationale
 
-**Why keep RRF as the default**: It is rank-based, robust to incomparable raw score scales, and preserves
-current behavior while alternative fusion methods are validated.
+**Why retain RRF as a baseline**: It is rank-based, robust to incomparable raw score scales, and provides
+a stable rollback and historical guardrail while alternative fusion methods are validated.
 
 **Why evaluate Relative Score and DBSF**: The benchmark shows that score geometry contains useful signal
 that rank-only RRF cannot use. Each method can still consume the same `RankedChunk[]` channel interface.
@@ -75,8 +77,9 @@ may be added later.
 
 ## Consequences
 
-- RRF remains a safe fallback while fusion alternatives are benchmarked and rolled out deliberately.
-- Sparse participates in the same fusion seam with a fixed `1.0` weight until evidence routing lands.
-- Fusion configurations become versioned and explainable rather than scattered constants.
+- DBSF is the active compatibility fusion; RRF remains a safe fallback and explicit benchmark baseline.
+- Sparse participates in the same fusion seam with a promoted `0.1` dynamic base weight and observable
+  evidence routing.
+- Fusion configurations become typed, validated, and explainable rather than scattered constants.
 - Every optimization result must distinguish fit-all quality from grouped and repository holdout quality.
 - Weighted aggregate improvements require per-form and per-repository guardrails before production use.

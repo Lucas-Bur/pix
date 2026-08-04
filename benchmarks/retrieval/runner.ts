@@ -665,7 +665,7 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 20,
+      schemaVersion: 21,
       benchmarkProfile: profile,
       optimizationProfile,
       validationProtocol: {

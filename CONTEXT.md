@@ -140,13 +140,18 @@ Fuses N ranked lists by rank position: `Σ weight * 1 / (k + rank_in_path)`. Raw
 
 ### Fusion Strategy and Optimization Profiles
 
-Production currently uses RRF as the compatibility fusion for the five live channels. The schema-19
-benchmark compares RRF with per-channel Relative Score fusion and Distribution-Based Score Fusion
-(DBSF); these alternatives are reusable production candidates, not the active default yet. The production
-seam is an explicit fusion method plus an evidence router, so Identity, CamelCase, BM25, Dense, and the
-learned Sparse channel participate without fusion-specific channel branches. The router may adjust
-each channel's base weight using score separation, score geometry, term coverage, pairwise agreement,
-dense confidence, identifier likelihood, query length, and channel availability.
+Production currently uses DBSF as the compatibility fusion for the five live channels. The schema-20
+`search-priority` full benchmark selected DBSF over Relative Score for the current rollout: fit-all R@5
+was `80.7%` versus `68.7%`, and fit-all Context@4k was `81.3%` versus `73.3%`; broader matrix validation
+remains benchmark follow-up. RRF remains available as an explicit historical guardrail baseline. The
+production seam is an explicit fusion method plus an evidence router, so Identity, CamelCase, BM25,
+Dense, and the learned Sparse channel participate without fusion-specific channel branches. The router
+may adjust each channel's base weight using score separation, score geometry, term coverage, pairwise
+agreement, dense confidence, identifier likelihood, query length, and channel availability.
+The promoted full configuration, including its `dbsf` fusion method, is
+`PROMOTED_SEARCH_PRIORITY_CONFIG` in `src/domain/retrieval.ts`; `PRODUCTION_COMPATIBILITY_CONFIG` is a
+direct alias. Experimental runtime profiles reuse that coupled fusion/evidence model with their own
+authored base priors.
 
 The benchmark's default `search-priority` profile weights the four authored query forms as
 intent-weighted: `identifier=1`, `agentTask=2`, `naturalQuestion=3`, and `searchPhrase=4`, while still
@@ -156,13 +161,14 @@ implicit runtime query label. Future explicit profiles such as `balanced`, `code
 (Recall@5/10/20/50 and context recall). See ADR-0019, issue #162 for production Sparse, and issue #163
 for evidence-based fusion and optimization profiles.
 
-Production queries accept an explicit `profile` selection. `compatibility` is the validated default;
-`balanced`, `code-navigation`, and `natural-language` are opt-in experimental candidates until their
+Production queries accept an explicit `profile` selection. `compatibility` is the default DBSF profile;
+`balanced`, `code-navigation`, and `natural-language` remain opt-in experimental candidates until their
 weights and evidence influences are promoted from benchmark holdouts.
 
-Benchmark-owned profile seeds and optimizer search live under `benchmarks/retrieval/`; production keeps
-only the active validated router configuration and reusable fusion/evidence seams. A benchmark result is
-promoted explicitly rather than making the production package responsible for discovering its own profile.
+Benchmark-owned profile seeds and optimizer search live under `benchmarks/retrieval/`; current profile
+values are marked `authored-seed` and are not presented as benchmark-derived weights. Production keeps
+only the active router configuration and reusable fusion/evidence seams. A benchmark result is promoted
+explicitly rather than making the production package responsible for discovering its own profile.
 
 ### Retrieval Quality Benchmark
 

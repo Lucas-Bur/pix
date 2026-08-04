@@ -6,7 +6,7 @@ import {
   decodeOptimizationProfile,
 } from "../retrieval/optimization-profiles.js"
 
-it("records the weighted search-priority objective without a profile schema version", () => {
+it("records the authored weighted search-priority objective without a profile schema version", () => {
   expect(SEARCH_PRIORITY_PROFILE.queryFormWeights).toEqual({
     identifier: 1,
     agentTask: 2,
@@ -14,6 +14,21 @@ it("records the weighted search-priority objective without a profile schema vers
     searchPhrase: 4,
   })
   expect("schemaVersion" in SEARCH_PRIORITY_PROFILE).toBe(false)
+  expect(SEARCH_PRIORITY_PROFILE.provenance).toBe("authored-seed")
+  expect(SEARCH_PRIORITY_PROFILE.fusionConfig.baseWeights).toEqual({
+    identity: 3,
+    camelcase: 1.5,
+    bm25: 1,
+    dense: 1,
+    sparse: 1,
+  })
+  expect(SEARCH_PRIORITY_PROFILE.fusionConfig.scoreInfluence).toEqual({
+    identity: 0,
+    camelcase: 0,
+    bm25: 0,
+    dense: 0,
+    sparse: 0,
+  })
   expect(OPTIMIZATION_PROFILES["code-navigation"].queryFormWeights.identifier).toBeGreaterThan(
     OPTIMIZATION_PROFILES["code-navigation"].queryFormWeights.naturalQuestion,
   )
