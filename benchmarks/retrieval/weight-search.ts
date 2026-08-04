@@ -19,7 +19,7 @@ import {
   type QueryTermCoverage,
   type RoutingEvidence,
 } from "../../src/lib/retrieval/evidence-router.js"
-import { fuseRankings } from "../../src/lib/retrieval/fusion.js"
+import { prepareFusion, type PreparedFusionEvaluator } from "./fusion.js"
 import { contextRecallAtBudget, recallAt, reciprocalRank } from "./metrics.js"
 import { SEARCH_PRIORITY_PROFILE, type OptimizationProfile } from "./optimization-profiles.js"
 import {
@@ -40,6 +40,13 @@ import {
   type SearchBaselineComparison,
   type WeightSearchResult,
 } from "./types.js"
+import {
+  createCandidateEvaluationPool,
+  createEvaluationSnapshot,
+  type CandidateEvaluationPool,
+  type CandidateEvaluationPoolOptions,
+  type EvaluationCandidate,
+} from "./worker-pool.js"
 
 const CHANNELS: readonly ChannelName[] = CHANNEL_NAMES
 const WEIGHT_LEVELS = [0, 0.5, 1, 2] as const
@@ -79,11 +86,61 @@ interface EvidenceSearchSample {
   readonly evidence: RoutingEvidence
 }
 
+/** Native worker-pool controls for the explicit asynchronous benchmark search path. */
+export type ParallelSearchOptions = CandidateEvaluationPoolOptions
+
+const preparedFusionCache = new WeakMap<
+  WeightSearchSample,
+  Map<FusionMethod, PreparedFusionEvaluator>
+>()
+
+const preparedFusionEvaluatorFor = (
+  sample: WeightSearchSample,
+  fusion: FusionMethod = "rrf",
+): PreparedFusionEvaluator => {
+  let evaluators = preparedFusionCache.get(sample)
+  if (evaluators === undefined) {
+    evaluators = new Map()
+    preparedFusionCache.set(sample, evaluators)
+  }
+  let evaluator = evaluators.get(fusion)
+  if (evaluator === undefined) {
+    evaluator = prepareFusion(fusion, sample.rankings, SEARCH_CANDIDATE_DEPTH)
+    evaluators.set(fusion, evaluator)
+  }
+  return evaluator
+}
+
 const fuseWithWeights = (
-  rankings: ChannelRankings,
+  sample: WeightSearchSample,
   weights: ChannelWeights,
   fusion: FusionMethod = "rrf",
-): readonly RankedChunk[] => fuseRankings(fusion, rankings, weights, SEARCH_CANDIDATE_DEPTH)
+): readonly RankedChunk[] => preparedFusionEvaluatorFor(sample, fusion).evaluate(weights)
+
+const createEvaluationPoolForSamples = async (
+  samples: readonly WeightSearchSample[],
+  fusion: FusionMethod,
+  profile: OptimizationProfile,
+  options: CandidateEvaluationPoolOptions,
+): Promise<CandidateEvaluationPool> =>
+  createCandidateEvaluationPool(
+    createEvaluationSnapshot(
+      samples.map((sample) => ({
+        evaluator: preparedFusionEvaluatorFor(sample, fusion),
+        targets: sample.targets,
+        chunks: sample.chunks,
+        sampleWeight: profile.queryFormWeights[sample.queryKind],
+      })),
+    ),
+    options,
+  )
+
+const routerEvaluationCandidate = (
+  samples: readonly EvidenceSearchSample[],
+  config: EvidenceRouterConfig,
+): EvaluationCandidate => ({
+  weights: samples.map(({ evidence }) => routeWithEvidence(evidence, config)),
+})
 
 const summarizeRanked = <T>(
   samples: readonly T[],
@@ -150,7 +207,7 @@ const summarize = (
 ): QualitySummary =>
   summarizeRanked(
     samples,
-    (sample) => fuseWithWeights(sample.rankings, weights, fusion),
+    (sample) => fuseWithWeights(sample, weights, fusion),
     (sample) => sample.targets,
     (sample) => sample.chunks,
     (sample) => profile.queryFormWeights[sample.queryKind],
@@ -164,8 +221,7 @@ const summarizeEvidenceRouter = (
 ): QualitySummary =>
   summarizeRanked(
     samples,
-    ({ sample, evidence }) =>
-      fuseWithWeights(sample.rankings, routeWithEvidence(evidence, config), fusion),
+    ({ sample, evidence }) => fuseWithWeights(sample, routeWithEvidence(evidence, config), fusion),
     ({ sample }) => sample.targets,
     ({ sample }) => sample.chunks,
     ({ sample }) => profile.queryFormWeights[sample.queryKind],
@@ -180,7 +236,7 @@ const summarizeProductionRouter = (
     samples,
     (sample) =>
       fuseWithWeights(
-        sample.rankings,
+        sample,
         routeWithEvidence(
           buildRoutingEvidence(sample.query, sample.rankings, sample.termCoverage),
           PRODUCTION_COMPATIBILITY_CONFIG,
@@ -514,27 +570,29 @@ const normalizeWeights = (weights: ChannelWeights): ChannelWeights => {
 const weightsKey = (weights: ChannelWeights): string =>
   CHANNELS.map((channel) => weights[channel].toFixed(4)).join(":")
 
-const rankWeightCandidates = (
-  samples: readonly WeightSearchSample[],
+const uniqueWeightCandidates = (
   candidates: readonly ChannelWeights[],
-  limit: number,
-  qualityCache: Map<string, QualitySummary>,
-  fusion: FusionMethod,
-  objective: RouterObjective = "reranker-top20",
-  baseline?: QualitySummary,
-  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-): readonly WeightCandidate[] => {
+): readonly (readonly [string, ChannelWeights])[] => {
   const unique = new Map<string, ChannelWeights>()
   for (const candidate of candidates) {
     const normalized = normalizeWeights(candidate)
     unique.set(weightsKey(normalized), normalized)
   }
   return [...unique]
+}
+
+const sortWeightCandidates = (
+  entries: readonly (readonly [string, ChannelWeights])[],
+  qualityCache: Map<string, QualitySummary>,
+  limit: number,
+  objective: RouterObjective,
+  baseline: QualitySummary | undefined,
+  profile: OptimizationProfile,
+): readonly WeightCandidate[] =>
+  entries
     .map(([key, weights]) => {
-      const cached = qualityCache.get(key)
-      if (cached !== undefined) return { weights, quality: cached }
-      const quality = summarize(samples, weights, fusion, profile)
-      qualityCache.set(key, quality)
+      const quality = qualityCache.get(key)
+      if (quality === undefined) throw new Error(`Missing cached quality for ${key}`)
       return { weights, quality }
     })
     .sort(
@@ -543,6 +601,42 @@ const rankWeightCandidates = (
         activeChannelsKey(left.weights).localeCompare(activeChannelsKey(right.weights)),
     )
     .slice(0, limit)
+
+const storeQualityResults = (
+  pending: readonly (readonly [string, unknown])[],
+  qualities: readonly QualitySummary[],
+  qualityCache: Map<string, QualitySummary>,
+  errorMessage: string,
+): void => {
+  for (let index = 0; index < pending.length; index++) {
+    const entry = pending[index]
+    const quality = qualities[index]
+    if (entry === undefined || quality === undefined) throw new Error(errorMessage)
+    qualityCache.set(entry[0], quality)
+  }
+}
+
+const rankWeightCandidates = async (
+  samples: readonly WeightSearchSample[],
+  candidates: readonly ChannelWeights[],
+  limit: number,
+  qualityCache: Map<string, QualitySummary>,
+  fusion: FusionMethod,
+  pool: CandidateEvaluationPool,
+  objective: RouterObjective = "reranker-top20",
+  baseline?: QualitySummary,
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+): Promise<readonly WeightCandidate[]> => {
+  const unique = uniqueWeightCandidates(candidates)
+  const pending = unique.filter(([key]) => qualityCache.get(key) === undefined)
+  const qualities = await pool.evaluate(pending.map(([, weights]) => ({ weights })))
+  storeQualityResults(
+    pending,
+    qualities,
+    qualityCache,
+    "Parallel weight evaluation returned an incomplete result",
+  )
+  return sortWeightCandidates(unique, qualityCache, limit, objective, baseline, profile)
 }
 
 const withWeight = (weights: ChannelWeights, channel: ChannelName, value: number): ChannelWeights =>
@@ -551,38 +645,46 @@ const withWeight = (weights: ChannelWeights, channel: ChannelName, value: number
     [channel]: value,
   })
 
-const selectBestWeights = (
+const coordinateWeightCandidates = (
+  beam: readonly WeightCandidate[],
+  channel: ChannelName,
+): readonly ChannelWeights[] => [
+  // Retain current elites so a later coordinate cannot regress the best development fit.
+  ...beam.map((candidate) => candidate.weights),
+  ...beam.flatMap((candidate) =>
+    STATIC_FINE_WEIGHT_LEVELS.map((level) => withWeight(candidate.weights, channel, level)),
+  ),
+]
+
+const selectBestWeights = async (
   samples: readonly WeightSearchSample[],
   fusion: FusionMethod = "rrf",
+  pool: CandidateEvaluationPool,
   objective: RouterObjective = "reranker-top20",
   baseline?: QualitySummary,
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-): { readonly weights: ChannelWeights; readonly quality: QualitySummary } => {
+): Promise<{ readonly weights: ChannelWeights; readonly quality: QualitySummary }> => {
   const qualityCache = new Map<string, QualitySummary>()
-  let beam = rankWeightCandidates(
+  let beam = await rankWeightCandidates(
     samples,
     weightCandidates(),
     SEARCH_BEAM_WIDTH,
     qualityCache,
     fusion,
+    pool,
     objective,
     baseline,
     profile,
   )
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (const channel of CHANNELS) {
-      beam = rankWeightCandidates(
+      beam = await rankWeightCandidates(
         samples,
-        [
-          // Retain current elites so a later coordinate cannot regress the best development fit.
-          ...beam.map((candidate) => candidate.weights),
-          ...beam.flatMap((candidate) =>
-            STATIC_FINE_WEIGHT_LEVELS.map((level) => withWeight(candidate.weights, channel, level)),
-          ),
-        ],
+        coordinateWeightCandidates(beam, channel),
         SEARCH_BEAM_WIDTH,
         qualityCache,
         fusion,
+        pool,
         objective,
         baseline,
         profile,
@@ -595,18 +697,21 @@ const selectBestWeights = (
 const activeChannelsKey = (weights: ChannelWeights): string =>
   CHANNELS.filter((channel) => weights[channel] > 0).join("+")
 
-const selectBestWeightsPerSubset = (
-  samples: readonly WeightSearchSample[],
-  fusion: FusionMethod,
-  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+const selectWeightSubsetCandidates = (
+  candidates: readonly ChannelWeights[],
+  qualities: readonly QualitySummary[],
+  profile: OptimizationProfile,
 ): readonly ChannelWeights[] => {
   const selected = new Map<
     string,
     { readonly weights: ChannelWeights; readonly quality: QualitySummary }
   >()
-  for (const weights of weightCandidates()) {
+  for (let index = 0; index < candidates.length; index++) {
+    const weights = candidates[index]
+    const quality = qualities[index]
+    if (weights === undefined || quality === undefined)
+      throw new Error("Weight subset search returned an incomplete result")
     const key = activeChannelsKey(weights)
-    const quality = summarize(samples, weights, fusion, profile)
     const current = selected.get(key)
     if (
       current === undefined ||
@@ -615,6 +720,15 @@ const selectBestWeightsPerSubset = (
       selected.set(key, { weights, quality })
   }
   return [...selected.values()].map((entry) => entry.weights)
+}
+
+const selectBestWeightsPerSubset = async (
+  pool: CandidateEvaluationPool,
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+): Promise<readonly ChannelWeights[]> => {
+  const candidates = weightCandidates()
+  const qualities = await pool.evaluate(candidates.map((weights) => ({ weights })))
+  return selectWeightSubsetCandidates(candidates, qualities, profile)
 }
 
 /** Config field containing one coefficient per retrieval channel. */
@@ -873,6 +987,8 @@ interface RouterSearchContext {
   readonly fusion: FusionMethod
   readonly profile: OptimizationProfile
   readonly stats: SearchEvaluationStats
+  readonly fullPool: CandidateEvaluationPool
+  readonly proxyPool: CandidateEvaluationPool
 }
 
 const compareRouterCandidates = (
@@ -885,21 +1001,31 @@ const compareRouterCandidates = (
   compareObjectiveQuality(left.quality, right.quality, objective, baseline, profile) ||
   routerComplexity(left.config) - routerComplexity(right.config)
 
-const selectRandomRouter = (
+const selectRandomRouter = async (
   samples: readonly EvidenceSearchSample[],
   baseSeed: EvidenceRouterConfig,
   parameters: readonly RouterParameter[],
-  fusion: FusionMethod,
+  pool: CandidateEvaluationPool,
   baseline: QualitySummary,
   profile: OptimizationProfile,
-): { readonly candidate: RouterCandidate; readonly candidates: number } => {
-  const candidates = buildRandomRouterSeeds(baseSeed, parameters).map((config) => ({
-    config,
-    quality: summarizeEvidenceRouter(samples, config, fusion, profile),
-  }))
+): Promise<{ readonly candidate: RouterCandidate; readonly candidates: number }> => {
+  const configs = buildRandomRouterSeeds(baseSeed, parameters)
+  const qualities = await pool.evaluate(
+    configs.map((config) => routerEvaluationCandidate(samples, config)),
+  )
+  const candidates: RouterCandidate[] = []
+  for (let index = 0; index < configs.length; index++) {
+    const config = configs[index]
+    const quality = qualities[index]
+    if (config === undefined || quality === undefined)
+      throw new Error("Parallel random router search returned an incomplete result")
+    candidates.push({ config, quality })
+  }
   const candidate = [...candidates].sort((left, right) =>
     compareRouterCandidates(left, right, "reranker-top20", baseline, profile),
-  )[0] ?? { config: baseSeed, quality: summarizeEvidenceRouter(samples, baseSeed, fusion, profile) }
+  )[0]
+  if (candidate === undefined)
+    throw new Error("Parallel random router search produced no candidate")
   return { candidate, candidates: candidates.length }
 }
 
@@ -929,70 +1055,18 @@ const selectObjectiveCandidates = (
   return [...selected.values()].slice(0, limit)
 }
 
-const rankRouterCandidates = (
+interface RouterEvaluationResult {
+  readonly candidates: readonly RouterCandidate[]
+  readonly cacheHits: number
+  readonly evaluations: number
+}
+
+const finalizeRouterCandidates = (
   context: RouterSearchContext,
-  configs: readonly EvidenceRouterConfig[],
+  rankedFull: readonly RouterCandidate[],
+  proxyKeys: readonly string[],
   limit: number,
-  protectedConfigs: readonly EvidenceRouterConfig[] = [],
-  useProxy = true,
 ): readonly RouterCandidate[] => {
-  const unique = new Map<string, EvidenceRouterConfig>()
-  for (const config of configs) unique.set(routerKey(config), config)
-  context.stats.rawCandidates += configs.length
-  context.stats.uniqueCandidates += unique.size
-  context.stats.protectedEliteCount += protectedConfigs.length + context.elites.size
-  let fullCandidates = [...unique]
-  let proxyKeys: readonly string[] = []
-  if (useProxy && context.proxySamples.length < context.samples.length) {
-    const rankedProxy = fullCandidates.map(([key, config]) => {
-      const cached = context.proxyQualityCache.get(key)
-      if (cached !== undefined) {
-        context.stats.proxyCacheHits++
-        return { key, config, quality: cached }
-      }
-      const quality = summarizeEvidenceRouter(
-        context.proxySamples,
-        config,
-        context.fusion,
-        context.profile,
-      )
-      context.proxyQualityCache.set(key, quality)
-      context.stats.proxyEvaluations++
-      return { key, config, quality }
-    })
-    const selectedProxy = selectObjectiveCandidates(
-      rankedProxy.map((candidate) => ({ config: candidate.config, quality: candidate.quality })),
-      limit * SEARCH_PROXY_PROMOTION_FACTOR,
-      context.proxyBaseline,
-      context.profile,
-    )
-    const selected = new Map(
-      selectedProxy.map((candidate) => [routerKey(candidate.config), candidate.config]),
-    )
-    proxyKeys = selectedProxy.map((candidate) => routerKey(candidate.config))
-    context.stats.proxyPromotions += proxyKeys.length
-    const protectedKeys = new Set([...protectedConfigs.map(routerKey), ...context.elites.keys()])
-    for (const [key, config] of fullCandidates) {
-      if (protectedKeys.has(key)) selected.set(key, config)
-    }
-    fullCandidates = [...selected]
-  }
-  const rankedFull = fullCandidates.map(([key, config]) => {
-    const cached = context.qualityCache.get(key)
-    if (cached !== undefined) {
-      context.stats.fullCacheHits++
-      return { config, quality: cached }
-    }
-    const quality = summarizeEvidenceRouter(
-      context.samples,
-      config,
-      context.fusion,
-      context.profile,
-    )
-    context.qualityCache.set(key, quality)
-    context.stats.fullEvaluations++
-    return { config, quality }
-  })
   if (proxyKeys.length > 0) {
     const fullRanks = new Map(
       rankedFull.map((candidate, rank) => [routerKey(candidate.config), rank]),
@@ -1020,6 +1094,84 @@ const rankRouterCandidates = (
   return selectObjectiveCandidates(rankedFull, limit, context.baseline, context.profile)
 }
 
+const evaluateRouterConfigs = async (
+  entries: readonly (readonly [string, EvidenceRouterConfig])[],
+  samples: readonly EvidenceSearchSample[],
+  pool: CandidateEvaluationPool,
+  qualityCache: Map<string, QualitySummary>,
+): Promise<RouterEvaluationResult> => {
+  const pending = entries.filter(([key]) => qualityCache.get(key) === undefined)
+  const qualities = await pool.evaluate(
+    pending.map(([, config]) => routerEvaluationCandidate(samples, config)),
+  )
+  storeQualityResults(
+    pending,
+    qualities,
+    qualityCache,
+    "Parallel router evaluation returned an incomplete result",
+  )
+  return {
+    candidates: entries.map(([key, config]) => {
+      const quality = qualityCache.get(key)
+      if (quality === undefined) throw new Error(`Missing cached router quality for ${key}`)
+      return { config, quality }
+    }),
+    cacheHits: entries.length - pending.length,
+    evaluations: pending.length,
+  }
+}
+
+const rankRouterCandidates = async (
+  context: RouterSearchContext,
+  configs: readonly EvidenceRouterConfig[],
+  limit: number,
+  protectedConfigs: readonly EvidenceRouterConfig[] = [],
+  useProxy = true,
+): Promise<readonly RouterCandidate[]> => {
+  const unique = new Map<string, EvidenceRouterConfig>()
+  for (const config of configs) unique.set(routerKey(config), config)
+  context.stats.rawCandidates += configs.length
+  context.stats.uniqueCandidates += unique.size
+  context.stats.protectedEliteCount += protectedConfigs.length + context.elites.size
+  let fullCandidates = [...unique]
+  let proxyKeys: readonly string[] = []
+  if (useProxy && context.proxySamples.length < context.samples.length) {
+    const rankedProxy = await evaluateRouterConfigs(
+      fullCandidates,
+      context.proxySamples,
+      context.proxyPool,
+      context.proxyQualityCache,
+    )
+    context.stats.proxyCacheHits += rankedProxy.cacheHits
+    context.stats.proxyEvaluations += rankedProxy.evaluations
+    const selectedProxy = selectObjectiveCandidates(
+      rankedProxy.candidates,
+      limit * SEARCH_PROXY_PROMOTION_FACTOR,
+      context.proxyBaseline,
+      context.profile,
+    )
+    const selected = new Map(
+      selectedProxy.map((candidate) => [routerKey(candidate.config), candidate.config]),
+    )
+    proxyKeys = selectedProxy.map((candidate) => routerKey(candidate.config))
+    context.stats.proxyPromotions += proxyKeys.length
+    const protectedKeys = new Set([...protectedConfigs.map(routerKey), ...context.elites.keys()])
+    for (const [key, config] of fullCandidates) {
+      if (protectedKeys.has(key)) selected.set(key, config)
+    }
+    fullCandidates = [...selected]
+  }
+  const rankedFull = await evaluateRouterConfigs(
+    fullCandidates,
+    context.samples,
+    context.fullPool,
+    context.qualityCache,
+  )
+  context.stats.fullCacheHits += rankedFull.cacheHits
+  context.stats.fullEvaluations += rankedFull.evaluations
+  return finalizeRouterCandidates(context, rankedFull.candidates, proxyKeys, limit)
+}
+
 interface EvidenceRouterSelection {
   readonly objective: RouterObjective
   readonly config: EvidenceRouterConfig
@@ -1040,11 +1192,65 @@ export const selectEligibleCandidate = <T>(
   }
 }
 
-const selectBestEvidenceRouter = (
+interface RouterSearchPreparation {
+  readonly evidenceSamples: readonly EvidenceSearchSample[]
+  readonly proxySamples: readonly EvidenceSearchSample[]
+  readonly guardrailBaselines: GuardrailBaselines
+  readonly productionQuality: QualitySummary
+  readonly proxyBaseline: QualitySummary
+  readonly stats: SearchEvaluationStats
+}
+
+const prepareRouterSearch = (
+  samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile,
+): RouterSearchPreparation => {
+  const evidenceSamples = prepareEvidenceSamples(samples)
+  const proxySamples = buildProxySamples(evidenceSamples)
+  const guardrailBaselines = buildGuardrailBaselines(samples, profile)
+  const proxyBaselines = buildGuardrailBaselines(
+    proxySamples.map(({ sample }) => sample),
+    profile,
+  )
+  return {
+    evidenceSamples,
+    proxySamples,
+    guardrailBaselines,
+    productionQuality: guardrailBaselines.overall,
+    proxyBaseline: proxyBaselines.overall,
+    stats: {
+      rawCandidates: 0,
+      uniqueCandidates: 0,
+      proxyEvaluations: 0,
+      fullEvaluations: 0,
+      proxyCacheHits: 0,
+      fullCacheHits: 0,
+      proxyPromotions: 0,
+      proxyAgreementMatches: 0,
+      proxyAgreementComparisons: 0,
+      protectedEliteCount: 0,
+    },
+  }
+}
+
+const profileSeedFor = (profile: OptimizationProfile): EvidenceRouterConfig => ({
+  baseWeights: profile.fusionConfig.baseWeights,
+  scoreInfluence: profile.fusionConfig.scoreInfluence,
+  geometryInfluence: profile.fusionConfig.geometryInfluence,
+  termCoverageInfluence: profile.fusionConfig.termCoverageInfluence,
+  pairwiseAgreementInfluence: profile.fusionConfig.pairwiseAgreementInfluence,
+  denseConfidenceInfluence: profile.fusionConfig.denseConfidenceInfluence,
+  identifierInfluence: profile.fusionConfig.identifierInfluence,
+  queryLengthInfluence: profile.fusionConfig.queryLengthInfluence,
+})
+
+const selectBestEvidenceRouter = async (
   samples: readonly WeightSearchSample[],
   fusion: FusionMethod,
-  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-): {
+  profile: OptimizationProfile,
+  fullPool: CandidateEvaluationPool,
+  proxyPool: CandidateEvaluationPool,
+): Promise<{
   readonly selections: readonly EvidenceRouterSelection[]
   readonly productionQuality: QualitySummary
   readonly proxyEvaluations: number
@@ -1052,27 +1258,15 @@ const selectBestEvidenceRouter = (
   readonly searchDiagnostics: RouterSearchDiagnostics
   readonly randomCandidate: RouterCandidate
   readonly randomCandidates: number
-} => {
-  const evidenceSamples = prepareEvidenceSamples(samples)
-  const proxySamples = buildProxySamples(evidenceSamples)
-  const guardrailBaselines = buildGuardrailBaselines(samples, profile)
-  const productionQuality = guardrailBaselines.overall
-  const proxyBaselines = buildGuardrailBaselines(
-    proxySamples.map(({ sample }) => sample),
-    profile,
-  )
-  const stats: SearchEvaluationStats = {
-    rawCandidates: 0,
-    uniqueCandidates: 0,
-    proxyEvaluations: 0,
-    fullEvaluations: 0,
-    proxyCacheHits: 0,
-    fullCacheHits: 0,
-    proxyPromotions: 0,
-    proxyAgreementMatches: 0,
-    proxyAgreementComparisons: 0,
-    protectedEliteCount: 0,
-  }
+}> => {
+  const {
+    evidenceSamples,
+    proxySamples,
+    guardrailBaselines,
+    productionQuality,
+    proxyBaseline,
+    stats,
+  } = prepareRouterSearch(samples, profile)
   const searchContext: RouterSearchContext = {
     samples: evidenceSamples,
     proxySamples,
@@ -1081,38 +1275,37 @@ const selectBestEvidenceRouter = (
     elites: new Map<string, RouterCandidate>(),
     archive: new Map<string, RouterCandidate>(),
     baseline: productionQuality,
-    proxyBaseline: proxyBaselines.overall,
+    proxyBaseline,
     fusion,
     profile,
     stats,
+    fullPool,
+    proxyPool,
   }
-  const profileSeed: EvidenceRouterConfig = {
-    baseWeights: profile.fusionConfig.baseWeights,
-    scoreInfluence: profile.fusionConfig.scoreInfluence,
-    geometryInfluence: profile.fusionConfig.geometryInfluence,
-    termCoverageInfluence: profile.fusionConfig.termCoverageInfluence,
-    pairwiseAgreementInfluence: profile.fusionConfig.pairwiseAgreementInfluence,
-    denseConfidenceInfluence: profile.fusionConfig.denseConfidenceInfluence,
-    identifierInfluence: profile.fusionConfig.identifierInfluence,
-    queryLengthInfluence: profile.fusionConfig.queryLengthInfluence,
-  }
-  const baseSeeds = [
-    selectBestWeights(samples, fusion, "reranker-top20", productionQuality, profile).weights,
-    ...selectBestWeightsPerSubset(samples, fusion, profile),
-  ].map(emptyRouterConfig)
+  const profileSeed = profileSeedFor(profile)
+  const baseWeights = await selectBestWeights(
+    samples,
+    fusion,
+    fullPool,
+    "reranker-top20",
+    productionQuality,
+    profile,
+  )
+  const subsetWeights = await selectBestWeightsPerSubset(fullPool, profile)
+  const baseSeeds = [baseWeights.weights, ...subsetWeights].map(emptyRouterConfig)
   baseSeeds.unshift(profileSeed)
   const parameters = routerParameters()
   const randomBaseSeed = baseSeeds[0]
   if (randomBaseSeed === undefined) throw new Error("Evidence router search has no base seed")
-  const randomSearch = selectRandomRouter(
+  const randomSearch = await selectRandomRouter(
     evidenceSamples,
     randomBaseSeed,
     parameters,
-    fusion,
+    fullPool,
     productionQuality,
     profile,
   )
-  let beam = rankRouterCandidates(
+  let beam = await rankRouterCandidates(
     searchContext,
     [...baseSeeds, ...buildGlobalRouterSeeds(baseSeeds, parameters)],
     SEARCH_BEAM_WIDTH,
@@ -1121,7 +1314,7 @@ const selectBestEvidenceRouter = (
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     const orderedParameters = pass % 2 === 0 ? parameters : [...parameters].reverse()
     for (const parameter of orderedParameters) {
-      beam = rankRouterCandidates(
+      beam = await rankRouterCandidates(
         searchContext,
         [
           // Retain the current beam; the search context also protects full-quality elites.
@@ -1167,8 +1360,23 @@ const selectBestEvidenceRouter = (
   }
 }
 
+const withCandidatePool = async <T>(
+  samples: readonly WeightSearchSample[],
+  fusion: FusionMethod,
+  profile: OptimizationProfile,
+  options: CandidateEvaluationPoolOptions,
+  operation: (pool: CandidateEvaluationPool) => Promise<T>,
+): Promise<T> => {
+  const pool = await createEvaluationPoolForSamples(samples, fusion, profile, options)
+  try {
+    return await operation(pool)
+  } finally {
+    await pool.close()
+  }
+}
+
 /** Select weights on development samples, then evaluate unchanged on one validation fold. */
-export const optimizeWeights = (
+const optimizeWeightsWithPool = async (
   model: string,
   queryKind: QueryKind,
   strategy: WeightSearchResult["strategy"],
@@ -1176,8 +1384,16 @@ export const optimizeWeights = (
   development: readonly WeightSearchSample[],
   validation: readonly WeightSearchSample[],
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-): WeightSearchResult => {
-  const selected = selectBestWeights(development, "rrf", "reranker-top20", undefined, profile)
+  pool: CandidateEvaluationPool,
+): Promise<WeightSearchResult> => {
+  const selected = await selectBestWeights(
+    development,
+    "rrf",
+    pool,
+    "reranker-top20",
+    undefined,
+    profile,
+  )
   return {
     model,
     queryKind,
@@ -1192,8 +1408,65 @@ export const optimizeWeights = (
   }
 }
 
+const optimizeWeightsWithOptions = (
+  model: string,
+  queryKind: QueryKind,
+  strategy: WeightSearchResult["strategy"],
+  fold: string,
+  development: readonly WeightSearchSample[],
+  validation: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  options: ParallelSearchOptions,
+): Promise<WeightSearchResult> =>
+  withCandidatePool(development, "rrf", profile, options, (pool) =>
+    optimizeWeightsWithPool(
+      model,
+      queryKind,
+      strategy,
+      fold,
+      development,
+      validation,
+      profile,
+      pool,
+    ),
+  )
+
+export const optimizeWeights = (
+  model: string,
+  queryKind: QueryKind,
+  strategy: WeightSearchResult["strategy"],
+  fold: string,
+  development: readonly WeightSearchSample[],
+  validation: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+): Promise<WeightSearchResult> =>
+  optimizeWeightsWithOptions(model, queryKind, strategy, fold, development, validation, profile, {
+    workerCount: 0,
+  })
+
+export const optimizeWeightsParallel = (
+  model: string,
+  queryKind: QueryKind,
+  strategy: WeightSearchResult["strategy"],
+  fold: string,
+  development: readonly WeightSearchSample[],
+  validation: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  options: ParallelSearchOptions = {},
+): Promise<WeightSearchResult> =>
+  optimizeWeightsWithOptions(
+    model,
+    queryKind,
+    strategy,
+    fold,
+    development,
+    validation,
+    profile,
+    options,
+  )
+
 /** Select static weights for one fusion method, then evaluate them unchanged on a holdout. */
-export const optimizeFusionWeights = (
+const optimizeFusionWeightsWithPool = async (
   model: string,
   fusion: FusionMethod,
   strategy: FusionSearchResult["strategy"],
@@ -1201,8 +1474,16 @@ export const optimizeFusionWeights = (
   development: readonly WeightSearchSample[],
   validationSamples: readonly WeightSearchSample[],
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-): FusionSearchResult => {
-  const selected = selectBestWeights(development, fusion, "reranker-top20", undefined, profile)
+  pool: CandidateEvaluationPool,
+): Promise<FusionSearchResult> => {
+  const selected = await selectBestWeights(
+    development,
+    fusion,
+    pool,
+    "reranker-top20",
+    undefined,
+    profile,
+  )
   const guardrailBaselines = buildGuardrailBaselines(development, profile)
   const holdoutProfile = unweightedProfile(profile)
   const validationQuality = summarize(validationSamples, selected.weights, fusion, profile)
@@ -1233,6 +1514,70 @@ export const optimizeFusionWeights = (
   }
 }
 
+const optimizeFusionWeightsWithOptions = (
+  model: string,
+  fusion: FusionMethod,
+  strategy: FusionSearchResult["strategy"],
+  fold: string,
+  development: readonly WeightSearchSample[],
+  validationSamples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  options: ParallelSearchOptions,
+): Promise<FusionSearchResult> =>
+  withCandidatePool(development, fusion, profile, options, (pool) =>
+    optimizeFusionWeightsWithPool(
+      model,
+      fusion,
+      strategy,
+      fold,
+      development,
+      validationSamples,
+      profile,
+      pool,
+    ),
+  )
+
+export const optimizeFusionWeights = (
+  model: string,
+  fusion: FusionMethod,
+  strategy: FusionSearchResult["strategy"],
+  fold: string,
+  development: readonly WeightSearchSample[],
+  validationSamples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+): Promise<FusionSearchResult> =>
+  optimizeFusionWeightsWithOptions(
+    model,
+    fusion,
+    strategy,
+    fold,
+    development,
+    validationSamples,
+    profile,
+    { workerCount: 0 },
+  )
+
+export const optimizeFusionWeightsParallel = (
+  model: string,
+  fusion: FusionMethod,
+  strategy: FusionSearchResult["strategy"],
+  fold: string,
+  development: readonly WeightSearchSample[],
+  validationSamples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  options: ParallelSearchOptions = {},
+): Promise<FusionSearchResult> =>
+  optimizeFusionWeightsWithOptions(
+    model,
+    fusion,
+    strategy,
+    fold,
+    development,
+    validationSamples,
+    profile,
+    options,
+  )
+
 /** Evaluate the current production router on one development/validation split. */
 export const evaluateProductionRouter = (
   model: string,
@@ -1251,7 +1596,130 @@ export const evaluateProductionRouter = (
   validation: summarizeProductionRouter(validation, profile),
 })
 
-/** Select one evidence-based router on development queries and evaluate it unchanged on a holdout. */
+const withParallelEvidencePools = async <T>(
+  samples: readonly WeightSearchSample[],
+  fusion: FusionMethod,
+  profile: OptimizationProfile,
+  options: ParallelSearchOptions,
+  operation: (
+    selection: Awaited<ReturnType<typeof selectBestEvidenceRouter>>,
+    fullPool: CandidateEvaluationPool,
+  ) => Promise<T>,
+): Promise<T> => {
+  const evidenceSamples = prepareEvidenceSamples(samples)
+  const proxySamples = buildProxySamples(evidenceSamples)
+  const fullPool = await createEvaluationPoolForSamples(
+    evidenceSamples.map(({ sample }) => sample),
+    fusion,
+    profile,
+    options,
+  )
+  let proxyPool: CandidateEvaluationPool | undefined
+  try {
+    proxyPool =
+      proxySamples === evidenceSamples
+        ? fullPool
+        : await createEvaluationPoolForSamples(
+            proxySamples.map(({ sample }) => sample),
+            fusion,
+            profile,
+            options,
+          )
+    const selection = await selectBestEvidenceRouter(samples, fusion, profile, fullPool, proxyPool)
+    return await operation(selection, fullPool)
+  } finally {
+    if (proxyPool !== undefined && proxyPool !== fullPool) await proxyPool.close()
+    await fullPool.close()
+  }
+}
+
+const optimizeEvidenceRouterWithPools = async (
+  model: string,
+  fusion: FusionMethod,
+  strategy: EvidenceRouterSearchResult["strategy"],
+  fold: string,
+  development: readonly WeightSearchSample[],
+  validation: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  options: ParallelSearchOptions = {},
+): Promise<readonly EvidenceRouterSearchResult[]> =>
+  withParallelEvidencePools(
+    development,
+    fusion,
+    profile,
+    options,
+    async (dynamicSelection, fullPool) => {
+      const productionValidation = summarizeProductionRouter(validation, profile)
+      const validationEvidence = prepareEvidenceSamples(validation)
+      const holdoutProfile = unweightedProfile(profile)
+      const randomBaseline: SearchBaselineComparison = {
+        algorithm: "random-scout",
+        seed: RANDOM_SEARCH_SEED,
+        candidates: dynamicSelection.randomCandidates,
+        development: dynamicSelection.randomCandidate.quality,
+        validation: summarizeEvidenceRouter(
+          validationEvidence,
+          dynamicSelection.randomCandidate.config,
+          fusion,
+          profile,
+        ),
+      }
+      const results: EvidenceRouterSearchResult[] = []
+      for (const selection of dynamicSelection.selections) {
+        const staticSelection = await selectBestWeights(
+          development,
+          fusion,
+          fullPool,
+          selection.objective,
+          dynamicSelection.productionQuality,
+          profile,
+        )
+        results.push({
+          model,
+          fusion,
+          objective: selection.objective,
+          strategy,
+          fold,
+          developmentQueries: development.length,
+          validationQueries: validation.length,
+          staticWeights: staticSelection.weights,
+          config: benchmarkRouterConfig(fusion, selection.config),
+          staticDevelopment: staticSelection.quality,
+          staticValidation: summarize(validation, staticSelection.weights, fusion, profile),
+          development: selection.quality,
+          validation: summarizeEvidenceRouter(
+            validationEvidence,
+            selection.config,
+            fusion,
+            profile,
+          ),
+          productionDevelopment: dynamicSelection.productionQuality,
+          productionValidation,
+          guardrailsMet: selection.guardrailsMet,
+          promotionStatus: selection.promotionStatus,
+          proxyEvaluations: dynamicSelection.proxyEvaluations,
+          fullEvaluations: dynamicSelection.fullEvaluations,
+          searchDiagnostics: dynamicSelection.searchDiagnostics,
+          searchBaseline: randomBaseline,
+          holdoutBreakdown: buildHoldoutBreakdown(
+            validation,
+            (partition) =>
+              summarizeEvidenceRouter(
+                prepareEvidenceSamples(partition),
+                selection.config,
+                fusion,
+                holdoutProfile,
+              ),
+            profile,
+          ),
+        })
+      }
+      return results
+    },
+  )
+
+export const optimizeEvidenceRouterParallel = optimizeEvidenceRouterWithPools
+
 export const optimizeEvidenceRouter = (
   model: string,
   fusion: FusionMethod,
@@ -1260,76 +1728,27 @@ export const optimizeEvidenceRouter = (
   development: readonly WeightSearchSample[],
   validation: readonly WeightSearchSample[],
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-): readonly EvidenceRouterSearchResult[] => {
-  const dynamicSelection = selectBestEvidenceRouter(development, fusion, profile)
-  const productionValidation = summarizeProductionRouter(validation, profile)
-  const validationEvidence = prepareEvidenceSamples(validation)
-  const holdoutProfile = unweightedProfile(profile)
-  const randomBaseline: SearchBaselineComparison = {
-    algorithm: "random-scout",
-    seed: RANDOM_SEARCH_SEED,
-    candidates: dynamicSelection.randomCandidates,
-    development: dynamicSelection.randomCandidate.quality,
-    validation: summarizeEvidenceRouter(
-      validationEvidence,
-      dynamicSelection.randomCandidate.config,
-      fusion,
-      profile,
-    ),
-  }
-  return dynamicSelection.selections.map((selection) => {
-    const staticSelection = selectBestWeights(
-      development,
-      fusion,
-      selection.objective,
-      dynamicSelection.productionQuality,
-      profile,
-    )
-    return {
-      model,
-      fusion,
-      objective: selection.objective,
-      strategy,
-      fold,
-      developmentQueries: development.length,
-      validationQueries: validation.length,
-      staticWeights: staticSelection.weights,
-      config: benchmarkRouterConfig(fusion, selection.config),
-      staticDevelopment: staticSelection.quality,
-      staticValidation: summarize(validation, staticSelection.weights, fusion, profile),
-      development: selection.quality,
-      validation: summarizeEvidenceRouter(validationEvidence, selection.config, fusion, profile),
-      productionDevelopment: dynamicSelection.productionQuality,
-      productionValidation,
-      guardrailsMet: selection.guardrailsMet,
-      promotionStatus: selection.promotionStatus,
-      proxyEvaluations: dynamicSelection.proxyEvaluations,
-      fullEvaluations: dynamicSelection.fullEvaluations,
-      searchDiagnostics: dynamicSelection.searchDiagnostics,
-      searchBaseline: randomBaseline,
-      holdoutBreakdown: buildHoldoutBreakdown(
-        validation,
-        (partition) =>
-          summarizeEvidenceRouter(
-            prepareEvidenceSamples(partition),
-            selection.config,
-            fusion,
-            holdoutProfile,
-          ),
-        profile,
-      ),
-    }
+): Promise<readonly EvidenceRouterSearchResult[]> =>
+  optimizeEvidenceRouterParallel(model, fusion, strategy, fold, development, validation, profile, {
+    workerCount: 0,
   })
-}
 
 /** Fit one deployment candidate on all samples after cross-validation has measured generalization. */
-export const fitRecommendedWeights = (
+const fitRecommendedWeightsWithPool = async (
   model: string,
   queryKind: QueryKind,
   samples: readonly WeightSearchSample[],
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-): RecommendedWeights => {
-  const selected = selectBestWeights(samples, "rrf", "reranker-top20", undefined, profile)
+  pool: CandidateEvaluationPool,
+): Promise<RecommendedWeights> => {
+  const selected = await selectBestWeights(
+    samples,
+    "rrf",
+    pool,
+    "reranker-top20",
+    undefined,
+    profile,
+  )
   return {
     model,
     queryKind,
@@ -1339,14 +1758,50 @@ export const fitRecommendedWeights = (
   }
 }
 
+const fitRecommendedWeightsWithOptions = (
+  model: string,
+  queryKind: QueryKind,
+  samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile,
+  options: ParallelSearchOptions,
+): Promise<RecommendedWeights> =>
+  withCandidatePool(samples, "rrf", profile, options, (pool) =>
+    fitRecommendedWeightsWithPool(model, queryKind, samples, profile, pool),
+  )
+
+export const fitRecommendedWeights = (
+  model: string,
+  queryKind: QueryKind,
+  samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+): Promise<RecommendedWeights> =>
+  fitRecommendedWeightsWithOptions(model, queryKind, samples, profile, { workerCount: 0 })
+
+export const fitRecommendedWeightsParallel = (
+  model: string,
+  queryKind: QueryKind,
+  samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  options: ParallelSearchOptions = {},
+): Promise<RecommendedWeights> =>
+  fitRecommendedWeightsWithOptions(model, queryKind, samples, profile, options)
+
 /** Fit one static candidate for a fusion method across all query forms. */
-export const fitRecommendedFusionWeights = (
+const fitRecommendedFusionWeightsWithPool = async (
   model: string,
   fusion: FusionMethod,
   samples: readonly WeightSearchSample[],
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-): RecommendedFusionWeights => {
-  const selected = selectBestWeights(samples, fusion, "reranker-top20", undefined, profile)
+  pool: CandidateEvaluationPool,
+): Promise<RecommendedFusionWeights> => {
+  const selected = await selectBestWeights(
+    samples,
+    fusion,
+    pool,
+    "reranker-top20",
+    undefined,
+    profile,
+  )
   const guardrailBaselines = buildGuardrailBaselines(samples, profile)
   const guardrailsMet = fusionGuardrailsMet(
     samples,
@@ -1366,40 +1821,95 @@ export const fitRecommendedFusionWeights = (
   }
 }
 
+const fitRecommendedFusionWeightsWithOptions = (
+  model: string,
+  fusion: FusionMethod,
+  samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile,
+  options: ParallelSearchOptions,
+): Promise<RecommendedFusionWeights> =>
+  withCandidatePool(samples, fusion, profile, options, (pool) =>
+    fitRecommendedFusionWeightsWithPool(model, fusion, samples, profile, pool),
+  )
+
+export const fitRecommendedFusionWeights = (
+  model: string,
+  fusion: FusionMethod,
+  samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+): Promise<RecommendedFusionWeights> =>
+  fitRecommendedFusionWeightsWithOptions(model, fusion, samples, profile, { workerCount: 0 })
+
+export const fitRecommendedFusionWeightsParallel = (
+  model: string,
+  fusion: FusionMethod,
+  samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  options: ParallelSearchOptions = {},
+): Promise<RecommendedFusionWeights> =>
+  fitRecommendedFusionWeightsWithOptions(model, fusion, samples, profile, options)
+
 /**
  * Fit one evidence-router candidate on all samples after cross-validation has measured
  * generalization.
  */
+const fitRecommendedEvidenceRouterWithOptions = (
+  model: string,
+  fusion: FusionMethod,
+  samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  options: ParallelSearchOptions,
+): Promise<readonly RecommendedEvidenceRouter[]> =>
+  withParallelEvidencePools(
+    samples,
+    fusion,
+    profile,
+    options,
+    async (dynamicSelection, fullPool) => {
+      const results: RecommendedEvidenceRouter[] = []
+      for (const selection of dynamicSelection.selections) {
+        const staticSelection = await selectBestWeights(
+          samples,
+          fusion,
+          fullPool,
+          selection.objective,
+          dynamicSelection.productionQuality,
+          profile,
+        )
+        results.push({
+          model,
+          fusion,
+          objective: selection.objective,
+          samples: samples.length,
+          staticWeights: staticSelection.weights,
+          config: benchmarkRouterConfig(fusion, selection.config),
+          staticQuality: staticSelection.quality,
+          fitQuality: selection.quality,
+          productionQuality: dynamicSelection.productionQuality,
+          guardrailsMet: selection.guardrailsMet,
+          promotionStatus: selection.promotionStatus,
+          proxyEvaluations: dynamicSelection.proxyEvaluations,
+          fullEvaluations: dynamicSelection.fullEvaluations,
+          searchDiagnostics: dynamicSelection.searchDiagnostics,
+        })
+      }
+      return results
+    },
+  )
+
 export const fitRecommendedEvidenceRouter = (
   model: string,
   fusion: FusionMethod,
   samples: readonly WeightSearchSample[],
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-): readonly RecommendedEvidenceRouter[] => {
-  const dynamicSelection = selectBestEvidenceRouter(samples, fusion, profile)
-  return dynamicSelection.selections.map((selection) => {
-    const staticSelection = selectBestWeights(
-      samples,
-      fusion,
-      selection.objective,
-      dynamicSelection.productionQuality,
-      profile,
-    )
-    return {
-      model,
-      fusion,
-      objective: selection.objective,
-      samples: samples.length,
-      staticWeights: staticSelection.weights,
-      config: benchmarkRouterConfig(fusion, selection.config),
-      staticQuality: staticSelection.quality,
-      fitQuality: selection.quality,
-      productionQuality: dynamicSelection.productionQuality,
-      guardrailsMet: selection.guardrailsMet,
-      promotionStatus: selection.promotionStatus,
-      proxyEvaluations: dynamicSelection.proxyEvaluations,
-      fullEvaluations: dynamicSelection.fullEvaluations,
-      searchDiagnostics: dynamicSelection.searchDiagnostics,
-    }
-  })
-}
+): Promise<readonly RecommendedEvidenceRouter[]> =>
+  fitRecommendedEvidenceRouterWithOptions(model, fusion, samples, profile, { workerCount: 0 })
+
+export const fitRecommendedEvidenceRouterParallel = (
+  model: string,
+  fusion: FusionMethod,
+  samples: readonly WeightSearchSample[],
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  options: ParallelSearchOptions = {},
+): Promise<readonly RecommendedEvidenceRouter[]> =>
+  fitRecommendedEvidenceRouterWithOptions(model, fusion, samples, profile, options)

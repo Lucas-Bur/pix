@@ -40,12 +40,12 @@ import {
   type ValidationStrategy,
 } from "./types.js"
 import {
-  fitRecommendedEvidenceRouter,
-  fitRecommendedFusionWeights,
-  fitRecommendedWeights,
-  optimizeEvidenceRouter,
-  optimizeFusionWeights,
-  optimizeWeights,
+  fitRecommendedEvidenceRouterParallel,
+  fitRecommendedFusionWeightsParallel,
+  fitRecommendedWeightsParallel,
+  optimizeEvidenceRouterParallel,
+  optimizeFusionWeightsParallel,
+  optimizeWeightsParallel,
   evaluateProductionRouter,
   type WeightSearchSample,
 } from "./weight-search.js"
@@ -114,6 +114,23 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkProfileConfig => {
 const reportProgress = (message: string): void => {
   process.stderr.write(`[retrieval benchmark] ${message}\n`)
 }
+
+const runParallelSearch = <A>(operation: () => Promise<A>): Effect.Effect<A, Error> =>
+  Effect.tryPromise({
+    try: operation,
+    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+  })
+
+const splitSamples = (
+  samples: readonly WeightSearchSample[],
+  isValidation: (sample: WeightSearchSample) => boolean,
+): {
+  readonly development: readonly WeightSearchSample[]
+  readonly validation: readonly WeightSearchSample[]
+} => ({
+  development: samples.filter((sample) => !isValidation(sample)),
+  validation: samples.filter(isValidation),
+})
 
 const isLongInput = (text: string): boolean =>
   Buffer.byteLength(text, "utf8") / 4 > SINGLE_ITEM_ESTIMATED_TOKENS
@@ -271,6 +288,8 @@ export const runRetrievalBenchmark = (
   Effect.gen(function* () {
     const benchmarkStartedAt = performance.now()
     const config = profileConfig(profile)
+    const serialSearch = process.env.PIX_BENCH_SEARCH_MODE === "serial"
+    const searchOptions = serialSearch ? { workerCount: 0 } : {}
     const optimizationProfile = yield* selectOptimizationProfile()
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
@@ -494,42 +513,58 @@ export const runRetrievalBenchmark = (
     }
 
     const weightSearchStartedAt = performance.now()
-    const weightSearch = config.legacyDiagnostics
-      ? [...sampleGroups.values()].flatMap((group) => {
-          const groupedFolds = Array.from({ length: config.groupedFolds }, (_, fold) =>
-            optimizeWeights(
-              group.model,
-              group.queryKind,
-              groupedStrategy,
-              String(fold + 1),
-              group.samples.filter((sample) => sample.groupedFold !== fold),
-              group.samples.filter((sample) => sample.groupedFold === fold),
-              optimizationProfile,
+    const weightSearch: BenchmarkArtifact["weightSearch"][number][] = []
+    const recommendedWeights: BenchmarkArtifact["recommendedWeights"][number][] = []
+    if (config.legacyDiagnostics) {
+      for (const group of sampleGroups.values()) {
+        for (let fold = 0; fold < config.groupedFolds; fold++) {
+          weightSearch.push(
+            yield* runParallelSearch(() =>
+              optimizeWeightsParallel(
+                group.model,
+                group.queryKind,
+                groupedStrategy,
+                String(fold + 1),
+                group.samples.filter((sample) => sample.groupedFold !== fold),
+                group.samples.filter((sample) => sample.groupedFold === fold),
+                optimizationProfile,
+                searchOptions,
+              ),
             ),
           )
-          const repositories = [...new Set(group.samples.map((sample) => sample.repository))]
-          const repositoryFolds =
-            config.repositoryHoldouts && repositories.length > 1
-              ? repositories.map((repository) =>
-                  optimizeWeights(
-                    group.model,
-                    group.queryKind,
-                    "leave-one-repository-out",
-                    repository,
-                    group.samples.filter((sample) => sample.repository !== repository),
-                    group.samples.filter((sample) => sample.repository === repository),
-                    optimizationProfile,
-                  ),
-                )
-              : []
-          return [...groupedFolds, ...repositoryFolds]
-        })
-      : []
-    const recommendedWeights = config.legacyDiagnostics
-      ? [...sampleGroups.values()].map((group) =>
-          fitRecommendedWeights(group.model, group.queryKind, group.samples, optimizationProfile),
+        }
+        const repositories = [...new Set(group.samples.map((sample) => sample.repository))]
+        if (config.repositoryHoldouts && repositories.length > 1) {
+          for (const repository of repositories) {
+            weightSearch.push(
+              yield* runParallelSearch(() =>
+                optimizeWeightsParallel(
+                  group.model,
+                  group.queryKind,
+                  "leave-one-repository-out",
+                  repository,
+                  group.samples.filter((sample) => sample.repository !== repository),
+                  group.samples.filter((sample) => sample.repository === repository),
+                  optimizationProfile,
+                  searchOptions,
+                ),
+              ),
+            )
+          }
+        }
+        recommendedWeights.push(
+          yield* runParallelSearch(() =>
+            fitRecommendedWeightsParallel(
+              group.model,
+              group.queryKind,
+              group.samples,
+              optimizationProfile,
+              searchOptions,
+            ),
+          ),
         )
-      : []
+      }
+    }
     const weightSearchDurationMs = performance.now() - weightSearchStartedAt
 
     const fusionSearchStartedAt = performance.now()
@@ -569,40 +604,57 @@ export const runRetrievalBenchmark = (
       for (const fusion of config.fusionMethods) {
         reportProgress(`${model}: selecting static ${fusion} fusion weights`)
         for (let fold = 0; fold < config.groupedFolds; fold++) {
+          const split = splitSamples(samples, (sample) => sample.groupedFold === fold)
           fusionSearch.push(
-            optimizeFusionWeights(
-              model,
-              fusion,
-              groupedStrategy,
-              String(fold + 1),
-              samples.filter((sample) => sample.groupedFold !== fold),
-              samples.filter((sample) => sample.groupedFold === fold),
-              optimizationProfile,
+            yield* runParallelSearch(() =>
+              optimizeFusionWeightsParallel(
+                model,
+                fusion,
+                groupedStrategy,
+                String(fold + 1),
+                split.development,
+                split.validation,
+                optimizationProfile,
+                searchOptions,
+              ),
             ),
           )
         }
         if (config.repositoryHoldouts && repositories.length > 1) {
           for (const repository of repositories) {
+            const split = splitSamples(samples, (sample) => sample.repository === repository)
             fusionSearch.push(
-              optimizeFusionWeights(
-                model,
-                fusion,
-                "leave-one-repository-out",
-                repository,
-                samples.filter((sample) => sample.repository !== repository),
-                samples.filter((sample) => sample.repository === repository),
-                optimizationProfile,
+              yield* runParallelSearch(() =>
+                optimizeFusionWeightsParallel(
+                  model,
+                  fusion,
+                  "leave-one-repository-out",
+                  repository,
+                  split.development,
+                  split.validation,
+                  optimizationProfile,
+                  searchOptions,
+                ),
               ),
             )
           }
         }
       }
     }
-    const recommendedFusionWeights = [...samplesByModel].flatMap(([model, samples]) =>
-      config.fusionMethods.map((fusion) =>
-        fitRecommendedFusionWeights(model, fusion, samples, optimizationProfile),
-      ),
-    )
+    const recommendedFusionWeights: BenchmarkArtifact["recommendedFusionWeights"][number][] = []
+    for (const [model, samples] of samplesByModel)
+      for (const fusion of config.fusionMethods)
+        recommendedFusionWeights.push(
+          yield* runParallelSearch(() =>
+            fitRecommendedFusionWeightsParallel(
+              model,
+              fusion,
+              samples,
+              optimizationProfile,
+              searchOptions,
+            ),
+          ),
+        )
     const fusionSearchDurationMs = performance.now() - fusionSearchStartedAt
 
     const evidenceRouterSearchStartedAt = performance.now()
@@ -610,48 +662,65 @@ export const runRetrievalBenchmark = (
     for (const [model, samples] of samplesByModel) {
       for (const fusion of config.routerFusionMethods) {
         for (let fold = 0; fold < config.groupedFolds; fold++) {
+          const split = splitSamples(samples, (sample) => sample.groupedFold === fold)
           reportProgress(
             `${model}: selecting ${fusion} evidence router for grouped fold ${fold + 1}/${config.groupedFolds}`,
           )
           evidenceRouterSearch.push(
-            ...optimizeEvidenceRouter(
-              model,
-              fusion,
-              groupedStrategy,
-              String(fold + 1),
-              samples.filter((sample) => sample.groupedFold !== fold),
-              samples.filter((sample) => sample.groupedFold === fold),
-              optimizationProfile,
-            ),
+            ...(yield* runParallelSearch(() =>
+              optimizeEvidenceRouterParallel(
+                model,
+                fusion,
+                groupedStrategy,
+                String(fold + 1),
+                split.development,
+                split.validation,
+                optimizationProfile,
+                searchOptions,
+              ),
+            )),
           )
         }
         const repositories = [...new Set(samples.map((sample) => sample.repository))]
         if (config.repositoryHoldouts && repositories.length > 1) {
           for (const repository of repositories) {
+            const split = splitSamples(samples, (sample) => sample.repository === repository)
             reportProgress(
               `${model}: selecting ${fusion} evidence router with ${repository} held out`,
             )
             evidenceRouterSearch.push(
-              ...optimizeEvidenceRouter(
-                model,
-                fusion,
-                "leave-one-repository-out",
-                repository,
-                samples.filter((sample) => sample.repository !== repository),
-                samples.filter((sample) => sample.repository === repository),
-                optimizationProfile,
-              ),
+              ...(yield* runParallelSearch(() =>
+                optimizeEvidenceRouterParallel(
+                  model,
+                  fusion,
+                  "leave-one-repository-out",
+                  repository,
+                  split.development,
+                  split.validation,
+                  optimizationProfile,
+                  searchOptions,
+                ),
+              )),
             )
           }
         }
       }
     }
     reportProgress("fitting final evidence router on all samples")
-    const recommendedEvidenceRouters = [...samplesByModel].flatMap(([model, samples]) =>
-      config.routerFusionMethods.flatMap((fusion) =>
-        fitRecommendedEvidenceRouter(model, fusion, samples, optimizationProfile),
-      ),
-    )
+    const recommendedEvidenceRouters: BenchmarkArtifact["recommendedEvidenceRouters"][number][] = []
+    for (const [model, samples] of samplesByModel)
+      for (const fusion of config.routerFusionMethods)
+        recommendedEvidenceRouters.push(
+          ...(yield* runParallelSearch(() =>
+            fitRecommendedEvidenceRouterParallel(
+              model,
+              fusion,
+              samples,
+              optimizationProfile,
+              searchOptions,
+            ),
+          )),
+        )
     const evidenceRouterSearchDurationMs = performance.now() - evidenceRouterSearchStartedAt
 
     const embeddingDurationMs = embeddingRuns.reduce(

@@ -245,6 +245,19 @@ current beam elites, so a later coordinate cannot regress the best development c
 development folds and evaluated unchanged against static weights on excluded intent folds and
 repositories; authored query-form labels remain informed reference strata and are not router inputs.
 This router remains benchmark-only until holdouts justify a production change.
+Serial benchmark weight and router searches use a benchmark-only prepared evaluator: each sample and
+fusion method materializes per-chunk normalized or RRF contributions once, then candidate weights reuse
+that data. Public `fuseRankings` semantics and its existing ranking, normalization, and typed-array caches
+remain unchanged. The evaluator still materializes and sorts the full candidate union for every
+configuration; partial top-K or metric-specialized evaluation remains future work. The explicit parallel
+benchmark path uses a fixed native `node:worker_threads` pool (default `max(1, availableParallelism() - 1)`),
+sends the prepared snapshot once per worker, batches candidate weight vectors, and keeps beam/cache/archive/
+selection state on the main thread. The search APIs are async so serial and worker execution share the
+same selection algorithm; `PIX_BENCH_WORKERS=0` selects serial evaluation, and the runner's
+`PIX_BENCH_SEARCH_MODE=serial` selects that serial pool mode. `PIX_BENCH_WORKER_BATCH_SIZE` bounds each
+worker message.
+Unavailable worker startup falls back to serial evaluation; task failures are surfaced and all workers are
+terminated before the benchmark fails.
 Repository checkouts live under ignored `benchmarks/.cache/repos/`; generated artifacts live under
 ignored `benchmarks/results/`. Dense and Sparse vectors are held only in the production in-memory
 SQLite adapter during a benchmark run. See `benchmarks/README.md` and `benchmarks/BASELINE.md`.
