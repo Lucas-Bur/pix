@@ -29,7 +29,11 @@ import { OPTIMIZATION_PROFILES, type OptimizationProfile } from "./optimization-
 import { prepareCorpus, type PreparedCorpus } from "./prepare.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "./ranking.js"
 import { renderMarkdownReport } from "./report.js"
-import { runEvidenceRouterJobs, type EvidenceRouterHoldoutJob } from "./router-job-pool.js"
+import {
+  runEvidenceRouterJobs,
+  type EvidenceRouterFitAllJob,
+  type EvidenceRouterHoldoutJob,
+} from "./router-job-pool.js"
 import { withSqliteBenchmarkStore } from "./sqlite-index.js"
 import {
   ROUTER_SEARCH_STRATEGY,
@@ -50,9 +54,14 @@ import {
   optimizeFusionWeightsParallel,
   optimizeWeightsParallel,
   evaluateProductionRouter,
+  type ParallelSearchOptions,
   type WeightSearchSample,
 } from "./weight-search.js"
-import { getDefaultWorkerCount, resolveWorkerCount } from "./worker-pool.js"
+import {
+  createCandidateEvaluationQueue,
+  getDefaultWorkerCount,
+  resolveWorkerCount,
+} from "./worker-pool.js"
 
 const CONTEXT_BUDGETS = [2_048, 4_096, 8_192, 16_384] as const
 const EMBEDDING_BATCH_SIZE = 2
@@ -176,6 +185,35 @@ const planEvidenceRouterJobs = (
     }
   }
   return jobs
+}
+
+type RouterSearchJobResult =
+  | { readonly kind: "holdout"; readonly results: readonly EvidenceRouterSearchResult[] }
+  | { readonly kind: "fit-all"; readonly results: readonly RecommendedEvidenceRouter[] }
+
+const runRouterSearchJob = (
+  job: EvidenceRouterHoldoutJob | EvidenceRouterFitAllJob,
+  profile: OptimizationProfile,
+  options: ParallelSearchOptions,
+): Promise<RouterSearchJobResult> => {
+  if (job.kind === "holdout")
+    return optimizeEvidenceRouterParallel(
+      job.model,
+      job.fusion,
+      job.strategy,
+      job.fold,
+      job.development,
+      job.validation,
+      profile,
+      options,
+    ).then((results) => ({ kind: "holdout", results }))
+  return fitRecommendedEvidenceRouterParallel(
+    job.model,
+    job.fusion,
+    job.samples,
+    profile,
+    options,
+  ).then((results) => ({ kind: "fit-all", results }))
 }
 
 const isLongInput = (text: string): boolean =>
@@ -713,91 +751,68 @@ export const runRetrievalBenchmark = (
       resolveWorkerCount(searchOptions.workerCount),
       getDefaultWorkerCount(),
     )
-    const recommendedJobs: {
-      readonly model: string
-      readonly fusion: FusionMethod
-      readonly samples: readonly WeightSearchSample[]
-    }[] = []
+    const recommendedJobs: EvidenceRouterFitAllJob[] = []
     for (const [model, samples] of samplesByModel)
       for (const fusion of config.routerFusionMethods)
-        recommendedJobs.push({ model, fusion, samples })
-    const canParallelizeRouterJobs = !serialSearch && routerWorkerBudget >= 2
-    // Holdouts are complete native-worker jobs; final fits retain their candidate queue.
-    // Split one budget between both queues so nested pools never oversubscribe the machine.
-    const holdoutWorkerCount =
-      !canParallelizeRouterJobs || routerJobs.length === 0
-        ? 0
-        : Math.min(
-            routerJobs.length,
-            recommendedJobs.length === 0
-              ? routerWorkerBudget
-              : Math.max(1, Math.floor(routerWorkerBudget / 2)),
-          )
-    const recommendedWorkerCount =
-      !canParallelizeRouterJobs || recommendedJobs.length === 0
-        ? 0
-        : routerJobs.length === 0
-          ? Math.min(recommendedJobs.length, routerWorkerBudget)
-          : Math.max(1, routerWorkerBudget - holdoutWorkerCount)
+        recommendedJobs.push({ kind: "fit-all", model, fusion, samples })
+    const allRouterJobs: readonly (EvidenceRouterHoldoutJob | EvidenceRouterFitAllJob)[] = [
+      ...routerJobs,
+      ...recommendedJobs,
+    ]
+    const canParallelizeRouterJobs =
+      !serialSearch && routerWorkerBudget >= 3 && allRouterJobs.length > 0
+    const routerControllerCount = canParallelizeRouterJobs
+      ? Math.min(allRouterJobs.length, Math.max(1, Math.floor(routerWorkerBudget / 2)))
+      : 0
+    const candidateWorkerCount = canParallelizeRouterJobs
+      ? Math.max(1, routerWorkerBudget - routerControllerCount)
+      : 0
+    const candidateQueue = canParallelizeRouterJobs
+      ? yield* runParallelSearch(() =>
+          createCandidateEvaluationQueue({ workerCount: candidateWorkerCount }),
+        )
+      : undefined
     reportProgress(
-      `running ${routerJobs.length} complete holdout jobs with ${holdoutWorkerCount} native workers ` +
-        `and ${recommendedJobs.length} final fits with ${recommendedWorkerCount} pool workers`,
+      `running ${allRouterJobs.length} evidence-router jobs with ` +
+        `${routerControllerCount} native controllers and ` +
+        `${candidateQueue?.workerCount ?? 0} shared candidate workers`,
+    )
+    const closeCandidateQueue =
+      candidateQueue === undefined ? Effect.void : runParallelSearch(() => candidateQueue.close())
+    const routerResults = yield* Effect.ensuring(
+      canParallelizeRouterJobs
+        ? runParallelSearch((signal) =>
+            runEvidenceRouterJobs(allRouterJobs, optimizationProfile, {
+              workerCount: routerControllerCount,
+              candidateQueue,
+              signal,
+            }).then((results) =>
+              results.map((result): RouterSearchJobResult => {
+                if (result.kind === "holdout") return { kind: "holdout", results: result.results }
+                return { kind: "fit-all", results: result.results }
+              }),
+            ),
+          )
+        : Effect.forEach(
+            allRouterJobs,
+            (job) =>
+              runParallelSearch((signal) =>
+                runRouterSearchJob(job, optimizationProfile, {
+                  ...searchOptions,
+                  workerCount: 0,
+                  signal,
+                }),
+              ),
+            { concurrency: 1 },
+          ),
+      Effect.orDie(closeCandidateQueue),
     )
     let evidenceRouterSearch: readonly EvidenceRouterSearchResult[] = []
     let recommendedEvidenceRouters: readonly RecommendedEvidenceRouter[] = []
-    const holdoutSearch =
-      canParallelizeRouterJobs && routerJobs.length > 0
-        ? runParallelSearch((signal) =>
-            runEvidenceRouterJobs(routerJobs, optimizationProfile, {
-              workerCount: holdoutWorkerCount,
-              signal,
-            }),
-          )
-        : Effect.forEach(
-            routerJobs,
-            (job) =>
-              runParallelSearch((signal) =>
-                optimizeEvidenceRouterParallel(
-                  job.model,
-                  job.fusion,
-                  job.strategy,
-                  job.fold,
-                  job.development,
-                  job.validation,
-                  optimizationProfile,
-                  { ...searchOptions, workerCount: 0, signal },
-                ),
-              ),
-            { concurrency: 1 },
-          )
-    const recommendedSearch = Effect.forEach(
-      recommendedJobs,
-      (job) =>
-        runParallelSearch((signal) =>
-          fitRecommendedEvidenceRouterParallel(
-            job.model,
-            job.fusion,
-            job.samples,
-            optimizationProfile,
-            {
-              ...searchOptions,
-              workerCount: canParallelizeRouterJobs ? recommendedWorkerCount : 0,
-              signal,
-            },
-          ),
-        ),
-      { concurrency: 1 },
-    )
-    if (canParallelizeRouterJobs) {
-      const results = yield* Effect.all(
-        { holdouts: holdoutSearch, recommended: recommendedSearch },
-        { concurrency: 2 },
-      )
-      evidenceRouterSearch = results.holdouts.flat()
-      recommendedEvidenceRouters = results.recommended.flat()
-    } else {
-      evidenceRouterSearch = (yield* holdoutSearch).flat()
-      recommendedEvidenceRouters = (yield* recommendedSearch).flat()
+    for (const result of routerResults) {
+      if (result.kind === "holdout")
+        evidenceRouterSearch = [...evidenceRouterSearch, ...result.results]
+      else recommendedEvidenceRouters = [...recommendedEvidenceRouters, ...result.results]
     }
     const evidenceRouterSearchDurationMs = performance.now() - evidenceRouterSearchStartedAt
 

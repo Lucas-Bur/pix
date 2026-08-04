@@ -7,6 +7,7 @@ import { prepareFusion } from "../retrieval/fusion.js"
 import { SEARCH_PRIORITY_PROFILE } from "../retrieval/optimization-profiles.js"
 import {
   runEvidenceRouterJobs,
+  type EvidenceRouterFitAllJob,
   type EvidenceRouterHoldoutJob,
 } from "../retrieval/router-job-pool.js"
 import {
@@ -21,6 +22,8 @@ import {
 } from "../retrieval/weight-search.js"
 import {
   createCandidateEvaluationPool,
+  createCandidateEvaluationPoolOnQueue,
+  createCandidateEvaluationQueue,
   createEvaluationSnapshot,
   evaluateCandidatesSerial,
   getDefaultWorkerCount,
@@ -92,9 +95,18 @@ const searchSample = {
   chunks,
 }
 
+const withoutSearchTimings = <
+  T extends { readonly searchDiagnostics: { readonly timings: object } },
+>(
+  result: T,
+) => {
+  const { timings: _timings, ...searchDiagnostics } = result.searchDiagnostics
+  return { ...result, searchDiagnostics }
+}
+
 describe("benchmark candidate evaluation pool", () => {
-  it("runs complete router jobs in native workers and preserves results", async () => {
-    const job: EvidenceRouterHoldoutJob = {
+  it("runs holdout and fit-all jobs through one native queue", async () => {
+    const holdoutJob: EvidenceRouterHoldoutJob = {
       kind: "holdout",
       model: "fixture",
       fusion: "dbsf",
@@ -103,20 +115,54 @@ describe("benchmark candidate evaluation pool", () => {
       development: [searchSample],
       validation: [searchSample],
     }
-    const [parallel] = await runEvidenceRouterJobs([job], SEARCH_PRIORITY_PROFILE, {
-      workerCount: 1,
-    })
-    const serial = await optimizeEvidenceRouter(
-      job.model,
-      job.fusion,
-      job.strategy,
-      job.fold,
-      job.development,
-      job.validation,
-      SEARCH_PRIORITY_PROFILE,
-    )
+    const fitAllJob: EvidenceRouterFitAllJob = {
+      kind: "fit-all",
+      model: "fixture",
+      fusion: "dbsf",
+      samples: [searchSample],
+    }
+    const candidateQueue = await createCandidateEvaluationQueue({ workerCount: 2 })
+    try {
+      const [parallelHoldout, parallelFitAll] = await runEvidenceRouterJobs(
+        [holdoutJob, fitAllJob],
+        SEARCH_PRIORITY_PROFILE,
+        {
+          workerCount: 2,
+          candidateQueue,
+        },
+      )
+      const serialHoldout = await optimizeEvidenceRouter(
+        holdoutJob.model,
+        holdoutJob.fusion,
+        holdoutJob.strategy,
+        holdoutJob.fold,
+        holdoutJob.development,
+        holdoutJob.validation,
+        SEARCH_PRIORITY_PROFILE,
+      )
+      const serialFitAll = await fitRecommendedEvidenceRouter(
+        fitAllJob.model,
+        fitAllJob.fusion,
+        fitAllJob.samples,
+        SEARCH_PRIORITY_PROFILE,
+      )
 
-    expect(parallel).toEqual(serial)
+      expect(parallelHoldout.jobId).toBe(0)
+      expect(parallelHoldout.kind).toBe("holdout")
+      expect(parallelHoldout.results.map(withoutSearchTimings)).toEqual(
+        serialHoldout.map(withoutSearchTimings),
+      )
+      expect(parallelFitAll.jobId).toBe(1)
+      expect(parallelFitAll.kind).toBe("fit-all")
+      expect(parallelFitAll.results.map(withoutSearchTimings)).toEqual(
+        serialFitAll.map(withoutSearchTimings),
+      )
+      expect(
+        parallelHoldout.results[0]?.searchDiagnostics.timings.candidateEvaluationMs,
+      ).toBeGreaterThan(0)
+    } finally {
+      await candidateQueue.close()
+    }
   })
 
   it("derives a bounded default and honors explicit sizing", () => {
@@ -145,6 +191,52 @@ describe("benchmark candidate evaluation pool", () => {
       await pool.close()
     }
     expect(pool.stats().activeWorkerCount).toBe(0)
+  })
+
+  it("shares one queue across independent snapshots without changing results", async () => {
+    const queue = await createCandidateEvaluationQueue({ workerCount: 2, batchSize: 1 })
+    const secondSnapshot = createEvaluationSnapshot([
+      {
+        evaluator: prepareFusion("dbsf", rankings, 10),
+        targets: [new Set([0])],
+        chunks,
+        sampleWeight: 1,
+      },
+      {
+        evaluator: prepareFusion("dbsf", rankings, 10),
+        targets: [new Set([3])],
+        chunks,
+        sampleWeight: 2,
+      },
+    ])
+    const firstPool = createCandidateEvaluationPoolOnQueue(snapshot, queue)
+    const secondPool = createCandidateEvaluationPoolOnQueue(secondSnapshot, queue)
+    try {
+      const [firstResults, secondResults] = await Promise.all([
+        firstPool.evaluate(candidates),
+        secondPool.evaluate(candidates),
+      ])
+      expect(firstResults).toEqual(evaluateCandidatesSerial(snapshot, candidates))
+      expect(secondResults).toEqual(evaluateCandidatesSerial(secondSnapshot, candidates))
+      expect(queue.activeWorkerCount()).toBe(0)
+    } finally {
+      await firstPool.close()
+      await secondPool.close()
+      await queue.close()
+    }
+  })
+
+  it("rejects an aborted queue request without closing the shared queue", async () => {
+    const queue = await createCandidateEvaluationQueue({ workerCount: 2, batchSize: 1 })
+    const controller = new AbortController()
+    try {
+      const pending = queue.evaluate(snapshot, candidates, controller.signal)
+      controller.abort()
+      await expect(pending).rejects.toThrow("interrupted")
+      await expect(queue.evaluate(snapshot, candidates.slice(0, 1))).resolves.toHaveLength(1)
+    } finally {
+      await queue.close()
+    }
   })
 
   it("keeps worker metrics aligned with canonical summarization", () => {
