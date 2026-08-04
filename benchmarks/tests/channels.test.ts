@@ -599,7 +599,7 @@ describe("retrieval benchmark fixture", () => {
         samples,
         samples,
         undefined,
-        { workerCount: 2, batchSize: 8 },
+        { workerCount: 2, batchSize: 8, fallbackToSerial: false },
       ),
     )
 

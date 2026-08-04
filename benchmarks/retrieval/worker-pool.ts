@@ -149,14 +149,24 @@ const contextTokens = (chunk: Chunk): number =>
 /** Build the compact, cloneable snapshot used by serial and worker evaluators. */
 export const createEvaluationSnapshot = (
   inputs: readonly EvaluationSampleInput[],
-): EvaluationSnapshot => ({
-  samples: inputs.map((input) => ({
-    fusion: input.evaluator.snapshot,
-    targets: input.targets.map((target) => [...target]),
-    contextTokens: input.chunks.map(contextTokens),
-    sampleWeight: input.sampleWeight,
-  })),
-})
+): EvaluationSnapshot => {
+  const contextTokenCache = new WeakMap<readonly Chunk[], readonly number[]>()
+  return {
+    samples: inputs.map((input) => {
+      let cachedContextTokens = contextTokenCache.get(input.chunks)
+      if (cachedContextTokens === undefined) {
+        cachedContextTokens = input.chunks.map(contextTokens)
+        contextTokenCache.set(input.chunks, cachedContextTokens)
+      }
+      return {
+        fusion: input.evaluator.snapshot,
+        targets: input.targets.map((target) => [...target]),
+        contextTokens: cachedContextTokens,
+        sampleWeight: input.sampleWeight,
+      }
+    }),
+  }
+}
 
 /** Evaluate candidates serially using the same prepared snapshot as the worker pool. */
 export const evaluateCandidatesSerial = (
@@ -212,7 +222,7 @@ class NativeCandidateEvaluationPool implements CandidateEvaluationPool {
       worker.on("message", (message: unknown) => this.handleMessage(slot, message))
       worker.on("error", (cause: Error) => this.handleWorkerError(slot, cause))
       worker.on("exit", (code: number) => {
-        if (!this.closed && code !== 0)
+        if (!this.closed)
           this.handleWorkerError(slot, new Error(`Fusion worker exited with code ${code}`))
       })
       this.slots.push(slot)
