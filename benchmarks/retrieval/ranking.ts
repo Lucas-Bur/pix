@@ -10,7 +10,7 @@ import { rankCamelCase } from "../../src/lib/retrieval/camelcase.js"
 import { buildRoutingEvidence, routeWithEvidence } from "../../src/lib/retrieval/evidence-router.js"
 import { fuseRankings } from "../../src/lib/retrieval/fusion.js"
 import { rankIdentity } from "../../src/lib/retrieval/identity.js"
-import { BENCHMARK_RRF_BASELINE_CONFIG } from "./baseline.js"
+import { HISTORICAL_RRF_BASELINE_CONFIG } from "./baseline.js"
 import type { PreparedCorpus } from "./prepare.js"
 import type { RetrievalVariant } from "./types.js"
 
@@ -114,13 +114,13 @@ export const fuseVariant = (
     variant === "rrf"
       ? routeWithEvidence(
           buildRoutingEvidence(query, selectedRankings),
-          BENCHMARK_RRF_BASELINE_CONFIG,
+          HISTORICAL_RRF_BASELINE_CONFIG,
         )
       : { identity: 1, camelcase: 1, bm25: 1, dense: 1, sparse: 1 }
   return fuseRankings(
-    variant === "rrf" ? BENCHMARK_RRF_BASELINE_CONFIG.fusion : "rrf",
+    variant === "rrf" ? HISTORICAL_RRF_BASELINE_CONFIG.fusion : "rrf",
     selectedRankings,
     weights,
-    BENCHMARK_RRF_BASELINE_CONFIG.candidateDepth,
+    HISTORICAL_RRF_BASELINE_CONFIG.candidateDepth,
   )
 }

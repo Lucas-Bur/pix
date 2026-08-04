@@ -46,7 +46,7 @@ import {
   optimizeEvidenceRouter,
   optimizeFusionWeights,
   optimizeWeights,
-  evaluateProductionRrf,
+  evaluateProductionRouter,
   type WeightSearchSample,
 } from "./weight-search.js"
 
@@ -161,9 +161,9 @@ const selectModels = (): Effect.Effect<readonly string[], Error> => {
 const selectOptimizationProfile = (): Effect.Effect<OptimizationProfile, Error> => {
   const requested = process.env.PIX_BENCH_OPTIMIZATION_PROFILE
   if (requested === undefined) return Effect.succeed(OPTIMIZATION_PROFILES["search-priority"])
-  const selected = Object.values(OPTIMIZATION_PROFILES).find(
-    (profile) => profile.name === requested,
-  )
+  const selected = (OPTIMIZATION_PROFILES as Record<string, OptimizationProfile | undefined>)[
+    requested
+  ]
   return selected === undefined
     ? Effect.fail(new Error(`Unknown PIX_BENCH_OPTIMIZATION_PROFILE value: ${requested}`))
     : Effect.succeed(selected)
@@ -533,12 +533,12 @@ export const runRetrievalBenchmark = (
     const weightSearchDurationMs = performance.now() - weightSearchStartedAt
 
     const fusionSearchStartedAt = performance.now()
-    const productionRrfSearch: BenchmarkArtifact["productionRrfSearch"][number][] = []
+    const productionRouterSearch: BenchmarkArtifact["productionRouterSearch"][number][] = []
     for (const [model, samples] of samplesByModel) {
       const repositories = [...new Set(samples.map((sample) => sample.repository))]
       for (let fold = 0; fold < config.groupedFolds; fold++) {
-        productionRrfSearch.push(
-          evaluateProductionRrf(
+        productionRouterSearch.push(
+          evaluateProductionRouter(
             model,
             groupedStrategy,
             String(fold + 1),
@@ -550,8 +550,8 @@ export const runRetrievalBenchmark = (
       }
       if (config.repositoryHoldouts && repositories.length > 1) {
         for (const repository of repositories) {
-          productionRrfSearch.push(
-            evaluateProductionRrf(
+          productionRouterSearch.push(
+            evaluateProductionRouter(
               model,
               "leave-one-repository-out",
               repository,
@@ -664,14 +664,15 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 21,
+      schemaVersion: 22,
       benchmarkProfile: profile,
       optimizationProfile,
       validationProtocol: {
         selection: "development-only",
-        holdouts: config.repositoryHoldouts
-          ? [groupedStrategy, "leave-one-repository-out"]
-          : [groupedStrategy],
+        holdouts:
+          config.repositoryHoldouts && repositories.length > 1
+            ? [groupedStrategy, "leave-one-repository-out"]
+            : [groupedStrategy],
         finalTest: "nested-cross-validation-plan",
         nestedOuterFolds: config.groupedFolds,
         nestedInnerFolds: Math.max(3, config.groupedFolds - 2),
@@ -709,7 +710,7 @@ export const runRetrievalBenchmark = (
       measurements,
       weightSearch,
       recommendedWeights,
-      productionRrfSearch,
+      productionRouterSearch,
       fusionSearch,
       recommendedFusionWeights,
       evidenceRouterSearch,

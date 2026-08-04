@@ -22,7 +22,8 @@ retrieval as a fallback for open-ended exploration.
 Keep the explicit fusion seam and evidence-based router rather than adding another channel-specific branch
 to RRF. Activate DBSF as the production compatibility/default fusion based on the `search-priority` full
 benchmark: fit-all R@5 is `80.7%` versus `68.7%` for Relative Score, and fit-all Context@4k is `81.3%`
-versus `73.3%`. Retain RRF as an explicit historical guardrail and rollback baseline while the broader
+versus `73.3%`. Use the current Production router as the benchmark guardrail. Retain RRF only as an explicit
+historical diagnostic and rollback baseline while the broader
 matrix validation continues in issue #166.
 
 Benchmarks compose production embedders and the production IndexStore with an in-memory SQLite database.
@@ -62,7 +63,7 @@ issue #163.
 ## Rationale
 
 **Why retain RRF as a baseline**: It is rank-based, robust to incomparable raw score scales, and provides
-a stable rollback and historical guardrail while alternative fusion methods are validated.
+a stable diagnostic and rollback comparison while alternative fusion methods are validated.
 
 **Why evaluate Relative Score and DBSF**: The benchmark shows that score geometry contains useful signal
 that rank-only RRF cannot use. Each method can still consume the same `RankedChunk[]` channel interface.
@@ -79,7 +80,8 @@ may be added later.
 
 ## Consequences
 
-- DBSF is the active compatibility fusion; RRF remains a safe fallback and explicit benchmark baseline.
+- DBSF is the active compatibility fusion; the current Production router is the benchmark guardrail, while
+  RRF remains a safe fallback and explicit diagnostic baseline.
 - Sparse participates in the same fusion seam with a promoted `0.1` dynamic base weight and observable
   evidence routing.
 - Fusion configurations become typed, validated, and explainable rather than scattered constants.

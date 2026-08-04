@@ -206,8 +206,8 @@ export interface FusionSearchResult {
   readonly holdoutBreakdown: readonly HoldoutQuality[]
 }
 
-/** Holdout evaluation of the current production RRF query-routing weights. */
-export interface ProductionRrfSearchResult {
+/** Holdout evaluation of the current production router used as the benchmark guardrail. */
+export interface ProductionRouterSearchResult {
   readonly model: string
   readonly strategy: ValidationStrategy
   readonly fold: string
@@ -318,7 +318,7 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 21
+  readonly schemaVersion: 22
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   /** Versioned objective profile used for candidate selection and aggregate metrics. */
@@ -368,7 +368,7 @@ export interface BenchmarkArtifact {
   readonly measurements: readonly QueryMeasurement[]
   readonly weightSearch: readonly WeightSearchResult[]
   readonly recommendedWeights: readonly RecommendedWeights[]
-  readonly productionRrfSearch: readonly ProductionRrfSearchResult[]
+  readonly productionRouterSearch: readonly ProductionRouterSearchResult[]
   readonly fusionSearch: readonly FusionSearchResult[]
   readonly recommendedFusionWeights: readonly RecommendedFusionWeights[]
   readonly evidenceRouterSearch: readonly EvidenceRouterSearchResult[]

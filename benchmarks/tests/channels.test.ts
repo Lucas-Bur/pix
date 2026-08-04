@@ -485,6 +485,7 @@ describe("retrieval benchmark fixture", () => {
     expect(result.searchDiagnostics.proxyFullAgreement).toBeGreaterThanOrEqual(0)
     expect(result.searchDiagnostics.proxyFullAgreement).toBeLessThanOrEqual(1)
     expect(result.searchBaseline.algorithm).toBe("random-scout")
+    expect(result.searchBaseline.seed).toBe(1)
     expect(result.searchBaseline.candidates).toBeGreaterThan(0)
     expect(result.searchBaseline.validation.recallAt20).toBeGreaterThanOrEqual(0)
     expect(

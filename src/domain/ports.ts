@@ -326,7 +326,7 @@ export interface SearchOptions {
 export interface SearchResult {
   /** Raw fusion score (internal — use `rel` for human-friendly display). */
   readonly score: number
-  /** Normalised relevance score on [0, ~1] scale. score * K / sumWeights. */
+  /** Normalised relevance score on [0, ~1] scale, adjusted for the selected fusion method. */
   readonly rel: number
   /** Repository-relative file path of the source file. */
   readonly file: string
