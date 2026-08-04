@@ -1,7 +1,7 @@
 import type { RankedChunk } from "../../src/domain/ports.js"
 import {
   CHANNEL_NAMES as DOMAIN_CHANNEL_NAMES,
-  PRODUCTION_COMPATIBILITY_CONFIG,
+  PRODUCTION_RRF_BASELINE_CONFIG,
   type ChannelName,
   type ChannelRankings,
   type ChannelWeights,
@@ -117,13 +117,13 @@ export const fuseVariant = (
     variant === "rrf"
       ? routeWithEvidence(
           buildRoutingEvidence(query, selectedRankings),
-          PRODUCTION_COMPATIBILITY_CONFIG,
+          PRODUCTION_RRF_BASELINE_CONFIG,
         )
       : { identity: 1, camelcase: 1, bm25: 1, dense: 1, sparse: 1 }
   return fuseRankings(
-    variant === "rrf" ? PRODUCTION_COMPATIBILITY_CONFIG.fusion : "rrf",
+    variant === "rrf" ? PRODUCTION_RRF_BASELINE_CONFIG.fusion : "rrf",
     selectedRankings,
     weights,
-    PRODUCTION_COMPATIBILITY_CONFIG.candidateDepth,
+    PRODUCTION_RRF_BASELINE_CONFIG.candidateDepth,
   )
 }

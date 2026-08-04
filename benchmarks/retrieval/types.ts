@@ -318,7 +318,7 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 20
+  readonly schemaVersion: 21
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   /** Versioned objective profile used for candidate selection and aggregate metrics. */

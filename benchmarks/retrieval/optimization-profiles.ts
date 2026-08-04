@@ -2,7 +2,6 @@ import { Schema } from "effect"
 
 import {
   EvidenceRouterParametersSchema,
-  PRODUCTION_COMPATIBILITY_CONFIG,
   type ChannelWeights,
   type EvidenceRouterParameters,
 } from "../../src/domain/retrieval.js"
@@ -24,6 +23,7 @@ const OptimizationProfileNames = [
   "basic-exploration",
   "natural-language",
 ] as const
+const OptimizationProfileProvenanceSchema = Schema.Literals(["authored-seed", "benchmark-promoted"])
 
 /** Query-form weights used by the benchmark's weighted aggregate objective. */
 const QueryFormWeightsSchema = Schema.Struct({
@@ -42,9 +42,18 @@ const MetricObjectiveSchema = Schema.Struct({
   contextBudget: Schema.Int.check(Schema.isGreaterThan(0)),
 })
 
+const ZERO_COEFFICIENTS: EvidenceRouterParameters["queryLengthInfluence"] = {
+  identity: 0,
+  camelcase: 0,
+  bm25: 0,
+  dense: 0,
+  sparse: 0,
+}
+
 /** Benchmark-owned optimization profile; selected candidates are validated before production use. */
 const OptimizationProfileSchema = Schema.Struct({
   name: Schema.Literals(OptimizationProfileNames),
+  provenance: OptimizationProfileProvenanceSchema,
   fusionConfig: EvidenceRouterParametersSchema,
   queryFormWeights: QueryFormWeightsSchema,
   metricObjective: MetricObjectiveSchema,
@@ -76,15 +85,18 @@ const objective = (
   contextBudget: 4_096,
 })
 
-const makeProfileFusionConfig = (baseWeights: ChannelWeights): EvidenceRouterParameters => ({
+const makeProfileFusionConfig = (
+  baseWeights: ChannelWeights,
+  queryLengthInfluence: EvidenceRouterParameters["queryLengthInfluence"] = ZERO_COEFFICIENTS,
+): EvidenceRouterParameters => ({
   baseWeights,
-  scoreInfluence: { identity: 0, camelcase: 0, bm25: 0, dense: 0, sparse: 0 },
-  geometryInfluence: { identity: 0, camelcase: 0, bm25: 0, dense: 0, sparse: 0 },
-  termCoverageInfluence: { identity: 0, camelcase: 0, bm25: 0, dense: 0, sparse: 0 },
-  pairwiseAgreementInfluence: { identity: 0, camelcase: 0, bm25: 0, dense: 0, sparse: 0 },
-  denseConfidenceInfluence: { identity: 0, camelcase: 0, bm25: 0, dense: 0, sparse: 0 },
-  identifierInfluence: { identity: 0, camelcase: 0, bm25: 0, dense: 0, sparse: 0 },
-  queryLengthInfluence: { identity: 0, camelcase: 0, bm25: 0, dense: 0, sparse: 0 },
+  scoreInfluence: ZERO_COEFFICIENTS,
+  geometryInfluence: ZERO_COEFFICIENTS,
+  termCoverageInfluence: ZERO_COEFFICIENTS,
+  pairwiseAgreementInfluence: ZERO_COEFFICIENTS,
+  denseConfidenceInfluence: ZERO_COEFFICIENTS,
+  identifierInfluence: ZERO_COEFFICIENTS,
+  queryLengthInfluence,
 })
 
 const profile = (
@@ -93,17 +105,19 @@ const profile = (
   queryFormWeights: typeof QueryFormWeightsSchema.Type,
   metricObjective: typeof MetricObjectiveSchema.Type,
 ): OptimizationProfile =>
-  decodeOptimizationProfile({ name, fusionConfig, queryFormWeights, metricObjective })
+  decodeOptimizationProfile({
+    name,
+    provenance: "authored-seed",
+    fusionConfig,
+    queryFormWeights,
+    metricObjective,
+  })
 
 const COMPATIBILITY_PROFILE_CONFIG: EvidenceRouterParameters = {
-  baseWeights: PRODUCTION_COMPATIBILITY_CONFIG.baseWeights,
-  scoreInfluence: PRODUCTION_COMPATIBILITY_CONFIG.scoreInfluence,
-  geometryInfluence: PRODUCTION_COMPATIBILITY_CONFIG.geometryInfluence,
-  termCoverageInfluence: PRODUCTION_COMPATIBILITY_CONFIG.termCoverageInfluence,
-  pairwiseAgreementInfluence: PRODUCTION_COMPATIBILITY_CONFIG.pairwiseAgreementInfluence,
-  denseConfidenceInfluence: PRODUCTION_COMPATIBILITY_CONFIG.denseConfidenceInfluence,
-  identifierInfluence: PRODUCTION_COMPATIBILITY_CONFIG.identifierInfluence,
-  queryLengthInfluence: PRODUCTION_COMPATIBILITY_CONFIG.queryLengthInfluence,
+  ...makeProfileFusionConfig(
+    { identity: 3, camelcase: 1.5, bm25: 1, dense: 1, sparse: 1 },
+    { ...ZERO_COEFFICIENTS, bm25: -1, dense: 1 },
+  ),
 }
 const BALANCED_PROFILE_CONFIG = makeProfileFusionConfig({
   identity: 1,
@@ -134,7 +148,7 @@ const NATURAL_LANGUAGE_PROFILE_CONFIG = makeProfileFusionConfig({
   sparse: 1.5,
 })
 
-/** Initial benchmark seed profile from the issue's product-priority objective. */
+/** Initial authored seed profile from the issue's product-priority objective. */
 export const SEARCH_PRIORITY_PROFILE = profile(
   "search-priority",
   COMPATIBILITY_PROFILE_CONFIG,
@@ -149,7 +163,7 @@ export const SEARCH_PRIORITY_PROFILE = profile(
   ]),
 )
 
-/** Benchmark-owned seed profiles; validated benchmark output can replace their values later. */
+/** Benchmark-owned authored seed profiles; benchmark output has not replaced these values. */
 export const OPTIMIZATION_PROFILES = {
   "search-priority": SEARCH_PRIORITY_PROFILE,
   balanced: profile(

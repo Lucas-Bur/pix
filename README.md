@@ -23,20 +23,21 @@ into `.pix/cache/`. Later indexing and queries are local; Sparse query weighting
 
 ## Commands
 
-| Command                      | Description                                                                                                                           | JSON flag |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `pix init`                   | Create `.pix/config.json` with defaults                                                                                               | `--json`  |
-| `pix index`                  | Scan, chunk, embed, and store project files                                                                                           | `--json`  |
-| `pix query "<text>" [flags]` | Five-channel RRF search (`--top`, `--context-lines`, `--ignore-path`, `--only-path`, `--max-characters`, `--no-content`, `--profile`) | `--json`  |
-| `pix mcp`                    | Run the host-managed MCP stdio server with the same retrieval options as `pix query`                                                  | —         |
-| `pix status`                 | Show index statistics                                                                                                                 | `--json`  |
-| `pix reset`                  | Delete index files (chunks + vectors)                                                                                                 | `--json`  |
+| Command                      | Description                                                                                                                                                                      | JSON flag |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `pix init`                   | Create `.pix/config.json` with defaults                                                                                                                                          | `--json`  |
+| `pix index`                  | Scan, chunk, embed, and store project files                                                                                                                                      | `--json`  |
+| `pix query "<text>" [flags]` | Five-channel evidence-routed search with DBSF compatibility fusion (`--top`, `--context-lines`, `--ignore-path`, `--only-path`, `--max-characters`, `--no-content`, `--profile`) | `--json`  |
+| `pix mcp`                    | Run the host-managed MCP stdio server with the same retrieval options as `pix query`                                                                                             | —         |
+| `pix status`                 | Show index statistics                                                                                                                                                            | `--json`  |
+| `pix reset`                  | Delete index files (chunks + vectors)                                                                                                                                            | `--json`  |
 
 All one-shot commands support `--json` for structured output on stdout — ideal for piping to AI agents.
 Use `--profile compatibility|balanced|code-navigation|natural-language` to select the production
-retrieval profile explicitly. Compatibility is the default; the other profiles remain experimental until
-benchmark holdouts validate their weights. Profile selection is request-scoped and is also available on
-alias-run and the MCP `profile` argument; it is not a global `.pix/config.json` setting.
+retrieval profile explicitly. Compatibility is the default and uses the benchmark-selected DBSF fusion;
+the other profiles remain experimental until benchmark holdouts validate their weights. Profile selection
+is request-scoped and is also available on alias-run and the MCP `profile` argument; it is not a global
+`.pix/config.json` setting.
 
 ## MCP Server
 

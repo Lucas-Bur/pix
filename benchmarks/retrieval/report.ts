@@ -70,7 +70,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     `Profile: ${artifact.benchmarkProfile}`,
     "",
-    `Optimization profile: \`${artifact.optimizationProfile.name}\` with query-form weights ${Object.entries(
+    `Optimization profile: \`${artifact.optimizationProfile.name}\` (${artifact.optimizationProfile.provenance}) with query-form weights ${Object.entries(
       artifact.optimizationProfile.queryFormWeights,
     )
       .map(([kind, weight]) => `${kind}=${weight}`)
@@ -147,9 +147,9 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
   }
   lines.push(
     "",
-    "## Production RRF Holdouts",
+    "## Historical Production RRF Holdouts",
     "",
-    "These rows evaluate the current production compatibility evidence router unchanged; they are the baseline for objective guardrails.",
+    "These rows evaluate the historical production RRF compatibility router unchanged; it remains the explicit rollback baseline for objective guardrails.",
     "",
     "| Model | Strategy | Validation R@5 | Validation R@10 | Validation R@20 | Validation R@50 | Validation Ctx@4k |",
     "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
@@ -236,7 +236,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Evidence Router Holdouts",
     "",
-    "One shared search produces direct, reranker-top20, and reranker-top50 candidates. Production RRF is the guardrail baseline; static and dynamic validation columns use the same fusion method and excluded fold. A no eligible candidate result must not be promoted.",
+    "One shared search produces direct, reranker-top20, and reranker-top50 candidates. Historical production RRF is the guardrail baseline; static and dynamic validation columns use the same fusion method and excluded fold. A no eligible candidate result must not be promoted.",
     "",
     "| Model | Fusion | Objective | Strategy | Fold | Promotion | Params | Proxy evals | Full evals | Proxy agreement | Static I/C/B/D/S | Dynamic base I/C/B/D/S | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Dynamic R@50 | Static Ctx@4k | Dynamic Ctx@4k |",
     "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -297,7 +297,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Holdout Guardrail Breakdown",
     "",
-    "These unweighted partitions expose the query-form and repository guardrails behind each selected candidate; the baseline is production RRF on the same excluded samples.",
+    "These unweighted partitions expose the query-form and repository guardrails behind each selected candidate; the baseline is historical production RRF on the same excluded samples.",
     "",
     "| Model | Fusion | Objective | Strategy | Fold | Partition | Queries | Guardrails | Candidate R@5 | Baseline R@5 | Candidate R@10 | Baseline R@10 | Candidate R@20 | Baseline R@20 | Candidate R@50 | Baseline R@50 | Candidate Ctx@4k | Baseline Ctx@4k |",
     "| --- | --- | --- | --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",

@@ -1,7 +1,37 @@
 # Preliminary Retrieval Baseline
 
 The schema-17 entries below are historical artifacts from the benchmark-owned Sparse implementation.
-Current schema-19 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
+Current schema-21 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
+
+## Schema 20: Search-Priority DBSF Selection
+
+The current `search-priority` full-profile `fd` run is
+`benchmarks/results/retrieval-2026-08-03T23-34-02.311Z.json`. Its authored query-form objective is
+`identifier/agentTask/naturalQuestion/searchPhrase = 1/2/3/4`; the profile's channel weights are
+authored seeds, not benchmark-derived deployment weights.
+
+DBSF is the provisional production fusion choice from this evidence. Its fit-all result was
+`R@5/R@10/R@20/Context@4k = 80.7%/96.7%/100.0%/81.3%`, compared with Relative Score at
+`68.7%/96.7%/100.0%/73.3%`. Grouped holdouts also favored DBSF at R@5 and Context@4k
+(`84.0%/81.3%` versus `69.3%/73.3%`), while R@10 and R@20 remained close. This is a single-repository
+promotion signal, not a product-wide generalization claim; issue #166 owns the broader validation work.
+
+The promoted Production configuration is the dynamic DBSF router, not the static fit-all weights:
+
+| Parameter family | Identity | CamelCase |  BM25 | Dense | Sparse |
+| ---------------- | -------: | --------: | ----: | ----: | -----: |
+| Base weight      |     0.60 |      0.50 |  0.90 |  1.00 |   0.10 |
+| Score            |     0.00 |      0.50 |  0.80 |  0.60 |   0.00 |
+| Geometry         |     0.00 |      0.60 |  0.10 |  0.00 |   0.00 |
+| Term coverage    |     0.00 |      0.10 |  0.20 |  0.00 |   0.00 |
+| Pairwise         |     0.00 |      0.90 |  0.80 |  0.80 |   0.70 |
+| Dense confidence |     0.00 |      0.00 |  0.00 |  0.60 |   0.00 |
+| Identifier       |     0.00 |      0.40 | -0.10 | -0.10 |  -0.70 |
+| Query length     |     0.00 |     -0.30 | -0.40 | -0.30 |  -0.40 |
+
+The exact coupled runtime object is `PROMOTED_SEARCH_PRIORITY_CONFIG` in `src/domain/retrieval.ts`;
+`PRODUCTION_COMPATIBILITY_CONFIG` is its direct alias. The other experimental Production profiles reuse
+this fusion/evidence model but keep their own authored base priors; they are not separately benchmark-promoted.
 
 ## Schema 17: Experimental Sparse Smoke
 

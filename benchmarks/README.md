@@ -95,7 +95,7 @@ vp run bench:retrieval:full
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
-diagnostics. The selected profile is recorded in schema-19 artifacts without changing retrieval
+diagnostics. The selected profile is recorded in schema-21 artifacts without changing retrieval
 semantics. The full profile includes all three fusion methods; short profiles intentionally omit RRF
 to keep development runs fast.
 
@@ -257,7 +257,8 @@ Schema 12 adds dense confidence from the dense score distribution: top score rel
 MAD-based robust deviation, and score-tail strength. It is evaluated with the same active fusion
 matrix; model- and repository-specific calibration remains a later extension.
 Schema 17 extends pairwise agreement to all ten pairs of the five benchmark channels and records a
-benchmark-only Distill sparse ONNX channel. Production RRF now consumes the same five-channel seam.
+benchmark-only Distill sparse ONNX channel. Production DBSF now consumes the same five-channel seam;
+historical production RRF remains an explicit benchmark baseline.
 
 ## Operating Procedure
 
@@ -298,12 +299,13 @@ channels, fusion methods, evidence signals, model metadata, and embedder creatio
 holdout bookkeeping, gold resolution, and search diagnostics local because those are evaluation
 concerns rather than product query behavior.
 
-`src/lib/retrieval/fusion.ts` is the production fusion seam. RRF remains the compatibility default;
-Relative Score and DBSF consume the same `ChannelRankings` interface and are evaluated without
-reimplementing encoders, persistence, or scoring. `src/lib/retrieval/evidence-router.ts` is likewise
-shared by production configuration and benchmark evidence evaluation.
+`src/lib/retrieval/fusion.ts` is the production fusion seam. DBSF is the compatibility default selected
+from the current `search-priority` full evidence; RRF remains an explicit historical baseline. Relative
+Score and DBSF consume the same `ChannelRankings` interface and are evaluated without reimplementing
+encoders, persistence, or scoring. `src/lib/retrieval/evidence-router.ts` is likewise shared by production
+configuration and benchmark evidence evaluation.
 
-`benchmarks/retrieval/optimization-profiles.ts` owns provisional profile seeds, and
+`benchmarks/retrieval/optimization-profiles.ts` owns authored (`authored-seed`) profile seeds, and
 `benchmarks/retrieval/weight-search.ts` owns candidate search. A validated benchmark result is promoted
 to an explicit production configuration; production does not discover or optimize its own profile.
 
@@ -332,7 +334,7 @@ output size without introducing an LLM or provider-specific tokenizer.
 
 Each run writes ignored JSON and Markdown artifacts under `benchmarks/results`. JSON rows retain the
 repository, revision, language, size, category, difficulty, query form, grouped fold, model, variant,
-individual gold ranks, timing, and every metric. Schema 19 stores each authored query and its exact
+individual gold ranks, timing, and every metric. Schema 21 stores each authored query and its exact
 file-qualified ground truth once, records productive Sparse timings, and adds
 the fixed equal-weight RRF baseline. The Markdown report includes quality by query form,
 marginal leave-one-channel-out contribution, cross-validation folds, Shapley values, and final fitted
@@ -352,7 +354,7 @@ server, or network access.
 
 ## Interpretation
 
-Compare dense-only model deltas with the active Relative Score and DBSF candidates. If a stronger
+Compare dense-only model deltas with the active DBSF and Relative Score candidates. If a stronger
 embedder substantially improves dense-only quality but the gap collapses after fusion, the other
 channels make the small default embedder less critical. Historical RRF rows remain reference-only and
 are not included in routine profile runs.
@@ -360,8 +362,9 @@ are not included in routine profile runs.
 Do not infer statistical significance from one repository or from the 15-question smoke corpus.
 Expand the authored questions and preserve pinned revisions before making a product-wide claim.
 
-The evidence router is currently benchmark-only. Promote a scenario-specific rule into production only
-when grouped intent folds and leave-one-repository-out both show that its dynamic holdout quality
-improves or matches production RRF and the matching static baseline without unacceptable
-context-recall regressions. A reranker candidate objective is not evidence that a reranker itself is
-beneficial; evaluate reranker quality and latency separately.
+The evidence router is shared by production and benchmark. Production currently uses the fixed DBSF
+compatibility configuration; benchmark candidates remain experimental until grouped intent folds and
+leave-one-repository-out show that their dynamic holdout quality improves or matches the explicit RRF
+baseline and matching static baseline without unacceptable context-recall regressions. A reranker
+candidate objective is not evidence that a reranker itself is beneficial; evaluate reranker quality and
+latency separately.

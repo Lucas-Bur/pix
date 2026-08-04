@@ -84,7 +84,7 @@ export type EvidenceRouterConfig = typeof EvidenceRouterConfigSchema.Type
 /** Router parameters independent of the selected fusion method and config metadata. */
 export type EvidenceRouterParameters = typeof EvidenceRouterParametersSchema.Type
 
-/** Decode and validate a versioned fusion/router configuration at a boundary. */
+/** Decode and validate a fusion/router configuration at a boundary. */
 export const decodeEvidenceRouterConfig = (input: unknown): EvidenceRouterConfig =>
   Schema.decodeUnknownSync(EvidenceRouterConfigSchema)(input)
 
@@ -104,6 +104,30 @@ const PRODUCTION_PROFILE_NAMES = [
   "natural-language",
 ] as const
 
+/**
+ * Full configuration promoted from the `search-priority` direct DBSF candidate in the benchmark.
+ * The artifact's static weights are not used here; production executes this dynamic router
+ * configuration.
+ */
+export const PROMOTED_SEARCH_PRIORITY_CONFIG: EvidenceRouterConfig = decodeEvidenceRouterConfig({
+  fusion: "dbsf",
+  candidateDepth: 200,
+  baseWeights: { identity: 0.6, camelcase: 0.5, bm25: 0.9, dense: 1, sparse: 0.1 },
+  scoreInfluence: { identity: 0, camelcase: 0.5, bm25: 0.8, dense: 0.6, sparse: 0 },
+  geometryInfluence: { identity: 0, camelcase: 0.6, bm25: 0.1, dense: 0, sparse: 0 },
+  termCoverageInfluence: { identity: 0, camelcase: 0.1, bm25: 0.2, dense: 0, sparse: 0 },
+  pairwiseAgreementInfluence: {
+    identity: 0,
+    camelcase: 0.9,
+    bm25: 0.8,
+    dense: 0.8,
+    sparse: 0.7,
+  },
+  denseConfidenceInfluence: { identity: 0, camelcase: 0, bm25: 0, dense: 0.6, sparse: 0 },
+  identifierInfluence: { identity: 0, camelcase: 0.4, bm25: -0.1, dense: -0.1, sparse: -0.7 },
+  queryLengthInfluence: { identity: 0, camelcase: -0.3, bm25: -0.4, dense: -0.3, sparse: -0.4 },
+})
+
 /** Production retrieval profile name. */
 export const ProductionProfileNameSchema = Schema.Literals(PRODUCTION_PROFILE_NAMES)
 
@@ -117,45 +141,41 @@ export interface ProductionProfile {
   readonly experimental: boolean
 }
 
-const makeProductionProfileConfig = (
-  baseWeights: ChannelWeights,
-  queryLengthInfluence: ChannelCoefficients = ZERO_COEFFICIENTS,
-): EvidenceRouterConfig =>
+/** Build an experimental profile with an authored base prior and the promoted evidence model. */
+const makeProductionProfileConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig =>
   decodeEvidenceRouterConfig({
-    fusion: "rrf",
-    candidateDepth: 200,
+    ...PROMOTED_SEARCH_PRIORITY_CONFIG,
     baseWeights,
+  })
+
+const makeCompatibilityConfig = (fusion: FusionMethod): EvidenceRouterConfig =>
+  decodeEvidenceRouterConfig({
+    fusion,
+    candidateDepth: 200,
+    baseWeights: {
+      identity: 3,
+      camelcase: 1.5,
+      bm25: 1,
+      dense: 1,
+      sparse: 1,
+    },
     scoreInfluence: ZERO_COEFFICIENTS,
     geometryInfluence: ZERO_COEFFICIENTS,
     termCoverageInfluence: ZERO_COEFFICIENTS,
     pairwiseAgreementInfluence: ZERO_COEFFICIENTS,
     denseConfidenceInfluence: ZERO_COEFFICIENTS,
     identifierInfluence: ZERO_COEFFICIENTS,
-    queryLengthInfluence,
+    queryLengthInfluence: { ...ZERO_COEFFICIENTS, bm25: -1, dense: 1 },
   })
 
+/** Historical RRF configuration retained as the benchmark guardrail baseline. */
+export const PRODUCTION_RRF_BASELINE_CONFIG = makeCompatibilityConfig("rrf")
+
 /**
- * Current production compatibility profile; RRF remains the default until a benchmark validates a
- * change.
+ * Current production compatibility profile. This is the promoted dynamic DBSF configuration for the
+ * `search-priority` direct objective; broader matrix validation remains benchmark follow-up.
  */
-export const PRODUCTION_COMPATIBILITY_CONFIG = decodeEvidenceRouterConfig({
-  fusion: "rrf",
-  candidateDepth: 200,
-  baseWeights: {
-    identity: 3,
-    camelcase: 1.5,
-    bm25: 1,
-    dense: 1,
-    sparse: 1,
-  },
-  scoreInfluence: ZERO_COEFFICIENTS,
-  geometryInfluence: ZERO_COEFFICIENTS,
-  termCoverageInfluence: ZERO_COEFFICIENTS,
-  pairwiseAgreementInfluence: ZERO_COEFFICIENTS,
-  denseConfidenceInfluence: ZERO_COEFFICIENTS,
-  identifierInfluence: ZERO_COEFFICIENTS,
-  queryLengthInfluence: { ...ZERO_COEFFICIENTS, bm25: -1, dense: 1 },
-})
+export const PRODUCTION_COMPATIBILITY_CONFIG = PROMOTED_SEARCH_PRIORITY_CONFIG
 
 /** Explicitly selectable production profiles; non-compatibility profiles remain opt-in candidates. */
 export const PRODUCTION_PROFILES = {
