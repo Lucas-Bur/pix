@@ -1,6 +1,6 @@
 import { parentPort } from "node:worker_threads"
 
-import { evaluateCandidate } from "./fusion-core.mjs"
+import { evaluateCandidate } from "../evaluation/prepared-fusion-core.mjs"
 
 if (parentPort === null) throw new Error("Fusion worker requires a parent port")
 
@@ -10,15 +10,13 @@ parentPort.postMessage({ type: "ready" })
 
 parentPort.on("message", (message) => {
   try {
-    if (message.type === "init") {
-      snapshots.set("legacy", message.snapshot)
-      return
-    }
-    if (message.type !== "evaluate") throw new Error("Fusion worker received an invalid task")
-    const snapshotId = message.snapshotId ?? "legacy"
+    if (message.type !== "evaluate")
+      throw new Error("Candidate evaluation worker received an invalid task")
+    const snapshotId = message.snapshotId
     if (message.snapshot !== undefined) snapshots.set(snapshotId, message.snapshot)
     const snapshot = snapshots.get(snapshotId)
-    if (snapshot === undefined) throw new Error(`Fusion worker has no snapshot ${snapshotId}`)
+    if (snapshot === undefined)
+      throw new Error(`Candidate evaluation worker has no snapshot ${snapshotId}`)
     parentPort.postMessage({
       type: "result",
       taskId: message.taskId,

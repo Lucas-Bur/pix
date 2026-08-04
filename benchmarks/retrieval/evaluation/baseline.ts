@@ -2,7 +2,7 @@ import {
   decodeEvidenceRouterConfig,
   ZERO_CHANNEL_COEFFICIENTS,
   type EvidenceRouterConfig,
-} from "../../src/domain/retrieval.js"
+} from "../../../src/domain/retrieval.js"
 
 /** Historical RRF configuration used only for explicit benchmark and rollback comparisons. */
 export const HISTORICAL_RRF_BASELINE_CONFIG: EvidenceRouterConfig = decodeEvidenceRouterConfig({

@@ -1,12 +1,12 @@
 import { Effect, Layer } from "effect"
 import { layerNoop } from "effect/FileSystem"
 
-import { DEFAULT_CONFIG, type Config } from "../../src/domain/config.js"
-import type { EmbeddingDtype } from "../../src/domain/dtype.js"
-import { ConfigStore, IndexStore, SparseEmbedder } from "../../src/domain/ports.js"
-import { SparseEmbedderBase } from "../../src/services/sparse-embedder.js"
-import { SqliteIndexStoreBase } from "../../src/services/sqlite-index-store.js"
-import { sqliteIndexDatabaseLayer } from "../../src/services/sqlite-index-store/client.js"
+import { DEFAULT_CONFIG, type Config } from "../../../src/domain/config.js"
+import type { EmbeddingDtype } from "../../../src/domain/dtype.js"
+import { ConfigStore, IndexStore, SparseEmbedder } from "../../../src/domain/ports.js"
+import { SparseEmbedderBase } from "../../../src/services/sparse-embedder.js"
+import { SqliteIndexStoreBase } from "../../../src/services/sqlite-index-store.js"
+import { sqliteIndexDatabaseLayer } from "../../../src/services/sqlite-index-store/client.js"
 
 const benchmarkConfig = (model: string, dtype: EmbeddingDtype): Config => ({
   ...DEFAULT_CONFIG,

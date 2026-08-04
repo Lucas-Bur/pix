@@ -1,17 +1,20 @@
-import type { RankedChunk } from "../../src/domain/ports.js"
+import type { RankedChunk } from "../../../src/domain/ports.js"
 import {
   CHANNEL_NAMES,
   type ChannelName,
   type ChannelRankings,
   type ChannelWeights,
-} from "../../src/domain/retrieval.js"
-import { rankBm25 } from "../../src/lib/retrieval/bm25.js"
-import { rankCamelCase } from "../../src/lib/retrieval/camelcase.js"
-import { buildRoutingEvidence, routeWithEvidence } from "../../src/lib/retrieval/evidence-router.js"
-import { fuseRankings } from "../../src/lib/retrieval/fusion.js"
-import { rankIdentity } from "../../src/lib/retrieval/identity.js"
+} from "../../../src/domain/retrieval.js"
+import { rankBm25 } from "../../../src/lib/retrieval/bm25.js"
+import { rankCamelCase } from "../../../src/lib/retrieval/camelcase.js"
+import {
+  buildRoutingEvidence,
+  routeWithEvidence,
+} from "../../../src/lib/retrieval/evidence-router.js"
+import { fuseRankings } from "../../../src/lib/retrieval/fusion.js"
+import { rankIdentity } from "../../../src/lib/retrieval/identity.js"
+import type { PreparedCorpus } from "../corpus/prepare.js"
 import { HISTORICAL_RRF_BASELINE_CONFIG } from "./baseline.js"
-import type { PreparedCorpus } from "./prepare.js"
 import type { RetrievalVariant } from "./types.js"
 
 /** Rankings produced by the lexical channels before dense search is delegated to SQLite. */

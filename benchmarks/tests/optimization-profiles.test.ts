@@ -4,7 +4,7 @@ import {
   OPTIMIZATION_PROFILES,
   SEARCH_PRIORITY_PROFILE,
   decodeOptimizationProfile,
-} from "../retrieval/optimization-profiles.js"
+} from "../retrieval/evaluation/optimization-profiles.js"
 
 it("records the authored weighted search-priority objective without a profile schema version", () => {
   expect(SEARCH_PRIORITY_PROFILE.queryFormWeights).toEqual({

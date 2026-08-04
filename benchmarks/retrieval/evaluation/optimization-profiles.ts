@@ -5,7 +5,7 @@ import {
   ZERO_CHANNEL_COEFFICIENTS,
   type ChannelWeights,
   type EvidenceRouterParameters,
-} from "../../src/domain/retrieval.js"
+} from "../../../src/domain/retrieval.js"
 
 const NonNegativeNumber = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))
 const QualityMetrics = [

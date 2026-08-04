@@ -9,22 +9,25 @@ import {
 } from "../../src/lib/retrieval/evidence-router.js"
 import { fuseRankings } from "../../src/lib/retrieval/fusion.js"
 import { buildIdentifierIndex } from "../../src/lib/retrieval/identifier-index.js"
-import { prepareFusion } from "../retrieval/fusion.js"
+import type { PreparedCorpus } from "../retrieval/corpus/prepare.js"
 import {
   contextRecallAtBudget,
   recallAt,
   reciprocalRank,
   resolveGoldTargets,
-} from "../retrieval/metrics.js"
-import type { PreparedCorpus } from "../retrieval/prepare.js"
-import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "../retrieval/ranking.js"
-import { ROUTER_OBJECTIVES } from "../retrieval/types.js"
+} from "../retrieval/evaluation/metrics.js"
+import { prepareFusion } from "../retrieval/evaluation/prepared-fusion.js"
+import {
+  fuseVariant,
+  rankLexicalChannels,
+  RETRIEVAL_VARIANTS,
+} from "../retrieval/evaluation/ranking.js"
+import { ROUTER_OBJECTIVES } from "../retrieval/evaluation/types.js"
 import {
   optimizeEvidenceRouter,
-  optimizeEvidenceRouterParallel,
   optimizeWeights,
   selectEligibleCandidate,
-} from "../retrieval/weight-search.js"
+} from "../retrieval/evaluation/weight-search.js"
 
 const texts = [
   "export function loadProjectConfiguration() { return config }",
@@ -116,6 +119,15 @@ const selectTop20Router = <T extends { readonly objective: string }>(results: re
   const result = results.find((candidate) => candidate.objective === "reranker-top20")
   if (result === undefined) throw new Error("Missing reranker-top20 router objective")
   return result
+}
+
+const withoutSearchTimings = <
+  T extends { readonly searchDiagnostics: { readonly timings: object } },
+>(
+  result: T,
+) => {
+  const { timings: _timings, ...searchDiagnostics } = result.searchDiagnostics
+  return { ...result, searchDiagnostics }
 }
 
 describe("retrieval benchmark fixture", () => {
@@ -591,7 +603,7 @@ describe("retrieval benchmark fixture", () => {
       await optimizeEvidenceRouter("fixture", "dbsf", "grouped-5-fold", "1", samples, samples),
     )
     const parallel = selectTop20Router(
-      await optimizeEvidenceRouterParallel(
+      await optimizeEvidenceRouter(
         "fixture",
         "dbsf",
         "grouped-5-fold",
@@ -603,7 +615,7 @@ describe("retrieval benchmark fixture", () => {
       ),
     )
 
-    expect(parallel).toEqual(serial)
+    expect(withoutSearchTimings(parallel)).toEqual(withoutSearchTimings(serial))
   })
 
   it("does not treat a guardrail-failing fallback as promotable", () => {

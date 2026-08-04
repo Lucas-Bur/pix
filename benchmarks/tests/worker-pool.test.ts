@@ -3,23 +3,16 @@ import { availableParallelism } from "node:os"
 import { describe, expect, it } from "@effect/vitest"
 
 import type { Chunk } from "../../src/domain/chunk.js"
-import { prepareFusion } from "../retrieval/fusion.js"
-import { SEARCH_PRIORITY_PROFILE } from "../retrieval/optimization-profiles.js"
-import {
-  runEvidenceRouterJobs,
-  type EvidenceRouterFitAllJob,
-  type EvidenceRouterHoldoutJob,
-} from "../retrieval/router-job-pool.js"
+import { SEARCH_PRIORITY_PROFILE } from "../retrieval/evaluation/optimization-profiles.js"
+import { prepareFusion } from "../retrieval/evaluation/prepared-fusion.js"
 import {
   fitRecommendedEvidenceRouter,
   fitRecommendedFusionWeights,
-  fitRecommendedFusionWeightsParallel,
   fitRecommendedWeights,
-  fitRecommendedWeightsParallel,
   optimizeEvidenceRouter,
   optimizeFusionWeights,
   summarize,
-} from "../retrieval/weight-search.js"
+} from "../retrieval/evaluation/weight-search.js"
 import {
   createCandidateEvaluationPool,
   createCandidateEvaluationPoolOnQueue,
@@ -29,7 +22,7 @@ import {
   getDefaultWorkerCount,
   resolveWorkerCount,
   type EvaluationCandidate,
-} from "../retrieval/worker-pool.js"
+} from "../retrieval/execution/candidate-evaluation-pool.js"
 
 const chunks: readonly Chunk[] = [0, 1, 2, 3].map((index) => ({
   id: String(index),
@@ -106,60 +99,47 @@ const withoutSearchTimings = <
 
 describe("benchmark candidate evaluation pool", () => {
   it("runs holdout and fit-all jobs through one native queue", async () => {
-    const holdoutJob: EvidenceRouterHoldoutJob = {
-      kind: "holdout",
-      model: "fixture",
-      fusion: "dbsf",
-      strategy: "grouped-5-fold",
-      fold: "1",
-      development: [searchSample],
-      validation: [searchSample],
-    }
-    const fitAllJob: EvidenceRouterFitAllJob = {
-      kind: "fit-all",
-      model: "fixture",
-      fusion: "dbsf",
-      samples: [searchSample],
-    }
     const candidateQueue = await createCandidateEvaluationQueue({ workerCount: 2 })
     try {
-      const [parallelHoldout, parallelFitAll] = await runEvidenceRouterJobs(
-        [holdoutJob, fitAllJob],
-        SEARCH_PRIORITY_PROFILE,
-        {
-          workerCount: 2,
-          candidateQueue,
-        },
-      )
+      const [parallelHoldout, parallelFitAll] = await Promise.all([
+        optimizeEvidenceRouter(
+          "fixture",
+          "dbsf",
+          "grouped-5-fold",
+          "1",
+          [searchSample],
+          [searchSample],
+          SEARCH_PRIORITY_PROFILE,
+          { workerCount: 0, evaluationQueue: candidateQueue },
+        ),
+        fitRecommendedEvidenceRouter("fixture", "dbsf", [searchSample], SEARCH_PRIORITY_PROFILE, {
+          workerCount: 0,
+          evaluationQueue: candidateQueue,
+        }),
+      ])
       const serialHoldout = await optimizeEvidenceRouter(
-        holdoutJob.model,
-        holdoutJob.fusion,
-        holdoutJob.strategy,
-        holdoutJob.fold,
-        holdoutJob.development,
-        holdoutJob.validation,
+        "fixture",
+        "dbsf",
+        "grouped-5-fold",
+        "1",
+        [searchSample],
+        [searchSample],
         SEARCH_PRIORITY_PROFILE,
       )
       const serialFitAll = await fitRecommendedEvidenceRouter(
-        fitAllJob.model,
-        fitAllJob.fusion,
-        fitAllJob.samples,
+        "fixture",
+        "dbsf",
+        [searchSample],
         SEARCH_PRIORITY_PROFILE,
       )
 
-      expect(parallelHoldout.jobId).toBe(0)
-      expect(parallelHoldout.kind).toBe("holdout")
-      expect(parallelHoldout.results.map(withoutSearchTimings)).toEqual(
+      expect(parallelHoldout.map(withoutSearchTimings)).toEqual(
         serialHoldout.map(withoutSearchTimings),
       )
-      expect(parallelFitAll.jobId).toBe(1)
-      expect(parallelFitAll.kind).toBe("fit-all")
-      expect(parallelFitAll.results.map(withoutSearchTimings)).toEqual(
+      expect(parallelFitAll.map(withoutSearchTimings)).toEqual(
         serialFitAll.map(withoutSearchTimings),
       )
-      expect(
-        parallelHoldout.results[0]?.searchDiagnostics.timings.candidateEvaluationMs,
-      ).toBeGreaterThan(0)
+      expect(parallelHoldout[0]?.searchDiagnostics.timings.candidateEvaluationMs).toBeGreaterThan(0)
     } finally {
       await candidateQueue.close()
     }
@@ -276,7 +256,7 @@ describe("benchmark candidate evaluation pool", () => {
 
   it("keeps the explicit parallel search result equal to the serial search", async () => {
     const serial = await fitRecommendedWeights("fixture", "identifier", [searchSample])
-    const parallel = await fitRecommendedWeightsParallel(
+    const parallel = await fitRecommendedWeights(
       "fixture",
       "identifier",
       [searchSample],
@@ -289,7 +269,7 @@ describe("benchmark candidate evaluation pool", () => {
 
   it("keeps static fusion fitting serial and parallel paths equivalent", async () => {
     const serial = await fitRecommendedFusionWeights("fixture", "dbsf", [searchSample])
-    const parallel = await fitRecommendedFusionWeightsParallel(
+    const parallel = await fitRecommendedFusionWeights(
       "fixture",
       "dbsf",
       [searchSample],
@@ -333,7 +313,10 @@ describe("benchmark candidate evaluation pool", () => {
   })
 
   it("falls back to serial evaluation when worker startup is unavailable", async () => {
-    const unavailableWorkerUrl = new URL("../retrieval/fusion-worker.mjs", import.meta.url)
+    const unavailableWorkerUrl = new URL(
+      "../retrieval/execution/candidate-evaluation-worker.mjs",
+      import.meta.url,
+    )
     unavailableWorkerUrl.pathname += ".missing"
     const pool = await createCandidateEvaluationPool(snapshot, {
       workerCount: 2,

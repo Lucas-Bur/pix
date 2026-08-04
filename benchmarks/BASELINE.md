@@ -1,14 +1,14 @@
 # Preliminary Retrieval Baseline
 
 The schema-17 entries below are historical artifacts from the benchmark-owned Sparse implementation.
-Current schema-22 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
+Current schema-23 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
 
 ## Schema 20: Search-Priority DBSF Selection
 
 The historical schema-20 `search-priority` full-profile `fd` run is
 `benchmarks/results/retrieval-2026-08-03T23-34-02.311Z.json`. Its authored query-form objective is
 `identifier/agentTask/naturalQuestion/searchPhrase = 1/2/3/4`; the profile's channel weights are
-authored seeds, not benchmark-derived deployment weights. This evidence predates the current schema-22
+authored seeds, not benchmark-derived deployment weights. This evidence predates the current schema-23
 artifact format. Result artifacts are ignored and the referenced JSON is available only in the local
 worktree that produced that promotion evidence.
 

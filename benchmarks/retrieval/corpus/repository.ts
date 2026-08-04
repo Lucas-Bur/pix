@@ -5,7 +5,7 @@ import { promisify } from "node:util"
 
 import { Effect, Schema } from "effect"
 
-import { CorpusManifestSchema, type CorpusManifest } from "./types.js"
+import { CorpusManifestSchema, type CorpusManifest } from "../evaluation/types.js"
 
 const execFilePromise = promisify(execFile)
 const CACHE_ROOT = path.resolve("benchmarks/.cache/repos")
