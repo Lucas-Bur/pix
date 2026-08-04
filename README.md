@@ -18,8 +18,10 @@ pix query "authentication middleware"
 ```
 
 The first index downloads both the Dense model and the pinned OpenSearch learned Sparse document model
-into `.pix/cache/`. Later indexing and queries are local; Sparse query weighting is persisted in
-`.pix/index.db` and does not run the document transformer.
+into `.pix/cache/`. On Windows projects stored below OneDrive, model files are placed in
+`%LOCALAPPDATA%\pix\transformers-cache` because ONNX Runtime cannot load OneDrive reparse points.
+Later indexing and queries are local; Sparse query weighting is persisted in `.pix/index.db` and does
+not run the document transformer.
 
 ## Commands
 

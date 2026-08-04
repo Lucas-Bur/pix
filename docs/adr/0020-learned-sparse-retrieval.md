@@ -22,7 +22,9 @@ type and one pipeline `subfolder` cannot point at both module directories.
 - Use `raul3820/opensearch-neural-sparse-encoding-doc-v3-distill-onnx`, pinned by commit SHA. Load its
   standard DistilBERT masked-language model through Transformers.js `AutoModelForMaskedLM` and its
   paired tokenizer through `AutoTokenizer`. Transformers.js still owns downloading, ONNX selection,
-  execution, and the project-local `.pix/cache`.
+  execution, and the project-local `.pix/cache`. On Windows projects below OneDrive, pix resolves the
+  Transformers cache to `%LOCALAPPDATA%\pix\transformers-cache` because ONNX Runtime cannot load
+  OneDrive reparse points.
 - Default Sparse execution to `device: "auto"`. Dense and Sparse share one generic first-working-device
   loader and the priority `cuda → dml → coreml → webgpu → wasm → cpu`; each channel supplies its real
   model loader. Explicit devices remain strict and do not silently fall back.
@@ -51,7 +53,8 @@ type and one pipeline `subfolder` cannot point at both module directories.
 - Query inference runs no transformer. It performs cached tokenization followed by indexed SQLite
   joins against the persisted static IDF table.
 - The pinned ONNX repository occupies about 91 MB before runtime allocations. First use includes its
-  download; subsequent processes reuse `.pix/cache`.
+  download; subsequent processes reuse the resolved Transformers cache (`.pix/cache`, or the local
+  Windows OneDrive-safe cache).
 - `pix status` accounts for 12 logical payload bytes per Sparse posting or IDF row (integer token ID
   plus REAL weight). SQLite table and B-tree overhead is additional and depends on page utilization.
 - The real adapter test loads the pinned export, encodes a two-document batch, verifies all IDF rows,
