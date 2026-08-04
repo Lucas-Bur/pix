@@ -9,12 +9,19 @@ import {
 } from "../../src/lib/retrieval/evidence-router.js"
 import { fuseRankings } from "../../src/lib/retrieval/fusion.js"
 import { buildIdentifierIndex } from "../../src/lib/retrieval/identifier-index.js"
-import { recallAt, resolveGoldTargets } from "../retrieval/metrics.js"
+import { prepareFusion } from "../retrieval/fusion.js"
+import {
+  contextRecallAtBudget,
+  recallAt,
+  reciprocalRank,
+  resolveGoldTargets,
+} from "../retrieval/metrics.js"
 import type { PreparedCorpus } from "../retrieval/prepare.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "../retrieval/ranking.js"
 import { ROUTER_OBJECTIVES } from "../retrieval/types.js"
 import {
   optimizeEvidenceRouter,
+  optimizeEvidenceRouterParallel,
   optimizeWeights,
   selectEligibleCandidate,
 } from "../retrieval/weight-search.js"
@@ -368,6 +375,65 @@ describe("retrieval benchmark fixture", () => {
     expect(production[0]?.score).toBeGreaterThan(production[1]?.score ?? 0)
   })
 
+  it("keeps prepared fusion quality identical on the benchmark fixture", () => {
+    const weights = { identity: 1, camelcase: 1, bm25: 1, dense: 1, sparse: 1 }
+    const quality = (
+      ranked: readonly { readonly chunkIndex: number; readonly score: number }[],
+      sample: ReturnType<typeof makeEvidenceRouterSamples>[number],
+    ) => ({
+      recallAt5: recallAt(ranked, sample.targets, 5),
+      recallAt10: recallAt(ranked, sample.targets, 10),
+      recallAt20: recallAt(ranked, sample.targets, 20),
+      recallAt50: recallAt(ranked, sample.targets, 50),
+      contextRecallAt4096: contextRecallAtBudget(ranked, sample.targets, sample.chunks, 4_096),
+      meanReciprocalRank: reciprocalRank(ranked, sample.targets),
+    })
+
+    for (const method of ["rrf", "relative-score", "dbsf"] as const) {
+      for (const sample of makeEvidenceRouterSamples()) {
+        const direct = fuseRankings(method, sample.rankings, weights, 200)
+        const prepared = prepareFusion(method, sample.rankings, 200).evaluate(weights)
+
+        expect(prepared).toEqual(direct)
+        expect(quality(prepared, sample)).toEqual(quality(direct, sample))
+      }
+    }
+  })
+
+  it("keeps prepared fusion identical for duplicate and truncated rankings", () => {
+    const rankings = {
+      identity: [
+        { chunkIndex: 0, score: 1 },
+        { chunkIndex: 0, score: 0.8 },
+        { chunkIndex: 1, score: 0.4 },
+      ],
+      camelcase: [
+        { chunkIndex: 1, score: 0.9 },
+        { chunkIndex: 2, score: 0.2 },
+      ],
+      bm25: [
+        { chunkIndex: 2, score: 9 },
+        { chunkIndex: 2, score: 8 },
+        { chunkIndex: 0, score: 1 },
+      ],
+      dense: [
+        { chunkIndex: 3, score: 0.7 },
+        { chunkIndex: 1, score: 0.6 },
+      ],
+      sparse: [
+        { chunkIndex: 0, score: 4 },
+        { chunkIndex: 3, score: 3 },
+      ],
+    }
+    const weights = { identity: 0.5, camelcase: 0, bm25: 2, dense: 1.5, sparse: 0.25 }
+
+    for (const method of ["rrf", "relative-score", "dbsf"] as const) {
+      expect(prepareFusion(method, rankings, 2).evaluate(weights)).toEqual(
+        fuseRankings(method, rankings, weights, 2),
+      )
+    }
+  })
+
   it("fuses channel-relative scores without comparing raw score scales", () => {
     const ranked = fuseRankings(
       "relative-score",
@@ -431,7 +497,7 @@ describe("retrieval benchmark fixture", () => {
     expect(ranked).toEqual([{ chunkIndex: 0, score: 0.5 }])
   })
 
-  it("learns weights on development and attributes holdout value with Shapley", () => {
+  it("learns weights on development and attributes holdout value with Shapley", async () => {
     const sample = {
       repository: "fixture",
       intentId: "fixture-001",
@@ -448,7 +514,7 @@ describe("retrieval benchmark fixture", () => {
       targets: [new Set([0])],
       chunks,
     }
-    const result = optimizeWeights(
+    const result = await optimizeWeights(
       "fixture",
       "identifier",
       "grouped-5-fold",
@@ -464,10 +530,10 @@ describe("retrieval benchmark fixture", () => {
     expect(result.shapleyRecallAt20.identity).toBe(1)
   })
 
-  it("selects one evidence router across queries with different reliable channels", () => {
+  it("selects one evidence router across queries with different reliable channels", async () => {
     const samples = makeEvidenceRouterSamples()
 
-    const routerResults = optimizeEvidenceRouter(
+    const routerResults = await optimizeEvidenceRouter(
       "fixture",
       "dbsf",
       "grouped-5-fold",
@@ -519,6 +585,27 @@ describe("retrieval benchmark fixture", () => {
     expect(result.validation.recallAt20).toBeGreaterThan(result.staticValidation.recallAt20)
   })
 
+  it("keeps the parallel evidence-router search equal to the serial search", async () => {
+    const samples = makeEvidenceRouterSamples()
+    const serial = selectTop20Router(
+      await optimizeEvidenceRouter("fixture", "dbsf", "grouped-5-fold", "1", samples, samples),
+    )
+    const parallel = selectTop20Router(
+      await optimizeEvidenceRouterParallel(
+        "fixture",
+        "dbsf",
+        "grouped-5-fold",
+        "1",
+        samples,
+        samples,
+        undefined,
+        { workerCount: 2, batchSize: 8 },
+      ),
+    )
+
+    expect(parallel).toEqual(serial)
+  })
+
   it("does not treat a guardrail-failing fallback as promotable", () => {
     const selection = selectEligibleCandidate([{ name: "fallback" }], () => false)
 
@@ -528,20 +615,34 @@ describe("retrieval benchmark fixture", () => {
     })
   })
 
-  it("keeps router fitting deterministic and independent of validation samples", () => {
+  it("keeps router fitting deterministic and independent of validation samples", async () => {
     const development = makeEvidenceRouterSamples()
     const first = selectTop20Router(
-      optimizeEvidenceRouter("fixture", "dbsf", "grouped-5-fold", "1", development, development),
+      await optimizeEvidenceRouter(
+        "fixture",
+        "dbsf",
+        "grouped-5-fold",
+        "1",
+        development,
+        development,
+      ),
     )
     const repeat = selectTop20Router(
-      optimizeEvidenceRouter("fixture", "dbsf", "grouped-5-fold", "1", development, development),
+      await optimizeEvidenceRouter(
+        "fixture",
+        "dbsf",
+        "grouped-5-fold",
+        "1",
+        development,
+        development,
+      ),
     )
     const alteredValidation = development.map((sample) => ({
       ...sample,
       targets: [new Set([0])],
     }))
     const withAlteredValidation = selectTop20Router(
-      optimizeEvidenceRouter(
+      await optimizeEvidenceRouter(
         "fixture",
         "dbsf",
         "grouped-5-fold",
