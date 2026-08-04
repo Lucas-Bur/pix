@@ -13,6 +13,15 @@ const testLayer = Layer.provideMerge(
   }),
 )
 
+it.effect("initializes the sparse adapter without loading the document model", () =>
+  Effect.gen(function* () {
+    const embedder = yield* SparseEmbedder
+    expect(embedder.contract.model).toBe(
+      "raul3820/opensearch-neural-sparse-encoding-doc-v3-distill-onnx",
+    )
+  }).pipe(Effect.provide(testLayer), Effect.scoped),
+)
+
 // This adapter test downloads the pinned model; enable it explicitly for integration runs.
 it.effect.skipIf(process.env.PIX_RUN_MODEL_TESTS !== "1")(
   "SparseEmbedder loads the pinned model and encodes documents and queries",

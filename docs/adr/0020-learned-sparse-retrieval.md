@@ -22,9 +22,7 @@ type and one pipeline `subfolder` cannot point at both module directories.
 - Use `raul3820/opensearch-neural-sparse-encoding-doc-v3-distill-onnx`, pinned by commit SHA. Load its
   standard DistilBERT masked-language model through Transformers.js `AutoModelForMaskedLM` and its
   paired tokenizer through `AutoTokenizer`. Transformers.js still owns downloading, ONNX selection,
-  execution, and the project-local `.pix/cache`. On Windows projects below OneDrive, pix resolves the
-  Transformers cache to `%LOCALAPPDATA%\pix\transformers-cache` because ONNX Runtime cannot load
-  OneDrive reparse points.
+  and execution.
 - Default Sparse execution to `device: "auto"`. Dense and Sparse share one generic first-working-device
   loader and the priority `cuda → dml → coreml → webgpu → wasm → cpu`; each channel supplies its real
   model loader. Explicit devices remain strict and do not silently fall back.
@@ -44,6 +42,12 @@ type and one pipeline `subfolder` cannot point at both module directories.
 - Fuse Sparse through the production fusion seam. The initial compatibility implementation used RRF with
   fixed weight `1.0`; the current promoted DBSF evidence-router configuration owns the active Sparse
   weight and query-length influences.
+
+## Rationale
+
+Model artifacts normally stay in the project-local `.pix/cache`. Windows projects below OneDrive use
+`%LOCALAPPDATA%\pix\transformers-cache` instead because ONNX Runtime cannot load ONNX files represented
+as OneDrive reparse points, even though Node.js can read the same files.
 
 ## Performance and storage
 

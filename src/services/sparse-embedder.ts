@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 
 import { NodePath } from "@effect/platform-node"
 import { AutoConfig, AutoModelForMaskedLM, AutoTokenizer, env } from "@huggingface/transformers"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Path } from "effect"
 
 import type { DeviceType } from "../domain/device.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
@@ -106,7 +106,8 @@ const loadDocumentModel = (
   )
 
 const make = Effect.gen(function* () {
-  env.cacheDir = yield* resolveTransformersCacheDir()
+  const path = yield* Path.Path
+  env.cacheDir = yield* resolveTransformersCacheDir({ projectRoot: path.resolve() })
   const config = yield* (yield* ConfigStore).readConfig()
   const sparse = config.sparseEmbedder
   const contract: SparseContract = {
