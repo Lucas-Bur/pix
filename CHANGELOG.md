@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.25.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.24.0...pix-v0.25.0) (2026-08-04)
+
+
+### Features
+
+* add evidence-based fusion profiles ([44d9e6f](https://github.com/Lucas-Bur/pix/commit/44d9e6f8160231763c8842fa4367faf6d5baff57))
+* add explicit production retrieval profiles ([ef9be6c](https://github.com/Lucas-Bur/pix/commit/ef9be6cc6470447056b7b59a35a3570afae04d3f))
+* promote DBSF evidence router configuration ([f83affe](https://github.com/Lucas-Bur/pix/commit/f83affef3965047cc8a7880735456eebf0dfab32))
+
+
+### Bug Fixes
+
+* address OneDrive cache review feedback ([983906c](https://github.com/Lucas-Bur/pix/commit/983906c33d3e7403f1fafa96bac522b87b8eeef6))
+* align benchmark guardrails with production router ([b2f63c2](https://github.com/Lucas-Bur/pix/commit/b2f63c2287baeae05a30c5c41b80896db9f0563c))
+* keep production schema surface minimal ([3896d75](https://github.com/Lucas-Bur/pix/commit/3896d75173731b9997ecb49993698cf92b892599))
+* make benchmark guardrail failures explicit ([42f2a5f](https://github.com/Lucas-Bur/pix/commit/42f2a5f2a18e88bd470d9e50cd603285751602e7))
+* remove unused production profile export ([ab5e3be](https://github.com/Lucas-Bur/pix/commit/ab5e3bef03b67c55df3b4650ca7b6cff0995a8df))
+* use local model cache for OneDrive projects ([841181a](https://github.com/Lucas-Bur/pix/commit/841181a2e5211c3614906cd02b0ea41bcb939c2a))
+
+
+### Performance Improvements
+
+* cache benchmark fusion rankings ([e000b81](https://github.com/Lucas-Bur/pix/commit/e000b81afbec489edb31042b9b0f8ba355ccc61e))
+
 ## [0.24.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.23.0...pix-v0.24.0) (2026-08-03)
 
 
