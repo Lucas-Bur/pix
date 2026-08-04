@@ -30,7 +30,7 @@ Structurally healed on read: missing fields are filled from `DEFAULT_CONFIG` via
 ### Embedder
 
 Component that turns text into vectors. Uses ONNX runtime with configurable dtype (`fp32` | `fp16` | `q8` | `q4`). Default model: `Xenova/all-MiniLM-L6-v2` (384 dims).
-Model cache lives in `.pix/cache/`. Batch size default: 16 (configurable). Produces `Embedding` values with `dtype` field matching the configured quantization.
+Model cache lives in `.pix/cache/` (or `%LOCALAPPDATA%\pix\transformers-cache` for Windows projects below OneDrive). Batch size default: 16 (configurable). Produces `Embedding` values with `dtype` field matching the configured quantization.
 
 ### Embedding Cache
 
@@ -41,7 +41,7 @@ Content-addressed reuse for Dense and learned Sparse embeddings displaced from t
 The learned lexical-semantic encoder is required. It uses the pinned OpenSearch v3 Distill document ONNX export.
 Documents produce variable `(token_id, weight)` vectors through attended max pooling and
 `log1p(log1p(relu(value)))`. Queries run only the paired tokenizer; SQLite applies the persisted static
-IDF table. Model artifacts live in `.pix/cache/`. Default document batch size is 2 because logits scale
+IDF table. Model artifacts live in `.pix/cache/` (or the Windows OneDrive-safe local cache). Default document batch size is 2 because logits scale
 with batch size × sequence length × the 30,522-token vocabulary. See ADR-0020.
 
 ### ModelRegistry
@@ -442,9 +442,11 @@ Position state is tracked locally (`state: { value, max }`) since `@clack` only 
 
 Generated index state lives in `.pix/index.db` and evolves through Effect SQL migrations. Ordinary tables hold Float32 embedding BLOBs; sqlite-vector performs exact or optional TurboQuant cosine scans. See ADR-0018.
 
-### Model cache in `.pix/cache/`
+### Model cache
 
-Self-contained per project. Offline after first download (~22 MB). Alternative: `~/.cache/huggingface/` (HF default).
+Model artifacts are self-contained in `.pix/cache/` and offline after first download. On Windows, projects
+below a detected OneDrive root use `%LOCALAPPDATA%\pix\transformers-cache` instead because
+`onnxruntime-node` cannot load ONNX files represented as OneDrive reparse points.
 
 ### Raw source code for embedding
 

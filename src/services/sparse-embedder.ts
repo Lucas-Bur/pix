@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 
+import { NodePath } from "@effect/platform-node"
 import { AutoConfig, AutoModelForMaskedLM, AutoTokenizer, env } from "@huggingface/transformers"
 import { Effect, Layer } from "effect"
 
@@ -7,6 +8,7 @@ import type { DeviceType } from "../domain/device.js"
 import { InferenceError, ModelLoadError } from "../domain/errors.js"
 import { ConfigStore, SparseEmbedder } from "../domain/ports.js"
 import type { SparseContract, SparseQuery, SparseTerm, SparseVector } from "../domain/sparse.js"
+import { resolveTransformersCacheDir } from "../lib/model-cache.js"
 import { buildSparseQueryTokenIds, poolSparseLogits } from "../lib/sparse/encoding.js"
 import { ConfigStoreLive } from "./config-store.js"
 import { loadFirstAvailableDevice } from "./device-detect.js"
@@ -104,7 +106,7 @@ const loadDocumentModel = (
   )
 
 const make = Effect.gen(function* () {
-  env.cacheDir = ".pix/cache"
+  env.cacheDir = yield* resolveTransformersCacheDir()
   const config = yield* (yield* ConfigStore).readConfig()
   const sparse = config.sparseEmbedder
   const contract: SparseContract = {
@@ -213,7 +215,10 @@ const make = Effect.gen(function* () {
 })
 
 /** Sparse embedder adapter without its ConfigStore dependency. */
-export const SparseEmbedderBase = Layer.effect(SparseEmbedder, make)
+export const SparseEmbedderBase = Layer.provideMerge(
+  Layer.effect(SparseEmbedder, make),
+  NodePath.layer,
+)
 
 /** Transformers.js adapter for learned sparse document and static-IDF query encoding. */
 export const SparseEmbedderLive = Layer.provideMerge(SparseEmbedderBase, ConfigStoreLive)

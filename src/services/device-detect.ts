@@ -1,8 +1,10 @@
+import { NodePath } from "@effect/platform-node"
 import { Effect, Layer, Result } from "effect"
 
 import type { DeviceType } from "../domain/device.js"
 import { ModelLoadError } from "../domain/errors.js"
 import { DeviceDetection } from "../domain/ports.js"
+import { resolveTransformersCacheDir } from "../lib/model-cache.js"
 
 /** Device order used by automatic embedding inference selection. */
 const DEVICE_PRIORITY: readonly DeviceType[] = ["cuda", "dml", "coreml", "webgpu", "wasm", "cpu"]
@@ -49,12 +51,9 @@ const tryDevice = (
   )
 
 const make = Effect.gen(function* () {
-  const { pipeline } = yield* Effect.tryPromise(() =>
-    import("@huggingface/transformers").then((m) => {
-      m.env.cacheDir = ".pix/cache"
-      return m
-    }),
-  )
+  const transformers = yield* Effect.tryPromise(() => import("@huggingface/transformers"))
+  transformers.env.cacheDir = yield* resolveTransformersCacheDir()
+  const { pipeline } = transformers
 
   const detect = (model: string, dtype: string): Effect.Effect<DeviceType, ModelLoadError> =>
     loadFirstAvailableDevice(model, (device) =>
@@ -79,4 +78,7 @@ const make = Effect.gen(function* () {
 })
 
 /** Live implementation of DeviceDetection that attempts real model loading. */
-export const DeviceDetectionLive = Layer.effect(DeviceDetection, make)
+export const DeviceDetectionLive = Layer.provideMerge(
+  Layer.effect(DeviceDetection, make),
+  NodePath.layer,
+)
