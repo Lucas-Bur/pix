@@ -115,9 +115,11 @@ const reportProgress = (message: string): void => {
   process.stderr.write(`[retrieval benchmark] ${message}\n`)
 }
 
-const runParallelSearch = <A>(operation: () => Promise<A>): Effect.Effect<A, Error> =>
+const runParallelSearch = <A>(
+  operation: (signal: AbortSignal) => Promise<A>,
+): Effect.Effect<A, Error> =>
   Effect.tryPromise({
-    try: operation,
+    try: (signal) => operation(signal),
     catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
   })
 
@@ -518,17 +520,18 @@ export const runRetrievalBenchmark = (
     if (config.legacyDiagnostics) {
       for (const group of sampleGroups.values()) {
         for (let fold = 0; fold < config.groupedFolds; fold++) {
+          const split = splitSamples(group.samples, (sample) => sample.groupedFold === fold)
           weightSearch.push(
-            yield* runParallelSearch(() =>
+            yield* runParallelSearch((signal) =>
               optimizeWeightsParallel(
                 group.model,
                 group.queryKind,
                 groupedStrategy,
                 String(fold + 1),
-                group.samples.filter((sample) => sample.groupedFold !== fold),
-                group.samples.filter((sample) => sample.groupedFold === fold),
+                split.development,
+                split.validation,
                 optimizationProfile,
-                searchOptions,
+                { ...searchOptions, signal },
               ),
             ),
           )
@@ -536,30 +539,31 @@ export const runRetrievalBenchmark = (
         const repositories = [...new Set(group.samples.map((sample) => sample.repository))]
         if (config.repositoryHoldouts && repositories.length > 1) {
           for (const repository of repositories) {
+            const split = splitSamples(group.samples, (sample) => sample.repository === repository)
             weightSearch.push(
-              yield* runParallelSearch(() =>
+              yield* runParallelSearch((signal) =>
                 optimizeWeightsParallel(
                   group.model,
                   group.queryKind,
                   "leave-one-repository-out",
                   repository,
-                  group.samples.filter((sample) => sample.repository !== repository),
-                  group.samples.filter((sample) => sample.repository === repository),
+                  split.development,
+                  split.validation,
                   optimizationProfile,
-                  searchOptions,
+                  { ...searchOptions, signal },
                 ),
               ),
             )
           }
         }
         recommendedWeights.push(
-          yield* runParallelSearch(() =>
+          yield* runParallelSearch((signal) =>
             fitRecommendedWeightsParallel(
               group.model,
               group.queryKind,
               group.samples,
               optimizationProfile,
-              searchOptions,
+              { ...searchOptions, signal },
             ),
           ),
         )
@@ -606,7 +610,7 @@ export const runRetrievalBenchmark = (
         for (let fold = 0; fold < config.groupedFolds; fold++) {
           const split = splitSamples(samples, (sample) => sample.groupedFold === fold)
           fusionSearch.push(
-            yield* runParallelSearch(() =>
+            yield* runParallelSearch((signal) =>
               optimizeFusionWeightsParallel(
                 model,
                 fusion,
@@ -615,7 +619,7 @@ export const runRetrievalBenchmark = (
                 split.development,
                 split.validation,
                 optimizationProfile,
-                searchOptions,
+                { ...searchOptions, signal },
               ),
             ),
           )
@@ -624,7 +628,7 @@ export const runRetrievalBenchmark = (
           for (const repository of repositories) {
             const split = splitSamples(samples, (sample) => sample.repository === repository)
             fusionSearch.push(
-              yield* runParallelSearch(() =>
+              yield* runParallelSearch((signal) =>
                 optimizeFusionWeightsParallel(
                   model,
                   fusion,
@@ -633,7 +637,7 @@ export const runRetrievalBenchmark = (
                   split.development,
                   split.validation,
                   optimizationProfile,
-                  searchOptions,
+                  { ...searchOptions, signal },
                 ),
               ),
             )
@@ -645,14 +649,11 @@ export const runRetrievalBenchmark = (
     for (const [model, samples] of samplesByModel)
       for (const fusion of config.fusionMethods)
         recommendedFusionWeights.push(
-          yield* runParallelSearch(() =>
-            fitRecommendedFusionWeightsParallel(
-              model,
-              fusion,
-              samples,
-              optimizationProfile,
-              searchOptions,
-            ),
+          yield* runParallelSearch((signal) =>
+            fitRecommendedFusionWeightsParallel(model, fusion, samples, optimizationProfile, {
+              ...searchOptions,
+              signal,
+            }),
           ),
         )
     const fusionSearchDurationMs = performance.now() - fusionSearchStartedAt
@@ -667,7 +668,7 @@ export const runRetrievalBenchmark = (
             `${model}: selecting ${fusion} evidence router for grouped fold ${fold + 1}/${config.groupedFolds}`,
           )
           evidenceRouterSearch.push(
-            ...(yield* runParallelSearch(() =>
+            ...(yield* runParallelSearch((signal) =>
               optimizeEvidenceRouterParallel(
                 model,
                 fusion,
@@ -676,7 +677,7 @@ export const runRetrievalBenchmark = (
                 split.development,
                 split.validation,
                 optimizationProfile,
-                searchOptions,
+                { ...searchOptions, signal },
               ),
             )),
           )
@@ -689,7 +690,7 @@ export const runRetrievalBenchmark = (
               `${model}: selecting ${fusion} evidence router with ${repository} held out`,
             )
             evidenceRouterSearch.push(
-              ...(yield* runParallelSearch(() =>
+              ...(yield* runParallelSearch((signal) =>
                 optimizeEvidenceRouterParallel(
                   model,
                   fusion,
@@ -698,7 +699,7 @@ export const runRetrievalBenchmark = (
                   split.development,
                   split.validation,
                   optimizationProfile,
-                  searchOptions,
+                  { ...searchOptions, signal },
                 ),
               )),
             )
@@ -711,14 +712,11 @@ export const runRetrievalBenchmark = (
     for (const [model, samples] of samplesByModel)
       for (const fusion of config.routerFusionMethods)
         recommendedEvidenceRouters.push(
-          ...(yield* runParallelSearch(() =>
-            fitRecommendedEvidenceRouterParallel(
-              model,
-              fusion,
-              samples,
-              optimizationProfile,
-              searchOptions,
-            ),
+          ...(yield* runParallelSearch((signal) =>
+            fitRecommendedEvidenceRouterParallel(model, fusion, samples, optimizationProfile, {
+              ...searchOptions,
+              signal,
+            }),
           )),
         )
     const evidenceRouterSearchDurationMs = performance.now() - evidenceRouterSearchStartedAt

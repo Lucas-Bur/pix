@@ -86,8 +86,10 @@ interface EvidenceSearchSample {
   readonly evidence: RoutingEvidence
 }
 
-/** Native worker-pool controls for the explicit asynchronous benchmark search path. */
-export type ParallelSearchOptions = CandidateEvaluationPoolOptions
+/** Native pool controls plus the cancellation signal owned by the benchmark Effect. */
+export interface ParallelSearchOptions extends CandidateEvaluationPoolOptions {
+  readonly signal?: AbortSignal
+}
 
 const preparedFusionCache = new WeakMap<
   WeightSearchSample,
@@ -199,7 +201,8 @@ const summarizeRanked = <T>(
   }
 }
 
-const summarize = (
+/** Summarize one prepared benchmark candidate with the canonical quality metrics. */
+export const summarize = (
   samples: readonly WeightSearchSample[],
   weights: ChannelWeights,
   fusion: FusionMethod = "rrf",
@@ -617,11 +620,9 @@ const storeQualityResults = (
 }
 
 const rankWeightCandidates = async (
-  samples: readonly WeightSearchSample[],
   candidates: readonly ChannelWeights[],
   limit: number,
   qualityCache: Map<string, QualitySummary>,
-  fusion: FusionMethod,
   pool: CandidateEvaluationPool,
   objective: RouterObjective = "reranker-top20",
   baseline?: QualitySummary,
@@ -657,8 +658,6 @@ const coordinateWeightCandidates = (
 ]
 
 const selectBestWeights = async (
-  samples: readonly WeightSearchSample[],
-  fusion: FusionMethod = "rrf",
   pool: CandidateEvaluationPool,
   objective: RouterObjective = "reranker-top20",
   baseline?: QualitySummary,
@@ -666,11 +665,9 @@ const selectBestWeights = async (
 ): Promise<{ readonly weights: ChannelWeights; readonly quality: QualitySummary }> => {
   const qualityCache = new Map<string, QualitySummary>()
   let beam = await rankWeightCandidates(
-    samples,
     weightCandidates(),
     SEARCH_BEAM_WIDTH,
     qualityCache,
-    fusion,
     pool,
     objective,
     baseline,
@@ -679,11 +676,9 @@ const selectBestWeights = async (
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (const channel of CHANNELS) {
       beam = await rankWeightCandidates(
-        samples,
         coordinateWeightCandidates(beam, channel),
         SEARCH_BEAM_WIDTH,
         qualityCache,
-        fusion,
         pool,
         objective,
         baseline,
@@ -730,6 +725,13 @@ const selectBestWeightsPerSubset = async (
   const qualities = await pool.evaluate(candidates.map((weights) => ({ weights })))
   return selectWeightSubsetCandidates(candidates, qualities, profile)
 }
+
+const selectStaticWeights = (
+  pool: CandidateEvaluationPool,
+  objective: RouterObjective,
+  productionQuality: QualitySummary,
+  profile: OptimizationProfile,
+) => selectBestWeights(pool, objective, productionQuality, profile)
 
 /** Config field containing one coefficient per retrieval channel. */
 type InfluenceName =
@@ -1193,6 +1195,7 @@ export const selectEligibleCandidate = <T>(
 }
 
 interface RouterSearchPreparation {
+  readonly samples: readonly WeightSearchSample[]
   readonly evidenceSamples: readonly EvidenceSearchSample[]
   readonly proxySamples: readonly EvidenceSearchSample[]
   readonly guardrailBaselines: GuardrailBaselines
@@ -1213,6 +1216,7 @@ const prepareRouterSearch = (
     profile,
   )
   return {
+    samples,
     evidenceSamples,
     proxySamples,
     guardrailBaselines,
@@ -1245,7 +1249,7 @@ const profileSeedFor = (profile: OptimizationProfile): EvidenceRouterConfig => (
 })
 
 const selectBestEvidenceRouter = async (
-  samples: readonly WeightSearchSample[],
+  preparation: RouterSearchPreparation,
   fusion: FusionMethod,
   profile: OptimizationProfile,
   fullPool: CandidateEvaluationPool,
@@ -1260,13 +1264,14 @@ const selectBestEvidenceRouter = async (
   readonly randomCandidates: number
 }> => {
   const {
+    samples,
     evidenceSamples,
     proxySamples,
     guardrailBaselines,
     productionQuality,
     proxyBaseline,
     stats,
-  } = prepareRouterSearch(samples, profile)
+  } = preparation
   const searchContext: RouterSearchContext = {
     samples: evidenceSamples,
     proxySamples,
@@ -1284,8 +1289,6 @@ const selectBestEvidenceRouter = async (
   }
   const profileSeed = profileSeedFor(profile)
   const baseWeights = await selectBestWeights(
-    samples,
-    fusion,
     fullPool,
     "reranker-top20",
     productionQuality,
@@ -1364,13 +1367,19 @@ const withCandidatePool = async <T>(
   samples: readonly WeightSearchSample[],
   fusion: FusionMethod,
   profile: OptimizationProfile,
-  options: CandidateEvaluationPoolOptions,
+  options: ParallelSearchOptions,
   operation: (pool: CandidateEvaluationPool) => Promise<T>,
 ): Promise<T> => {
   const pool = await createEvaluationPoolForSamples(samples, fusion, profile, options)
+  const closeOnAbort = () => {
+    void pool.close()
+  }
+  options.signal?.addEventListener("abort", closeOnAbort, { once: true })
+  if (options.signal?.aborted) closeOnAbort()
   try {
     return await operation(pool)
   } finally {
+    options.signal?.removeEventListener("abort", closeOnAbort)
     await pool.close()
   }
 }
@@ -1386,14 +1395,7 @@ const optimizeWeightsWithPool = async (
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
   pool: CandidateEvaluationPool,
 ): Promise<WeightSearchResult> => {
-  const selected = await selectBestWeights(
-    development,
-    "rrf",
-    pool,
-    "reranker-top20",
-    undefined,
-    profile,
-  )
+  const selected = await selectBestWeights(pool, "reranker-top20", undefined, profile)
   return {
     model,
     queryKind,
@@ -1476,14 +1478,7 @@ const optimizeFusionWeightsWithPool = async (
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
   pool: CandidateEvaluationPool,
 ): Promise<FusionSearchResult> => {
-  const selected = await selectBestWeights(
-    development,
-    fusion,
-    pool,
-    "reranker-top20",
-    undefined,
-    profile,
-  )
+  const selected = await selectBestWeights(pool, "reranker-top20", undefined, profile)
   const guardrailBaselines = buildGuardrailBaselines(development, profile)
   const holdoutProfile = unweightedProfile(profile)
   const validationQuality = summarize(validationSamples, selected.weights, fusion, profile)
@@ -1606,15 +1601,21 @@ const withParallelEvidencePools = async <T>(
     fullPool: CandidateEvaluationPool,
   ) => Promise<T>,
 ): Promise<T> => {
-  const evidenceSamples = prepareEvidenceSamples(samples)
-  const proxySamples = buildProxySamples(evidenceSamples)
+  const preparation = prepareRouterSearch(samples, profile)
+  const { evidenceSamples, proxySamples } = preparation
   const fullPool = await createEvaluationPoolForSamples(
     evidenceSamples.map(({ sample }) => sample),
     fusion,
     profile,
     options,
   )
+  const closeFullPoolOnAbort = () => {
+    void fullPool.close()
+  }
+  options.signal?.addEventListener("abort", closeFullPoolOnAbort, { once: true })
+  if (options.signal?.aborted) closeFullPoolOnAbort()
   let proxyPool: CandidateEvaluationPool | undefined
+  let closeProxyPoolOnAbort: (() => void) | undefined
   try {
     proxyPool =
       proxySamples === evidenceSamples
@@ -1625,12 +1626,54 @@ const withParallelEvidencePools = async <T>(
             profile,
             options,
           )
-    const selection = await selectBestEvidenceRouter(samples, fusion, profile, fullPool, proxyPool)
+    if (proxyPool !== undefined && proxyPool !== fullPool) {
+      closeProxyPoolOnAbort = () => {
+        void proxyPool?.close()
+      }
+      options.signal?.addEventListener("abort", closeProxyPoolOnAbort, { once: true })
+      if (options.signal?.aborted) closeProxyPoolOnAbort()
+    }
+    const selection = await selectBestEvidenceRouter(
+      preparation,
+      fusion,
+      profile,
+      fullPool,
+      proxyPool,
+    )
     return await operation(selection, fullPool)
   } finally {
+    options.signal?.removeEventListener("abort", closeFullPoolOnAbort)
+    if (closeProxyPoolOnAbort !== undefined)
+      options.signal?.removeEventListener("abort", closeProxyPoolOnAbort)
     if (proxyPool !== undefined && proxyPool !== fullPool) await proxyPool.close()
     await fullPool.close()
   }
+}
+
+interface StaticRouterSelection {
+  readonly selection: EvidenceRouterSelection
+  readonly staticSelection: Awaited<ReturnType<typeof selectStaticWeights>>
+}
+
+const selectStaticWeightsForSelections = async (
+  selections: readonly EvidenceRouterSelection[],
+  fullPool: CandidateEvaluationPool,
+  productionQuality: QualitySummary,
+  profile: OptimizationProfile,
+): Promise<readonly StaticRouterSelection[]> => {
+  const selected: StaticRouterSelection[] = []
+  for (const selection of selections) {
+    selected.push({
+      selection,
+      staticSelection: await selectStaticWeights(
+        fullPool,
+        selection.objective,
+        productionQuality,
+        profile,
+      ),
+    })
+  }
+  return selected
 }
 
 const optimizeEvidenceRouterWithPools = async (
@@ -1664,17 +1707,14 @@ const optimizeEvidenceRouterWithPools = async (
           profile,
         ),
       }
-      const results: EvidenceRouterSearchResult[] = []
-      for (const selection of dynamicSelection.selections) {
-        const staticSelection = await selectBestWeights(
-          development,
-          fusion,
-          fullPool,
-          selection.objective,
-          dynamicSelection.productionQuality,
-          profile,
-        )
-        results.push({
+      const staticSelections = await selectStaticWeightsForSelections(
+        dynamicSelection.selections,
+        fullPool,
+        dynamicSelection.productionQuality,
+        profile,
+      )
+      const results: EvidenceRouterSearchResult[] = staticSelections.map(
+        ({ selection, staticSelection }) => ({
           model,
           fusion,
           objective: selection.objective,
@@ -1712,8 +1752,8 @@ const optimizeEvidenceRouterWithPools = async (
               ),
             profile,
           ),
-        })
-      }
+        }),
+      )
       return results
     },
   )
@@ -1741,14 +1781,7 @@ const fitRecommendedWeightsWithPool = async (
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
   pool: CandidateEvaluationPool,
 ): Promise<RecommendedWeights> => {
-  const selected = await selectBestWeights(
-    samples,
-    "rrf",
-    pool,
-    "reranker-top20",
-    undefined,
-    profile,
-  )
+  const selected = await selectBestWeights(pool, "reranker-top20", undefined, profile)
   return {
     model,
     queryKind,
@@ -1794,14 +1827,7 @@ const fitRecommendedFusionWeightsWithPool = async (
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
   pool: CandidateEvaluationPool,
 ): Promise<RecommendedFusionWeights> => {
-  const selected = await selectBestWeights(
-    samples,
-    fusion,
-    pool,
-    "reranker-top20",
-    undefined,
-    profile,
-  )
+  const selected = await selectBestWeights(pool, "reranker-top20", undefined, profile)
   const guardrailBaselines = buildGuardrailBaselines(samples, profile)
   const guardrailsMet = fusionGuardrailsMet(
     samples,
@@ -1866,17 +1892,14 @@ const fitRecommendedEvidenceRouterWithOptions = (
     profile,
     options,
     async (dynamicSelection, fullPool) => {
-      const results: RecommendedEvidenceRouter[] = []
-      for (const selection of dynamicSelection.selections) {
-        const staticSelection = await selectBestWeights(
-          samples,
-          fusion,
-          fullPool,
-          selection.objective,
-          dynamicSelection.productionQuality,
-          profile,
-        )
-        results.push({
+      const staticSelections = await selectStaticWeightsForSelections(
+        dynamicSelection.selections,
+        fullPool,
+        dynamicSelection.productionQuality,
+        profile,
+      )
+      const results: RecommendedEvidenceRouter[] = staticSelections.map(
+        ({ selection, staticSelection }) => ({
           model,
           fusion,
           objective: selection.objective,
@@ -1891,8 +1914,8 @@ const fitRecommendedEvidenceRouterWithOptions = (
           proxyEvaluations: dynamicSelection.proxyEvaluations,
           fullEvaluations: dynamicSelection.fullEvaluations,
           searchDiagnostics: dynamicSelection.searchDiagnostics,
-        })
-      }
+        }),
+      )
       return results
     },
   )

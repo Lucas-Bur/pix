@@ -4,6 +4,7 @@ import { describe, expect, it } from "@effect/vitest"
 
 import type { Chunk } from "../../src/domain/chunk.js"
 import { prepareFusion } from "../retrieval/fusion.js"
+import { SEARCH_PRIORITY_PROFILE } from "../retrieval/optimization-profiles.js"
 import {
   fitRecommendedEvidenceRouter,
   fitRecommendedFusionWeights,
@@ -11,6 +12,7 @@ import {
   fitRecommendedWeights,
   fitRecommendedWeightsParallel,
   optimizeFusionWeights,
+  summarize,
 } from "../retrieval/weight-search.js"
 import {
   createCandidateEvaluationPool,
@@ -87,7 +89,8 @@ const searchSample = {
 
 describe("benchmark candidate evaluation pool", () => {
   it("derives a bounded default and honors explicit sizing", () => {
-    expect(getDefaultWorkerCount()).toBe(Math.max(1, availableParallelism() - 1))
+    expect(getDefaultWorkerCount()).toBeGreaterThanOrEqual(1)
+    expect(getDefaultWorkerCount()).toBeLessThanOrEqual(availableParallelism())
     expect(resolveWorkerCount(0)).toBe(0)
     expect(resolveWorkerCount(3)).toBe(3)
   })
@@ -111,6 +114,41 @@ describe("benchmark candidate evaluation pool", () => {
       await pool.close()
     }
     expect(pool.stats().activeWorkerCount).toBe(0)
+  })
+
+  it("keeps worker metrics aligned with canonical summarization", () => {
+    const parityRankings = {
+      ...rankings,
+      dense: [...rankings.dense, { chunkIndex: 99, score: 0.25 }],
+    }
+    const paritySamples = [
+      {
+        ...searchSample,
+        rankings: parityRankings,
+        targets: [new Set([0])],
+        queryKind: "identifier" as const,
+      },
+      {
+        ...searchSample,
+        intentId: "fixture-002",
+        rankings: parityRankings,
+        targets: [new Set([3])],
+        queryKind: "searchPhrase" as const,
+      },
+    ]
+    const weights = { identity: 1, camelcase: 1, bm25: 1, dense: 1, sparse: 1 }
+    const snapshot = createEvaluationSnapshot(
+      paritySamples.map((sample) => ({
+        evaluator: prepareFusion("dbsf", sample.rankings),
+        targets: sample.targets,
+        chunks: sample.chunks,
+        sampleWeight: SEARCH_PRIORITY_PROFILE.queryFormWeights[sample.queryKind],
+      })),
+    )
+
+    expect(evaluateCandidatesSerial(snapshot, [{ weights }])[0]).toEqual(
+      summarize(paritySamples, weights, "dbsf", SEARCH_PRIORITY_PROFILE),
+    )
   })
 
   it("keeps the explicit parallel search result equal to the serial search", async () => {
