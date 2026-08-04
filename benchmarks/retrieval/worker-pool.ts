@@ -6,6 +6,7 @@ import type { ChannelWeights } from "../../src/domain/retrieval.js"
 import { evaluateCandidate } from "./fusion-core.mjs"
 import { type PreparedFusionEvaluator, type PreparedFusionSnapshot } from "./fusion.js"
 import type { QualitySummary } from "./types.js"
+import { hasWorkerMessageType } from "./worker-message.js"
 
 const DEFAULT_BATCH_SIZE = 32
 const DEFAULT_WORKER_URL = new URL("./fusion-worker.mjs", import.meta.url)
@@ -176,9 +177,7 @@ export const evaluateCandidatesSerial = (
   candidates.map((candidate) => evaluateCandidate(snapshot, candidate))
 
 const isWorkerMessage = (message: unknown): message is WorkerMessage => {
-  if (typeof message !== "object" || message === null || !("type" in message)) return false
-  const type = message.type
-  return type === "ready" || type === "result" || type === "error"
+  return hasWorkerMessageType(message, ["ready", "result", "error"])
 }
 
 class NativeCandidateEvaluationPool implements CandidateEvaluationPool {

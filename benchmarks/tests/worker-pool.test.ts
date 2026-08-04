@@ -6,11 +6,16 @@ import type { Chunk } from "../../src/domain/chunk.js"
 import { prepareFusion } from "../retrieval/fusion.js"
 import { SEARCH_PRIORITY_PROFILE } from "../retrieval/optimization-profiles.js"
 import {
+  runEvidenceRouterJobs,
+  type EvidenceRouterHoldoutJob,
+} from "../retrieval/router-job-pool.js"
+import {
   fitRecommendedEvidenceRouter,
   fitRecommendedFusionWeights,
   fitRecommendedFusionWeightsParallel,
   fitRecommendedWeights,
   fitRecommendedWeightsParallel,
+  optimizeEvidenceRouter,
   optimizeFusionWeights,
   summarize,
 } from "../retrieval/weight-search.js"
@@ -88,6 +93,32 @@ const searchSample = {
 }
 
 describe("benchmark candidate evaluation pool", () => {
+  it("runs complete router jobs in native workers and preserves results", async () => {
+    const job: EvidenceRouterHoldoutJob = {
+      kind: "holdout",
+      model: "fixture",
+      fusion: "dbsf",
+      strategy: "grouped-5-fold",
+      fold: "1",
+      development: [searchSample],
+      validation: [searchSample],
+    }
+    const [parallel] = await runEvidenceRouterJobs([job], SEARCH_PRIORITY_PROFILE, {
+      workerCount: 1,
+    })
+    const serial = await optimizeEvidenceRouter(
+      job.model,
+      job.fusion,
+      job.strategy,
+      job.fold,
+      job.development,
+      job.validation,
+      SEARCH_PRIORITY_PROFILE,
+    )
+
+    expect(parallel).toEqual(serial)
+  })
+
   it("derives a bounded default and honors explicit sizing", () => {
     expect(getDefaultWorkerCount()).toBeGreaterThanOrEqual(1)
     expect(getDefaultWorkerCount()).toBeLessThanOrEqual(availableParallelism())

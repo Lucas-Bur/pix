@@ -4,7 +4,8 @@
   "entry": [
     "src/index.ts",
     "tests/scripts/bench-startup.mjs",
-    "tests/scripts/check-dtype-output.mjs"
+    "tests/scripts/check-dtype-output.mjs",
+    "benchmarks/retrieval/ts-loader.mjs"
   ],
   "boundaries": {
     "zones": [

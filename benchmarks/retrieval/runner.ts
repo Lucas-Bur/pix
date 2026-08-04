@@ -29,6 +29,7 @@ import { OPTIMIZATION_PROFILES, type OptimizationProfile } from "./optimization-
 import { prepareCorpus, type PreparedCorpus } from "./prepare.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "./ranking.js"
 import { renderMarkdownReport } from "./report.js"
+import { runEvidenceRouterJobs, type EvidenceRouterHoldoutJob } from "./router-job-pool.js"
 import { withSqliteBenchmarkStore } from "./sqlite-index.js"
 import {
   ROUTER_SEARCH_STRATEGY,
@@ -37,7 +38,9 @@ import {
   type CorpusManifest,
   type QueryKind,
   type QueryMeasurement,
+  type RecommendedEvidenceRouter,
   type ValidationStrategy,
+  type EvidenceRouterSearchResult,
 } from "./types.js"
 import {
   fitRecommendedEvidenceRouterParallel,
@@ -49,6 +52,7 @@ import {
   evaluateProductionRouter,
   type WeightSearchSample,
 } from "./weight-search.js"
+import { getDefaultWorkerCount, resolveWorkerCount } from "./worker-pool.js"
 
 const CONTEXT_BUDGETS = [2_048, 4_096, 8_192, 16_384] as const
 const EMBEDDING_BATCH_SIZE = 2
@@ -133,6 +137,46 @@ const splitSamples = (
   development: samples.filter((sample) => !isValidation(sample)),
   validation: samples.filter(isValidation),
 })
+
+const planEvidenceRouterJobs = (
+  samplesByModel: ReadonlyMap<string, readonly WeightSearchSample[]>,
+  config: BenchmarkProfileConfig,
+  groupedStrategy: ValidationStrategy,
+): readonly EvidenceRouterHoldoutJob[] => {
+  const jobs: EvidenceRouterHoldoutJob[] = []
+  for (const [model, samples] of samplesByModel) {
+    const repositories = [...new Set(samples.map((sample) => sample.repository))]
+    for (const fusion of config.routerFusionMethods) {
+      for (let fold = 0; fold < config.groupedFolds; fold++) {
+        const split = splitSamples(samples, (sample) => sample.groupedFold === fold)
+        jobs.push({
+          kind: "holdout",
+          model,
+          fusion,
+          strategy: groupedStrategy,
+          fold: String(fold + 1),
+          development: split.development,
+          validation: split.validation,
+        })
+      }
+      if (config.repositoryHoldouts && repositories.length > 1) {
+        for (const repository of repositories) {
+          const split = splitSamples(samples, (sample) => sample.repository === repository)
+          jobs.push({
+            kind: "holdout",
+            model,
+            fusion,
+            strategy: "leave-one-repository-out",
+            fold: repository,
+            development: split.development,
+            validation: split.validation,
+          })
+        }
+      }
+    }
+  }
+  return jobs
+}
 
 const isLongInput = (text: string): boolean =>
   Buffer.byteLength(text, "utf8") / 4 > SINGLE_ITEM_ESTIMATED_TOKENS
@@ -291,7 +335,12 @@ export const runRetrievalBenchmark = (
     const benchmarkStartedAt = performance.now()
     const config = profileConfig(profile)
     const serialSearch = process.env.PIX_BENCH_SEARCH_MODE === "serial"
-    const searchOptions = serialSearch ? { workerCount: 0 } : {}
+    const searchOptions = serialSearch
+      ? { workerCount: 0 }
+      : {
+          workerCount: Math.min(resolveWorkerCount(), getDefaultWorkerCount()),
+          fallbackToSerial: false,
+        }
     const optimizationProfile = yield* selectOptimizationProfile()
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
@@ -659,66 +708,97 @@ export const runRetrievalBenchmark = (
     const fusionSearchDurationMs = performance.now() - fusionSearchStartedAt
 
     const evidenceRouterSearchStartedAt = performance.now()
-    const evidenceRouterSearch: BenchmarkArtifact["evidenceRouterSearch"][number][] = []
-    for (const [model, samples] of samplesByModel) {
-      for (const fusion of config.routerFusionMethods) {
-        for (let fold = 0; fold < config.groupedFolds; fold++) {
-          const split = splitSamples(samples, (sample) => sample.groupedFold === fold)
-          reportProgress(
-            `${model}: selecting ${fusion} evidence router for grouped fold ${fold + 1}/${config.groupedFolds}`,
-          )
-          evidenceRouterSearch.push(
-            ...(yield* runParallelSearch((signal) =>
-              optimizeEvidenceRouterParallel(
-                model,
-                fusion,
-                groupedStrategy,
-                String(fold + 1),
-                split.development,
-                split.validation,
-                optimizationProfile,
-                { ...searchOptions, signal },
-              ),
-            )),
-          )
-        }
-        const repositories = [...new Set(samples.map((sample) => sample.repository))]
-        if (config.repositoryHoldouts && repositories.length > 1) {
-          for (const repository of repositories) {
-            const split = splitSamples(samples, (sample) => sample.repository === repository)
-            reportProgress(
-              `${model}: selecting ${fusion} evidence router with ${repository} held out`,
-            )
-            evidenceRouterSearch.push(
-              ...(yield* runParallelSearch((signal) =>
-                optimizeEvidenceRouterParallel(
-                  model,
-                  fusion,
-                  "leave-one-repository-out",
-                  repository,
-                  split.development,
-                  split.validation,
-                  optimizationProfile,
-                  { ...searchOptions, signal },
-                ),
-              )),
-            )
-          }
-        }
-      }
-    }
-    reportProgress("fitting final evidence router on all samples")
-    const recommendedEvidenceRouters: BenchmarkArtifact["recommendedEvidenceRouters"][number][] = []
+    const routerJobs = planEvidenceRouterJobs(samplesByModel, config, groupedStrategy)
+    const routerWorkerBudget = Math.min(
+      resolveWorkerCount(searchOptions.workerCount),
+      getDefaultWorkerCount(),
+    )
+    const recommendedJobs: {
+      readonly model: string
+      readonly fusion: FusionMethod
+      readonly samples: readonly WeightSearchSample[]
+    }[] = []
     for (const [model, samples] of samplesByModel)
       for (const fusion of config.routerFusionMethods)
-        recommendedEvidenceRouters.push(
-          ...(yield* runParallelSearch((signal) =>
-            fitRecommendedEvidenceRouterParallel(model, fusion, samples, optimizationProfile, {
-              ...searchOptions,
+        recommendedJobs.push({ model, fusion, samples })
+    const canParallelizeRouterJobs = !serialSearch && routerWorkerBudget >= 2
+    // Holdouts are complete native-worker jobs; final fits retain their candidate queue.
+    // Split one budget between both queues so nested pools never oversubscribe the machine.
+    const holdoutWorkerCount =
+      !canParallelizeRouterJobs || routerJobs.length === 0
+        ? 0
+        : Math.min(
+            routerJobs.length,
+            recommendedJobs.length === 0
+              ? routerWorkerBudget
+              : Math.max(1, Math.floor(routerWorkerBudget / 2)),
+          )
+    const recommendedWorkerCount =
+      !canParallelizeRouterJobs || recommendedJobs.length === 0
+        ? 0
+        : routerJobs.length === 0
+          ? Math.min(recommendedJobs.length, routerWorkerBudget)
+          : Math.max(1, routerWorkerBudget - holdoutWorkerCount)
+    reportProgress(
+      `running ${routerJobs.length} complete holdout jobs with ${holdoutWorkerCount} native workers ` +
+        `and ${recommendedJobs.length} final fits with ${recommendedWorkerCount} pool workers`,
+    )
+    let evidenceRouterSearch: readonly EvidenceRouterSearchResult[] = []
+    let recommendedEvidenceRouters: readonly RecommendedEvidenceRouter[] = []
+    const holdoutSearch =
+      canParallelizeRouterJobs && routerJobs.length > 0
+        ? runParallelSearch((signal) =>
+            runEvidenceRouterJobs(routerJobs, optimizationProfile, {
+              workerCount: holdoutWorkerCount,
               signal,
             }),
-          )),
-        )
+          )
+        : Effect.forEach(
+            routerJobs,
+            (job) =>
+              runParallelSearch((signal) =>
+                optimizeEvidenceRouterParallel(
+                  job.model,
+                  job.fusion,
+                  job.strategy,
+                  job.fold,
+                  job.development,
+                  job.validation,
+                  optimizationProfile,
+                  { ...searchOptions, workerCount: 0, signal },
+                ),
+              ),
+            { concurrency: 1 },
+          )
+    const recommendedSearch = Effect.forEach(
+      recommendedJobs,
+      (job) =>
+        runParallelSearch((signal) =>
+          fitRecommendedEvidenceRouterParallel(
+            job.model,
+            job.fusion,
+            job.samples,
+            optimizationProfile,
+            {
+              ...searchOptions,
+              workerCount: canParallelizeRouterJobs ? recommendedWorkerCount : 0,
+              signal,
+            },
+          ),
+        ),
+      { concurrency: 1 },
+    )
+    if (canParallelizeRouterJobs) {
+      const results = yield* Effect.all(
+        { holdouts: holdoutSearch, recommended: recommendedSearch },
+        { concurrency: 2 },
+      )
+      evidenceRouterSearch = results.holdouts.flat()
+      recommendedEvidenceRouters = results.recommended.flat()
+    } else {
+      evidenceRouterSearch = (yield* holdoutSearch).flat()
+      recommendedEvidenceRouters = (yield* recommendedSearch).flat()
+    }
     const evidenceRouterSearchDurationMs = performance.now() - evidenceRouterSearchStartedAt
 
     const embeddingDurationMs = embeddingRuns.reduce(

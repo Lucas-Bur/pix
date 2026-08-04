@@ -257,8 +257,13 @@ same selection algorithm; `PIX_BENCH_WORKERS=0` selects serial evaluation, `work
 the serial pool through `createCandidateEvaluationPool`, and the runner's
 `PIX_BENCH_SEARCH_MODE=serial` selects that serial pool mode. `PIX_BENCH_WORKER_BATCH_SIZE` bounds each
 worker message.
-Unavailable worker startup falls back to serial evaluation; task failures are surfaced and all workers are
-terminated before the benchmark fails.
+Evidence-router grouped-fold and repository-holdout jobs run as complete native router jobs. One worker
+owns the mutable candidate-generation, beam, cache, and promotion state for one job. Final deployment fits
+keep their candidate-evaluation queue, and the runner splits one `PIX_BENCH_WORKERS` budget between the
+holdout-job queue and that inner queue so nested pools do not oversubscribe the machine. Results retain
+planner order even when jobs finish out of order. Serial mode keeps the same algorithm on the main thread
+for comparison. Native router worker startup or task failures are surfaced and all workers are terminated
+before the benchmark fails.
 Repository checkouts live under ignored `benchmarks/.cache/repos/`; generated artifacts live under
 ignored `benchmarks/results/`. Dense and Sparse vectors are held only in the production in-memory
 SQLite adapter during a benchmark run. See `benchmarks/README.md` and `benchmarks/BASELINE.md`.
