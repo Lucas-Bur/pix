@@ -19,7 +19,7 @@ const emptyRankings = {
 }
 
 describe("fuseRankings", () => {
-  it("keeps the compatibility RRF scores and handles missing channels", () => {
+  it("handles RRF scores and missing channels", () => {
     const ranked = fuseRankings(
       "rrf",
       {

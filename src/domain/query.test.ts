@@ -22,6 +22,7 @@ test("query transport options reject fractional and invalid bounded values", () 
   expect(Schema.is(QueryRequestSchema)({ queryText: "test", top: 1.5 })).toBe(false)
   expect(Schema.is(QueryRequestSchema)({ queryText: "test", contextLines: -1 })).toBe(false)
   expect(Schema.is(QueryRequestSchema)({ queryText: "test", maxCharacters: 0 })).toBe(false)
+  expect(Schema.is(QueryRequestSchema)({ queryText: "test", profile: "compatibility" })).toBe(true)
   expect(Schema.is(QueryRequestSchema)({ queryText: "test", profile: "code-navigation" })).toBe(
     true,
   )

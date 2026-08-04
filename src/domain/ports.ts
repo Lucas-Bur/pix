@@ -324,7 +324,7 @@ export interface SearchOptions {
 
 /** A single search result from a semantic query. Results are sorted by similarity score descending. */
 export interface SearchResult {
-  /** Raw RRF fusion score (internal — use `rel` for human-friendly display). */
+  /** Raw fusion score (internal — use `rel` for human-friendly display). */
   readonly score: number
   /** Normalised relevance score on [0, ~1] scale. score * K / sumWeights. */
   readonly rel: number

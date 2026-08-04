@@ -88,21 +88,14 @@ export type EvidenceRouterParameters = typeof EvidenceRouterParametersSchema.Typ
 export const decodeEvidenceRouterConfig = (input: unknown): EvidenceRouterConfig =>
   Schema.decodeUnknownSync(EvidenceRouterConfigSchema)(input)
 
-const ZERO_COEFFICIENTS: ChannelCoefficients = {
+/** Neutral coefficient vector used when an evidence family has no influence. */
+export const ZERO_CHANNEL_COEFFICIENTS: ChannelCoefficients = {
   identity: 0,
   camelcase: 0,
   bm25: 0,
   dense: 0,
   sparse: 0,
 }
-
-/** Explicit profile names accepted by the production query boundary. */
-const PRODUCTION_PROFILE_NAMES = [
-  "compatibility",
-  "balanced",
-  "code-navigation",
-  "natural-language",
-] as const
 
 /**
  * Full configuration promoted from the `search-priority` direct DBSF candidate in the benchmark.
@@ -113,9 +106,9 @@ export const PROMOTED_SEARCH_PRIORITY_CONFIG: EvidenceRouterConfig = decodeEvide
   fusion: "dbsf",
   candidateDepth: 200,
   baseWeights: { identity: 0.6, camelcase: 0.5, bm25: 0.9, dense: 1, sparse: 0.1 },
-  scoreInfluence: { identity: 0, camelcase: 0.5, bm25: 0.8, dense: 0.6, sparse: 0 },
-  geometryInfluence: { identity: 0, camelcase: 0.6, bm25: 0.1, dense: 0, sparse: 0 },
-  termCoverageInfluence: { identity: 0, camelcase: 0.1, bm25: 0.2, dense: 0, sparse: 0 },
+  scoreInfluence: { ...ZERO_CHANNEL_COEFFICIENTS, camelcase: 0.5, bm25: 0.8, dense: 0.6 },
+  geometryInfluence: { ...ZERO_CHANNEL_COEFFICIENTS, camelcase: 0.6, bm25: 0.1 },
+  termCoverageInfluence: { ...ZERO_CHANNEL_COEFFICIENTS, camelcase: 0.1, bm25: 0.2 },
   pairwiseAgreementInfluence: {
     identity: 0,
     camelcase: 0.9,
@@ -123,53 +116,22 @@ export const PROMOTED_SEARCH_PRIORITY_CONFIG: EvidenceRouterConfig = decodeEvide
     dense: 0.8,
     sparse: 0.7,
   },
-  denseConfidenceInfluence: { identity: 0, camelcase: 0, bm25: 0, dense: 0.6, sparse: 0 },
-  identifierInfluence: { identity: 0, camelcase: 0.4, bm25: -0.1, dense: -0.1, sparse: -0.7 },
-  queryLengthInfluence: { identity: 0, camelcase: -0.3, bm25: -0.4, dense: -0.3, sparse: -0.4 },
+  denseConfidenceInfluence: { ...ZERO_CHANNEL_COEFFICIENTS, dense: 0.6 },
+  identifierInfluence: {
+    ...ZERO_CHANNEL_COEFFICIENTS,
+    camelcase: 0.4,
+    bm25: -0.1,
+    dense: -0.1,
+    sparse: -0.7,
+  },
+  queryLengthInfluence: {
+    ...ZERO_CHANNEL_COEFFICIENTS,
+    camelcase: -0.3,
+    bm25: -0.4,
+    dense: -0.3,
+    sparse: -0.4,
+  },
 })
-
-/** Production retrieval profile name. */
-export const ProductionProfileNameSchema = Schema.Literals(PRODUCTION_PROFILE_NAMES)
-
-/** Production profile selected explicitly by a query caller. */
-export type ProductionProfileName = typeof ProductionProfileNameSchema.Type
-
-/** Resolved production profile configuration. */
-export interface ProductionProfile {
-  readonly name: ProductionProfileName
-  readonly config: EvidenceRouterConfig
-  readonly experimental: boolean
-}
-
-/** Build an experimental profile with an authored base prior and the promoted evidence model. */
-const makeProductionProfileConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig =>
-  decodeEvidenceRouterConfig({
-    ...PROMOTED_SEARCH_PRIORITY_CONFIG,
-    baseWeights,
-  })
-
-const makeCompatibilityConfig = (fusion: FusionMethod): EvidenceRouterConfig =>
-  decodeEvidenceRouterConfig({
-    fusion,
-    candidateDepth: 200,
-    baseWeights: {
-      identity: 3,
-      camelcase: 1.5,
-      bm25: 1,
-      dense: 1,
-      sparse: 1,
-    },
-    scoreInfluence: ZERO_COEFFICIENTS,
-    geometryInfluence: ZERO_COEFFICIENTS,
-    termCoverageInfluence: ZERO_COEFFICIENTS,
-    pairwiseAgreementInfluence: ZERO_COEFFICIENTS,
-    denseConfidenceInfluence: ZERO_COEFFICIENTS,
-    identifierInfluence: ZERO_COEFFICIENTS,
-    queryLengthInfluence: { ...ZERO_COEFFICIENTS, bm25: -1, dense: 1 },
-  })
-
-/** Historical RRF configuration retained as the benchmark guardrail baseline. */
-export const PRODUCTION_RRF_BASELINE_CONFIG = makeCompatibilityConfig("rrf")
 
 /**
  * Current production compatibility profile. This is the promoted dynamic DBSF configuration for the
@@ -177,7 +139,32 @@ export const PRODUCTION_RRF_BASELINE_CONFIG = makeCompatibilityConfig("rrf")
  */
 export const PRODUCTION_COMPATIBILITY_CONFIG = PROMOTED_SEARCH_PRIORITY_CONFIG
 
-/** Explicitly selectable production profiles; non-compatibility profiles remain opt-in candidates. */
+const PRODUCTION_PROFILE_NAMES = [
+  "compatibility",
+  "balanced",
+  "code-navigation",
+  "natural-language",
+] as const
+
+/** Explicit runtime profile names; their distinct matrix-derived configs are still pending. */
+export const ProductionProfileNameSchema = Schema.Literals(PRODUCTION_PROFILE_NAMES)
+
+/** Production profile name accepted by the query boundary. */
+export type ProductionProfileName = typeof ProductionProfileNameSchema.Type
+
+/** A named runtime retrieval profile and its validated router configuration. */
+export interface ProductionProfile {
+  readonly name: ProductionProfileName
+  readonly config: EvidenceRouterConfig
+  readonly experimental: boolean
+}
+
+/**
+ * Runtime retrieval profiles.
+ *
+ * TODO(#163): Replace the experimental aliases with distinct configurations once the benchmark
+ * matrix determines their base weights and evidence influences.
+ */
 export const PRODUCTION_PROFILES = {
   compatibility: {
     name: "compatibility",
@@ -186,40 +173,22 @@ export const PRODUCTION_PROFILES = {
   },
   balanced: {
     name: "balanced",
-    config: makeProductionProfileConfig({
-      identity: 1,
-      camelcase: 1,
-      bm25: 1,
-      dense: 1,
-      sparse: 1,
-    }),
+    config: PRODUCTION_COMPATIBILITY_CONFIG,
     experimental: true,
   },
   "code-navigation": {
     name: "code-navigation",
-    config: makeProductionProfileConfig({
-      identity: 4,
-      camelcase: 2,
-      bm25: 1.5,
-      dense: 0.5,
-      sparse: 1,
-    }),
+    config: PRODUCTION_COMPATIBILITY_CONFIG,
     experimental: true,
   },
   "natural-language": {
     name: "natural-language",
-    config: makeProductionProfileConfig({
-      identity: 0.5,
-      camelcase: 0.5,
-      bm25: 1,
-      dense: 2,
-      sparse: 1.5,
-    }),
+    config: PRODUCTION_COMPATIBILITY_CONFIG,
     experimental: true,
   },
 } as const satisfies Readonly<Record<ProductionProfileName, ProductionProfile>>
 
-/** Resolve a caller-selected profile; compatibility is the safe default. */
+/** Resolve a caller-selected runtime profile; compatibility is the calibrated default. */
 export const resolveProductionProfile = (
   name: ProductionProfileName = "compatibility",
 ): ProductionProfile => PRODUCTION_PROFILES[name]

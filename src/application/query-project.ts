@@ -17,7 +17,6 @@ import {
   type EvidenceRouterConfig,
   resolveProductionProfile,
   type ChannelRankings,
-  type ChannelWeights,
 } from "../domain/retrieval.js"
 import { buildChunkValidationErrors } from "../lib/config/validation.js"
 import { rankBm25 } from "../lib/retrieval/bm25.js"
@@ -26,6 +25,7 @@ import {
   buildQueryTermCoverage,
   buildRoutingEvidence,
   routeWithEvidence,
+  type RoutingEvidence,
 } from "../lib/retrieval/evidence-router.js"
 import { fuseRankings } from "../lib/retrieval/fusion.js"
 import { rankIdentity } from "../lib/retrieval/identity.js"
@@ -87,10 +87,11 @@ export const filterResults = <T extends Pick<SearchResult, "file">>(
 
 const fuseResults = (
   rankings: ChannelRankings,
-  weights: ChannelWeights,
+  evidence: RoutingEvidence,
   config: EvidenceRouterConfig,
   entryMap: Map<number, ChunkMetadata>,
 ): RankedResult[] => {
+  const weights = routeWithEvidence(evidence, config)
   const sumWeights =
     (rankings.identity.length > 0 ? weights.identity : 0) +
     (rankings.camelcase.length > 0 ? weights.camelcase : 0) +
@@ -206,9 +207,8 @@ const make = Effect.gen(function* () {
         rankings,
         buildQueryTermCoverage(queryText, bm25Index, identifierIndex),
       )
-      const weights = routeWithEvidence(evidence, profile.config)
       const results = Object.values(rankings).some((list) => list.length > 0)
-        ? fuseResults(rankings, weights, profile.config, entryMap)
+        ? fuseResults(rankings, evidence, profile.config, entryMap)
         : []
       const filtered = filterResults(results, options)
 

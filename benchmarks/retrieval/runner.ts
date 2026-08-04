@@ -10,14 +10,13 @@ import type { StoredChunk } from "../../src/domain/index-data.js"
 import { MODEL_REGISTRY } from "../../src/domain/models.js"
 import type { BoundEmbedder } from "../../src/domain/ports.js"
 import { IndexStore, SparseEmbedder } from "../../src/domain/ports.js"
-import type { FusionMethod } from "../../src/domain/retrieval.js"
+import { FUSION_METHODS, type FusionMethod } from "../../src/domain/retrieval.js"
 import type { SparseContract, SparseTerm, SparseVector } from "../../src/domain/sparse.js"
 import { contentHash } from "../../src/lib/content-hash.js"
+import { buildQueryTermCoverage } from "../../src/lib/retrieval/evidence-router.js"
 import { createAutoBoundEmbedder } from "../../src/services/embedder.js"
 import { loadCorpusManifests, prepareRepository } from "./corpus.js"
-import { buildQueryTermCoverage } from "./evidence-router.js"
 import { assignGroupedFolds, foldKey } from "./folds.js"
-import { FUSION_METHODS } from "./fusion.js"
 import {
   contextRecallAtBudget,
   goldTargetRanks,

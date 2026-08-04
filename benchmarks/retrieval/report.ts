@@ -1,9 +1,9 @@
-import type {
-  ChannelCoefficients,
-  ChannelWeights,
-  EvidenceRouterConfig,
+import {
+  CHANNEL_NAMES,
+  type ChannelCoefficients,
+  type ChannelWeights,
+  type EvidenceRouterConfig,
 } from "../../src/domain/retrieval.js"
-import { CHANNEL_NAMES } from "./ranking.js"
 import type {
   BenchmarkArtifact,
   EvidenceRouterSearchResult,

@@ -2,13 +2,13 @@ import { describe, expect, it } from "@effect/vitest"
 
 import type { Chunk } from "../../src/domain/chunk.js"
 import { buildBm25Index } from "../../src/lib/retrieval/bm25.js"
-import { buildIdentifierIndex } from "../../src/lib/retrieval/identifier-index.js"
 import {
   buildQueryTermCoverage,
   buildRoutingEvidence,
   routeWithEvidence,
-} from "../retrieval/evidence-router.js"
-import { fuseRankings } from "../retrieval/fusion.js"
+} from "../../src/lib/retrieval/evidence-router.js"
+import { fuseRankings } from "../../src/lib/retrieval/fusion.js"
+import { buildIdentifierIndex } from "../../src/lib/retrieval/identifier-index.js"
 import { recallAt, resolveGoldTargets } from "../retrieval/metrics.js"
 import type { PreparedCorpus } from "../retrieval/prepare.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "../retrieval/ranking.js"

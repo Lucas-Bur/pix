@@ -2,6 +2,7 @@ import { Schema } from "effect"
 
 import {
   EvidenceRouterParametersSchema,
+  ZERO_CHANNEL_COEFFICIENTS,
   type ChannelWeights,
   type EvidenceRouterParameters,
 } from "../../src/domain/retrieval.js"
@@ -42,14 +43,6 @@ const MetricObjectiveSchema = Schema.Struct({
   contextBudget: Schema.Int.check(Schema.isGreaterThan(0)),
 })
 
-const ZERO_COEFFICIENTS: EvidenceRouterParameters["queryLengthInfluence"] = {
-  identity: 0,
-  camelcase: 0,
-  bm25: 0,
-  dense: 0,
-  sparse: 0,
-}
-
 /** Benchmark-owned optimization profile; selected candidates are validated before production use. */
 const OptimizationProfileSchema = Schema.Struct({
   name: Schema.Literals(OptimizationProfileNames),
@@ -87,15 +80,15 @@ const objective = (
 
 const makeProfileFusionConfig = (
   baseWeights: ChannelWeights,
-  queryLengthInfluence: EvidenceRouterParameters["queryLengthInfluence"] = ZERO_COEFFICIENTS,
+  queryLengthInfluence: EvidenceRouterParameters["queryLengthInfluence"] = ZERO_CHANNEL_COEFFICIENTS,
 ): EvidenceRouterParameters => ({
   baseWeights,
-  scoreInfluence: ZERO_COEFFICIENTS,
-  geometryInfluence: ZERO_COEFFICIENTS,
-  termCoverageInfluence: ZERO_COEFFICIENTS,
-  pairwiseAgreementInfluence: ZERO_COEFFICIENTS,
-  denseConfidenceInfluence: ZERO_COEFFICIENTS,
-  identifierInfluence: ZERO_COEFFICIENTS,
+  scoreInfluence: ZERO_CHANNEL_COEFFICIENTS,
+  geometryInfluence: ZERO_CHANNEL_COEFFICIENTS,
+  termCoverageInfluence: ZERO_CHANNEL_COEFFICIENTS,
+  pairwiseAgreementInfluence: ZERO_CHANNEL_COEFFICIENTS,
+  denseConfidenceInfluence: ZERO_CHANNEL_COEFFICIENTS,
+  identifierInfluence: ZERO_CHANNEL_COEFFICIENTS,
   queryLengthInfluence,
 })
 
@@ -116,7 +109,7 @@ const profile = (
 const COMPATIBILITY_PROFILE_CONFIG: EvidenceRouterParameters = {
   ...makeProfileFusionConfig(
     { identity: 3, camelcase: 1.5, bm25: 1, dense: 1, sparse: 1 },
-    { ...ZERO_COEFFICIENTS, bm25: -1, dense: 1 },
+    { ...ZERO_CHANNEL_COEFFICIENTS, bm25: -1, dense: 1 },
   ),
 }
 const BALANCED_PROFILE_CONFIG = makeProfileFusionConfig({

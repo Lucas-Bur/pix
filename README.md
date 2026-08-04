@@ -33,11 +33,11 @@ into `.pix/cache/`. Later indexing and queries are local; Sparse query weighting
 | `pix reset`                  | Delete index files (chunks + vectors)                                                                                                                                            | `--json`  |
 
 All one-shot commands support `--json` for structured output on stdout — ideal for piping to AI agents.
-Use `--profile compatibility|balanced|code-navigation|natural-language` to select the production
-retrieval profile explicitly. Compatibility is the default and uses the benchmark-selected DBSF fusion;
-the other profiles remain experimental until benchmark holdouts validate their weights. Profile selection
-is request-scoped and is also available on alias-run and the MCP `profile` argument; it is not a global
-`.pix/config.json` setting.
+Use `--profile compatibility|balanced|code-navigation|natural-language` to select a runtime profile.
+Compatibility is currently the only matrix-calibrated profile and uses the benchmark-selected DBSF
+fusion; the other named profiles temporarily reuse it until the matrix determines distinct values. Profile
+selection is request-scoped and is also available on alias-run and the MCP `profile` argument; it is not
+a global `.pix/config.json` setting.
 
 ## MCP Server
 

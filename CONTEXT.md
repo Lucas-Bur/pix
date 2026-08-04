@@ -101,8 +101,10 @@ init, incremental index, self-refreshing query, status, reset, and explicit embe
 
 Evidence-based routing adjusts scorer weights before fusion using channel availability, score geometry,
 term coverage, pairwise agreement, dense confidence, identifier shape, and explicit query-length bands.
-The compatibility profile keeps the existing behavior: short queries (1-2 tokens) boost BM25 and reduce
-Dense; long queries (8+ tokens) boost Dense and reduce BM25. Other profiles are explicitly selected.
+Named runtime profiles use the evidence router. Compatibility is currently the only matrix-calibrated
+profile: short queries (1-2 tokens) boost BM25 and reduce Dense; long queries (8+ tokens) boost Dense and
+reduce BM25. The other runtime names temporarily reuse this configuration until the benchmark matrix
+provides distinct values.
 
 ### Query API
 
@@ -124,7 +126,7 @@ CLI-only.
 
 ### Query Alias
 
-Named query-only preset stored in `.pix/aliases.json` as a flat map keyed by alias name. Each value contains `queryText` plus query options (`top`, `ignorePath`, `onlyPath`, `contextLines`, `maxCharacters`, and `noContent`). Output modes such as JSON and Clipboard Copy are runtime choices, not part of the alias. `pix run <name>` is the short form for `pix alias run <name>`; both execute the same implementation.
+Named query-only preset stored in `.pix/aliases.json` as a flat map keyed by alias name. Each value contains `queryText` plus query options (`top`, `ignorePath`, `onlyPath`, `contextLines`, `maxCharacters`, `noContent`, and `profile`). Output modes such as JSON and Clipboard Copy are runtime choices, not part of the alias. `pix run <name>` is the short form for `pix alias run <name>`; both execute the same implementation.
 
 ### Clipboard Copy
 
@@ -150,20 +152,20 @@ may adjust each channel's base weight using score separation, score geometry, te
 agreement, dense confidence, identifier likelihood, query length, and channel availability.
 The promoted full configuration, including its `dbsf` fusion method, is
 `PROMOTED_SEARCH_PRIORITY_CONFIG` in `src/domain/retrieval.ts`; `PRODUCTION_COMPATIBILITY_CONFIG` is a
-direct alias. Experimental runtime profiles reuse that coupled fusion/evidence model with their own
-authored base priors.
+direct alias. Named runtime profiles are registered in `PRODUCTION_PROFILES`; profiles without
+matrix-derived values temporarily reuse the compatibility configuration and are marked experimental.
 
 The benchmark's default `search-priority` profile weights the four authored query forms as
 intent-weighted: `identifier=1`, `agentTask=2`, `naturalQuestion=3`, and `searchPhrase=4`, while still
 reporting unweighted per-form results and holdout guardrails. This is an evaluation objective, not an
-implicit runtime query label. Future explicit profiles such as `balanced`, `code-navigation`, and
+implicit runtime query label. Benchmark-only profiles such as `balanced`, `code-navigation`, and
 `basic-exploration` may choose different query-form priorities, channel priors, and target metrics
 (Recall@5/10/20/50 and context recall). See ADR-0019, issue #162 for production Sparse, and issue #163
 for evidence-based fusion and optimization profiles.
 
-Production queries accept an explicit `profile` selection. `compatibility` is the default DBSF profile;
-`balanced`, `code-navigation`, and `natural-language` remain opt-in experimental candidates until their
-weights and evidence influences are promoted from benchmark holdouts.
+Production queries accept the named profile selection `compatibility`, `balanced`, `code-navigation`, or
+`natural-language`. Only `compatibility` currently has matrix-derived values; the remaining names are
+runtime placeholders until their configurations are selected from the benchmark matrix.
 
 Benchmark-owned profile seeds and optimizer search live under `benchmarks/retrieval/`; current profile
 values are marked `authored-seed` and are not presented as benchmark-derived weights. Production keeps
@@ -221,7 +223,7 @@ export with max-pooled positive token logits and a matching static IDF query loo
 document vectors are cached separately under `benchmarks/.cache/sparse`. Sparse-inclusive rankings,
 five-channel score fusion, ten pairwise agreement signals, and separate sparse timing rows are recorded
 in schema-17 artifacts. ADR-0020 promotes the validated Sparse contract to the production five-channel
-RRF path and persists its IDF and postings in `.pix/index.db`.
+fusion path and persists its IDF and postings in `.pix/index.db`.
 Schema 19 removes the benchmark-owned Sparse encoder, in-process postings implementation, and separate
 embedding caches. Benchmark profile fitting and optimizer search remain benchmark-owned, while the
 fusion adapters and evidence signals are shared with production. Benchmarks
@@ -396,7 +398,7 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 
 - `pix init` — Create `.pix/config.json`. Prompts for model selection (human mode); `--json` uses default model.
 - `pix index` — Incrementally refresh the index. Unchanged files reuse chunk metadata, vectors, BM25 terms, and identifier postings; changed chunks use the embedding cache before inference.
-- `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content] [--profile NAME]` — Ensure the index is fresh, then run hybrid search. Missing indexes, source changes, and model/dtype changes are repaired automatically. Source text loads only after top-K selection; `--no-content` performs no source reads. Profiles are explicit: `compatibility` (default), `balanced`, `code-navigation`, or `natural-language`.
+- `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content] [--profile compatibility|balanced|code-navigation|natural-language]` — Ensure the index is fresh, then run hybrid search. Missing indexes, source changes, and model/dtype changes are repaired automatically. Source text loads only after top-K selection; `compatibility` is the matrix-calibrated runtime configuration and the other named profiles currently reuse it.
 - `pix mcp` — Run the host-managed MCP stdio server exposing the shared read-only query API.
 - `pix status` — Show index statistics
 - `pix reset` — Delete the active SQLite index snapshot while retaining historical embeddings
@@ -409,8 +411,8 @@ All one-shot commands support `--json` for agent-ready structured output on stdo
 
 - A **Scorer** consumes **ChunkEntry** data and produces a **RankedChunk** list
 - **RRF** fuses N **RankedChunk** lists, each weighted by **Query Routing** output
-- Production currently selects RRF; Relative Score and DBSF remain inactive until an evidence-based
-  production configuration passes holdout guardrails
+- Production currently selects the promoted DBSF evidence-router configuration; RRF remains an explicit
+  historical benchmark and rollback baseline
 - **BM25 Index** is built once by the index pipeline, consumed by the BM25 **Scorer** at query time
 - Retrieval channels expose `RankedChunk[]` through the production fusion seam. BM25 and identifiers
   score in pure functions; Dense and Sparse rank natively through `IndexStore`.
