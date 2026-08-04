@@ -3,7 +3,7 @@ import { Schema } from "effect"
 import type {
   EvidenceRouterConfig,
   FusionMethod as ProductionFusionMethod,
-} from "../../src/domain/retrieval.js"
+} from "../../../src/domain/retrieval.js"
 import type { OptimizationProfile } from "./optimization-profiles.js"
 
 /** Benchmark repository size band used for report segmentation. */

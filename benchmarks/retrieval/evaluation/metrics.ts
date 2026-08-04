@@ -1,5 +1,5 @@
-import type { Chunk } from "../../src/domain/chunk.js"
-import type { RankedChunk } from "../../src/domain/ports.js"
+import type { Chunk } from "../../../src/domain/chunk.js"
+import type { RankedChunk } from "../../../src/domain/ports.js"
 import type { GoldLocation } from "./types.js"
 
 /** Indexed identifiers retained per chunk so gold symbols can be matched exactly. */

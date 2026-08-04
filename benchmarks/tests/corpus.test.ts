@@ -1,9 +1,9 @@
 import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
-import { loadCorpusManifests, prepareRepository } from "../retrieval/corpus.js"
-import { resolveGoldTargets } from "../retrieval/metrics.js"
-import { prepareCorpus } from "../retrieval/prepare.js"
+import { prepareCorpus } from "../retrieval/corpus/prepare.js"
+import { loadCorpusManifests, prepareRepository } from "../retrieval/corpus/repository.js"
+import { resolveGoldTargets } from "../retrieval/evaluation/metrics.js"
 
 // This validation intentionally reads real pinned checkouts; memfs is used by other adapter tests.
 it.effect("resolves every authored gold symbol in each pinned corpus", () =>

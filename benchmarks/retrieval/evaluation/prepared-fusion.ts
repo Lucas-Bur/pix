@@ -1,13 +1,13 @@
-import type { RankedChunk } from "../../src/domain/ports.js"
+import type { RankedChunk } from "../../../src/domain/ports.js"
 import {
   CHANNEL_NAMES,
   type ChannelName,
   type ChannelRankings,
   type ChannelWeights,
   type FusionMethod,
-} from "../../src/domain/retrieval.js"
-import { fuseRankings as productionFuseRankings } from "../../src/lib/retrieval/fusion.js"
-import { evaluatePreparedContributions } from "./fusion-core.mjs"
+} from "../../../src/domain/retrieval.js"
+import { fuseRankings as productionFuseRankings } from "../../../src/lib/retrieval/fusion.js"
+import { evaluatePreparedContributions } from "./prepared-fusion-core.mjs"
 
 const DEFAULT_CANDIDATE_DEPTH = Number.POSITIVE_INFINITY
 

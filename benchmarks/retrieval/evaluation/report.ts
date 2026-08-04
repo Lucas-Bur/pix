@@ -3,7 +3,7 @@ import {
   type ChannelCoefficients,
   type ChannelWeights,
   type EvidenceRouterConfig,
-} from "../../src/domain/retrieval.js"
+} from "../../../src/domain/retrieval.js"
 import type {
   BenchmarkArtifact,
   EvidenceRouterSearchResult,
@@ -52,6 +52,15 @@ const formatInfluences = (config: EvidenceRouterConfig): string =>
     `I:${formatCoefficients(config.identifierInfluence)}`,
     `L:${formatCoefficients(config.queryLengthInfluence)}`,
   ].join("; ")
+
+const formatRouterWeightColumns = (result: {
+  readonly config: EvidenceRouterConfig
+  readonly staticWeights: ChannelWeights
+}) => ({
+  baseWeights: formatWeights(result.config.baseWeights),
+  staticWeights: formatWeights(result.staticWeights),
+  influences: formatInfluences(result.config),
+})
 
 /** Render quality and marginal channel contribution grouped by query representation. */
 export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
@@ -242,9 +251,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.evidenceRouterSearch) {
-    const baseWeights = formatWeights(result.config.baseWeights)
-    const staticWeights = formatWeights(result.staticWeights)
-    const influences = formatInfluences(result.config)
+    const { baseWeights, staticWeights, influences } = formatRouterWeightColumns(result)
     lines.push(
       `| ${result.model} | ${result.fusion} | ${result.objective} | ${result.strategy} | ${result.fold} | ${promotionLabel(result.promotionStatus)} | ${result.searchDiagnostics.parameterCount} | ${result.proxyEvaluations} | ${result.fullEvaluations} | ${percent(result.searchDiagnostics.proxyFullAgreement)} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticValidation.recallAt5)} | ${percent(result.validation.recallAt5)} | ${percent(result.staticValidation.recallAt10)} | ${percent(result.validation.recallAt10)} | ${percent(result.staticValidation.recallAt20)} | ${percent(result.validation.recallAt20)} | ${percent(result.validation.recallAt50)} | ${percent(result.staticValidation.contextRecallAt4096)} | ${percent(result.validation.contextRecallAt4096)} |`,
     )
@@ -319,9 +326,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "| --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const result of artifact.recommendedEvidenceRouters) {
-    const baseWeights = formatWeights(result.config.baseWeights)
-    const staticWeights = formatWeights(result.staticWeights)
-    const influences = formatInfluences(result.config)
+    const { baseWeights, staticWeights, influences } = formatRouterWeightColumns(result)
     lines.push(
       `| ${result.model} | ${result.fusion} | ${result.objective} | ${promotionLabel(result.promotionStatus)} | ${result.samples} | ${result.proxyEvaluations} | ${result.fullEvaluations} | ${staticWeights} | ${baseWeights} | ${influences} | ${percent(result.staticQuality.recallAt5)} | ${percent(result.fitQuality.recallAt5)} | ${percent(result.staticQuality.recallAt10)} | ${percent(result.fitQuality.recallAt10)} | ${percent(result.staticQuality.recallAt20)} | ${percent(result.fitQuality.recallAt20)} | ${percent(result.fitQuality.recallAt50)} | ${percent(result.staticQuality.contextRecallAt4096)} | ${percent(result.fitQuality.contextRecallAt4096)} |`,
     )

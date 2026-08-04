@@ -95,7 +95,7 @@ vp run bench:retrieval:full
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
-diagnostics. The selected profile is recorded in schema-22 artifacts without changing retrieval
+diagnostics. The selected profile is recorded in schema-23 artifacts without changing retrieval
 semantics. The full profile includes all three fusion methods; short profiles intentionally omit RRF
 to keep development runs fast.
 
@@ -310,9 +310,13 @@ Score and DBSF consume the same `ChannelRankings` interface and are evaluated wi
 encoders, persistence, or scoring. `src/lib/retrieval/evidence-router.ts` is likewise shared by production
 configuration and benchmark evidence evaluation.
 
-`benchmarks/retrieval/optimization-profiles.ts` owns authored (`authored-seed`) profile seeds, and
-`benchmarks/retrieval/weight-search.ts` owns candidate search. A validated benchmark result is promoted
-to an explicit production configuration; production does not discover or optimize its own profile.
+`benchmarks/retrieval/evaluation/optimization-profiles.ts` owns authored (`authored-seed`) profile seeds, and
+`benchmarks/retrieval/evaluation/weight-search.ts` owns candidate search. Corpus checkout and preparation
+live under `benchmarks/retrieval/corpus/`; native SQLite and worker execution live under
+`benchmarks/retrieval/execution/`. A validated benchmark result is promoted to an explicit production
+configuration; production does not discover or optimize its own profile. Router searches keep their beam
+and archive state on the main thread; only candidate scoring crosses the worker seam, so independent jobs
+share one queue without a second controller-worker protocol.
 
 The remaining architectural follow-up is a diagnostic retrieval snapshot from `IndexStore` if future
 benchmark work needs to inspect persisted channel evidence through the application boundary. Current

@@ -168,10 +168,12 @@ Production queries accept the named profile selection `compatibility`, `balanced
 `natural-language`. Only `compatibility` currently has matrix-derived values; the remaining names are
 runtime placeholders until their configurations are selected from the benchmark matrix.
 
-Benchmark-owned profile seeds and optimizer search live under `benchmarks/retrieval/`; current profile
-values are marked `authored-seed` and are not presented as benchmark-derived weights. Production keeps
-only the active router configuration and reusable fusion/evidence seams. A benchmark result is promoted
-explicitly rather than making the production package responsible for discovering its own profile.
+Benchmark-owned corpus checkout and preparation live under `benchmarks/retrieval/corpus/`; quality
+evaluation, profile seeds, and optimizer search live under `benchmarks/retrieval/evaluation/`; native
+SQLite and worker execution live under `benchmarks/retrieval/execution/`. Current profile values are
+marked `authored-seed` and are not presented as benchmark-derived weights. Production keeps only the
+active router configuration and reusable fusion/evidence seams. A benchmark result is promoted explicitly
+rather than making the production package responsible for discovering its own profile.
 
 ### Retrieval Quality Benchmark
 
@@ -251,22 +253,20 @@ that data. Public `fuseRankings` semantics and its existing ranking, normalizati
 remain unchanged. The evaluator still materializes and sorts the full candidate union for every
 configuration; partial top-K or metric-specialized evaluation remains future work. The explicit parallel
 benchmark path uses a fixed native `node:worker_threads` pool (default `max(1, availableParallelism() - 1)`),
-sends the prepared snapshot once per worker, batches candidate weight vectors, and keeps beam/cache/archive/
-selection state on the controller thread. The search APIs are async so serial and worker execution share the
-same selection algorithm; `PIX_BENCH_WORKERS=0` selects serial evaluation, `workerCount: 1` selects the
-serial pool through `createCandidateEvaluationPool`, and the runner's `PIX_BENCH_SEARCH_MODE=serial` selects
-that serial pool mode. `PIX_BENCH_WORKER_BATCH_SIZE` bounds ordinary worker messages. Router search
-diagnostics retain candidate snapshot and pool initialization time separately from candidate evaluation time;
-benchmark timings also record shared candidate-queue startup and shutdown.
-Evidence-router grouped-fold, repository-holdout, and fit-all jobs use native controller workers backed by one
-shared candidate-evaluation queue. Controllers keep candidate generation, beam rounds, caches, and archive
-updates local and sequential; candidate batches are work-stealing tasks evaluated by the shared native queue.
-The queue caches each prepared snapshot once per worker and defaults to one candidate per task because the
-benchmark's candidate costs are uneven; `PIX_BENCH_WORKER_BATCH_SIZE` overrides that default. The runner
-reserves roughly half of `PIX_BENCH_WORKERS` for controllers and the remainder for candidate workers.
-Results retain planner order even when jobs finish out of order. Serial mode keeps the same algorithm on the
-main thread for comparison. Native worker startup or task failures are surfaced and all workers are
-terminated before the benchmark fails.
+sends the prepared snapshot once per worker, and batches candidate weight vectors. Beam, cache, archive, and
+selection state stay on the main thread; async candidate evaluations let independent router jobs share one
+queue without a second controller-worker layer. The search APIs are async so serial and worker execution
+share the same selection algorithm; `PIX_BENCH_WORKERS=0` selects serial evaluation, `workerCount: 1`
+selects the serial pool through `createCandidateEvaluationPool`, and the runner's
+`PIX_BENCH_SEARCH_MODE=serial` selects that serial pool mode. `PIX_BENCH_WORKER_BATCH_SIZE` bounds worker
+messages. Router search diagnostics retain candidate snapshot and pool initialization time separately from
+candidate evaluation time; benchmark timings also record shared candidate-queue startup and shutdown.
+Evidence-router grouped-fold, repository-holdout, and fit-all jobs run concurrently on the main thread while
+candidate batches use work-stealing tasks in the shared native queue. The queue caches each prepared snapshot
+once per worker and defaults to one candidate per task because the benchmark's candidate costs are uneven;
+`PIX_BENCH_WORKER_BATCH_SIZE` overrides that default. Results retain planner order through `Promise.all`.
+Serial mode keeps the same algorithm on the main thread for comparison. Native worker startup or task
+failures are surfaced and all workers are terminated before the benchmark fails.
 Repository checkouts live under ignored `benchmarks/.cache/repos/`; generated artifacts live under
 ignored `benchmarks/results/`. Dense and Sparse vectors are held only in the production in-memory
 SQLite adapter during a benchmark run. See `benchmarks/README.md` and `benchmarks/BASELINE.md`.

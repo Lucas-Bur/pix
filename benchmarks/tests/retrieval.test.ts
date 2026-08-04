@@ -1,13 +1,13 @@
 import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
-import { assignGroupedFolds } from "../retrieval/folds.js"
-import { runRetrievalBenchmark } from "../retrieval/runner.js"
+import { assignGroupedFolds } from "../retrieval/evaluation/folds.js"
 import {
   ROUTER_OBJECTIVES,
   ROUTER_SEARCH_STRATEGY,
   type BenchmarkProfile,
-} from "../retrieval/types.js"
+} from "../retrieval/evaluation/types.js"
+import { runRetrievalBenchmark } from "../retrieval/runner.js"
 
 const foldQuestions = (prefix: string) =>
   Array.from({ length: 12 }, (_, index) => ({
