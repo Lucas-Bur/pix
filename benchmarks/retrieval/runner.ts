@@ -61,6 +61,7 @@ import {
   createCandidateEvaluationQueue,
   getDefaultWorkerCount,
   resolveWorkerCount,
+  type CandidateEvaluationQueue,
 } from "./worker-pool.js"
 
 const CONTEXT_BUDGETS = [2_048, 4_096, 8_192, 16_384] as const
@@ -399,6 +400,8 @@ export const runRetrievalBenchmark = (
     >()
     const samplesByModel = new Map<string, WeightSearchSample[]>()
     let retrievalDurationMs = 0
+    let candidateQueueStartupDurationMs = 0
+    let candidateQueueShutdownDurationMs = 0
 
     for (const manifest of manifests) {
       const repositoryPath = yield* prepareRepository(manifest)
@@ -767,18 +770,27 @@ export const runRetrievalBenchmark = (
     const candidateWorkerCount = canParallelizeRouterJobs
       ? Math.max(1, routerWorkerBudget - routerControllerCount)
       : 0
-    const candidateQueue = canParallelizeRouterJobs
-      ? yield* runParallelSearch(() =>
-          createCandidateEvaluationQueue({ workerCount: candidateWorkerCount }),
-        )
-      : undefined
+    let candidateQueue: CandidateEvaluationQueue | undefined
+    if (canParallelizeRouterJobs) {
+      const candidateQueueStartedAt = performance.now()
+      candidateQueue = yield* runParallelSearch(() =>
+        createCandidateEvaluationQueue({ workerCount: candidateWorkerCount }),
+      )
+      candidateQueueStartupDurationMs = performance.now() - candidateQueueStartedAt
+    }
     reportProgress(
       `running ${allRouterJobs.length} evidence-router jobs with ` +
         `${routerControllerCount} native controllers and ` +
         `${candidateQueue?.workerCount ?? 0} shared candidate workers`,
     )
     const closeCandidateQueue =
-      candidateQueue === undefined ? Effect.void : runParallelSearch(() => candidateQueue.close())
+      candidateQueue === undefined
+        ? Effect.void
+        : Effect.gen(function* () {
+            const candidateQueueStartedAt = performance.now()
+            yield* runParallelSearch(() => candidateQueue!.close())
+            candidateQueueShutdownDurationMs = performance.now() - candidateQueueStartedAt
+          })
     const routerResults = yield* Effect.ensuring(
       canParallelizeRouterJobs
         ? runParallelSearch((signal) =>
@@ -826,7 +838,7 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 22,
+      schemaVersion: 23,
       benchmarkProfile: profile,
       optimizationProfile,
       validationProtocol: {
@@ -849,6 +861,8 @@ export const runRetrievalBenchmark = (
         weightSearchDurationMs,
         fusionSearchDurationMs,
         evidenceRouterSearchDurationMs,
+        candidateQueueStartupDurationMs,
+        candidateQueueShutdownDurationMs,
       },
       chunkConfig: {
         chunkLines: DEFAULT_CONFIG.chunkLines,

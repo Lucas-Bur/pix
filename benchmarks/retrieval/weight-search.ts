@@ -99,6 +99,7 @@ const preparedFusionCache = new WeakMap<
   WeightSearchSample,
   Map<FusionMethod, PreparedFusionEvaluator>
 >()
+const candidatePoolInitializationMs = new WeakMap<CandidateEvaluationPool, number>()
 
 const preparedFusionEvaluatorFor = (
   sample: WeightSearchSample,
@@ -129,6 +130,7 @@ const createEvaluationPoolForSamples = async (
   profile: OptimizationProfile,
   options: ParallelSearchOptions,
 ): Promise<CandidateEvaluationPool> => {
+  const snapshotPreparationStartedAt = performance.now()
   const snapshot = createEvaluationSnapshot(
     samples.map((sample) => ({
       evaluator: preparedFusionEvaluatorFor(sample, fusion),
@@ -137,9 +139,12 @@ const createEvaluationPoolForSamples = async (
       sampleWeight: profile.queryFormWeights[sample.queryKind],
     })),
   )
-  if (options.evaluationQueue !== undefined)
-    return createCandidateEvaluationPoolOnQueue(snapshot, options.evaluationQueue, options.signal)
-  return createCandidateEvaluationPool(snapshot, options)
+  const pool =
+    options.evaluationQueue !== undefined
+      ? createCandidateEvaluationPoolOnQueue(snapshot, options.evaluationQueue, options.signal)
+      : await createCandidateEvaluationPool(snapshot, options)
+  candidatePoolInitializationMs.set(pool, performance.now() - snapshotPreparationStartedAt)
+  return pool
 }
 
 const routerEvaluationCandidate = (
@@ -986,6 +991,7 @@ interface SearchEvaluationStats {
 
 interface MutableRouterSearchTimings {
   preparationMs: number
+  candidatePoolInitializationMs: number
   baseWeightSearchMs: number
   randomSearchMs: number
   beamSearchMs: number
@@ -1275,6 +1281,7 @@ const prepareRouterSearch = (
       protectedEliteCount: 0,
       timings: {
         preparationMs: performance.now() - preparationStartedAt,
+        candidatePoolInitializationMs: 0,
         baseWeightSearchMs: 0,
         randomSearchMs: 0,
         beamSearchMs: 0,
@@ -1665,6 +1672,8 @@ const withParallelEvidencePools = async <T>(
     profile,
     options,
   )
+  preparation.stats.timings.candidatePoolInitializationMs +=
+    candidatePoolInitializationMs.get(fullPool) ?? 0
   const closeFullPoolOnAbort = () => {
     void fullPool.close()
   }
@@ -1682,6 +1691,9 @@ const withParallelEvidencePools = async <T>(
             profile,
             options,
           )
+    if (proxyPool !== undefined && proxyPool !== fullPool)
+      preparation.stats.timings.candidatePoolInitializationMs +=
+        candidatePoolInitializationMs.get(proxyPool) ?? 0
     if (proxyPool !== undefined && proxyPool !== fullPool) {
       closeProxyPoolOnAbort = () => {
         void proxyPool?.close()

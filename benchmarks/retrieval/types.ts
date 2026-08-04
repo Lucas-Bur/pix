@@ -232,6 +232,8 @@ export interface RecommendedFusionWeights {
 export interface RouterSearchTimings {
   /** Time spent preparing evidence, baselines, and proxy samples. */
   readonly preparationMs: number
+  /** Time spent preparing candidate snapshots and starting their evaluation pool. */
+  readonly candidatePoolInitializationMs: number
   /** Time spent selecting the initial static/base weight seeds. */
   readonly baseWeightSearchMs: number
   /** Time spent evaluating the random scout baseline. */
@@ -333,11 +335,15 @@ export interface BenchmarkTimings {
   readonly weightSearchDurationMs: number
   readonly fusionSearchDurationMs: number
   readonly evidenceRouterSearchDurationMs: number
+  /** Time spent starting the shared native candidate queue. */
+  readonly candidateQueueStartupDurationMs: number
+  /** Time spent shutting down the shared native candidate queue. */
+  readonly candidateQueueShutdownDurationMs: number
 }
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 22
+  readonly schemaVersion: 23
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   /** Versioned objective profile used for candidate selection and aggregate metrics. */

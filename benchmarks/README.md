@@ -339,7 +339,8 @@ output size without introducing an LLM or provider-specific tokenizer.
 
 Each run writes ignored JSON and Markdown artifacts under `benchmarks/results`. JSON rows retain the
 repository, revision, language, size, category, difficulty, query form, grouped fold, model, variant,
-individual gold ranks, timing, and every metric. Schema 22 stores each authored query and its exact
+individual gold ranks, timing, and every metric. Schema 23 adds shared candidate-queue lifecycle and
+per-router candidate-pool initialization timings. Each artifact stores each authored query and its exact
 file-qualified ground truth once, records productive Sparse timings, and adds
 the fixed equal-weight RRF baseline. The Markdown report includes quality by query form,
 marginal leave-one-channel-out contribution, cross-validation folds, Shapley values, and final fitted

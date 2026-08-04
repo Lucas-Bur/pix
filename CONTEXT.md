@@ -255,7 +255,9 @@ sends the prepared snapshot once per worker, batches candidate weight vectors, a
 selection state on the controller thread. The search APIs are async so serial and worker execution share the
 same selection algorithm; `PIX_BENCH_WORKERS=0` selects serial evaluation, `workerCount: 1` selects the
 serial pool through `createCandidateEvaluationPool`, and the runner's `PIX_BENCH_SEARCH_MODE=serial` selects
-that serial pool mode. `PIX_BENCH_WORKER_BATCH_SIZE` bounds ordinary worker messages.
+that serial pool mode. `PIX_BENCH_WORKER_BATCH_SIZE` bounds ordinary worker messages. Router search
+diagnostics retain candidate snapshot and pool initialization time separately from candidate evaluation time;
+benchmark timings also record shared candidate-queue startup and shutdown.
 Evidence-router grouped-fold, repository-holdout, and fit-all jobs use native controller workers backed by one
 shared candidate-evaluation queue. Controllers keep candidate generation, beam rounds, caches, and archive
 updates local and sequential; candidate batches are work-stealing tasks evaluated by the shared native queue.
