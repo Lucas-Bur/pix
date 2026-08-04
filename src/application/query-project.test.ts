@@ -89,7 +89,7 @@ const indexFixture = (
     })
   })
 
-it.effect("QueryProject.queryProject returns hybrid-ranked results via RRF", () =>
+it.effect("QueryProject.queryProject returns hybrid-ranked results via the selected profile", () =>
   Effect.gen(function* () {
     yield* indexFixture(
       [
@@ -119,7 +119,7 @@ it.effect("QueryProject.queryProject returns hybrid-ranked results via RRF", () 
   }).pipe(Effect.provide(hybridLayer), Effect.scoped),
 )
 
-it.effect("QueryProject includes Sparse with its fixed RRF weight", () =>
+it.effect("QueryProject includes Sparse with the promoted router", () =>
   Effect.gen(function* () {
     yield* indexFixture(
       [

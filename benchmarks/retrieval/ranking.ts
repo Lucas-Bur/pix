@@ -1,7 +1,6 @@
 import type { RankedChunk } from "../../src/domain/ports.js"
 import {
-  CHANNEL_NAMES as DOMAIN_CHANNEL_NAMES,
-  PRODUCTION_RRF_BASELINE_CONFIG,
+  CHANNEL_NAMES,
   type ChannelName,
   type ChannelRankings,
   type ChannelWeights,
@@ -11,11 +10,9 @@ import { rankCamelCase } from "../../src/lib/retrieval/camelcase.js"
 import { buildRoutingEvidence, routeWithEvidence } from "../../src/lib/retrieval/evidence-router.js"
 import { fuseRankings } from "../../src/lib/retrieval/fusion.js"
 import { rankIdentity } from "../../src/lib/retrieval/identity.js"
+import { BENCHMARK_RRF_BASELINE_CONFIG } from "./baseline.js"
 import type { PreparedCorpus } from "./prepare.js"
 import type { RetrievalVariant } from "./types.js"
-
-export const CHANNEL_NAMES = DOMAIN_CHANNEL_NAMES
-export type { ChannelName, ChannelRankings }
 
 /** Rankings produced by the lexical channels before dense search is delegated to SQLite. */
 export type LexicalChannelRankings = Pick<ChannelRankings, "identity" | "camelcase" | "bm25">
@@ -117,13 +114,13 @@ export const fuseVariant = (
     variant === "rrf"
       ? routeWithEvidence(
           buildRoutingEvidence(query, selectedRankings),
-          PRODUCTION_RRF_BASELINE_CONFIG,
+          BENCHMARK_RRF_BASELINE_CONFIG,
         )
       : { identity: 1, camelcase: 1, bm25: 1, dense: 1, sparse: 1 }
   return fuseRankings(
-    variant === "rrf" ? PRODUCTION_RRF_BASELINE_CONFIG.fusion : "rrf",
+    variant === "rrf" ? BENCHMARK_RRF_BASELINE_CONFIG.fusion : "rrf",
     selectedRankings,
     weights,
-    PRODUCTION_RRF_BASELINE_CONFIG.candidateDepth,
+    BENCHMARK_RRF_BASELINE_CONFIG.candidateDepth,
   )
 }

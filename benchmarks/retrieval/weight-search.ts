@@ -7,7 +7,10 @@ import {
   type EvidenceRouterConfig as DecodedEvidenceRouterConfig,
   type EvidenceRouterParameters as EvidenceRouterConfig,
   type FusionMethod,
-  PRODUCTION_RRF_BASELINE_CONFIG,
+  ZERO_CHANNEL_COEFFICIENTS,
+  CHANNEL_NAMES,
+  type ChannelName,
+  type ChannelRankings,
 } from "../../src/domain/retrieval.js"
 import {
   buildRoutingEvidence,
@@ -15,10 +18,10 @@ import {
   type QueryTermCoverage,
   type RoutingEvidence,
 } from "../../src/lib/retrieval/evidence-router.js"
-import { fuseRankings } from "./fusion.js"
+import { fuseRankings } from "../../src/lib/retrieval/fusion.js"
+import { BENCHMARK_RRF_BASELINE_CONFIG } from "./baseline.js"
 import { contextRecallAtBudget, recallAt, reciprocalRank } from "./metrics.js"
 import { SEARCH_PRIORITY_PROFILE, type OptimizationProfile } from "./optimization-profiles.js"
-import { CHANNEL_NAMES, type ChannelName, type ChannelRankings } from "./ranking.js"
 import {
   ROUTER_OBJECTIVES,
   ROUTER_SEARCH_STRATEGY,
@@ -55,14 +58,6 @@ const HALTON_PRIMES = [
   2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
   101, 103, 107, 109, 113, 127, 131, 137, 139, 149,
 ] as const
-
-const ZERO_COEFFICIENTS: ChannelCoefficients = {
-  identity: 0,
-  camelcase: 0,
-  bm25: 0,
-  dense: 0,
-  sparse: 0,
-}
 
 /** Precomputed query evidence used for cheap fusion and weight experiments. */
 export interface WeightSearchSample {
@@ -188,9 +183,9 @@ const summarizeProductionRrf = (
         sample.rankings,
         routeWithEvidence(
           buildRoutingEvidence(sample.query, sample.rankings, sample.termCoverage),
-          PRODUCTION_RRF_BASELINE_CONFIG,
+          BENCHMARK_RRF_BASELINE_CONFIG,
         ),
-        PRODUCTION_RRF_BASELINE_CONFIG.fusion,
+        BENCHMARK_RRF_BASELINE_CONFIG.fusion,
       ),
     (sample) => sample.targets,
     (sample) => sample.chunks,
@@ -635,13 +630,13 @@ const positiveBaseWeights = (weights: ChannelWeights): ChannelWeights =>
 
 const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig => ({
   baseWeights: positiveBaseWeights(baseWeights),
-  scoreInfluence: ZERO_COEFFICIENTS,
-  geometryInfluence: ZERO_COEFFICIENTS,
-  termCoverageInfluence: ZERO_COEFFICIENTS,
-  pairwiseAgreementInfluence: ZERO_COEFFICIENTS,
-  denseConfidenceInfluence: ZERO_COEFFICIENTS,
-  identifierInfluence: ZERO_COEFFICIENTS,
-  queryLengthInfluence: ZERO_COEFFICIENTS,
+  scoreInfluence: ZERO_CHANNEL_COEFFICIENTS,
+  geometryInfluence: ZERO_CHANNEL_COEFFICIENTS,
+  termCoverageInfluence: ZERO_CHANNEL_COEFFICIENTS,
+  pairwiseAgreementInfluence: ZERO_CHANNEL_COEFFICIENTS,
+  denseConfidenceInfluence: ZERO_CHANNEL_COEFFICIENTS,
+  identifierInfluence: ZERO_CHANNEL_COEFFICIENTS,
+  queryLengthInfluence: ZERO_CHANNEL_COEFFICIENTS,
 })
 
 const benchmarkRouterConfig = (

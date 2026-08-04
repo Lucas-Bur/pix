@@ -60,7 +60,7 @@ it.effect("pix query with --top flag clamps to valid range", () => {
   })
 })
 
-it.effect("pix query accepts an explicit production profile", () => {
+it.effect("pix query accepts a named production profile", () => {
   const { ref, effect } = runQuery(["--json", "--profile", "code-navigation", "search term"])
   return Effect.gen(function* () {
     yield* effect

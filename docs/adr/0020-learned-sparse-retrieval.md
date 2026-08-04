@@ -6,8 +6,8 @@ Accepted
 
 ## Context
 
-The OpenSearch v3 Distill document encoder improves production RRF recall as a complementary fifth
-channel. Its output is a variable-length map of vocabulary token IDs to positive weights, so the dense
+The OpenSearch v3 Distill document encoder improves historical production RRF recall as a complementary
+fifth channel. Its output is a variable-length map of vocabulary token IDs to positive weights, so the dense
 Float32 vector representation and sqlite-vector cosine scans do not fit this data model.
 
 The selected Hugging Face repository is a Sentence-Transformers `SparseEncoder` router. Its document
@@ -39,8 +39,9 @@ type and one pipeline `subfolder` cannot point at both module directories.
   `sparse_terms`, then summing `idf_weight * document_weight` per chunk.
 - Replace chunks, Sparse metadata, IDF, and postings in the existing adapter-owned transaction. Reuse
   unchanged Sparse vectors by content hash only when the complete Sparse contract matches.
-- Fuse Sparse through production RRF with fixed weight `1.0`. Existing query-length routing continues
-  to adjust only BM25 and Dense.
+- Fuse Sparse through the production fusion seam. The initial compatibility implementation used RRF with
+  fixed weight `1.0`; the current promoted DBSF evidence-router configuration owns the active Sparse
+  weight and query-length influences.
 
 ## Performance and storage
 
