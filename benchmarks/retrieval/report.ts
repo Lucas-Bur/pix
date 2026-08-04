@@ -9,7 +9,7 @@ import type {
   EvidenceRouterSearchResult,
   FusionSearchResult,
   HoldoutQuality,
-  ProductionRrfSearchResult,
+  ProductionRouterSearchResult,
   PromotionStatus,
   QueryMeasurement,
 } from "./types.js"
@@ -140,16 +140,16 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     )
   }
 
-  const productionGroups = new Map<string, ProductionRrfSearchResult[]>()
-  for (const result of artifact.productionRrfSearch) {
+  const productionGroups = new Map<string, ProductionRouterSearchResult[]>()
+  for (const result of artifact.productionRouterSearch) {
     const key = `${result.model}\0${result.strategy}`
     productionGroups.set(key, [...(productionGroups.get(key) ?? []), result])
   }
   lines.push(
     "",
-    "## Historical Production RRF Holdouts",
+    "## Current Production Router Holdouts",
     "",
-    "These rows evaluate the historical production RRF compatibility router unchanged; it remains the explicit rollback baseline for objective guardrails.",
+    "These rows evaluate the current Production compatibility router unchanged; it is the guardrail baseline for candidate comparisons. Historical RRF remains an explicit diagnostic variant.",
     "",
     "| Model | Strategy | Validation R@5 | Validation R@10 | Validation R@20 | Validation R@50 | Validation Ctx@4k |",
     "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
@@ -236,7 +236,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Evidence Router Holdouts",
     "",
-    "One shared search produces direct, reranker-top20, and reranker-top50 candidates. Historical production RRF is the guardrail baseline; static and dynamic validation columns use the same fusion method and excluded fold. A no eligible candidate result must not be promoted.",
+    "One shared search produces direct, reranker-top20, and reranker-top50 candidates. The current Production router is the guardrail baseline; static and dynamic validation columns use the same fusion method and excluded fold. A no eligible candidate result must not be promoted.",
     "",
     "| Model | Fusion | Objective | Strategy | Fold | Promotion | Params | Proxy evals | Full evals | Proxy agreement | Static I/C/B/D/S | Dynamic base I/C/B/D/S | Influence Score/Geometry/TermCoverage/PairwiseAgreement/DenseConfidence/Identifier/Length | Static R@5 | Dynamic R@5 | Static R@10 | Dynamic R@10 | Static R@20 | Dynamic R@20 | Dynamic R@50 | Static Ctx@4k | Dynamic Ctx@4k |",
     "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -259,7 +259,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Evidence Router Summary",
     "",
-    "Validation metrics are weighted by each excluded fold's query count. Production RRF is shown beside the selected dynamic router.",
+    "Validation metrics are weighted by each excluded fold's query count. The current Production router is shown beside the selected dynamic router.",
     "",
     "| Model | Fusion | Objective | Strategy | Promotion | Production R@5 | Dynamic R@5 | Production R@10 | Dynamic R@10 | Production R@20 | Dynamic R@20 | Production R@50 | Dynamic R@50 | Production Ctx@4k | Dynamic Ctx@4k | Random R@20 | Random Ctx@4k |",
     "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -267,7 +267,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
   for (const [key, rows] of routerGroups) {
     const [model, fusion, objective, strategy] = key.split("\0")
     lines.push(
-      `| ${model} | ${fusion} | ${objective} | ${strategy} | ${promotionLabel(rows.every((row) => row.promotionStatus === "eligible") ? "eligible" : "no-eligible-candidate")} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.contextRecallAt4096))} | ${percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096))} | ${percent(rows.reduce((sum, row) => sum + row.searchBaseline.validation.recallAt20, 0) / rows.length)} | ${percent(rows.reduce((sum, row) => sum + row.searchBaseline.validation.contextRecallAt4096, 0) / rows.length)} |`,
+      `| ${model} | ${fusion} | ${objective} | ${strategy} | ${promotionLabel(rows.every((row) => row.promotionStatus === "eligible") ? "eligible" : "no-eligible-candidate")} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.contextRecallAt4096))} | ${percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096))} | ${percent(weightedAverage(rows, (row) => row.searchBaseline.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.searchBaseline.validation.contextRecallAt4096))} |`,
     )
   }
 
@@ -297,7 +297,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "## Holdout Guardrail Breakdown",
     "",
-    "These unweighted partitions expose the query-form and repository guardrails behind each selected candidate; the baseline is historical production RRF on the same excluded samples.",
+    "These unweighted partitions expose the query-form and repository guardrails behind each selected candidate; the baseline is the current Production router on the same excluded samples.",
     "",
     "| Model | Fusion | Objective | Strategy | Fold | Partition | Queries | Guardrails | Candidate R@5 | Baseline R@5 | Candidate R@10 | Baseline R@10 | Candidate R@20 | Baseline R@20 | Candidate R@50 | Baseline R@50 | Candidate Ctx@4k | Baseline Ctx@4k |",
     "| --- | --- | --- | --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",

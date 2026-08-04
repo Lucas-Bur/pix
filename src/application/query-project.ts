@@ -99,13 +99,14 @@ const fuseResults = (
     (rankings.dense.length > 0 ? weights.dense : 0) +
     (rankings.sparse.length > 0 ? weights.sparse : 0)
   const fused = fuseRankings(config.fusion, rankings, weights, config.candidateDepth)
+  const scoreScale = config.fusion === "rrf" ? K : 1
   const results: RankedResult[] = []
   for (const { chunkIndex, score } of fused) {
     const entry = entryMap.get(chunkIndex)
     if (!entry) continue
     results.push({
       score,
-      rel: (score * K) / sumWeights,
+      rel: sumWeights === 0 ? 0 : (score * scoreScale) / sumWeights,
       file: entry.file,
       startLine: entry.startLine,
       endLine: entry.endLine,

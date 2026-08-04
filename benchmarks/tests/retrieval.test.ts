@@ -67,7 +67,17 @@ const expectStratifiedClasses = (
 
 const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMethods: number) =>
   Effect.gen(function* () {
-    const { artifact, outputPath } = yield* runRetrievalBenchmark(profile)
+    const previousOptimizationProfile = process.env.PIX_BENCH_OPTIMIZATION_PROFILE
+    process.env.PIX_BENCH_OPTIMIZATION_PROFILE = "search-priority"
+    const { artifact, outputPath } = yield* runRetrievalBenchmark(profile).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (previousOptimizationProfile === undefined)
+            delete process.env.PIX_BENCH_OPTIMIZATION_PROFILE
+          else process.env.PIX_BENCH_OPTIMIZATION_PROFILE = previousOptimizationProfile
+        }),
+      ),
+    )
     const repositoryHoldouts =
       (profile === "validate" || profile === "full") && artifact.repositories.length > 1
         ? artifact.repositories.length
@@ -89,7 +99,7 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.evaluationCases.every(({ groundTruth }) => groundTruth.length > 0)).toBe(true)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(21)
+    expect(artifact.schemaVersion).toBe(22)
     expect(artifact.searchStrategy).toEqual(ROUTER_SEARCH_STRATEGY)
     expect(artifact.timings.totalDurationMs).toBeGreaterThan(0)
     expect(Object.values(artifact.timings).every((duration) => duration >= 0)).toBe(true)
@@ -102,7 +112,7 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
       artifact.models.length * fusionMethods * holdoutsPerModel,
     )
     expect(artifact.recommendedFusionWeights.length).toBe(artifact.models.length * fusionMethods)
-    expect(artifact.productionRrfSearch.length).toBe(artifact.models.length * holdoutsPerModel)
+    expect(artifact.productionRouterSearch.length).toBe(artifact.models.length * holdoutsPerModel)
     expect(artifact.evidenceRouterSearch.length).toBe(
       artifact.models.length * routerFusionMethods * ROUTER_OBJECTIVES.length * holdoutsPerModel,
     )

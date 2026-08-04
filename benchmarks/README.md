@@ -95,7 +95,7 @@ vp run bench:retrieval:full
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
-diagnostics. The selected profile is recorded in schema-21 artifacts without changing retrieval
+diagnostics. The selected profile is recorded in schema-22 artifacts without changing retrieval
 semantics. The full profile includes all three fusion methods; short profiles intentionally omit RRF
 to keep development runs fast.
 
@@ -213,8 +213,8 @@ The grid optimizes development `Recall@20`, then `Recall@10`, 4k context recall,
 weights are evaluated unchanged on its excluded samples. Only after cross-validation does the report
 fit a recommended deployment candidate on all available samples. Weight search limits each physical
 channel to its top 200 candidates; ordinary production-variant measurements still use complete lists.
-Schema 16 also evaluates the current production RRF query-length router unchanged and uses it as the
-baseline for objective guardrails.
+The benchmark evaluates the current production router unchanged and uses it as the baseline for objective
+guardrails. Historical RRF remains an explicit diagnostic and rollback comparison.
 
 Static weight search treats the four authored query forms as separate query-form-informed strata. Evidence-router
 search deliberately combines all forms: it does not receive `identifier`, `searchPhrase`,
@@ -231,9 +231,13 @@ Identifier-shape and query-length slopes range from -1 to 1 so one query signal 
 while damping another. This bounded coarse-to-fine search avoids the combinatorial explosion of a full
 20-parameter product; it is deterministic but does not claim a global optimum. Exact metric ties prefer
 the lower-coefficient candidate. Each objective must remain within the configured 1% development
-guardrail against production RRF before it can be recommended.
+guardrail against the current Production router before it can be recommended.
 If no candidate satisfies those guardrails, the artifact records `promotionStatus: no-eligible-candidate`;
 the best non-eligible candidate remains diagnostic only and must not be promoted.
+
+Each router result also records a deterministic `random-scout` baseline using the same parameter grid and
+global-scout budget. `Random R@20` and `Random Ctx@4k` show whether the structured search beats that
+equal-budget random sample; the artifact records the effective seed and candidate count for reproduction.
 
 The selected router is evaluated unchanged on the excluded intent fold or repository and compared
 with static weights selected on the same development samples. Finer steps increase the number of
@@ -258,7 +262,7 @@ MAD-based robust deviation, and score-tail strength. It is evaluated with the sa
 matrix; model- and repository-specific calibration remains a later extension.
 Schema 17 extends pairwise agreement to all ten pairs of the five benchmark channels and records a
 benchmark-only Distill sparse ONNX channel. Production DBSF now consumes the same five-channel seam;
-historical production RRF remains an explicit benchmark baseline.
+historical production RRF remains an explicit diagnostic benchmark baseline.
 
 ## Operating Procedure
 
@@ -269,7 +273,8 @@ whether a signal generalizes; it adds grouped 5-fold and LORO. Use `full` for a 
 selected model, evaluates all three fusion methods, and emits fit-all candidates plus active diagnostics.
 
 For every schema, treat grouped and LORO hold-outs as the regression gate and fit-all as the candidate
-preview. Compare each dynamic objective with production RRF and its matching static baseline; do not
+preview. Compare each dynamic objective with the current Production router and its matching static baseline;
+historical RRF is an optional diagnostic comparison. Do not
 collapse direct retrieval and reranker candidate-pool objectives into one score. Record the winning
 metrics, fit-all parameters, runtime, and any regressions in `benchmarks/BASELINE.md` before committing.
 
@@ -334,13 +339,13 @@ output size without introducing an LLM or provider-specific tokenizer.
 
 Each run writes ignored JSON and Markdown artifacts under `benchmarks/results`. JSON rows retain the
 repository, revision, language, size, category, difficulty, query form, grouped fold, model, variant,
-individual gold ranks, timing, and every metric. Schema 21 stores each authored query and its exact
+individual gold ranks, timing, and every metric. Schema 22 stores each authored query and its exact
 file-qualified ground truth once, records productive Sparse timings, and adds
 the fixed equal-weight RRF baseline. The Markdown report includes quality by query form,
 marginal leave-one-channel-out contribution, cross-validation folds, Shapley values, and final fitted
 weight candidates. Schema 10 artifacts also include static fusion holdouts, fit-all fusion candidates,
 static-versus-dynamic router holdouts for each active fusion method, and the final router candidates
-fitted across all query forms. Schema 16 additionally records production RRF holdouts, Recall@50, the
+fitted across all query forms. The artifact additionally records current Production-router holdouts, Recall@50, the
 objective-specific router summaries, and development guardrail status. The router's fusion method and
 fit-all context metrics are recorded explicitly.
 
@@ -364,7 +369,7 @@ Expand the authored questions and preserve pinned revisions before making a prod
 
 The evidence router is shared by production and benchmark. Production currently uses the fixed DBSF
 compatibility configuration; benchmark candidates remain experimental until grouped intent folds and
-leave-one-repository-out show that their dynamic holdout quality improves or matches the explicit RRF
-baseline and matching static baseline without unacceptable context-recall regressions. A reranker
+leave-one-repository-out show that their dynamic holdout quality improves or matches the current Production
+router and matching static baseline without unacceptable context-recall regressions. A reranker
 candidate objective is not evidence that a reranker itself is beneficial; evaluate reranker quality and
 latency separately.

@@ -4,8 +4,8 @@ import {
   type EvidenceRouterConfig,
 } from "../../src/domain/retrieval.js"
 
-/** Historical RRF configuration used only as the benchmark guardrail and rollback baseline. */
-export const BENCHMARK_RRF_BASELINE_CONFIG: EvidenceRouterConfig = decodeEvidenceRouterConfig({
+/** Historical RRF configuration used only for explicit benchmark and rollback comparisons. */
+export const HISTORICAL_RRF_BASELINE_CONFIG: EvidenceRouterConfig = decodeEvidenceRouterConfig({
   fusion: "rrf",
   candidateDepth: 200,
   baseWeights: {

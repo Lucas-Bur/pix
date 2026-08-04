@@ -145,7 +145,8 @@ Fuses N ranked lists by rank position: `Σ weight * 1 / (k + rank_in_path)`. Raw
 Production currently uses DBSF as the compatibility fusion for the five live channels. The schema-20
 `search-priority` full benchmark selected DBSF over Relative Score for the current rollout: fit-all R@5
 was `80.7%` versus `68.7%`, and fit-all Context@4k was `81.3%` versus `73.3%`; broader matrix validation
-remains benchmark follow-up. RRF remains available as an explicit historical guardrail baseline. The
+remains benchmark follow-up. RRF remains available as an explicit historical diagnostic and rollback
+comparison. The
 production seam is an explicit fusion method plus an evidence router, so Identity, CamelCase, BM25,
 Dense, and the learned Sparse channel participate without fusion-specific channel branches. The router
 may adjust each channel's base weight using score separation, score geometry, term coverage, pairwise
@@ -211,11 +212,11 @@ Short-profile fusion runs use Relative Score and DBSF; the full profile also run
 comparisons.
 Schema 14 records the router search strategy and compute-time breakdown in each artifact, including
 corpus preparation, embedding, retrieval, static fusion search, and evidence-router search duration.
-Schema 15 adds deterministic one-stage proxy promotion to the evidence-router search. Schema 16 evaluates the
-current production RRF query-length router as an explicit holdout baseline, adds Recall@50, and uses one
+Schema 15 adds deterministic one-stage proxy promotion to the evidence-router search. The benchmark evaluates the
+current production router as an explicit holdout baseline, adds Recall@50, and uses one
 shared Pareto search to select objective-specific candidates for direct retrieval, reranker top-20
 candidate pools, and reranker top-50 candidate pools. Each candidate must remain within a 1% development
-guardrail of production RRF; grouped and leave-one-repository-out holdouts determine whether the
+guardrail of the current Production router; grouped and leave-one-repository-out holdouts determine whether the
 objective-specific candidates generalize. The three objectives are reported separately because direct
 R@5 quality and reranker candidate-pool R@50 quality are different deployment goals.
 Schema 17 (historical) adds a benchmark-only OpenSearch Distill sparse channel. It uses the verified ONNX document
@@ -230,7 +231,7 @@ fusion adapters and evidence signals are shared with production. Benchmarks
 compose the production SparseEmbedder and IndexStore around a migrated in-memory SQLite database;
 Dense and Sparse ranking therefore execute through the same adapters as product queries. Experimental
 profile fitting remains benchmark-owned. Every artifact includes the authored file-qualified ground truth and
-both the production RRF router and a fixed five-channel `1/1/1/1/1` RRF baseline. Channel combinations
+both the current Production router and a fixed five-channel `1/1/1/1/1` historical RRF baseline. Channel combinations
 and leave-one-channel-out variants use equal weights so channel contribution is not confounded by routing.
 New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with
 `PIX_BENCH_REPOS`, and cached under `benchmarks/.cache/repos/`.

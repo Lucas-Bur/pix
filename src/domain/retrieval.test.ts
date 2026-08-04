@@ -10,7 +10,6 @@ import {
 
 it("defines the promoted DBSF compatibility configuration", () => {
   expect(PROMOTED_SEARCH_PRIORITY_CONFIG.fusion).toBe("dbsf")
-  expect(PRODUCTION_COMPATIBILITY_CONFIG).toBe(PROMOTED_SEARCH_PRIORITY_CONFIG)
   expect(PRODUCTION_COMPATIBILITY_CONFIG).toMatchObject({ fusion: "dbsf" })
   expect("schemaVersion" in PRODUCTION_COMPATIBILITY_CONFIG).toBe(false)
 })
@@ -51,11 +50,11 @@ it("registers named runtime profiles while matrix-specific values are pending", 
     "code-navigation",
     "natural-language",
   ])
-  expect(resolveProductionProfile()).toBe(PRODUCTION_PROFILES.compatibility)
-  expect(resolveProductionProfile("code-navigation")).toBe(PRODUCTION_PROFILES["code-navigation"])
+  expect(resolveProductionProfile().name).toBe("compatibility")
+  expect(resolveProductionProfile("code-navigation").name).toBe("code-navigation")
   expect(
     Object.values(PRODUCTION_PROFILES).every(
-      ({ config }) => config === PRODUCTION_COMPATIBILITY_CONFIG,
+      ({ config }) => config.fusion === "dbsf" && config.candidateDepth === 200,
     ),
   ).toBe(true)
   expect(PRODUCTION_PROFILES["code-navigation"].experimental).toBe(true)

@@ -116,6 +116,7 @@ it.effect("QueryProject.queryProject returns hybrid-ranked results via the selec
     })
     expect(results.length).toBeGreaterThan(0)
     expect(results[0].file).toBe("src/handler.ts")
+    expect(results.every((result) => result.rel >= 0 && result.rel <= 1)).toBe(true)
   }).pipe(Effect.provide(hybridLayer), Effect.scoped),
 )
 
