@@ -30,8 +30,9 @@ The promoted Production configuration is the dynamic DBSF router, not the static
 | Query length     |     0.00 |     -0.30 | -0.40 | -0.30 |  -0.40 |
 
 The exact coupled runtime object is `PROMOTED_SEARCH_PRIORITY_CONFIG` in `src/domain/retrieval.ts`;
-`PRODUCTION_COMPATIBILITY_CONFIG` is its direct alias. The other experimental Production profiles reuse
-this fusion/evidence model but keep their own authored base priors; they are not separately benchmark-promoted.
+`PRODUCTION_COMPATIBILITY_CONFIG` is its direct alias. The other experimental Production profile names
+currently reuse this same fusion/evidence model until the matrix determines distinct runtime values.
+Benchmark-owned optimization profiles retain their authored base priors and are not separately promoted.
 
 ## Schema 17: Experimental Sparse Smoke
 
