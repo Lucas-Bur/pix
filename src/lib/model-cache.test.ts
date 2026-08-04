@@ -1,6 +1,6 @@
 import { NodePath } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
-import { Effect } from "effect"
+import { ConfigProvider, Effect } from "effect"
 
 import { resolveTransformersCacheDir } from "./model-cache.js"
 
@@ -54,4 +54,63 @@ it.effect("uses the project cache on non-Windows platforms", () =>
       }),
     ).toBe("/work/repo/.pix/cache")
   }).pipe(Effect.provide(NodePath.layerPosix)),
+)
+
+it.effect("reads the OneDrive and local cache roots from Effect Config", () =>
+  Effect.gen(function* () {
+    expect(
+      yield* resolveTransformersCacheDir({
+        platform: "win32",
+        projectRoot: "C:\\Users\\Example\\OneDrive\\Projects\\repo",
+      }),
+    ).toBe("C:\\Users\\Example\\AppData\\Local\\pix\\transformers-cache")
+  }).pipe(
+    Effect.provide(NodePath.layerWin32),
+    Effect.provideService(
+      ConfigProvider.ConfigProvider,
+      ConfigProvider.fromUnknown({
+        OneDrive: "C:\\Users\\Example\\OneDrive",
+        LOCALAPPDATA: "C:\\Users\\Example\\AppData\\Local",
+      }),
+    ),
+  ),
+)
+
+it.effect("falls back to USERPROFILE when LOCALAPPDATA is unavailable", () =>
+  Effect.gen(function* () {
+    expect(
+      yield* resolveTransformersCacheDir({
+        platform: "win32",
+        projectRoot: "C:\\Users\\Example\\OneDrive\\Projects\\repo",
+      }),
+    ).toBe("C:\\Users\\Example\\AppData\\Local\\pix\\transformers-cache")
+  }).pipe(
+    Effect.provide(NodePath.layerWin32),
+    Effect.provideService(
+      ConfigProvider.ConfigProvider,
+      ConfigProvider.fromUnknown({
+        OneDrive: "C:\\Users\\Example\\OneDrive",
+        USERPROFILE: "C:\\Users\\Example",
+      }),
+    ),
+  ),
+)
+
+it.effect("keeps the project cache when local Windows roots are unavailable", () =>
+  Effect.gen(function* () {
+    expect(
+      yield* resolveTransformersCacheDir({
+        platform: "win32",
+        projectRoot: "C:\\Users\\Example\\OneDrive\\Projects\\repo",
+      }),
+    ).toBe("C:\\Users\\Example\\OneDrive\\Projects\\repo\\.pix\\cache")
+  }).pipe(
+    Effect.provide(NodePath.layerWin32),
+    Effect.provideService(
+      ConfigProvider.ConfigProvider,
+      ConfigProvider.fromUnknown({
+        OneDrive: "C:\\Users\\Example\\OneDrive",
+      }),
+    ),
+  ),
 )

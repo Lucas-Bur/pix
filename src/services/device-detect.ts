@@ -1,5 +1,5 @@
 import { NodePath } from "@effect/platform-node"
-import { Effect, Layer, Result } from "effect"
+import { Effect, Layer, Path, Result } from "effect"
 
 import type { DeviceType } from "../domain/device.js"
 import { ModelLoadError } from "../domain/errors.js"
@@ -51,8 +51,9 @@ const tryDevice = (
   )
 
 const make = Effect.gen(function* () {
+  const path = yield* Path.Path
   const transformers = yield* Effect.tryPromise(() => import("@huggingface/transformers"))
-  transformers.env.cacheDir = yield* resolveTransformersCacheDir()
+  transformers.env.cacheDir = yield* resolveTransformersCacheDir({ projectRoot: path.resolve() })
   const { pipeline } = transformers
 
   const detect = (model: string, dtype: string): Effect.Effect<DeviceType, ModelLoadError> =>
