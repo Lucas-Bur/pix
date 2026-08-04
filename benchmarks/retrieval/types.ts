@@ -229,6 +229,24 @@ export interface RecommendedFusionWeights {
 }
 
 /** Search accounting needed to interpret a router candidate and its budget. */
+export interface RouterSearchTimings {
+  /** Time spent preparing evidence, baselines, and proxy samples. */
+  readonly preparationMs: number
+  /** Time spent selecting the initial static/base weight seeds. */
+  readonly baseWeightSearchMs: number
+  /** Time spent evaluating the random scout baseline. */
+  readonly randomSearchMs: number
+  /** Time spent in initial and coordinate beam rounds. */
+  readonly beamSearchMs: number
+  /** Time spent converting router configs into evaluator candidates. */
+  readonly candidatePreparationMs: number
+  /** Wall time waiting for candidate evaluation results. */
+  readonly candidateEvaluationMs: number
+  /** Time spent ranking, selecting, and archiving evaluated candidates. */
+  readonly candidateSelectionMs: number
+}
+
+/** Search diagnostics and timing breakdown for one router search. */
 export interface RouterSearchDiagnostics {
   readonly parameterCount: number
   readonly parameterLevels: Readonly<Record<string, readonly number[]>>
@@ -241,6 +259,7 @@ export interface RouterSearchDiagnostics {
   readonly proxyPromotions: number
   readonly proxyFullAgreement: number
   readonly protectedEliteCount: number
+  readonly timings: RouterSearchTimings
 }
 
 /** Holdout comparison against a deterministic random-search baseline. */

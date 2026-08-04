@@ -9,6 +9,7 @@ import type { QualitySummary } from "./types.js"
 import { hasWorkerMessageType } from "./worker-message.js"
 
 const DEFAULT_BATCH_SIZE = 32
+const DEFAULT_QUEUE_BATCH_SIZE = 1
 const DEFAULT_WORKER_URL = new URL("./fusion-worker.mjs", import.meta.url)
 
 /** One prepared benchmark sample represented without source text for worker transfer. */
@@ -74,6 +75,35 @@ export interface CandidateEvaluationPool {
   readonly stats: () => CandidateEvaluationPoolStats
 }
 
+/** Configuration for one shared candidate-evaluation queue. */
+export interface CandidateEvaluationQueueOptions {
+  /** Maximum number of native evaluation workers. */
+  readonly workerCount?: number
+  /** Maximum number of candidate vectors sent in one worker message. */
+  readonly batchSize?: number
+  /** Test-only or diagnostic override for the queue worker entry point. */
+  readonly workerUrl?: URL
+}
+
+/** Shared native executor used by multiple independent router searches. */
+export interface CandidateEvaluationQueue {
+  /** Number of native workers owned by the queue. */
+  readonly workerCount: number
+  /** Maximum number of candidate vectors sent in one worker message. */
+  readonly batchSize: number
+  /** Number of workers currently evaluating a candidate batch. */
+  readonly activeWorkerCount: () => number
+  /** Enqueue candidates for one prepared snapshot and preserve candidate order in the result. */
+  readonly evaluate: (
+    snapshot: EvaluationSnapshot,
+    candidates: readonly EvaluationCandidate[],
+    signal?: AbortSignal,
+    snapshotId?: string,
+  ) => Promise<readonly QualitySummary[]>
+  /** Stop all workers and reject queued evaluations. */
+  readonly close: () => Promise<void>
+}
+
 interface WorkerReadyMessage {
   readonly type: "ready"
 }
@@ -98,11 +128,14 @@ interface WorkerTask {
   readonly end: number
 }
 
-interface WorkerSlot {
+interface ReadyWorker {
   readonly worker: Worker
   readonly ready: Promise<void>
   readonly resolveReady: () => void
   readonly rejectReady: (error: Error) => void
+}
+
+interface WorkerSlot extends ReadyWorker {
   busy: boolean
   task?: WorkerTask
 }
@@ -119,6 +152,118 @@ interface ActiveEvaluation {
 
 const errorFromUnknown = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause))
+
+const createReadyWorker = (workerUrl: URL): ReadyWorker => {
+  let resolveReady: () => void = () => undefined
+  let rejectReady: (error: Error) => void = () => undefined
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve
+    rejectReady = reject
+  })
+  return { worker: new Worker(workerUrl), ready, resolveReady, rejectReady }
+}
+
+const attachWorkerLifecycle = (
+  worker: Worker,
+  onMessage: (message: unknown) => void,
+  onError: (cause: Error) => void,
+  onExit: (code: number) => void,
+): void => {
+  worker.on("message", onMessage)
+  worker.on("error", onError)
+  worker.on("exit", onExit)
+}
+
+const attachCandidateWorkerLifecycle = (
+  slot: ReadyWorker,
+  onMessage: (message: unknown) => void,
+  onError: (cause: Error) => void,
+  isClosed: () => boolean,
+  workerName: string,
+): void =>
+  attachWorkerLifecycle(slot.worker, onMessage, onError, (code) => {
+    if (!isClosed()) onError(new Error(`${workerName} worker exited with code ${code}`))
+  })
+
+const attachFusionWorkerLifecycle = (
+  slot: ReadyWorker,
+  onMessage: (message: unknown) => void,
+  onError: (cause: Error) => void,
+  isClosed: () => boolean,
+): void => attachCandidateWorkerLifecycle(slot, onMessage, onError, isClosed, "Fusion")
+
+const attachFusionQueueWorkerLifecycle = (
+  slot: ReadyWorker,
+  onMessage: (message: unknown) => void,
+  onError: (cause: Error) => void,
+  isClosed: () => boolean,
+): void => attachCandidateWorkerLifecycle(slot, onMessage, onError, isClosed, "Fusion queue")
+
+const createWorkerSlots = <T extends ReadyWorker>(
+  workerCount: number,
+  workerUrl: URL,
+  createSlot: (readyWorker: ReadyWorker) => T,
+  attach: (slot: T) => void,
+): T[] => {
+  const slots: T[] = []
+  for (let index = 0; index < workerCount; index++) {
+    const slot = createSlot(createReadyWorker(workerUrl))
+    attach(slot)
+    slots.push(slot)
+  }
+  return slots
+}
+
+const handleWorkerControlMessage = (
+  slot: ReadyWorker,
+  message: { readonly type: string; readonly message?: string },
+  onError: (cause: Error) => void,
+): boolean => {
+  if (message.type === "ready") {
+    slot.resolveReady()
+    return true
+  }
+  if (message.type === "error") {
+    onError(new Error(message.message ?? "Worker reported an error"))
+    return true
+  }
+  return false
+}
+
+const failWorker = (
+  slot: ReadyWorker,
+  cause: Error,
+  rejectActive: () => void,
+  close: () => Promise<void>,
+): void => {
+  slot.rejectReady(cause)
+  rejectActive()
+  void close()
+}
+
+const candidatePoolStats = (
+  mode: EvaluationPoolMode,
+  workerCount: number,
+  activeWorkerCount: number,
+  batchSize: number,
+  batches: number,
+  candidates: number,
+): CandidateEvaluationPoolStats => ({
+  mode,
+  workerCount,
+  activeWorkerCount,
+  batchSize,
+  batches,
+  candidates,
+})
+
+const candidateBatchStats = (
+  candidates: readonly EvaluationCandidate[],
+  batchSize: number,
+): { readonly batches: number; readonly candidates: number } => ({
+  batches: Math.ceil(candidates.length / batchSize),
+  candidates: candidates.length,
+})
 
 const parseInteger = (value: string | undefined): number | undefined => {
   if (value === undefined || value.trim() === "") return undefined
@@ -139,6 +284,11 @@ export const resolveWorkerCount = (requested?: number): number => {
 const resolveBatchSize = (requested?: number): number => {
   const configured = requested ?? parseInteger(process.env.PIX_BENCH_WORKER_BATCH_SIZE)
   return Math.max(1, configured ?? DEFAULT_BATCH_SIZE)
+}
+
+const resolveQueueBatchSize = (requested?: number): number => {
+  const configured = requested ?? parseInteger(process.env.PIX_BENCH_WORKER_BATCH_SIZE)
+  return Math.max(1, configured ?? DEFAULT_QUEUE_BATCH_SIZE)
 }
 
 const contextTokens = (chunk: Chunk): number =>
@@ -202,30 +352,18 @@ class NativeCandidateEvaluationPool implements CandidateEvaluationPool {
   ) {
     this.workerCount = workerCount
     this.batchSize = batchSize
-    this.slots = []
-    for (let index = 0; index < workerCount; index++) {
-      let resolveReady: () => void = () => undefined
-      let rejectReady: (error: Error) => void = () => undefined
-      const ready = new Promise<void>((resolve, reject) => {
-        resolveReady = resolve
-        rejectReady = reject
-      })
-      const worker = new Worker(workerUrl)
-      const slot: WorkerSlot = {
-        worker,
-        ready,
-        resolveReady,
-        rejectReady,
-        busy: false,
-      }
-      worker.on("message", (message: unknown) => this.handleMessage(slot, message))
-      worker.on("error", (cause: Error) => this.handleWorkerError(slot, cause))
-      worker.on("exit", (code: number) => {
-        if (!this.closed)
-          this.handleWorkerError(slot, new Error(`Fusion worker exited with code ${code}`))
-      })
-      this.slots.push(slot)
-    }
+    this.slots = createWorkerSlots(
+      workerCount,
+      workerUrl,
+      (readyWorker): WorkerSlot => ({ ...readyWorker, busy: false }),
+      (slot) =>
+        attachFusionWorkerLifecycle(
+          slot,
+          (message) => this.handleMessage(slot, message),
+          (cause) => this.handleWorkerError(slot, cause),
+          () => this.closed,
+        ),
+    )
     this.ready = Promise.all(this.slots.map((slot) => slot.ready)).then(() => undefined)
     for (const slot of this.slots) slot.worker.postMessage({ type: "init", snapshot })
   }
@@ -250,13 +388,18 @@ class NativeCandidateEvaluationPool implements CandidateEvaluationPool {
 
   private handleWorkerError(slot: WorkerSlot, cause: Error): void {
     if (this.closed) return
-    slot.rejectReady(cause)
     const active = this.active
-    if (active !== undefined) {
-      this.active = undefined
-      active.reject(cause)
-    }
-    void this.close()
+    failWorker(
+      slot,
+      cause,
+      () => {
+        if (active !== undefined) {
+          this.active = undefined
+          active.reject(cause)
+        }
+      },
+      () => this.close(),
+    )
   }
 
   private handleMessage(slot: WorkerSlot, message: unknown): void {
@@ -264,14 +407,9 @@ class NativeCandidateEvaluationPool implements CandidateEvaluationPool {
       this.handleWorkerError(slot, new Error("Fusion worker sent an invalid message"))
       return
     }
-    if (message.type === "ready") {
-      slot.resolveReady()
+    if (handleWorkerControlMessage(slot, message, (cause) => this.handleWorkerError(slot, cause)))
       return
-    }
-    if (message.type === "error") {
-      this.handleWorkerError(slot, new Error(message.message))
-      return
-    }
+    if (message.type !== "result") return
     const active = this.active
     const task = active?.tasks.get(message.taskId)
     if (active === undefined || task === undefined) {
@@ -381,6 +519,409 @@ class NativeCandidateEvaluationPool implements CandidateEvaluationPool {
   })
 }
 
+interface QueueWorkerReadyMessage {
+  readonly type: "ready"
+}
+
+interface QueueWorkerResultMessage {
+  readonly type: "result"
+  readonly taskId: number
+  readonly results: readonly QualitySummary[]
+}
+
+interface QueueWorkerErrorMessage {
+  readonly type: "error"
+  readonly taskId?: number
+  readonly message: string
+}
+
+type QueueWorkerMessage =
+  | QueueWorkerReadyMessage
+  | QueueWorkerResultMessage
+  | QueueWorkerErrorMessage
+
+interface QueueWorkerSlot extends ReadyWorker {
+  readonly knownSnapshots: Set<string>
+  busy: boolean
+}
+
+interface CandidateQueueRequest {
+  readonly requestId: number
+  readonly snapshotId: string
+  readonly snapshot: EvaluationSnapshot
+  readonly candidates: readonly EvaluationCandidate[]
+  readonly results: Map<number, QualitySummary>
+  readonly resolve: (results: readonly QualitySummary[]) => void
+  readonly reject: (error: Error) => void
+  readonly removeAbortListener: () => void
+  nextCandidate: number
+  completedCandidates: number
+  enqueued: boolean
+  settled: boolean
+}
+
+interface CandidateQueueTask {
+  readonly taskId: number
+  readonly request: CandidateQueueRequest
+  readonly slot: QueueWorkerSlot
+  readonly start: number
+  readonly end: number
+}
+
+const isQueueRecord = (message: unknown): message is Record<string, unknown> =>
+  typeof message === "object" && message !== null
+
+const isQueueWorkerMessage = (message: unknown): message is QueueWorkerMessage => {
+  if (!isQueueRecord(message) || typeof message.type !== "string") return false
+  if (typeof message.type !== "string") return false
+  if (message.type === "ready") return true
+  if (message.type === "error") return typeof message.message === "string"
+  return (
+    Number.isInteger(message.taskId) && Array.isArray(message.results) && message.results.length > 0
+  )
+}
+
+class NativeCandidateEvaluationQueue implements CandidateEvaluationQueue {
+  readonly workerCount: number
+  readonly batchSize: number
+
+  private readonly slots: QueueWorkerSlot[]
+  private readonly ready: Promise<void>
+  private readonly requests = new Set<CandidateQueueRequest>()
+  private readonly readyRequests: CandidateQueueRequest[] = []
+  private readonly activeTasks = new Map<number, CandidateQueueTask>()
+  private readonly snapshotIds = new WeakMap<EvaluationSnapshot, string>()
+  private closePromise: Promise<void> | undefined
+  private closed = false
+  private nextRequestId = 0
+  private nextSnapshotId = 0
+  private nextTaskId = 0
+
+  private constructor(workerCount: number, batchSize: number, workerUrl: URL) {
+    this.workerCount = workerCount
+    this.batchSize = batchSize
+    this.slots = createWorkerSlots(
+      workerCount,
+      workerUrl,
+      (readyWorker): QueueWorkerSlot => ({
+        ...readyWorker,
+        knownSnapshots: new Set(),
+        busy: false,
+      }),
+      (slot) =>
+        attachFusionQueueWorkerLifecycle(
+          slot,
+          (message) => this.handleMessage(slot, message),
+          (cause) => this.handleWorkerError(slot, cause),
+          () => this.closed,
+        ),
+    )
+    this.ready = Promise.all(this.slots.map((slot) => slot.ready)).then(() => undefined)
+  }
+
+  /** Start a queue after every native worker has completed protocol startup. */
+  static async create(
+    workerCount: number,
+    batchSize: number,
+    workerUrl: URL,
+  ): Promise<NativeCandidateEvaluationQueue> {
+    let queue: NativeCandidateEvaluationQueue | undefined
+    try {
+      queue = new NativeCandidateEvaluationQueue(workerCount, batchSize, workerUrl)
+      await queue.ready
+      return queue
+    } catch (cause) {
+      if (queue !== undefined) await queue.close()
+      throw errorFromUnknown(cause)
+    }
+  }
+
+  private handleWorkerError(slot: QueueWorkerSlot, cause: Error): void {
+    if (this.closed) return
+    failWorker(
+      slot,
+      cause,
+      () => {
+        for (const request of this.requests) this.settleRequest(request, cause)
+      },
+      () => this.close(),
+    )
+  }
+
+  private snapshotIdFor(snapshot: EvaluationSnapshot, requestedId?: string): string {
+    if (requestedId !== undefined) return requestedId
+    const existing = this.snapshotIds.get(snapshot)
+    if (existing !== undefined) return existing
+    const snapshotId = String(this.nextSnapshotId++)
+    this.snapshotIds.set(snapshot, snapshotId)
+    return snapshotId
+  }
+
+  private enqueueRequest(request: CandidateQueueRequest): void {
+    if (request.settled || request.enqueued || request.nextCandidate >= request.candidates.length)
+      return
+    request.enqueued = true
+    this.readyRequests.push(request)
+  }
+
+  private nextRequest(): CandidateQueueRequest | undefined {
+    while (this.readyRequests.length > 0) {
+      const request = this.readyRequests.shift()
+      if (request === undefined) return undefined
+      request.enqueued = false
+      if (request.settled || request.nextCandidate >= request.candidates.length) continue
+      return request
+    }
+    return undefined
+  }
+
+  private settleRequest(request: CandidateQueueRequest, cause?: Error): void {
+    if (request.settled) return
+    request.settled = true
+    this.requests.delete(request)
+    request.removeAbortListener()
+    if (cause !== undefined) {
+      request.reject(cause)
+      return
+    }
+    const ordered: QualitySummary[] = []
+    for (let index = 0; index < request.candidates.length; index++) {
+      const result = request.results.get(index)
+      if (result === undefined) {
+        request.reject(new Error(`Fusion queue omitted candidate ${index}`))
+        return
+      }
+      ordered.push(result)
+    }
+    request.resolve(ordered)
+  }
+
+  private dispatch(): void {
+    if (this.closed) return
+    for (const slot of this.slots) {
+      if (slot.busy) continue
+      const request = this.nextRequest()
+      if (request === undefined) return
+      const start = request.nextCandidate
+      const end = Math.min(start + this.batchSize, request.candidates.length)
+      const task: CandidateQueueTask = {
+        taskId: this.nextTaskId++,
+        request,
+        slot,
+        start,
+        end,
+      }
+      request.nextCandidate = end
+      this.activeTasks.set(task.taskId, task)
+      slot.busy = true
+      const includeSnapshot = !slot.knownSnapshots.has(request.snapshotId)
+      try {
+        slot.worker.postMessage({
+          type: "evaluate",
+          taskId: task.taskId,
+          snapshotId: request.snapshotId,
+          snapshot: includeSnapshot ? request.snapshot : undefined,
+          candidates: request.candidates.slice(start, end),
+        })
+        if (includeSnapshot) slot.knownSnapshots.add(request.snapshotId)
+      } catch (cause) {
+        this.activeTasks.delete(task.taskId)
+        slot.busy = false
+        this.handleWorkerError(slot, errorFromUnknown(cause))
+        return
+      }
+      this.enqueueRequest(request)
+    }
+  }
+
+  private handleMessage(slot: QueueWorkerSlot, message: unknown): void {
+    if (this.closed) return
+    if (!isQueueWorkerMessage(message)) {
+      this.handleWorkerError(slot, new Error("Fusion queue worker sent an invalid message"))
+      return
+    }
+    if (handleWorkerControlMessage(slot, message, (cause) => this.handleWorkerError(slot, cause)))
+      return
+    if (message.type !== "result") return
+    const task = this.activeTasks.get(message.taskId)
+    if (task === undefined || task.slot !== slot) {
+      this.handleWorkerError(
+        slot,
+        new Error(`Fusion queue returned unknown task ${message.taskId}`),
+      )
+      return
+    }
+    this.activeTasks.delete(message.taskId)
+    slot.busy = false
+    if (message.results.length !== task.end - task.start) {
+      this.handleWorkerError(slot, new Error("Fusion queue returned an invalid result length"))
+      return
+    }
+    if (!task.request.settled) {
+      for (let index = 0; index < message.results.length; index++)
+        task.request.results.set(task.start + index, message.results[index])
+      task.request.completedCandidates += message.results.length
+      if (task.request.completedCandidates === task.request.candidates.length)
+        this.settleRequest(task.request)
+      else this.enqueueRequest(task.request)
+    }
+    this.dispatch()
+  }
+
+  activeWorkerCount = (): number =>
+    this.closed ? 0 : this.slots.filter((slot) => slot.busy).length
+
+  async evaluate(
+    snapshot: EvaluationSnapshot,
+    candidates: readonly EvaluationCandidate[],
+    signal?: AbortSignal,
+    snapshotId?: string,
+  ): Promise<readonly QualitySummary[]> {
+    if (this.closed) throw new Error("Candidate evaluation queue is closed")
+    if (signal?.aborted) throw new Error("Candidate evaluation queue was interrupted")
+    if (candidates.length === 0) return []
+    await this.ready
+    if (this.closed) throw new Error("Candidate evaluation queue is closed")
+    const resolvedSnapshotId = this.snapshotIdFor(snapshot, snapshotId)
+    return new Promise<readonly QualitySummary[]>((resolve, reject) => {
+      let request: CandidateQueueRequest | undefined
+      const abort = () => {
+        if (request === undefined) return
+        this.settleRequest(request, new Error("Candidate evaluation queue was interrupted"))
+        this.dispatch()
+      }
+      const removeAbortListener = () => signal?.removeEventListener("abort", abort)
+      request = {
+        requestId: this.nextRequestId++,
+        snapshotId: resolvedSnapshotId,
+        snapshot,
+        candidates,
+        results: new Map(),
+        resolve,
+        reject,
+        removeAbortListener,
+        nextCandidate: 0,
+        completedCandidates: 0,
+        enqueued: false,
+        settled: false,
+      }
+      if (signal !== undefined) {
+        signal.addEventListener("abort", abort, { once: true })
+        if (signal.aborted) {
+          abort()
+          return
+        }
+      }
+      this.requests.add(request)
+      this.enqueueRequest(request)
+      this.dispatch()
+    })
+  }
+
+  async close(): Promise<void> {
+    if (this.closePromise !== undefined) return this.closePromise
+    this.closed = true
+    for (const request of this.requests)
+      this.settleRequest(request, new Error("Candidate evaluation queue closed"))
+    this.readyRequests.length = 0
+    for (const slot of this.slots) slot.busy = false
+    this.closePromise = Promise.all(
+      this.slots.map((slot) => slot.worker.terminate().catch(() => -1)),
+    ).then(() => undefined)
+    return this.closePromise
+  }
+}
+
+class SerialCandidateEvaluationQueue implements CandidateEvaluationQueue {
+  readonly workerCount = 1
+  readonly batchSize: number
+  private closed = false
+
+  constructor(batchSize: number) {
+    this.batchSize = batchSize
+  }
+
+  activeWorkerCount = (): number => 0
+
+  async evaluate(
+    snapshot: EvaluationSnapshot,
+    candidates: readonly EvaluationCandidate[],
+    signal?: AbortSignal,
+    _snapshotId?: string,
+  ): Promise<readonly QualitySummary[]> {
+    if (this.closed) throw new Error("Candidate evaluation queue is closed")
+    if (signal?.aborted) throw new Error("Candidate evaluation queue was interrupted")
+    return evaluateCandidatesSerial(snapshot, candidates)
+  }
+
+  async close(): Promise<void> {
+    this.closed = true
+  }
+}
+
+class QueuedCandidateEvaluationPool implements CandidateEvaluationPool {
+  readonly mode = "parallel" as const
+  readonly workerCount: number
+  readonly batchSize: number
+  private readonly snapshot: EvaluationSnapshot
+  private readonly queue: CandidateEvaluationQueue
+  private readonly signal: AbortSignal | undefined
+  private closed = false
+  private batchCount = 0
+  private candidateCount = 0
+
+  constructor(snapshot: EvaluationSnapshot, queue: CandidateEvaluationQueue, signal?: AbortSignal) {
+    this.snapshot = snapshot
+    this.queue = queue
+    this.signal = signal
+    this.workerCount = queue.workerCount
+    this.batchSize = queue.batchSize
+  }
+
+  async evaluate(candidates: readonly EvaluationCandidate[]): Promise<readonly QualitySummary[]> {
+    if (this.closed) throw new Error("Candidate evaluation pool is closed")
+    const counts = candidateBatchStats(candidates, this.batchSize)
+    this.candidateCount += counts.candidates
+    this.batchCount += counts.batches
+    return this.queue.evaluate(this.snapshot, candidates, this.signal)
+  }
+
+  async close(): Promise<void> {
+    this.closed = true
+  }
+
+  stats = (): CandidateEvaluationPoolStats =>
+    candidatePoolStats(
+      this.mode,
+      this.workerCount,
+      this.closed ? 0 : this.queue.activeWorkerCount(),
+      this.batchSize,
+      this.batchCount,
+      this.candidateCount,
+    )
+}
+
+/** Create one shared candidate queue for multiple independent router searches. */
+export const createCandidateEvaluationQueue = async (
+  options: CandidateEvaluationQueueOptions = {},
+): Promise<CandidateEvaluationQueue> => {
+  const workerCount = resolveWorkerCount(options.workerCount)
+  const batchSize = resolveQueueBatchSize(options.batchSize)
+  if (workerCount <= 1) return new SerialCandidateEvaluationQueue(batchSize)
+  return NativeCandidateEvaluationQueue.create(
+    workerCount,
+    batchSize,
+    options.workerUrl ?? DEFAULT_WORKER_URL,
+  )
+}
+
+/** Create a per-search pool facade that submits work to a shared candidate queue. */
+export const createCandidateEvaluationPoolOnQueue = (
+  snapshot: EvaluationSnapshot,
+  queue: CandidateEvaluationQueue,
+  signal?: AbortSignal,
+): CandidateEvaluationPool => new QueuedCandidateEvaluationPool(snapshot, queue, signal)
+
 class SerialCandidateEvaluationPool implements CandidateEvaluationPool {
   readonly mode = "serial" as const
   readonly workerCount = 1
@@ -397,8 +938,9 @@ class SerialCandidateEvaluationPool implements CandidateEvaluationPool {
 
   async evaluate(candidates: readonly EvaluationCandidate[]): Promise<readonly QualitySummary[]> {
     if (this.closed) throw new Error("Candidate evaluation pool is closed")
-    this.candidateCount += candidates.length
-    this.batchCount += Math.ceil(candidates.length / this.batchSize)
+    const counts = candidateBatchStats(candidates, this.batchSize)
+    this.candidateCount += counts.candidates
+    this.batchCount += counts.batches
     return evaluateCandidatesSerial(this.snapshot, candidates)
   }
 
@@ -406,14 +948,15 @@ class SerialCandidateEvaluationPool implements CandidateEvaluationPool {
     this.closed = true
   }
 
-  stats = (): CandidateEvaluationPoolStats => ({
-    mode: this.mode,
-    workerCount: this.workerCount,
-    activeWorkerCount: 0,
-    batchSize: this.batchSize,
-    batches: this.batchCount,
-    candidates: this.candidateCount,
-  })
+  stats = (): CandidateEvaluationPoolStats =>
+    candidatePoolStats(
+      this.mode,
+      this.workerCount,
+      0,
+      this.batchSize,
+      this.batchCount,
+      this.candidateCount,
+    )
 }
 
 /** Create a fixed benchmark evaluator pool; one worker or an explicit zero uses serial fallback. */

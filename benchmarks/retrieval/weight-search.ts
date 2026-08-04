@@ -42,9 +42,11 @@ import {
 } from "./types.js"
 import {
   createCandidateEvaluationPool,
+  createCandidateEvaluationPoolOnQueue,
   createEvaluationSnapshot,
   type CandidateEvaluationPool,
   type CandidateEvaluationPoolOptions,
+  type CandidateEvaluationQueue,
   type EvaluationCandidate,
 } from "./worker-pool.js"
 
@@ -89,6 +91,8 @@ interface EvidenceSearchSample {
 /** Native pool controls plus the cancellation signal owned by the benchmark Effect. */
 export interface ParallelSearchOptions extends CandidateEvaluationPoolOptions {
   readonly signal?: AbortSignal
+  /** Shared candidate scheduler used to interleave multiple router searches. */
+  readonly evaluationQueue?: CandidateEvaluationQueue
 }
 
 const preparedFusionCache = new WeakMap<
@@ -123,19 +127,20 @@ const createEvaluationPoolForSamples = async (
   samples: readonly WeightSearchSample[],
   fusion: FusionMethod,
   profile: OptimizationProfile,
-  options: CandidateEvaluationPoolOptions,
-): Promise<CandidateEvaluationPool> =>
-  createCandidateEvaluationPool(
-    createEvaluationSnapshot(
-      samples.map((sample) => ({
-        evaluator: preparedFusionEvaluatorFor(sample, fusion),
-        targets: sample.targets,
-        chunks: sample.chunks,
-        sampleWeight: profile.queryFormWeights[sample.queryKind],
-      })),
-    ),
-    options,
+  options: ParallelSearchOptions,
+): Promise<CandidateEvaluationPool> => {
+  const snapshot = createEvaluationSnapshot(
+    samples.map((sample) => ({
+      evaluator: preparedFusionEvaluatorFor(sample, fusion),
+      targets: sample.targets,
+      chunks: sample.chunks,
+      sampleWeight: profile.queryFormWeights[sample.queryKind],
+    })),
   )
+  if (options.evaluationQueue !== undefined)
+    return createCandidateEvaluationPoolOnQueue(snapshot, options.evaluationQueue, options.signal)
+  return createCandidateEvaluationPool(snapshot, options)
+}
 
 const routerEvaluationCandidate = (
   samples: readonly EvidenceSearchSample[],
@@ -864,6 +869,7 @@ const buildSearchDiagnostics = (
       ? 1
       : stats.proxyAgreementMatches / stats.proxyAgreementComparisons,
   protectedEliteCount: stats.protectedEliteCount,
+  timings: { ...stats.timings },
 })
 
 const radicalInverse = (index: number, base: number): number => {
@@ -975,6 +981,17 @@ interface SearchEvaluationStats {
   proxyAgreementMatches: number
   proxyAgreementComparisons: number
   protectedEliteCount: number
+  timings: MutableRouterSearchTimings
+}
+
+interface MutableRouterSearchTimings {
+  preparationMs: number
+  baseWeightSearchMs: number
+  randomSearchMs: number
+  beamSearchMs: number
+  candidatePreparationMs: number
+  candidateEvaluationMs: number
+  candidateSelectionMs: number
 }
 
 interface RouterSearchContext {
@@ -1010,11 +1027,15 @@ const selectRandomRouter = async (
   pool: CandidateEvaluationPool,
   baseline: QualitySummary,
   profile: OptimizationProfile,
+  stats: SearchEvaluationStats,
 ): Promise<{ readonly candidate: RouterCandidate; readonly candidates: number }> => {
   const configs = buildRandomRouterSeeds(baseSeed, parameters)
-  const qualities = await pool.evaluate(
-    configs.map((config) => routerEvaluationCandidate(samples, config)),
-  )
+  const candidatePreparationStartedAt = performance.now()
+  const evaluationCandidates = configs.map((config) => routerEvaluationCandidate(samples, config))
+  stats.timings.candidatePreparationMs += performance.now() - candidatePreparationStartedAt
+  const candidateEvaluationStartedAt = performance.now()
+  const qualities = await pool.evaluate(evaluationCandidates)
+  stats.timings.candidateEvaluationMs += performance.now() - candidateEvaluationStartedAt
   const candidates: RouterCandidate[] = []
   for (let index = 0; index < configs.length; index++) {
     const config = configs[index]
@@ -1061,6 +1082,8 @@ interface RouterEvaluationResult {
   readonly candidates: readonly RouterCandidate[]
   readonly cacheHits: number
   readonly evaluations: number
+  readonly candidatePreparationMs: number
+  readonly candidateEvaluationMs: number
 }
 
 const finalizeRouterCandidates = (
@@ -1103,9 +1126,14 @@ const evaluateRouterConfigs = async (
   qualityCache: Map<string, QualitySummary>,
 ): Promise<RouterEvaluationResult> => {
   const pending = entries.filter(([key]) => qualityCache.get(key) === undefined)
-  const qualities = await pool.evaluate(
-    pending.map(([, config]) => routerEvaluationCandidate(samples, config)),
+  const candidatePreparationStartedAt = performance.now()
+  const evaluationCandidates = pending.map(([, config]) =>
+    routerEvaluationCandidate(samples, config),
   )
+  const candidatePreparationMs = performance.now() - candidatePreparationStartedAt
+  const candidateEvaluationStartedAt = performance.now()
+  const qualities = await pool.evaluate(evaluationCandidates)
+  const candidateEvaluationMs = performance.now() - candidateEvaluationStartedAt
   storeQualityResults(
     pending,
     qualities,
@@ -1120,6 +1148,8 @@ const evaluateRouterConfigs = async (
     }),
     cacheHits: entries.length - pending.length,
     evaluations: pending.length,
+    candidatePreparationMs,
+    candidateEvaluationMs,
   }
 }
 
@@ -1146,6 +1176,9 @@ const rankRouterCandidates = async (
     )
     context.stats.proxyCacheHits += rankedProxy.cacheHits
     context.stats.proxyEvaluations += rankedProxy.evaluations
+    context.stats.timings.candidatePreparationMs += rankedProxy.candidatePreparationMs
+    context.stats.timings.candidateEvaluationMs += rankedProxy.candidateEvaluationMs
+    const proxySelectionStartedAt = performance.now()
     const selectedProxy = selectObjectiveCandidates(
       rankedProxy.candidates,
       limit * SEARCH_PROXY_PROMOTION_FACTOR,
@@ -1162,6 +1195,7 @@ const rankRouterCandidates = async (
       if (protectedKeys.has(key)) selected.set(key, config)
     }
     fullCandidates = [...selected]
+    context.stats.timings.candidateSelectionMs += performance.now() - proxySelectionStartedAt
   }
   const rankedFull = await evaluateRouterConfigs(
     fullCandidates,
@@ -1171,7 +1205,12 @@ const rankRouterCandidates = async (
   )
   context.stats.fullCacheHits += rankedFull.cacheHits
   context.stats.fullEvaluations += rankedFull.evaluations
-  return finalizeRouterCandidates(context, rankedFull.candidates, proxyKeys, limit)
+  context.stats.timings.candidatePreparationMs += rankedFull.candidatePreparationMs
+  context.stats.timings.candidateEvaluationMs += rankedFull.candidateEvaluationMs
+  const fullSelectionStartedAt = performance.now()
+  const selected = finalizeRouterCandidates(context, rankedFull.candidates, proxyKeys, limit)
+  context.stats.timings.candidateSelectionMs += performance.now() - fullSelectionStartedAt
+  return selected
 }
 
 interface EvidenceRouterSelection {
@@ -1208,6 +1247,7 @@ const prepareRouterSearch = (
   samples: readonly WeightSearchSample[],
   profile: OptimizationProfile,
 ): RouterSearchPreparation => {
+  const preparationStartedAt = performance.now()
   const evidenceSamples = prepareEvidenceSamples(samples)
   const proxySamples = buildProxySamples(evidenceSamples)
   const guardrailBaselines = buildGuardrailBaselines(samples, profile)
@@ -1233,6 +1273,15 @@ const prepareRouterSearch = (
       proxyAgreementMatches: 0,
       proxyAgreementComparisons: 0,
       protectedEliteCount: 0,
+      timings: {
+        preparationMs: performance.now() - preparationStartedAt,
+        baseWeightSearchMs: 0,
+        randomSearchMs: 0,
+        beamSearchMs: 0,
+        candidatePreparationMs: 0,
+        candidateEvaluationMs: 0,
+        candidateSelectionMs: 0,
+      },
     },
   }
 }
@@ -1288,6 +1337,7 @@ const selectBestEvidenceRouter = async (
     proxyPool,
   }
   const profileSeed = profileSeedFor(profile)
+  const baseSearchStartedAt = performance.now()
   const baseWeights = await selectBestWeights(
     fullPool,
     "reranker-top20",
@@ -1297,9 +1347,11 @@ const selectBestEvidenceRouter = async (
   const subsetWeights = await selectBestWeightsPerSubset(fullPool, profile)
   const baseSeeds = [baseWeights.weights, ...subsetWeights].map(emptyRouterConfig)
   baseSeeds.unshift(profileSeed)
+  stats.timings.baseWeightSearchMs += performance.now() - baseSearchStartedAt
   const parameters = routerParameters()
   const randomBaseSeed = baseSeeds[0]
   if (randomBaseSeed === undefined) throw new Error("Evidence router search has no base seed")
+  const randomSearchStartedAt = performance.now()
   const randomSearch = await selectRandomRouter(
     evidenceSamples,
     randomBaseSeed,
@@ -1307,7 +1359,10 @@ const selectBestEvidenceRouter = async (
     fullPool,
     productionQuality,
     profile,
+    stats,
   )
+  stats.timings.randomSearchMs += performance.now() - randomSearchStartedAt
+  const beamSearchStartedAt = performance.now()
   let beam = await rankRouterCandidates(
     searchContext,
     [...baseSeeds, ...buildGlobalRouterSeeds(baseSeeds, parameters)],
@@ -1331,6 +1386,7 @@ const selectBestEvidenceRouter = async (
       )
     }
   }
+  stats.timings.beamSearchMs += performance.now() - beamSearchStartedAt
   const fallback = beam[0]
   const candidates = [...searchContext.archive.values()]
   const selections = ROUTER_OBJECTIVES.map((objective) => {

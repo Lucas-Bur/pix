@@ -2,9 +2,17 @@ import { Worker } from "node:worker_threads"
 
 import type { FusionMethod } from "../../src/domain/retrieval.js"
 import type { OptimizationProfile } from "./optimization-profiles.js"
-import type { EvidenceRouterSearchResult, ValidationStrategy } from "./types.js"
+import type {
+  EvidenceRouterSearchResult,
+  RecommendedEvidenceRouter,
+  ValidationStrategy,
+} from "./types.js"
 import type { WeightSearchSample } from "./weight-search.js"
-import { hasWorkerMessageType } from "./worker-message.js"
+import type {
+  CandidateEvaluationQueue,
+  EvaluationCandidate,
+  EvaluationSnapshot,
+} from "./worker-pool.js"
 
 /** One independent evidence-router fold or repository holdout. */
 export interface EvidenceRouterHoldoutJob {
@@ -17,13 +25,40 @@ export interface EvidenceRouterHoldoutJob {
   readonly validation: readonly WeightSearchSample[]
 }
 
-/** Result returned by one complete native router job. */
-export type EvidenceRouterJobResult = readonly EvidenceRouterSearchResult[]
+/** One fit-all router search over every sample after holdout evaluation. */
+export interface EvidenceRouterFitAllJob {
+  readonly kind: "fit-all"
+  readonly model: string
+  readonly fusion: FusionMethod
+  readonly samples: readonly WeightSearchSample[]
+}
+
+/** One complete router search handled by a native worker. */
+export type EvidenceRouterJob = EvidenceRouterHoldoutJob | EvidenceRouterFitAllJob
+
+/** Tagged result returned by one holdout router job. */
+export interface EvidenceRouterHoldoutJobResult {
+  readonly jobId: number
+  readonly kind: "holdout"
+  readonly results: readonly EvidenceRouterSearchResult[]
+}
+
+/** Tagged result returned by one fit-all router job. */
+export interface EvidenceRouterFitAllJobResult {
+  readonly jobId: number
+  readonly kind: "fit-all"
+  readonly results: readonly RecommendedEvidenceRouter[]
+}
+
+/** Tagged result returned by one complete native router job. */
+export type EvidenceRouterJobResult = EvidenceRouterHoldoutJobResult | EvidenceRouterFitAllJobResult
 
 /** Options for the native pool that runs complete router jobs. */
 export interface EvidenceRouterJobPoolOptions {
-  /** Maximum number of native workers, with one complete search per worker. */
+  /** Maximum number of native router-controller workers. */
   readonly workerCount: number
+  /** Shared candidate queue used by the active router controllers. */
+  readonly candidateQueue?: CandidateEvaluationQueue
   /** Abort signal that terminates all active router jobs. */
   readonly signal?: AbortSignal
   /** Test-only override for the router job worker entry point. */
@@ -36,10 +71,26 @@ interface WorkerReadyMessage {
   readonly type: "ready"
 }
 
-interface WorkerResultMessage {
+interface WorkerHoldoutResultMessage {
   readonly type: "result"
   readonly jobId: number
-  readonly results: EvidenceRouterJobResult
+  readonly kind: "holdout"
+  readonly results: readonly EvidenceRouterSearchResult[]
+}
+
+interface WorkerFitAllResultMessage {
+  readonly type: "result"
+  readonly jobId: number
+  readonly kind: "fit-all"
+  readonly results: readonly RecommendedEvidenceRouter[]
+}
+
+interface WorkerCandidateEvaluateMessage {
+  readonly type: "candidate-evaluate"
+  readonly requestId: number
+  readonly snapshotId: string
+  readonly snapshot?: EvaluationSnapshot
+  readonly candidates: readonly EvaluationCandidate[]
 }
 
 interface WorkerErrorMessage {
@@ -48,10 +99,17 @@ interface WorkerErrorMessage {
   readonly message: string
 }
 
-type WorkerMessage = WorkerReadyMessage | WorkerResultMessage | WorkerErrorMessage
+type WorkerMessage =
+  | WorkerReadyMessage
+  | WorkerHoldoutResultMessage
+  | WorkerFitAllResultMessage
+  | WorkerCandidateEvaluateMessage
+  | WorkerErrorMessage
 
 interface WorkerSlot {
+  readonly slotId: number
   readonly worker: Worker
+  readonly candidateSnapshots: Map<string, EvaluationSnapshot>
   busy: boolean
 }
 
@@ -61,8 +119,27 @@ const DEFAULT_LOADER_URL = new URL("./ts-loader.mjs", import.meta.url)
 const errorFromUnknown = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause))
 
+const isRecord = (message: unknown): message is Record<string, unknown> =>
+  typeof message === "object" && message !== null
+
 const isWorkerMessage = (message: unknown): message is WorkerMessage => {
-  return hasWorkerMessageType(message, ["ready", "result", "error"])
+  if (!isRecord(message) || typeof message.type !== "string") return false
+  if (message.type === "ready") return true
+  if (message.type === "error") return typeof message.message === "string"
+  if (message.type === "candidate-evaluate")
+    return (
+      Number.isInteger(message.requestId) &&
+      typeof message.snapshotId === "string" &&
+      (message.snapshot === undefined ||
+        (typeof message.snapshot === "object" && message.snapshot !== null)) &&
+      Array.isArray(message.candidates)
+    )
+  return (
+    message.type === "result" &&
+    Number.isInteger(message.jobId) &&
+    (message.kind === "holdout" || message.kind === "fit-all") &&
+    Array.isArray(message.results)
+  )
 }
 
 const workerExecArgv = (loaderUrl: URL): readonly string[] => [
@@ -72,9 +149,9 @@ const workerExecArgv = (loaderUrl: URL): readonly string[] => [
   loaderUrl.href,
 ]
 
-/** Run independent router holdout jobs in native workers and return results in input order. */
+/** Run independent router jobs in native workers and return tagged results in input order. */
 export const runEvidenceRouterJobs = (
-  jobs: readonly EvidenceRouterHoldoutJob[],
+  jobs: readonly EvidenceRouterJob[],
   profile: OptimizationProfile,
   options: EvidenceRouterJobPoolOptions,
 ): Promise<readonly EvidenceRouterJobResult[]> => {
@@ -128,7 +205,15 @@ export const runEvidenceRouterJobs = (
       const jobId = nextJob++
       slot.busy = true
       try {
-        slot.worker.postMessage({ type: "run", jobId, job: jobs[jobId], profile })
+        slot.worker.postMessage({
+          type: "run",
+          jobId,
+          job: jobs[jobId],
+          profile,
+          candidateWorkerCount: options.candidateQueue?.workerCount ?? 0,
+          candidateBatchSize: options.candidateQueue?.batchSize ?? 0,
+          useCandidateQueue: options.candidateQueue !== undefined,
+        })
       } catch (cause) {
         finish(errorFromUnknown(cause))
       }
@@ -147,12 +232,58 @@ export const runEvidenceRouterJobs = (
         finish(new Error(message.message))
         return
       }
+      if (message.type === "candidate-evaluate") {
+        if (options.candidateQueue === undefined) {
+          finish(new Error("Router job worker requested a candidate queue that was not configured"))
+          return
+        }
+        const snapshot = message.snapshot ?? slot.candidateSnapshots.get(message.snapshotId)
+        if (snapshot === undefined) {
+          finish(new Error(`Router job worker omitted snapshot ${message.snapshotId}`))
+          return
+        }
+        if (message.snapshot !== undefined)
+          slot.candidateSnapshots.set(message.snapshotId, message.snapshot)
+        void options.candidateQueue
+          .evaluate(snapshot, message.candidates, undefined, `${slot.slotId}:${message.snapshotId}`)
+          .then((results) => {
+            if (settled) return
+            try {
+              slot.worker.postMessage({
+                type: "candidate-result",
+                requestId: message.requestId,
+                results,
+              })
+            } catch (cause) {
+              finish(errorFromUnknown(cause))
+            }
+          })
+          .catch((cause) => finish(errorFromUnknown(cause)))
+        return
+      }
+      const job = jobs[message.jobId]
+      if (job === undefined || job.kind !== message.kind) {
+        finish(new Error(`Router job worker returned an unexpected job ${message.jobId}`))
+        return
+      }
       if (message.results.length === 0) {
         finish(new Error(`Router job worker returned no results for job ${message.jobId}`))
         return
       }
       slot.busy = false
-      results.set(message.jobId, message.results)
+      if (message.kind === "holdout") {
+        results.set(message.jobId, {
+          jobId: message.jobId,
+          kind: "holdout",
+          results: message.results,
+        })
+      } else {
+        results.set(message.jobId, {
+          jobId: message.jobId,
+          kind: "fit-all",
+          results: message.results,
+        })
+      }
       completedJobs++
       if (completedJobs === jobs.length) {
         finish()
@@ -167,7 +298,12 @@ export const runEvidenceRouterJobs = (
         const worker = new Worker(workerUrl, {
           execArgv: [...workerExecArgv(loaderUrl)],
         })
-        const slot: WorkerSlot = { worker, busy: false }
+        const slot: WorkerSlot = {
+          slotId: index,
+          worker,
+          candidateSnapshots: new Map(),
+          busy: false,
+        }
         worker.on("message", (message: unknown) => handleMessage(slot, message))
         worker.on("error", (cause: Error) => finish(cause))
         worker.on("exit", (code: number) => {
