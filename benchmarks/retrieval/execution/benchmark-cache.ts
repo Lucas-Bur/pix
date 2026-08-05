@@ -67,6 +67,7 @@ export const benchmarkCachePaths = (
   model: string,
   dims: number,
   dtype: string,
+  chunkTokens = DEFAULT_CONFIG.chunkTokens,
 ): BenchmarkCachePaths => {
   const identity = JSON.stringify({
     cacheVersion: CACHE_VERSION,
@@ -83,7 +84,7 @@ export const benchmarkCachePaths = (
     dims,
     dtype,
     chunk: {
-      tokens: DEFAULT_CONFIG.chunkTokens,
+      tokens: chunkTokens,
       overlap: DEFAULT_CONFIG.overlapLines,
     },
     sparse: {

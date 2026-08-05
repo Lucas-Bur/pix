@@ -184,6 +184,7 @@ export const runRetrievalBenchmark = (
     const models = yield* selectModels()
     const collected = yield* collectBenchmarkData(manifests, models, groupedFoldAssignments)
     const {
+      chunkTokens,
       repositories,
       embeddingRuns,
       sparseEmbeddingRuns,
@@ -239,7 +240,7 @@ export const runRetrievalBenchmark = (
         candidateQueueShutdownDurationMs: search.candidateQueueShutdownDurationMs,
       },
       chunkConfig: {
-        chunkTokens: DEFAULT_CONFIG.chunkTokens,
+        chunkTokens,
         overlapLines: DEFAULT_CONFIG.overlapLines,
       },
       contextTokenEstimator: "utf8-bytes-divided-by-four",
