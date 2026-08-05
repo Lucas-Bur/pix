@@ -30,7 +30,7 @@ import type {
 import type { IdentifierIndexMaps } from "./identifier-index.js"
 import type { Identifier } from "./identifier.js"
 import type { FileManifestEntry, StoredChunk } from "./index-data.js"
-import type { ModelInfo } from "./models.js"
+import type { ModelInfo, ModelTokenLimits } from "./models.js"
 import type { QueryAlias, QueryAliasOptions } from "./query-alias.js"
 import type { ProductionProfileName } from "./retrieval.js"
 import type { SparseContract, SparseQuery, SparseTerm, SparseVector } from "./sparse.js"
@@ -212,19 +212,14 @@ export interface EmbedderDeviceConfig {
   readonly dtype: EmbeddingDtype
   readonly dims: number
   readonly hardTokenLimit?: number
-  readonly operationalTokenLimit?: number
+  readonly maxInputTokens?: number
   readonly batchSize?: number
-  readonly batchTokens?: number
 }
 
 /** Token limits reported by a loaded embedding adapter. */
-export interface EmbeddingLimits {
+export interface EmbeddingLimits extends ModelTokenLimits {
   /** Model identifier used for diagnostics. */
   readonly model: string
-  /** Hard model input limit, including special tokens. */
-  readonly hardTokenLimit: number
-  /** Conservative production input limit, never above hardTokenLimit. */
-  readonly operationalTokenLimit: number
 }
 
 /** An embedder instance bound to a specific device configuration. */

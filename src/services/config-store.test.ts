@@ -26,7 +26,7 @@ it.effect("ConfigStore.writeConfig creates .pix/config.json with defaults", () =
     yield* store.writeConfig(DEFAULT_CONFIG)
     const config = yield* store.readConfig()
     expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
-    expect(config.chunkTokens).toBe(2000)
+    expect(config.chunkTokens).toBeUndefined()
     expect(config.overlapLines).toBe(10)
     expect(config.skipExtensions).toEqual([])
     expect(config.embedder.batchSize).toBe(16)

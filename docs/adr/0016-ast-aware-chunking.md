@@ -25,9 +25,9 @@ shared extension registry for parser dispatch.
   aborting the index refresh.
 - Fall back to token-aware line chunking when no parser exists, parsing fails, or the syntax tree has
   errors. `overlapLines` applies only to this fallback; AST chunks do not overlap.
-- Derive the effective cap from configured `chunkTokens`, the Dense/Sparse operational model limits,
-  and the configured batch token budgets. `TokenLimitError` rejects any input or batch that still
-  exceeds an adapter limit before inference.
+- Derive the effective cap from optional configured `chunkTokens` and the Dense/Sparse
+  `maxInputTokens`. `maxInputTokens` must not exceed the corresponding hard model limit.
+  `TokenLimitError` rejects any input that still exceeds an adapter limit before inference.
 - Persist non-fatal parser and skip events as `IndexDiagnostic` entries in the SQLite metadata and
   expose them through `pix index --json` and `pix status --json`.
 - Keep the persisted `Chunk` schema unchanged. Chunk IDs use exact source ranges.

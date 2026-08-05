@@ -61,9 +61,8 @@ const makeEmbedBatch = (
   dims: number,
   dtype: EmbeddingDtype,
   hardTokenLimit: number,
-  operationalTokenLimit: number,
+  maxInputTokens: number,
   batchSize: number,
-  batchTokens: number,
 ): {
   readonly limits: EmbeddingLimits
   readonly countTokens: (text: string) => Effect.Effect<number, InferenceError>
@@ -75,7 +74,7 @@ const makeEmbedBatch = (
   const limits: EmbeddingLimits = {
     model,
     hardTokenLimit,
-    operationalTokenLimit: Math.min(operationalTokenLimit, hardTokenLimit),
+    maxInputTokens,
   }
 
   const countTokensWithExtractor = (extractor: FeatureExtractionPipeline, text: string) =>
@@ -98,12 +97,12 @@ const makeEmbedBatch = (
   const validateInput = (text: string, extractor: FeatureExtractionPipeline) =>
     Effect.gen(function* () {
       const tokens = yield* countTokensWithExtractor(extractor, text)
-      if (tokens > limits.operationalTokenLimit) {
+      if (tokens > limits.maxInputTokens) {
         return yield* new TokenLimitError({
-          message: `Dense input for "${model}" has ${tokens} tokens; the operational limit is ${limits.operationalTokenLimit}`,
+          message: `Dense input for "${model}" has ${tokens} tokens; the maximum is ${limits.maxInputTokens}`,
           model,
           actualTokens: tokens,
-          limit: limits.operationalTokenLimit,
+          limit: limits.maxInputTokens,
           scope: "input",
         })
       }
@@ -138,17 +137,7 @@ const makeEmbedBatch = (
         })
       }
       const extractor = yield* getExtractor()
-      const counts = yield* Effect.forEach(texts, (text) => validateInput(text, extractor))
-      const totalTokens = counts.reduce((sum, count) => sum + count, 0)
-      if (totalTokens > batchTokens) {
-        return yield* new TokenLimitError({
-          message: `Dense batch for "${model}" has ${totalTokens} tokens; the batch budget is ${batchTokens}`,
-          model,
-          actualTokens: totalTokens,
-          limit: batchTokens,
-          scope: "batch",
-        })
-      }
+      yield* Effect.forEach(texts, (text) => validateInput(text, extractor))
       const tensor = yield* Effect.tryPromise(() =>
         extractor([...texts], { pooling: "mean", normalize: false }),
       ).pipe(
@@ -177,21 +166,27 @@ const makeEmbedBatch = (
 const createBoundEmbedder = (
   cfg: EmbedderDeviceConfig,
 ): Effect.Effect<BoundEmbedder, ModelLoadError> =>
-  loadExtractor(cfg.model, cfg.device, cfg.dtype).pipe(
-    Effect.map((extractor) => {
-      const info = MODEL_REGISTRY[cfg.model]
-      return makeEmbedBatch(
-        () => Effect.succeed(extractor),
-        cfg.model,
-        cfg.dims,
-        cfg.dtype,
-        cfg.hardTokenLimit ?? info?.hardTokenLimit ?? 512,
-        cfg.operationalTokenLimit ?? info?.operationalTokenLimit ?? 512,
-        cfg.batchSize ?? 16,
-        cfg.batchTokens ?? 8192,
-      )
-    }),
-  )
+  Effect.gen(function* () {
+    const info = MODEL_REGISTRY[cfg.model]
+    const hardTokenLimit = cfg.hardTokenLimit ?? info?.hardTokenLimit ?? 512
+    const maxInputTokens = cfg.maxInputTokens ?? info?.maxInputTokens ?? 512
+    if (maxInputTokens > hardTokenLimit) {
+      return yield* new ModelLoadError({
+        message: `Invalid token limits for "${cfg.model}": maxInputTokens (${maxInputTokens}) exceeds hardTokenLimit (${hardTokenLimit})`,
+        model: cfg.model,
+      })
+    }
+    const extractor = yield* loadExtractor(cfg.model, cfg.device, cfg.dtype)
+    return makeEmbedBatch(
+      () => Effect.succeed(extractor),
+      cfg.model,
+      cfg.dims,
+      cfg.dtype,
+      hardTokenLimit,
+      maxInputTokens,
+      cfg.batchSize ?? 16,
+    )
+  })
 
 /** Embedding model loaded on the first working device in automatic priority order. */
 export interface AutoBoundEmbedder {
@@ -205,7 +200,6 @@ export const createAutoBoundEmbedder = (cfg: {
   readonly dtype: EmbeddingDtype
   readonly dims: number
   readonly batchSize?: number
-  readonly batchTokens?: number
 }): Effect.Effect<AutoBoundEmbedder, ModelLoadError> =>
   Effect.gen(function* () {
     const info = MODEL_REGISTRY[cfg.model]
@@ -220,9 +214,8 @@ export const createAutoBoundEmbedder = (cfg: {
         ...cfg,
         device,
         hardTokenLimit: info.hardTokenLimit,
-        operationalTokenLimit: info.operationalTokenLimit,
+        maxInputTokens: info.maxInputTokens,
         batchSize: cfg.batchSize ?? 16,
-        batchTokens: cfg.batchTokens ?? 8192,
       }),
     )
   }).pipe(Effect.map(({ device, value }) => ({ device, embedder: value })))
@@ -233,9 +226,8 @@ const withGpuFallback = (
   dtype: EmbeddingDtype,
   dims: number,
   hardTokenLimit: number,
-  operationalTokenLimit: number,
+  maxInputTokens: number,
   batchSize: number,
-  batchTokens: number,
   d: typeof Display.Service,
   fallbackRef: Ref.Ref<Option.Option<FallbackInfo>>,
 ): Effect.Effect<BoundEmbedder, ModelLoadError> =>
@@ -249,9 +241,8 @@ const withGpuFallback = (
         dims,
         dtype,
         hardTokenLimit,
-        operationalTokenLimit,
+        maxInputTokens,
         batchSize,
-        batchTokens,
       )
     }
 
@@ -264,9 +255,8 @@ const withGpuFallback = (
         dims,
         dtype,
         hardTokenLimit,
-        operationalTokenLimit,
+        maxInputTokens,
         batchSize,
-        batchTokens,
       )
     }
 
@@ -288,9 +278,8 @@ const withGpuFallback = (
       dims,
       dtype,
       hardTokenLimit,
-      operationalTokenLimit,
+      maxInputTokens,
       batchSize,
-      batchTokens,
     )
   })
 
@@ -323,9 +312,8 @@ const resolveEmbedderDeviceConfig = (
       dtype: resolved.dtype,
       dims: resolved.dims,
       hardTokenLimit: MODEL_REGISTRY[resolved.model]!.hardTokenLimit,
-      operationalTokenLimit: MODEL_REGISTRY[resolved.model]!.operationalTokenLimit,
+      maxInputTokens: MODEL_REGISTRY[resolved.model]!.maxInputTokens,
       batchSize: config?.embedder.batchSize ?? 16,
-      batchTokens: config?.embedder.batchTokens ?? 8192,
     }
   })
 
@@ -341,9 +329,8 @@ const make = Effect.gen(function* () {
     cfg.dtype,
     cfg.dims,
     cfg.hardTokenLimit ?? 512,
-    cfg.operationalTokenLimit ?? 512,
+    cfg.maxInputTokens ?? 512,
     cfg.batchSize ?? 16,
-    cfg.batchTokens ?? 8192,
     d,
     fallbackRef,
   )

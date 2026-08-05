@@ -1,6 +1,7 @@
 import { expect, it } from "@effect/vitest"
 import { Effect, Option } from "effect"
 
+import { resolveChunkTokenLimit, validateModelTokenLimits } from "../domain/models.js"
 import { ModelRegistry } from "../domain/ports.js"
 import { ModelRegistryLive } from "./models.js"
 
@@ -35,3 +36,24 @@ it.effect("ModelRegistryLive.list returns all registered model IDs", () =>
     expect(ids).toHaveLength(3)
   }).pipe(Effect.provide(ModelRegistryLive)),
 )
+
+it("resolves the smallest configured or model input limit", () => {
+  expect(
+    resolveChunkTokenLimit(300, [
+      { model: "dense", hardTokenLimit: 512, maxInputTokens: 512 },
+      { model: "sparse", hardTokenLimit: 1024, maxInputTokens: 256 },
+    ]),
+  ).toBe(256)
+  expect(
+    resolveChunkTokenLimit(undefined, [
+      { model: "dense", hardTokenLimit: 512, maxInputTokens: 512 },
+      { model: "sparse", hardTokenLimit: 1024, maxInputTokens: 768 },
+    ]),
+  ).toBe(512)
+})
+
+it("rejects a maximum input above the hard model limit", () => {
+  expect(() =>
+    validateModelTokenLimits({ hardTokenLimit: 512, maxInputTokens: 513 }, "invalid-model"),
+  ).toThrow("maxInputTokens (513) exceeds hardTokenLimit (512)")
+})

@@ -17,7 +17,6 @@ const EmbedderConfigSchema = Schema.Struct({
   device: DeviceSchema,
   dtype: EmbeddingDtypeSchema,
   batchSize: Schema.Number,
-  batchTokens: PositiveInt,
 })
 
 const SparseEmbedderConfigSchema = Schema.Struct({
@@ -28,7 +27,6 @@ const SparseEmbedderConfigSchema = Schema.Struct({
   idfContentHash: Schema.String,
   device: DeviceSchema,
   batchSize: PositiveInt,
-  batchTokens: PositiveInt,
 })
 
 /** Available SQLite vector scan strategies. */
@@ -44,7 +42,7 @@ const VectorSearchConfigSchema = Schema.Struct({
  * for `.pix/config.json`.
  */
 export const ConfigSchema = Schema.Struct({
-  chunkTokens: PositiveInt,
+  chunkTokens: Schema.optional(PositiveInt),
   overlapLines: Schema.Number,
   chunkConcurrency: Schema.Number,
   skipExtensions: Schema.Array(Schema.String),
@@ -59,7 +57,6 @@ export const ConfigSchema = Schema.Struct({
 export type Config = typeof ConfigSchema.Type
 
 export const DEFAULT_CONFIG: Config = {
-  chunkTokens: 2000,
   overlapLines: 10,
   chunkConcurrency: 8,
   skipExtensions: [],
@@ -84,7 +81,6 @@ export const DEFAULT_CONFIG: Config = {
     device: "auto",
     dtype: "fp32",
     batchSize: 16,
-    batchTokens: 8192,
   },
   sparseEmbedder: {
     model: SPARSE_DOCUMENT_MODEL,
@@ -94,7 +90,6 @@ export const DEFAULT_CONFIG: Config = {
     idfContentHash: SPARSE_IDF_CONTENT_HASH,
     device: "auto",
     batchSize: 2,
-    batchTokens: 1024,
   },
   vectorSearch: {
     mode: "exact",

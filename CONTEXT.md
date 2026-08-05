@@ -16,7 +16,7 @@ A piece of source code produced by the chunker. AST-supported files start with t
 units, which are greedily packed by composite token count. Parserless or malformed files use a
 token-aware line fallback. Stored as one metadata row in `.pix/index.db`; source text remains in the
 source file and is loaded only for selected query results. The effective per-chunk limit is the
-configured `chunkTokens` cap constrained by the active Dense and Sparse operational model limits.
+optional configured `chunkTokens` cap constrained by the active Dense and Sparse `maxInputTokens`.
 `overlapLines` applies only to parserless fallback chunks. Chunk IDs use the exact source range.
 
 ### ChunkEntry
@@ -26,8 +26,8 @@ Raw data loaded from the index and passed to scorers at query time. Contains chu
 ### Config
 
 Runtime configuration stored in `.pix/config.json`. Contains Dense and Sparse model contracts, devices,
-input batch sizes and token budgets, Dense dtype, token-aware chunk parameters (`chunkTokens`,
-parserless `overlapLines`, concurrency), ignored paths, and skip extensions.
+input batch sizes, Dense dtype, optional token-aware chunk parameters (`chunkTokens`, parserless
+`overlapLines`, concurrency), ignored paths, and skip extensions.
 Structurally healed on read: missing fields are filled from `DEFAULT_CONFIG` via deep-merge. Coupled rules (model exists in registry, dtype supported by model) are validated against `ModelRegistry`. Unsupported dtypes are auto-healed to the model's `defaultDtype`; unknown models produce `ConfigHealError`.
 
 ### Embedder
@@ -49,11 +49,11 @@ with batch size × sequence length × the 30,522-token vocabulary. See ADR-0020.
 
 ### ModelRegistry
 
-Port (`Context.Tag` in `src/domain/ports.ts`) for querying embedding model metadata: dimensions, supported dtypes, default dtype, hard input limit, operational input limit, and description. `ModelRegistryLive` in `src/services/models.ts` wraps the static `MODEL_REGISTRY` record from `src/domain/models.ts`; test layers can inject a restricted fake registry to exercise coupled-validation edge cases. Two methods: `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. Follows the "two adapters = real seam" principle (live + test).
+Port (`Context.Tag` in `src/domain/ports.ts`) for querying embedding model metadata: dimensions, supported dtypes, default dtype, hard input limit, maximum accepted input, and description. `ModelRegistryLive` in `src/services/models.ts` wraps the static `MODEL_REGISTRY` record from `src/domain/models.ts`; test layers can inject a restricted fake registry to exercise coupled-validation edge cases. Two methods: `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. Follows the "two adapters = real seam" principle (live + test).
 
 ### ModelInfo
 
-Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtypes` (supported quantizations), `defaultDtype` (used when healing an unsupported dtype), hard input limit, conservative operational input limit, and `description`. Dense entries live in `MODEL_REGISTRY`; pinned learned Sparse document limits live in `SPARSE_MODEL_REGISTRY`, both in `src/domain/models.ts`.
+Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtypes` (supported quantizations), `defaultDtype` (used when healing an unsupported dtype), `hardTokenLimit`, `maxInputTokens` (must not exceed the hard limit), and `description`. Dense entries live in `MODEL_REGISTRY`; pinned learned Sparse document limits live in `SPARSE_MODEL_REGISTRY`, both in `src/domain/models.ts`.
 
 ### DeviceDetection
 
@@ -63,7 +63,7 @@ Port (`Context.Tag` in `src/domain/ports.ts`) for detecting the best available c
 
 Two-tier process that runs on every `ConfigStore.readConfig()` call:
 
-1. **Structural heal**: deep-merge user config onto `DEFAULT_CONFIG`, then schema-decode. Missing fields are filled from defaults; bad types (`chunkTokens: "two thousand"`) still fail with `ConfigValidationError`.
+1. **Structural heal**: deep-merge user config onto `DEFAULT_CONFIG`, then schema-decode. Missing fields are filled from defaults; bad types (`chunkTokens: "two thousand"`) still fail with `ConfigValidationError`. Omitted `chunkTokens` means the active model limits determine chunk size.
 2. **Coupled validation**: check `embedder.model` exists in `ModelRegistry` and `embedder.dtype` is in the model's `dtypes`. Unsupported dtype → auto-healed to `defaultDtype` (conflict recorded but not blocking). Unknown model → `ConfigHealError` (unhealable, blocks).
 
 `pix config heal` is the explicit command: returns a `HealPlan`, prompts for each conflict (human mode), writes the resolved config. `--json` mode: auto-applies defaults for healed conflicts, fails with `ConfigHealError` for unhealed conflicts (agent edits config and retries). Only `pix config heal` writes config; other commands heal in memory and warn via `readConfigWithConflicts()`.
@@ -535,7 +535,7 @@ Returns all files found during FS walk, applying `.gitignore` rules (unless `ign
 
 ### Config
 
-Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip. Fields include `chunkTokens` (default 2000), Dense/Sparse batch token budgets, `embedder.batchSize` (default 16), the pinned `sparseEmbedder` model/query contracts with document batch size 2, `ignoreGitignore` (default false), and `vectorSearch` (`mode`: exact/auto/turboquant; `turboQuantThreshold`: default 50000). Updated `ignoredPaths` defaults: removed `.agents`, `.github`; added `.vite-hooks`, `.fallow`.
+Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip. Fields include optional `chunkTokens`, `embedder.batchSize` (default 16), the pinned `sparseEmbedder` model/query contracts with document batch size 2, `ignoreGitignore` (default false), and `vectorSearch` (`mode`: exact/auto/turboquant; `turboQuantThreshold`: default 50000). Updated `ignoredPaths` defaults: removed `.agents`, `.github`; added `.vite-hooks`, `.fallow`.
 
 ### Extension→Processor mapping (Phase 2+)
 

@@ -1,10 +1,10 @@
 import type { EmbeddingDtype } from "./dtype.js"
 import { SPARSE_DOCUMENT_MODEL } from "./sparse.js"
 
-/** Hard and conservative operational input limits for one model. */
+/** Hard model boundary and the safe input ceiling used by pix. */
 export interface ModelTokenLimits {
   readonly hardTokenLimit: number
-  readonly operationalTokenLimit: number
+  readonly maxInputTokens: number
 }
 
 /** Metadata for a supported embedding model. */
@@ -17,10 +17,6 @@ export interface ModelInfo extends ModelTokenLimits {
   readonly dtypes: readonly EmbeddingDtype[]
   /** Default dtype to use when healing an unsupported dtype for this model. */
   readonly defaultDtype: EmbeddingDtype
-  /** Hard maximum input length accepted by the model, including special tokens. */
-  readonly hardTokenLimit: number
-  /** Conservative per-input limit used by production embedding. Never exceeds hardTokenLimit. */
-  readonly operationalTokenLimit: number
   /** Human-readable description. */
   readonly description: string
 }
@@ -38,7 +34,7 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
     dtypes: ["fp32", "q8"],
     defaultDtype: "fp32",
     hardTokenLimit: 512,
-    operationalTokenLimit: 512,
+    maxInputTokens: 512,
     description: "General-purpose sentence embeddings, 23MB q8",
   },
   "Xenova/bge-small-en-v1.5": {
@@ -47,7 +43,7 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
     dtypes: ["fp32", "q8"],
     defaultDtype: "fp32",
     hardTokenLimit: 512,
-    operationalTokenLimit: 512,
+    maxInputTokens: 512,
     description: "BGE retrieval-optimized embeddings, 34MB q8",
   },
   "jinaai/jina-embeddings-v2-base-code": {
@@ -56,7 +52,7 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
     dtypes: ["fp32", "q8"],
     defaultDtype: "fp32",
     hardTokenLimit: 8192,
-    operationalTokenLimit: 2048,
+    maxInputTokens: 2048,
     description: "Jina code-tuned embeddings, 8192 context, 162MB q8",
   },
 }
@@ -66,6 +62,39 @@ export const SPARSE_MODEL_REGISTRY: Record<string, SparseModelInfo> = {
   [SPARSE_DOCUMENT_MODEL]: {
     id: SPARSE_DOCUMENT_MODEL,
     hardTokenLimit: 512,
-    operationalTokenLimit: 512,
+    maxInputTokens: 512,
   },
+}
+
+/** Validate the model input contract before an adapter uses it. */
+export const validateModelTokenLimits = <T extends ModelTokenLimits>(
+  limits: T,
+  model: string,
+): T => {
+  if (limits.maxInputTokens > limits.hardTokenLimit) {
+    throw new Error(
+      `Invalid token limits for "${model}": maxInputTokens (${limits.maxInputTokens}) exceeds hardTokenLimit (${limits.hardTokenLimit})`,
+    )
+  }
+  return limits
+}
+
+/** Resolve the maximum token count allowed for a chunk across active models. */
+export const resolveChunkTokenLimit = (
+  configuredChunkTokens: number | undefined,
+  modelLimits: readonly (ModelTokenLimits & { readonly model: string })[],
+): number => {
+  for (const limits of modelLimits) validateModelTokenLimits(limits, limits.model)
+  const modelLimit = modelLimits.reduce(
+    (minimum, limits) => Math.min(minimum, limits.maxInputTokens),
+    Number.POSITIVE_INFINITY,
+  )
+  return Math.min(configuredChunkTokens ?? Number.POSITIVE_INFINITY, modelLimit)
+}
+
+for (const [model, limits] of Object.entries(MODEL_REGISTRY)) {
+  validateModelTokenLimits(limits, model)
+}
+for (const [model, limits] of Object.entries(SPARSE_MODEL_REGISTRY)) {
+  validateModelTokenLimits(limits, model)
 }

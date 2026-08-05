@@ -20,7 +20,7 @@ const nonZeroEmbedder = Layer.succeed(Embedder, {
   limits: {
     model: "test-model",
     hardTokenLimit: 512,
-    operationalTokenLimit: 512,
+    maxInputTokens: 512,
   },
   countTokens: () => Effect.succeed(1),
   embed: () =>
@@ -43,7 +43,7 @@ const nonZeroEmbedder = Layer.succeed(Embedder, {
       limits: {
         model: "test-model",
         hardTokenLimit: 512,
-        operationalTokenLimit: 512,
+        maxInputTokens: 512,
       },
       countTokens: () => Effect.succeed(1),
       embed: () =>
@@ -159,7 +159,7 @@ it.effect("QueryProject includes Sparse with the promoted router", () =>
           limits: {
             model: TEST_SPARSE_CONTRACT.model,
             hardTokenLimit: 512,
-            operationalTokenLimit: 512,
+            maxInputTokens: 512,
           },
           countTokens: () => Effect.succeed(1),
           batch: (texts) => Effect.succeed(texts.map(() => ({ terms: [] }))),

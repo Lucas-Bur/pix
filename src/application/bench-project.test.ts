@@ -84,7 +84,7 @@ const mockBoundBase = {
   limits: {
     model: "test-model",
     hardTokenLimit: 512,
-    operationalTokenLimit: 512,
+    maxInputTokens: 512,
   },
   countTokens: () => Effect.succeed(1),
 } as const
@@ -646,7 +646,7 @@ describe("(yield* BenchProject).applyConfig", () => {
       const config = yield* store.readConfig()
       expect(config.embedder.device).toBe("cuda")
       expect(config.embedder.batchSize).toBe(64)
-      expect(config.chunkTokens).toBe(2000)
+      expect(config.chunkTokens).toBeUndefined()
       expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
     }).pipe(
       Effect.provide(testLayer({ contents: { ".pix/config.json": makeConfigJson() } })),
