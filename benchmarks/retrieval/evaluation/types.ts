@@ -62,22 +62,40 @@ type FusionMethod = ProductionFusionMethod
 export const ROUTER_OBJECTIVES = ["direct", "reranker-top20", "reranker-top50"] as const
 export type RouterObjective = (typeof ROUTER_OBJECTIVES)[number]
 
-/** Versioned evidence-router search strategy recorded in every benchmark artifact. */
-export const ROUTER_SEARCH_STRATEGY = {
-  algorithm: "halton-global-scout-elitist-beam-proxy-promotion",
-  globalScouts: 64,
-  beamWidth: 6,
-  coordinatePasses: 2,
-  candidateDepth: 200,
-  proxySampleFraction: 0.25,
-  proxyMinimumSamples: 32,
-  proxyPromotionFactor: 8,
-  objectives: ROUTER_OBJECTIVES,
-  guardrailTolerance: 0.01,
-  seed: 0,
-  normalization: "per-channel-max-weight",
-  tieBreaking: "guardrails>objective>complexity>stable-key",
+/** Versioned evidence-router search strategies recorded in benchmark artifacts. */
+export const ROUTER_SEARCH_STRATEGIES = {
+  "proxy-promotion": {
+    algorithm: "halton-global-scout-elitist-beam-proxy-promotion",
+    globalScouts: 64,
+    beamWidth: 6,
+    coordinatePasses: 2,
+    candidateDepth: 200,
+    proxySampleFraction: 0.25,
+    proxyMinimumSamples: 32,
+    proxyPromotionFactor: 8,
+    objectives: ROUTER_OBJECTIVES,
+    guardrailTolerance: 0.01,
+    seed: 0,
+    normalization: "per-channel-max-weight",
+    tieBreaking: "guardrails>objective>complexity>stable-key",
+  },
+  "successive-halving": {
+    algorithm: "halton-global-scout-elitist-beam-successive-halving",
+    globalScouts: 64,
+    beamWidth: 6,
+    coordinatePasses: 2,
+    candidateDepth: 200,
+    proxySampleFraction: 0.25,
+    proxyMinimumSamples: 32,
+    halvingKeepFactor: 8,
+  },
 } as const
+
+export type RouterSearchStrategyName = keyof typeof ROUTER_SEARCH_STRATEGIES
+export type RouterSearchStrategy = (typeof ROUTER_SEARCH_STRATEGIES)[RouterSearchStrategyName]
+
+export const DEFAULT_ROUTER_SEARCH_STRATEGY: RouterSearchStrategyName = "proxy-promotion"
+export const ROUTER_SEARCH_STRATEGY = ROUTER_SEARCH_STRATEGIES[DEFAULT_ROUTER_SEARCH_STRATEGY]
 
 /** Runtime/coverage trade-off selected for one benchmark invocation. */
 export type BenchmarkProfile = "smoke" | "develop" | "validate" | "full"
@@ -266,7 +284,7 @@ export interface RouterSearchDiagnostics {
 
 /** Holdout comparison against a deterministic random-search baseline. */
 export interface SearchBaselineComparison {
-  readonly algorithm: "random-scout"
+  readonly algorithm: "random-scout" | "not-run"
   readonly seed: number
   readonly candidates: number
   readonly development: QualitySummary
@@ -343,14 +361,14 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 23
+  readonly schemaVersion: 24
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   /** Versioned objective profile used for candidate selection and aggregate metrics. */
   readonly optimizationProfile: OptimizationProfile
   readonly validationProtocol: ValidationProtocol
   readonly generatedAt: string
-  readonly searchStrategy: typeof ROUTER_SEARCH_STRATEGY
+  readonly searchStrategy: RouterSearchStrategy
   readonly timings: BenchmarkTimings
   readonly chunkConfig: {
     readonly chunkLines: number

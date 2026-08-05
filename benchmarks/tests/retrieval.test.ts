@@ -4,10 +4,10 @@ import { Effect } from "effect"
 import { assignGroupedFolds } from "../retrieval/evaluation/folds.js"
 import {
   ROUTER_OBJECTIVES,
-  ROUTER_SEARCH_STRATEGY,
+  ROUTER_SEARCH_STRATEGIES,
   type BenchmarkProfile,
 } from "../retrieval/evaluation/types.js"
-import { runRetrievalBenchmark } from "../retrieval/runner.js"
+import { resolveRouterSearchStrategy, runRetrievalBenchmark } from "../retrieval/runner.js"
 
 const foldQuestions = (prefix: string) =>
   Array.from({ length: 12 }, (_, index) => ({
@@ -99,8 +99,10 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.evaluationCases.every(({ groundTruth }) => groundTruth.length > 0)).toBe(true)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(23)
-    expect(artifact.searchStrategy).toEqual(ROUTER_SEARCH_STRATEGY)
+    expect(artifact.schemaVersion).toBe(24)
+    expect(artifact.searchStrategy).toEqual(
+      ROUTER_SEARCH_STRATEGIES[resolveRouterSearchStrategy(process.env.PIX_BENCH_ROUTER_STRATEGY)],
+    )
     expect(artifact.timings.totalDurationMs).toBeGreaterThan(0)
     expect(Object.values(artifact.timings).every((duration) => duration >= 0)).toBe(true)
     expect(
@@ -177,4 +179,17 @@ it("shuffles intent groups deterministically before assigning folds", () => {
   ])
 
   expectStratifiedClasses(manifests, assignments)
+})
+
+it("resolves the selectable router search strategies", () => {
+  expect(resolveRouterSearchStrategy(undefined)).toBe("proxy-promotion")
+  expect(resolveRouterSearchStrategy("successive-halving")).toBe("successive-halving")
+  expect(ROUTER_SEARCH_STRATEGIES["successive-halving"]).toMatchObject({
+    algorithm: "halton-global-scout-elitist-beam-successive-halving",
+    halvingKeepFactor: 8,
+  })
+  expect("proxyPromotionFactor" in ROUTER_SEARCH_STRATEGIES["successive-halving"]).toBe(false)
+  expect(() => resolveRouterSearchStrategy("unknown")).toThrow(
+    "Unknown PIX_BENCH_ROUTER_STRATEGY value: unknown",
+  )
 })

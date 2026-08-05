@@ -34,6 +34,8 @@ import { prepareFusion, type PreparedFusionEvaluator } from "./prepared-fusion.j
 import {
   ROUTER_OBJECTIVES,
   ROUTER_SEARCH_STRATEGY,
+  ROUTER_SEARCH_STRATEGIES,
+  type RouterSearchStrategyName,
   type EvidenceRouterSearchResult,
   type FusionSearchResult,
   type HoldoutQuality,
@@ -63,6 +65,7 @@ const SEARCH_GLOBAL_SCOUTS = ROUTER_SEARCH_STRATEGY.globalScouts
 const SEARCH_PROXY_SAMPLE_FRACTION = ROUTER_SEARCH_STRATEGY.proxySampleFraction
 const SEARCH_PROXY_MINIMUM_SAMPLES = ROUTER_SEARCH_STRATEGY.proxyMinimumSamples
 const SEARCH_PROXY_PROMOTION_FACTOR = ROUTER_SEARCH_STRATEGY.proxyPromotionFactor
+const SEARCH_HALVING_KEEP_FACTOR = ROUTER_SEARCH_STRATEGIES["successive-halving"].halvingKeepFactor
 const HALTON_PRIMES = [
   2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
   101, 103, 107, 109, 113, 127, 131, 137, 139, 149,
@@ -93,6 +96,8 @@ interface SearchOptions extends CandidateEvaluationPoolOptions {
   readonly signal?: AbortSignal
   /** Shared candidate scheduler used to interleave multiple router searches. */
   readonly evaluationQueue?: CandidateEvaluationQueue
+  /** Benchmark-only router search algorithm; defaults to the current proxy promotion mode. */
+  readonly routerSearchStrategy?: RouterSearchStrategyName
 }
 
 /** Options for benchmark search APIs without colliding with the product query options type. */
@@ -493,6 +498,26 @@ const compareObjectiveQuality = (
   return 0
 }
 
+const compareSuccessiveHalvingQuality = (left: QualitySummary, right: QualitySummary): number => {
+  const leftValues = [
+    left.recallAt20,
+    left.recallAt10,
+    left.contextRecallAt4096,
+    left.meanReciprocalRank,
+  ]
+  const rightValues = [
+    right.recallAt20,
+    right.recallAt10,
+    right.contextRecallAt4096,
+    right.meanReciprocalRank,
+  ]
+  for (let index = 0; index < leftValues.length; index++) {
+    if (leftValues[index] > rightValues[index]) return -1
+    if (leftValues[index] < rightValues[index]) return 1
+  }
+  return 0
+}
+
 const weightCandidates = (): readonly ChannelWeights[] => {
   const candidates: ChannelWeights[] = []
   for (const identity of WEIGHT_LEVELS)
@@ -604,6 +629,7 @@ const sortWeightCandidates = (
   objective: RouterObjective,
   baseline: QualitySummary | undefined,
   profile: OptimizationProfile,
+  successiveHalving: boolean,
 ): readonly WeightCandidate[] =>
   entries
     .map(([key, weights]) => {
@@ -613,8 +639,12 @@ const sortWeightCandidates = (
     })
     .sort(
       (left, right) =>
-        compareObjectiveQuality(left.quality, right.quality, objective, baseline, profile) ||
-        activeChannelsKey(left.weights).localeCompare(activeChannelsKey(right.weights)),
+        (successiveHalving
+          ? compareSuccessiveHalvingQuality(left.quality, right.quality)
+          : compareObjectiveQuality(left.quality, right.quality, objective, baseline, profile)) ||
+        (successiveHalving
+          ? 0
+          : activeChannelsKey(left.weights).localeCompare(activeChannelsKey(right.weights))),
     )
     .slice(0, limit)
 
@@ -640,6 +670,7 @@ const rankWeightCandidates = async (
   objective: RouterObjective = "reranker-top20",
   baseline?: QualitySummary,
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  successiveHalving = false,
 ): Promise<readonly WeightCandidate[]> => {
   const unique = uniqueWeightCandidates(candidates)
   const pending = unique.filter(([key]) => qualityCache.get(key) === undefined)
@@ -650,7 +681,15 @@ const rankWeightCandidates = async (
     qualityCache,
     "Candidate evaluation returned an incomplete weight result",
   )
-  return sortWeightCandidates(unique, qualityCache, limit, objective, baseline, profile)
+  return sortWeightCandidates(
+    unique,
+    qualityCache,
+    limit,
+    objective,
+    baseline,
+    profile,
+    successiveHalving,
+  )
 }
 
 const withWeight = (weights: ChannelWeights, channel: ChannelName, value: number): ChannelWeights =>
@@ -675,6 +714,7 @@ const selectBestWeights = async (
   objective: RouterObjective = "reranker-top20",
   baseline?: QualitySummary,
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  successiveHalving = false,
 ): Promise<{ readonly weights: ChannelWeights; readonly quality: QualitySummary }> => {
   const qualityCache = new Map<string, QualitySummary>()
   let beam = await rankWeightCandidates(
@@ -685,6 +725,7 @@ const selectBestWeights = async (
     objective,
     baseline,
     profile,
+    successiveHalving,
   )
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (const channel of CHANNELS) {
@@ -696,6 +737,7 @@ const selectBestWeights = async (
         objective,
         baseline,
         profile,
+        successiveHalving,
       )
     }
   }
@@ -709,6 +751,7 @@ const selectWeightSubsetCandidates = (
   candidates: readonly ChannelWeights[],
   qualities: readonly QualitySummary[],
   profile: OptimizationProfile,
+  successiveHalving: boolean,
 ): readonly ChannelWeights[] => {
   const selected = new Map<
     string,
@@ -723,7 +766,10 @@ const selectWeightSubsetCandidates = (
     const current = selected.get(key)
     if (
       current === undefined ||
-      compareObjectiveQuality(quality, current.quality, "reranker-top20", undefined, profile) < 0
+      (successiveHalving
+        ? compareSuccessiveHalvingQuality(quality, current.quality)
+        : compareObjectiveQuality(quality, current.quality, "reranker-top20", undefined, profile)) <
+        0
     )
       selected.set(key, { weights, quality })
   }
@@ -733,10 +779,11 @@ const selectWeightSubsetCandidates = (
 const selectBestWeightsPerSubset = async (
   pool: CandidateEvaluationPool,
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  successiveHalving = false,
 ): Promise<readonly ChannelWeights[]> => {
   const candidates = weightCandidates()
   const qualities = await pool.evaluate(candidates.map((weights) => ({ weights })))
-  return selectWeightSubsetCandidates(candidates, qualities, profile)
+  return selectWeightSubsetCandidates(candidates, qualities, profile, successiveHalving)
 }
 
 const selectStaticWeights = (
@@ -1017,6 +1064,7 @@ interface RouterSearchContext {
   readonly stats: SearchEvaluationStats
   readonly fullPool: CandidateEvaluationPool
   readonly proxyPool: CandidateEvaluationPool
+  readonly routerSearchStrategy: RouterSearchStrategyName
 }
 
 const compareRouterCandidates = (
@@ -1028,6 +1076,19 @@ const compareRouterCandidates = (
 ): number =>
   compareObjectiveQuality(left.quality, right.quality, objective, baseline, profile) ||
   routerComplexity(left.config) - routerComplexity(right.config)
+
+const compareSuccessiveHalvingCandidates = (
+  left: RouterCandidate,
+  right: RouterCandidate,
+): number =>
+  compareSuccessiveHalvingQuality(left.quality, right.quality) ||
+  routerComplexity(left.config) - routerComplexity(right.config)
+
+const selectSuccessiveHalvingCandidates = (
+  candidates: readonly RouterCandidate[],
+  limit: number,
+): readonly RouterCandidate[] =>
+  [...candidates].sort(compareSuccessiveHalvingCandidates).slice(0, limit)
 
 const selectRandomRouter = async (
   samples: readonly EvidenceSearchSample[],
@@ -1116,16 +1177,28 @@ const finalizeRouterCandidates = (
       }
     }
   }
-  for (const candidate of rankedFull) context.archive.set(routerKey(candidate.config), candidate)
-  const rankedElites = selectObjectiveCandidates(
-    [...context.elites.values(), ...rankedFull],
-    SEARCH_BEAM_WIDTH,
-    context.baseline,
-    context.profile,
-  )
+  const orderedFull =
+    context.routerSearchStrategy === "successive-halving"
+      ? [...rankedFull].sort(compareSuccessiveHalvingCandidates)
+      : rankedFull
+  for (const candidate of orderedFull) context.archive.set(routerKey(candidate.config), candidate)
+  const rankedElites =
+    context.routerSearchStrategy === "successive-halving"
+      ? selectSuccessiveHalvingCandidates(
+          [...context.elites.values(), ...orderedFull],
+          SEARCH_BEAM_WIDTH,
+        )
+      : selectObjectiveCandidates(
+          [...context.elites.values(), ...orderedFull],
+          SEARCH_BEAM_WIDTH,
+          context.baseline,
+          context.profile,
+        )
   context.elites.clear()
   for (const candidate of rankedElites) context.elites.set(routerKey(candidate.config), candidate)
-  return selectObjectiveCandidates(rankedFull, limit, context.baseline, context.profile)
+  return context.routerSearchStrategy === "successive-halving"
+    ? orderedFull.slice(0, limit)
+    : selectObjectiveCandidates(rankedFull, limit, context.baseline, context.profile)
 }
 
 const evaluateRouterConfigs = async (
@@ -1188,17 +1261,28 @@ const rankRouterCandidates = async (
     context.stats.timings.candidatePreparationMs += rankedProxy.candidatePreparationMs
     context.stats.timings.candidateEvaluationMs += rankedProxy.candidateEvaluationMs
     const proxySelectionStartedAt = performance.now()
-    const selectedProxy = selectObjectiveCandidates(
-      rankedProxy.candidates,
-      limit * SEARCH_PROXY_PROMOTION_FACTOR,
-      context.proxyBaseline,
-      context.profile,
-    )
+    const selectedProxy =
+      context.routerSearchStrategy === "successive-halving"
+        ? selectSuccessiveHalvingCandidates(
+            rankedProxy.candidates,
+            limit * SEARCH_HALVING_KEEP_FACTOR,
+          )
+        : selectObjectiveCandidates(
+            rankedProxy.candidates,
+            limit * SEARCH_PROXY_PROMOTION_FACTOR,
+            context.proxyBaseline,
+            context.profile,
+          )
     const selected = new Map(
       selectedProxy.map((candidate) => [routerKey(candidate.config), candidate.config]),
     )
-    proxyKeys = selectedProxy.map((candidate) => routerKey(candidate.config))
-    context.stats.proxyPromotions += proxyKeys.length
+    // The historical mode uses the original global lexicographic halving set and skips
+    // newer objective-diverse promotion and proxy/full agreement diagnostics.
+    proxyKeys =
+      context.routerSearchStrategy === "successive-halving"
+        ? []
+        : selectedProxy.map((candidate) => routerKey(candidate.config))
+    context.stats.proxyPromotions += selectedProxy.length
     const protectedKeys = new Set([...protectedConfigs.map(routerKey), ...context.elites.keys()])
     for (const [key, config] of fullCandidates) {
       if (protectedKeys.has(key)) selected.set(key, config)
@@ -1313,6 +1397,7 @@ const selectBestEvidenceRouter = async (
   profile: OptimizationProfile,
   fullPool: CandidateEvaluationPool,
   proxyPool: CandidateEvaluationPool,
+  routerSearchStrategy: RouterSearchStrategyName,
 ): Promise<{
   readonly selections: readonly EvidenceRouterSelection[]
   readonly productionQuality: QualitySummary
@@ -1331,6 +1416,7 @@ const selectBestEvidenceRouter = async (
     proxyBaseline,
     stats,
   } = preparation
+  const useSuccessiveHalving = routerSearchStrategy === "successive-halving"
   const searchContext: RouterSearchContext = {
     samples: evidenceSamples,
     proxySamples,
@@ -1345,6 +1431,7 @@ const selectBestEvidenceRouter = async (
     stats,
     fullPool,
     proxyPool,
+    routerSearchStrategy,
   }
   const profileSeed = profileSeedFor(profile)
   const baseSearchStartedAt = performance.now()
@@ -1353,25 +1440,31 @@ const selectBestEvidenceRouter = async (
     "reranker-top20",
     productionQuality,
     profile,
+    useSuccessiveHalving,
   )
-  const subsetWeights = await selectBestWeightsPerSubset(fullPool, profile)
+  const subsetWeights = await selectBestWeightsPerSubset(fullPool, profile, useSuccessiveHalving)
   const baseSeeds = [baseWeights.weights, ...subsetWeights].map(emptyRouterConfig)
-  baseSeeds.unshift(profileSeed)
+  if (!useSuccessiveHalving) baseSeeds.unshift(profileSeed)
   stats.timings.baseWeightSearchMs += performance.now() - baseSearchStartedAt
   const parameters = routerParameters()
   const randomBaseSeed = baseSeeds[0]
   if (randomBaseSeed === undefined) throw new Error("Evidence router search has no base seed")
-  const randomSearchStartedAt = performance.now()
-  const randomSearch = await selectRandomRouter(
-    evidenceSamples,
-    randomBaseSeed,
-    parameters,
-    fullPool,
-    productionQuality,
-    profile,
-    stats,
-  )
-  stats.timings.randomSearchMs += performance.now() - randomSearchStartedAt
+  const randomSearch = useSuccessiveHalving
+    ? undefined
+    : await (async () => {
+        const randomSearchStartedAt = performance.now()
+        const result = await selectRandomRouter(
+          evidenceSamples,
+          randomBaseSeed,
+          parameters,
+          fullPool,
+          productionQuality,
+          profile,
+          stats,
+        )
+        stats.timings.randomSearchMs += performance.now() - randomSearchStartedAt
+        return result
+      })()
   const beamSearchStartedAt = performance.now()
   let beam = await rankRouterCandidates(
     searchContext,
@@ -1398,32 +1491,52 @@ const selectBestEvidenceRouter = async (
   }
   stats.timings.beamSearchMs += performance.now() - beamSearchStartedAt
   const fallback = beam[0]
+  if (fallback === undefined) throw new Error("Evidence router search produced no candidate")
   const candidates = [...searchContext.archive.values()]
-  const selections = ROUTER_OBJECTIVES.map((objective) => {
-    const rankedCandidates = [...candidates].sort((left, right) =>
-      compareRouterCandidates(left, right, objective, productionQuality, profile),
-    )
-    const { candidate: eligibleCandidate, promotionStatus } = selectEligibleCandidate(
-      rankedCandidates,
-      (entry) =>
-        evidenceRouterGuardrailsMet(samples, entry.config, fusion, guardrailBaselines, profile),
-    )
-    const candidate = eligibleCandidate ?? rankedCandidates[0] ?? fallback
-    if (candidate === undefined) throw new Error("Evidence router search produced no candidate")
-    return {
-      objective,
-      config: candidate.config,
-      quality: candidate.quality,
-      guardrailsMet: eligibleCandidate !== undefined,
-      promotionStatus,
-    }
-  })
+  const selections = useSuccessiveHalving
+    ? (() => {
+        const guardrailsMet = evidenceRouterGuardrailsMet(
+          samples,
+          fallback.config,
+          fusion,
+          guardrailBaselines,
+          profile,
+        )
+        return ROUTER_OBJECTIVES.map((objective) => ({
+          objective,
+          config: fallback.config,
+          quality: fallback.quality,
+          guardrailsMet,
+          promotionStatus: (guardrailsMet
+            ? "eligible"
+            : "no-eligible-candidate") as PromotionStatus,
+        }))
+      })()
+    : ROUTER_OBJECTIVES.map((objective) => {
+        const rankedCandidates = [...candidates].sort((left, right) =>
+          compareRouterCandidates(left, right, objective, productionQuality, profile),
+        )
+        const { candidate: eligibleCandidate, promotionStatus } = selectEligibleCandidate(
+          rankedCandidates,
+          (entry) =>
+            evidenceRouterGuardrailsMet(samples, entry.config, fusion, guardrailBaselines, profile),
+        )
+        const candidate = eligibleCandidate ?? rankedCandidates[0] ?? fallback
+        return {
+          objective,
+          config: candidate.config,
+          quality: candidate.quality,
+          guardrailsMet: eligibleCandidate !== undefined,
+          promotionStatus,
+        }
+      })
+  const randomCandidate = randomSearch?.candidate ?? fallback
   return {
     selections,
     productionQuality,
     searchDiagnostics: buildSearchDiagnostics(parameters, stats),
-    randomCandidate: randomSearch.candidate,
-    randomCandidates: randomSearch.candidates,
+    randomCandidate,
+    randomCandidates: randomSearch?.candidates ?? 0,
     proxyEvaluations: stats.proxyEvaluations,
     fullEvaluations: stats.fullEvaluations,
   }
@@ -1677,6 +1790,7 @@ const withEvidencePools = async <T>(
       profile,
       fullPool,
       proxyPool,
+      options.routerSearchStrategy ?? "proxy-promotion",
     )
     return await operation(selection, fullPool)
   } finally {
@@ -1698,7 +1812,18 @@ const selectStaticWeightsForSelections = async (
   fullPool: CandidateEvaluationPool,
   productionQuality: QualitySummary,
   profile: OptimizationProfile,
+  routerSearchStrategy: RouterSearchStrategyName,
 ): Promise<readonly StaticRouterSelection[]> => {
+  if (routerSearchStrategy === "successive-halving") {
+    const staticSelection = await selectBestWeights(
+      fullPool,
+      "reranker-top20",
+      undefined,
+      profile,
+      true,
+    )
+    return selections.map((selection) => ({ selection, staticSelection }))
+  }
   const selected: StaticRouterSelection[] = []
   for (const selection of selections) {
     selected.push({
@@ -1714,6 +1839,20 @@ const selectStaticWeightsForSelections = async (
   return selected
 }
 
+const selectStaticWeightsForSearch = (
+  dynamicSelection: Awaited<ReturnType<typeof selectBestEvidenceRouter>>,
+  fullPool: CandidateEvaluationPool,
+  profile: OptimizationProfile,
+  options: SearchOptions,
+): Promise<readonly StaticRouterSelection[]> =>
+  selectStaticWeightsForSelections(
+    dynamicSelection.selections,
+    fullPool,
+    dynamicSelection.productionQuality,
+    profile,
+    options.routerSearchStrategy ?? "proxy-promotion",
+  )
+
 export const optimizeEvidenceRouter = async (
   model: string,
   fusion: FusionMethod,
@@ -1728,23 +1867,40 @@ export const optimizeEvidenceRouter = async (
     const productionValidation = summarizeProductionRouter(validation, profile)
     const validationEvidence = prepareEvidenceSamples(validation)
     const holdoutProfile = unweightedProfile(profile)
-    const randomBaseline: SearchBaselineComparison = {
-      algorithm: "random-scout",
-      seed: RANDOM_SEARCH_SEED,
-      candidates: dynamicSelection.randomCandidates,
-      development: dynamicSelection.randomCandidate.quality,
-      validation: summarizeEvidenceRouter(
-        validationEvidence,
-        dynamicSelection.randomCandidate.config,
-        fusion,
-        profile,
-      ),
-    }
-    const staticSelections = await selectStaticWeightsForSelections(
-      dynamicSelection.selections,
+    const randomBaseline: SearchBaselineComparison =
+      dynamicSelection.randomCandidates === 0
+        ? {
+            algorithm: "not-run",
+            seed: RANDOM_SEARCH_SEED,
+            candidates: 0,
+            development: summarizeEvidenceRouter(
+              [],
+              dynamicSelection.randomCandidate.config,
+              fusion,
+            ),
+            validation: summarizeEvidenceRouter(
+              [],
+              dynamicSelection.randomCandidate.config,
+              fusion,
+            ),
+          }
+        : {
+            algorithm: "random-scout",
+            seed: RANDOM_SEARCH_SEED,
+            candidates: dynamicSelection.randomCandidates,
+            development: dynamicSelection.randomCandidate.quality,
+            validation: summarizeEvidenceRouter(
+              validationEvidence,
+              dynamicSelection.randomCandidate.config,
+              fusion,
+              profile,
+            ),
+          }
+    const staticSelections = await selectStaticWeightsForSearch(
+      dynamicSelection,
       fullPool,
-      dynamicSelection.productionQuality,
       profile,
+      options,
     )
     const results: EvidenceRouterSearchResult[] = staticSelections.map(
       ({ selection, staticSelection }) => ({
@@ -1883,11 +2039,11 @@ const fitRecommendedEvidenceRouterWithOptions = (
   options: SearchOptions,
 ): Promise<readonly RecommendedEvidenceRouter[]> =>
   withEvidencePools(samples, fusion, profile, options, async (dynamicSelection, fullPool) => {
-    const staticSelections = await selectStaticWeightsForSelections(
-      dynamicSelection.selections,
+    const staticSelections = await selectStaticWeightsForSearch(
+      dynamicSelection,
       fullPool,
-      dynamicSelection.productionQuality,
       profile,
+      options,
     )
     const results: RecommendedEvidenceRouter[] = staticSelections.map(
       ({ selection, staticSelection }) => ({

@@ -71,6 +71,13 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     group.push(row)
     groups.set(key, group)
   }
+  const strategyFactorLabel = artifact.searchStrategy.algorithm.includes("successive-halving")
+    ? "keep"
+    : "promotion"
+  const strategyFactor =
+    "halvingKeepFactor" in artifact.searchStrategy
+      ? artifact.searchStrategy.halvingKeepFactor
+      : artifact.searchStrategy.proxyPromotionFactor
 
   const lines = [
     "# Retrieval Quality Benchmark",
@@ -87,7 +94,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     `Validation protocol: candidates use ${artifact.validationProtocol.selection}; holdouts are ${artifact.validationProtocol.holdouts.join(" and ")}; final promotion requires the recorded ${artifact.validationProtocol.finalTest}.`,
     "",
-    `Search strategy: \`${artifact.searchStrategy.algorithm}\` (${artifact.searchStrategy.globalScouts} global scouts, beam ${artifact.searchStrategy.beamWidth}, ${artifact.searchStrategy.coordinatePasses} coordinate passes, ${artifact.searchStrategy.proxySampleFraction * 100}% proxy with minimum ${artifact.searchStrategy.proxyMinimumSamples}, promotion factor ${artifact.searchStrategy.proxyPromotionFactor}x).`,
+    `Search strategy: \`${artifact.searchStrategy.algorithm}\` (${artifact.searchStrategy.globalScouts} global scouts, beam ${artifact.searchStrategy.beamWidth}, ${artifact.searchStrategy.coordinatePasses} coordinate passes, ${artifact.searchStrategy.proxySampleFraction * 100}% proxy with minimum ${artifact.searchStrategy.proxyMinimumSamples}, ${strategyFactorLabel} factor ${strategyFactor}x).`,
     "",
     `Context budgets use the documented \`${artifact.contextTokenEstimator}\` estimator.`,
     "",
@@ -268,13 +275,13 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "Validation metrics are weighted by each excluded fold's query count. The current Production router is shown beside the selected dynamic router.",
     "",
-    "| Model | Fusion | Objective | Strategy | Promotion | Production R@5 | Dynamic R@5 | Production R@10 | Dynamic R@10 | Production R@20 | Dynamic R@20 | Production R@50 | Dynamic R@50 | Production Ctx@4k | Dynamic Ctx@4k | Random R@20 | Random Ctx@4k |",
-    "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Model | Fusion | Objective | Strategy | Promotion | Search baseline | Production R@5 | Dynamic R@5 | Production R@10 | Dynamic R@10 | Production R@20 | Dynamic R@20 | Production R@50 | Dynamic R@50 | Production Ctx@4k | Dynamic Ctx@4k | Random R@20 | Random Ctx@4k |",
+    "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   )
   for (const [key, rows] of routerGroups) {
     const [model, fusion, objective, strategy] = key.split("\0")
     lines.push(
-      `| ${model} | ${fusion} | ${objective} | ${strategy} | ${promotionLabel(rows.every((row) => row.promotionStatus === "eligible") ? "eligible" : "no-eligible-candidate")} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.contextRecallAt4096))} | ${percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096))} | ${percent(weightedAverage(rows, (row) => row.searchBaseline.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.searchBaseline.validation.contextRecallAt4096))} |`,
+      `| ${model} | ${fusion} | ${objective} | ${strategy} | ${promotionLabel(rows.every((row) => row.promotionStatus === "eligible") ? "eligible" : "no-eligible-candidate")} | ${rows[0]?.searchBaseline.algorithm ?? "unknown"} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt5))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt10))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.validation.recallAt50))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.contextRecallAt4096))} | ${percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096))} | ${percent(weightedAverage(rows, (row) => row.searchBaseline.validation.recallAt20))} | ${percent(weightedAverage(rows, (row) => row.searchBaseline.validation.contextRecallAt4096))} |`,
     )
   }
 

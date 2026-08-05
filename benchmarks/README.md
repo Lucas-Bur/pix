@@ -95,7 +95,7 @@ vp run bench:retrieval:full
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
-diagnostics. The selected profile is recorded in schema-23 artifacts without changing retrieval
+diagnostics. The selected profile is recorded in schema-24 artifacts without changing retrieval
 semantics. The full profile includes all three fusion methods; short profiles intentionally omit RRF
 to keep development runs fast.
 
@@ -110,6 +110,7 @@ Limit an exploratory run with comma-separated environment variables:
 $env:PIX_BENCH_REPOS = "fd"
 $env:PIX_BENCH_MODELS = "Xenova/all-MiniLM-L6-v2"
 $env:PIX_BENCH_OPTIMIZATION_PROFILE = "search-priority"
+$env:PIX_BENCH_ROUTER_STRATEGY = "proxy-promotion"
 vp run bench:retrieval:validate
 ```
 
@@ -153,6 +154,12 @@ defaulting to MiniLM. Select another with `PIX_BENCH_MODELS`. Supported values a
 - `Xenova/all-MiniLM-L6-v2`
 - `Xenova/bge-small-en-v1.5`
 - `jinaai/jina-embeddings-v2-base-code`
+
+The router search defaults to `proxy-promotion`. Set `PIX_BENCH_ROUTER_STRATEGY` to
+`successive-halving` to select the historical Successive-Halving variant. It uses the original
+lexicographic `R@20`, `R@10`, `Context@4k`, and MRR comparator plus its `halvingKeepFactor`.
+Both strategies use the same candidate evaluator and native worker queue, so their artifacts can be
+compared directly.
 
 The Jina code model cannot embed Effect's longest 7,103-token AST chunk on the tested DML GPU even as
 a single-item batch. Do not silently truncate, re-chunk only one model, or mix CPU and GPU vectors to
@@ -343,7 +350,8 @@ output size without introducing an LLM or provider-specific tokenizer.
 
 Each run writes ignored JSON and Markdown artifacts under `benchmarks/results`. JSON rows retain the
 repository, revision, language, size, category, difficulty, query form, grouped fold, model, variant,
-individual gold ranks, timing, and every metric. Schema 23 adds shared candidate-queue lifecycle and
+individual gold ranks, timing, and every metric. Schema 24 adds selectable router strategies while
+retaining shared candidate-queue lifecycle and
 per-router candidate-pool initialization timings. Each artifact stores each authored query and its exact
 file-qualified ground truth once, records productive Sparse timings, and adds
 the fixed equal-weight RRF baseline. The Markdown report includes quality by query form,
