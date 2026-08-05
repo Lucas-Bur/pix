@@ -102,7 +102,7 @@ export const buildChunkValidationErrors = (
 
 export interface EffectiveConfig {
   readonly batchSize: number
-  readonly chunkTokens: number
+  readonly chunkTokens: number | undefined
   readonly concurrency: number
   readonly skipExtensions: readonly string[]
   readonly ignoredPaths: readonly string[]
@@ -114,7 +114,9 @@ export const mergeConfig = (opts: IndexOptions, config: Config): EffectiveConfig
     opts.batchSize ?? config.embedder.batchSize ?? DEFAULT_CONFIG.embedder.batchSize,
   )
   const concurrency = clampPositive(opts.chunkConcurrency ?? config.chunkConcurrency)
-  const chunkTokens = clampPositive(opts.chunkTokens ?? config.chunkTokens)
+  const requestedChunkTokens = opts.chunkTokens ?? config.chunkTokens
+  const chunkTokens =
+    requestedChunkTokens === undefined ? undefined : clampPositive(requestedChunkTokens)
   const skipExtensions = opts.skipExtensions
     ? [...config.skipExtensions, ...opts.skipExtensions]
     : config.skipExtensions

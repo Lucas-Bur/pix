@@ -82,7 +82,7 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
   limits: {
     model: "Xenova/all-MiniLM-L6-v2",
     hardTokenLimit: 512,
-    operationalTokenLimit: 512,
+    maxInputTokens: 512,
   },
   countTokens: () => Effect.succeed(0),
   embed: () => Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
@@ -96,7 +96,7 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
       limits: {
         model: "Xenova/all-MiniLM-L6-v2",
         hardTokenLimit: 512,
-        operationalTokenLimit: 512,
+        maxInputTokens: 512,
       },
       countTokens: () => Effect.succeed(0),
       embed: () =>
@@ -117,7 +117,7 @@ const defaultSparseEmbedderLayer = Layer.succeed(SparseEmbedder, {
   limits: {
     model: TEST_SPARSE_CONTRACT.model,
     hardTokenLimit: 512,
-    operationalTokenLimit: 512,
+    maxInputTokens: 512,
   },
   countTokens: () => Effect.succeed(0),
   batch: (texts: readonly string[]) => Effect.succeed(texts.map(() => ({ terms: [] as const }))),

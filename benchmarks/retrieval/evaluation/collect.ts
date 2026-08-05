@@ -5,7 +5,11 @@ import type { Embedding } from "../../../src/domain/chunk.js"
 import { DEFAULT_CONFIG } from "../../../src/domain/config.js"
 import type { EmbeddingDtype } from "../../../src/domain/dtype.js"
 import type { StoredChunk } from "../../../src/domain/index-data.js"
-import { MODEL_REGISTRY, SPARSE_MODEL_REGISTRY } from "../../../src/domain/models.js"
+import {
+  MODEL_REGISTRY,
+  resolveChunkTokenLimit,
+  SPARSE_MODEL_REGISTRY,
+} from "../../../src/domain/models.js"
 import type { BoundEmbedder, SearchData } from "../../../src/domain/ports.js"
 import { IndexStore, SparseEmbedder } from "../../../src/domain/ports.js"
 import type { ChannelRankings } from "../../../src/domain/retrieval.js"
@@ -488,13 +492,10 @@ const collectRepositoryMeasurements = (
         (cause) => new Error(`Could not auto-select a device for ${model}`, { cause }),
       ),
     )
-    const maxTokens = Math.min(
-      DEFAULT_CONFIG.chunkTokens,
-      DEFAULT_CONFIG.embedder.batchTokens,
-      DEFAULT_CONFIG.sparseEmbedder.batchTokens,
-      bound.embedder.limits.operationalTokenLimit,
-      sparseInfo.operationalTokenLimit,
-    )
+    const maxTokens = resolveChunkTokenLimit(DEFAULT_CONFIG.chunkTokens, [
+      bound.embedder.limits,
+      { model: sparseInfo.id, ...sparseInfo },
+    ])
     const corpus = yield* prepareCorpus(repositoryPath, manifest, {
       maxTokens,
       overlapLines: DEFAULT_CONFIG.overlapLines,
@@ -648,7 +649,7 @@ export const collectBenchmarkData = (
     >()
     const samplesByModel = new Map<string, readonly WeightSearchSample[]>()
     let retrievalDurationMs = 0
-    let chunkTokens = DEFAULT_CONFIG.chunkTokens
+    let chunkTokens = DEFAULT_CONFIG.chunkTokens ?? 1
 
     for (const manifest of manifests) {
       const repositoryData = yield* collectRepositoryMeasurements(

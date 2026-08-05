@@ -9,6 +9,7 @@ import type { AllEmbedderErrors, AllProcessorErrors, IndexError } from "../domai
 import type { IdentifierIndexMaps } from "../domain/identifier-index.js"
 import type { Identifier } from "../domain/identifier.js"
 import type { FileManifestEntry, StoredChunk } from "../domain/index-data.js"
+import { resolveChunkTokenLimit } from "../domain/models.js"
 import { Display } from "../domain/ports.js"
 import {
   ConfigStore,
@@ -106,7 +107,6 @@ interface PreparedChunk {
   readonly embedding: Embedding | null
   readonly sparseVector: SparseVector | null
   readonly oldIndex: number | null
-  readonly tokenCount: number
 }
 
 const storedChunk = ({ text, ...location }: DomainChunk): StoredChunk => ({
@@ -124,29 +124,19 @@ interface PreparedFileResult {
 const batchPreparedChunks = (
   chunks: readonly PreparedChunk[],
   maxBatchSize: number,
-  maxBatchTokens: number,
 ): readonly (readonly PreparedChunk[])[] => {
   const batches: PreparedChunk[][] = []
   let current: PreparedChunk[] = []
-  let currentTokens = 0
 
   const flush = () => {
     if (current.length === 0) return
     batches.push(current)
     current = []
-    currentTokens = 0
   }
 
   for (const chunk of chunks) {
-    const tokens = chunk.text === null ? 0 : chunk.tokenCount
-    if (
-      current.length > 0 &&
-      (current.length >= maxBatchSize || currentTokens + tokens > maxBatchTokens)
-    ) {
-      flush()
-    }
+    if (current.length >= maxBatchSize) flush()
     current.push(chunk)
-    currentTokens += tokens
   }
   flush()
   return batches
@@ -179,7 +169,6 @@ const retainedFile = (
     embedding: { vector, dims: vector.length, dtype },
     sparseVector: sparseVector,
     oldIndex: index,
-    tokenCount: 0,
   })),
 })
 
@@ -223,19 +212,15 @@ const prepareFile = ({
     }
     yield* Ref.update(diagnostics, (entries) => entries.filter((entry) => entry.file !== file.path))
     const chunks = yield* chunker.chunkText(result.value, file.path, chunkingOptions)
-    const tokenCounts = yield* Effect.forEach(chunks, (chunk) =>
-      chunkingOptions.countTokens(chunk.text),
-    )
     return {
       manifest: { file: file.path, mtimeMs: file.mtimeMs, size: file.size, contentHash: fileHash },
       reused: false,
-      chunks: chunks.map((chunk, index) => ({
+      chunks: chunks.map((chunk) => ({
         stored: storedChunk(chunk),
         text: chunk.text,
         embedding: null,
         sparseVector: null,
         oldIndex: null,
-        tokenCount: tokenCounts[index]!,
       })),
     }
   })
@@ -326,7 +311,6 @@ const make = Effect.gen(function* () {
     readonly knownFiles: ScannedFile[]
     readonly diagnostics: Ref.Ref<readonly IndexDiagnostic[]>
     readonly chunkingOptions: ChunkingOptions
-    readonly batchTokens: number
     readonly snapshot: Option.Option<IndexSnapshot>
     readonly contractMatches: boolean
     readonly sparseContractMatches: boolean
@@ -358,13 +342,10 @@ const make = Effect.gen(function* () {
           sparseContractsEqual(sparseContract, sparseEmbedder.contract),
       })
       const eff = mergeConfig(opts, config)
-      const batchTokens = Math.min(config.embedder.batchTokens, config.sparseEmbedder.batchTokens)
-      const maxTokens = Math.min(
-        eff.chunkTokens,
-        batchTokens,
-        embedder.limits.operationalTokenLimit,
-        sparseEmbedder.limits.operationalTokenLimit,
-      )
+      const maxTokens = resolveChunkTokenLimit(eff.chunkTokens, [
+        embedder.limits,
+        sparseEmbedder.limits,
+      ])
       const tokenCounts = new Map<string, number>()
       const countTokens = (text: string) => {
         const cached = tokenCounts.get(text)
@@ -424,7 +405,6 @@ const make = Effect.gen(function* () {
         knownFiles,
         diagnostics,
         chunkingOptions,
-        batchTokens,
         snapshot,
         contractMatches,
         sparseContractMatches,
@@ -617,11 +597,7 @@ const make = Effect.gen(function* () {
         { message: `Writing index with ${totalChunks} chunks...`, max: totalChunks },
         indexStore.persistIndex({
           chunks: Stream.fromIterable(
-            batchPreparedChunks(
-              chunks,
-              Math.min(ctx.eff.batchSize, ctx.config.embedder.batchSize),
-              ctx.batchTokens,
-            ),
+            batchPreparedChunks(chunks, Math.min(ctx.eff.batchSize, ctx.config.embedder.batchSize)),
           ).pipe(
             Stream.mapEffect((batch: readonly PreparedChunk[]) =>
               Effect.gen(function* () {

@@ -227,7 +227,7 @@ export const makeFailingEmbedder = (
     limits: {
       model: "test",
       hardTokenLimit: 512,
-      operationalTokenLimit: 512,
+      maxInputTokens: 512,
     },
     countTokens: () => Effect.succeed(1),
     embed: () =>
@@ -246,7 +246,7 @@ export const makeFailingEmbedder = (
         limits: {
           model: "test",
           hardTokenLimit: 512,
-          operationalTokenLimit: 512,
+          maxInputTokens: 512,
         },
         countTokens: () => Effect.succeed(1),
         embed: () =>

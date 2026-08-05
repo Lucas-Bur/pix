@@ -124,10 +124,16 @@ const make = Effect.gen(function* () {
       model: sparse.model,
     })
   }
+  if (modelInfo.maxInputTokens > modelInfo.hardTokenLimit) {
+    return yield* new ModelLoadError({
+      message: `Invalid token limits for "${sparse.model}": maxInputTokens (${modelInfo.maxInputTokens}) exceeds hardTokenLimit (${modelInfo.hardTokenLimit})`,
+      model: sparse.model,
+    })
+  }
   const limits: EmbeddingLimits = {
     model: modelInfo.id,
     hardTokenLimit: modelInfo.hardTokenLimit,
-    operationalTokenLimit: Math.min(modelInfo.operationalTokenLimit, modelInfo.hardTokenLimit),
+    maxInputTokens: modelInfo.maxInputTokens,
   }
   const contract: SparseContract = {
     model: sparse.model,
@@ -193,24 +199,14 @@ const make = Effect.gen(function* () {
           catch: (cause) => new InferenceError({ message: "Sparse tokenization failed", cause }),
         }),
       )
-      const tooLong = counts.find((count) => count > limits.operationalTokenLimit)
+      const tooLong = counts.find((count) => count > limits.maxInputTokens)
       if (tooLong !== undefined) {
         return yield* new TokenLimitError({
-          message: `Sparse input for "${sparse.model}" has ${tooLong} tokens; the operational limit is ${limits.operationalTokenLimit}`,
+          message: `Sparse input for "${sparse.model}" has ${tooLong} tokens; the maximum is ${limits.maxInputTokens}`,
           model: sparse.model,
           actualTokens: tooLong,
-          limit: limits.operationalTokenLimit,
+          limit: limits.maxInputTokens,
           scope: "input",
-        })
-      }
-      const totalTokens = counts.reduce((sum, count) => sum + count, 0)
-      if (totalTokens > sparse.batchTokens) {
-        return yield* new TokenLimitError({
-          message: `Sparse batch for "${sparse.model}" has ${totalTokens} tokens; the batch budget is ${sparse.batchTokens}`,
-          model: sparse.model,
-          actualTokens: totalTokens,
-          limit: sparse.batchTokens,
-          scope: "batch",
         })
       }
       return yield* Effect.tryPromise(async () => {
