@@ -6,11 +6,10 @@ import { Effect, Layer, Path } from "effect"
 
 import type { DeviceType } from "../domain/device.js"
 import { InferenceError, ModelLoadError, TokenLimitError } from "../domain/errors.js"
+import { SPARSE_MODEL_REGISTRY } from "../domain/models.js"
 import { ConfigStore, SparseEmbedder } from "../domain/ports.js"
 import type { EmbeddingLimits } from "../domain/ports.js"
 import {
-  SPARSE_HARD_TOKEN_LIMIT,
-  SPARSE_OPERATIONAL_TOKEN_LIMIT,
   type SparseContract,
   type SparseQuery,
   type SparseTerm,
@@ -118,10 +117,17 @@ const make = Effect.gen(function* () {
   env.cacheDir = yield* resolveTransformersCacheDir({ projectRoot: path.resolve() })
   const config = yield* (yield* ConfigStore).readConfig()
   const sparse = config.sparseEmbedder
+  const modelInfo = SPARSE_MODEL_REGISTRY[sparse.model]
+  if (modelInfo === undefined) {
+    return yield* new ModelLoadError({
+      message: `Unknown sparse document model "${sparse.model}"`,
+      model: sparse.model,
+    })
+  }
   const limits: EmbeddingLimits = {
-    model: sparse.model,
-    hardTokenLimit: SPARSE_HARD_TOKEN_LIMIT,
-    operationalTokenLimit: Math.min(SPARSE_OPERATIONAL_TOKEN_LIMIT, SPARSE_HARD_TOKEN_LIMIT),
+    model: modelInfo.id,
+    hardTokenLimit: modelInfo.hardTokenLimit,
+    operationalTokenLimit: Math.min(modelInfo.operationalTokenLimit, modelInfo.hardTokenLimit),
   }
   const contract: SparseContract = {
     model: sparse.model,

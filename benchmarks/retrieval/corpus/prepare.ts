@@ -12,7 +12,7 @@ import { extractIdentifiers } from "../../../src/lib/parsing/identifier-extracto
 import { buildExtensionRegistry } from "../../../src/lib/registry.js"
 import { buildBm25Index } from "../../../src/lib/retrieval/bm25.js"
 import { buildIdentifierIndex } from "../../../src/lib/retrieval/identifier-index.js"
-import { chunkTextWithConfig } from "../../../src/services/chunker.js"
+import { chunkTextWithRegistry } from "../../../src/services/chunker.js"
 import type { ChunkIdentifiers } from "../evaluation/metrics.js"
 import type { CorpusManifest } from "../evaluation/types.js"
 import { listCorpusFiles } from "./repository.js"
@@ -41,9 +41,7 @@ export const prepareCorpus = (
         Effect.tryPromise({
           try: () => readFile(path.join(repositoryPath, ...file.split("/")), "utf8"),
           catch: (cause) => new Error(`Could not read benchmark source ${file}`, { cause }),
-        }).pipe(
-          Effect.flatMap((text) => chunkTextWithConfig(text, file, DEFAULT_CONFIG, registry)),
-        ),
+        }).pipe(Effect.flatMap((text) => chunkTextWithRegistry(text, file, registry))),
       { concurrency: DEFAULT_CONFIG.chunkConcurrency },
     )
     const chunks = chunksByFile.flat()

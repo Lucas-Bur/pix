@@ -1,7 +1,14 @@
 import type { EmbeddingDtype } from "./dtype.js"
+import { SPARSE_DOCUMENT_MODEL } from "./sparse.js"
+
+/** Hard and conservative operational input limits for one model. */
+export interface ModelTokenLimits {
+  readonly hardTokenLimit: number
+  readonly operationalTokenLimit: number
+}
 
 /** Metadata for a supported embedding model. */
-export interface ModelInfo {
+export interface ModelInfo extends ModelTokenLimits {
   /** HuggingFace model identifier. */
   readonly id: string
   /** Embedding vector dimensions produced by this model. */
@@ -16,6 +23,11 @@ export interface ModelInfo {
   readonly operationalTokenLimit: number
   /** Human-readable description. */
   readonly description: string
+}
+
+/** Metadata for a supported learned Sparse document model. */
+export interface SparseModelInfo extends ModelTokenLimits {
+  readonly id: string
 }
 
 /** Registry of supported embedding models. Dtypes are manually verified per model. */
@@ -46,5 +58,14 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
     hardTokenLimit: 8192,
     operationalTokenLimit: 2048,
     description: "Jina code-tuned embeddings, 8192 context, 162MB q8",
+  },
+}
+
+/** Registry of pinned Sparse document model metadata. */
+export const SPARSE_MODEL_REGISTRY: Record<string, SparseModelInfo> = {
+  [SPARSE_DOCUMENT_MODEL]: {
+    id: SPARSE_DOCUMENT_MODEL,
+    hardTokenLimit: 512,
+    operationalTokenLimit: 512,
   },
 }
