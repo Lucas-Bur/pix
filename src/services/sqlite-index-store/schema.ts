@@ -1,6 +1,7 @@
 import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect"
 import { Model } from "effect/unstable/schema"
 
+import { IndexDiagnosticSchema } from "../../domain/diagnostics.js"
 import { EmbeddingDtypeSchema } from "../../domain/dtype.js"
 
 const invalidVector = (value: unknown, message: string): SchemaIssue.InvalidValue =>
@@ -60,6 +61,7 @@ export class IndexMetaRow extends Model.Class<IndexMetaRow>("IndexMetaRow")({
   dtype: EmbeddingDtypeSchema,
   lastIndex: Schema.Number,
   quantized: Schema.Literals([0, 1]),
+  diagnostics: Schema.fromJsonString(Schema.Array(IndexDiagnosticSchema)),
 }) {}
 
 /** Persisted chunk metadata and its Float32 embedding. */

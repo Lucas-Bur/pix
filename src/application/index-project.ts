@@ -3,8 +3,9 @@ import { Context, Effect, Layer, Option, Ref, Stream } from "effect"
 import type { Chunk as DomainChunk, Embedding } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type { Config } from "../domain/config.js"
+import type { IndexDiagnostic } from "../domain/diagnostics.js"
 import type { EmbeddingDtype } from "../domain/dtype.js"
-import type { IndexError, AllProcessorErrors } from "../domain/errors.js"
+import type { AllEmbedderErrors, AllProcessorErrors, IndexError } from "../domain/errors.js"
 import type { IdentifierIndexMaps } from "../domain/identifier-index.js"
 import type { Identifier } from "../domain/identifier.js"
 import type { FileManifestEntry, StoredChunk } from "../domain/index-data.js"
@@ -19,15 +20,15 @@ import {
   ContentExtractor,
   IdentifierExtractor,
   ModelRegistry,
-  type SkippedEntry,
   type IndexOptions,
   type ScannedFile,
   type IndexSnapshot,
   type CachedEmbedding,
+  type ChunkingOptions,
 } from "../domain/ports.js"
 import { sparseContractsEqual } from "../domain/sparse.js"
 import type { SparseVector } from "../domain/sparse.js"
-import { getExtension, getFileExtension, getFilename } from "../lib/config/extension.js"
+import { getExtension } from "../lib/config/extension.js"
 import { mergeConfig } from "../lib/config/validation.js"
 import { contentHash } from "../lib/content-hash.js"
 import { embeddingCacheKey, sparseEmbeddingCacheKey } from "../lib/embedding-cache.js"
@@ -39,12 +40,13 @@ import type { StatusResult } from "./get-status.js"
 interface IndexResult {
   readonly success: true
   readonly refresh: "full" | "incremental" | "none"
-  readonly status: Omit<StatusResult, "model" | "lastIndex">
+  readonly status: Omit<StatusResult, "model" | "lastIndex" | "diagnostics">
   readonly durationMs: number
   readonly cacheHits: number
   readonly cacheMisses: number
   readonly reusedFiles: number
   readonly processedFiles: number
+  readonly diagnostics: readonly IndexDiagnostic[]
   readonly embedderFallback?: {
     readonly originalDevice: string
     readonly reason: string
@@ -104,6 +106,7 @@ interface PreparedChunk {
   readonly embedding: Embedding | null
   readonly sparseVector: SparseVector | null
   readonly oldIndex: number | null
+  readonly tokenCount: number
 }
 
 const storedChunk = ({ text, ...location }: DomainChunk): StoredChunk => ({
@@ -118,6 +121,37 @@ interface PreparedFileResult {
   readonly reused: boolean
 }
 
+const batchPreparedChunks = (
+  chunks: readonly PreparedChunk[],
+  maxBatchSize: number,
+  maxBatchTokens: number,
+): readonly (readonly PreparedChunk[])[] => {
+  const batches: PreparedChunk[][] = []
+  let current: PreparedChunk[] = []
+  let currentTokens = 0
+
+  const flush = () => {
+    if (current.length === 0) return
+    batches.push(current)
+    current = []
+    currentTokens = 0
+  }
+
+  for (const chunk of chunks) {
+    const tokens = chunk.text === null ? 0 : chunk.tokenCount
+    if (
+      current.length > 0 &&
+      (current.length >= maxBatchSize || currentTokens + tokens > maxBatchTokens)
+    ) {
+      flush()
+    }
+    current.push(chunk)
+    currentTokens += tokens
+  }
+  flush()
+  return batches
+}
+
 /** Dependencies and prior state needed to prepare one scanned file. */
 interface PrepareFileInput {
   readonly file: ScannedFile
@@ -127,7 +161,8 @@ interface PrepareFileInput {
   readonly retainedDtype: EmbeddingDtype
   readonly extractor: typeof ContentExtractor.Service
   readonly chunker: typeof Chunker.Service
-  readonly skipped: Ref.Ref<readonly SkippedEntry[]>
+  readonly diagnostics: Ref.Ref<readonly IndexDiagnostic[]>
+  readonly chunkingOptions: ChunkingOptions
 }
 
 const retainedFile = (
@@ -144,6 +179,7 @@ const retainedFile = (
     embedding: { vector, dims: vector.length, dtype },
     sparseVector: sparseVector,
     oldIndex: index,
+    tokenCount: 0,
   })),
 })
 
@@ -155,8 +191,9 @@ const prepareFile = ({
   retainedDtype,
   extractor,
   chunker,
-  skipped,
-}: PrepareFileInput): Effect.Effect<PreparedFileResult, AllProcessorErrors> =>
+  diagnostics,
+  chunkingOptions,
+}: PrepareFileInput): Effect.Effect<PreparedFileResult, AllProcessorErrors | AllEmbedderErrors> =>
   Effect.gen(function* () {
     if (
       previous &&
@@ -169,9 +206,13 @@ const prepareFile = ({
     const result = yield* extractor.extract(file.path).pipe(
       Effect.map((text) => Option.some(text)),
       Effect.catch((error) =>
-        Ref.update(skipped, (entries) => [
-          ...entries,
-          { path: file.path, reason: error.message },
+        Ref.update(diagnostics, (entries) => [
+          ...entries.filter((entry) => entry.file !== file.path),
+          {
+            kind: "skipped-file",
+            file: file.path,
+            message: error.message,
+          } satisfies IndexDiagnostic,
         ]).pipe(Effect.as(Option.none<string>())),
       ),
     )
@@ -180,16 +221,21 @@ const prepareFile = ({
     if (previous && contractMatches && previous.contentHash === fileHash) {
       return retainedFile(file, previous, previousEntries, retainedDtype)
     }
-    const chunks = yield* chunker.chunkText(result.value, file.path)
+    yield* Ref.update(diagnostics, (entries) => entries.filter((entry) => entry.file !== file.path))
+    const chunks = yield* chunker.chunkText(result.value, file.path, chunkingOptions)
+    const tokenCounts = yield* Effect.forEach(chunks, (chunk) =>
+      chunkingOptions.countTokens(chunk.text),
+    )
     return {
       manifest: { file: file.path, mtimeMs: file.mtimeMs, size: file.size, contentHash: fileHash },
       reused: false,
-      chunks: chunks.map((chunk) => ({
+      chunks: chunks.map((chunk, index) => ({
         stored: storedChunk(chunk),
         text: chunk.text,
         embedding: null,
         sparseVector: null,
         oldIndex: null,
+        tokenCount: tokenCounts[index]!,
       })),
     }
   })
@@ -198,12 +244,13 @@ const classifyAndCollectChunks = (
   knownFiles: ScannedFile[],
   extractor: typeof ContentExtractor.Service,
   chunker: typeof Chunker.Service,
-  skipped: Ref.Ref<readonly SkippedEntry[]>,
+  diagnostics: Ref.Ref<readonly IndexDiagnostic[]>,
+  chunkingOptions: ChunkingOptions,
   snapshot: Option.Option<IndexSnapshot>,
   contractMatches: boolean,
   retainedDtype: EmbeddingDtype,
   concurrency: number,
-): Effect.Effect<Phase1Result, AllProcessorErrors> =>
+): Effect.Effect<Phase1Result, AllProcessorErrors | AllEmbedderErrors> =>
   Effect.gen(function* () {
     const allChunks: PreparedChunk[] = []
     const files: FileManifestEntry[] = []
@@ -234,7 +281,8 @@ const classifyAndCollectChunks = (
           retainedDtype,
           extractor,
           chunker,
-          skipped,
+          diagnostics,
+          chunkingOptions,
         }),
       { concurrency },
     )
@@ -276,7 +324,9 @@ const make = Effect.gen(function* () {
     readonly eff: ReturnType<typeof mergeConfig>
     readonly config: Config
     readonly knownFiles: ScannedFile[]
-    readonly skipped: Ref.Ref<readonly SkippedEntry[]>
+    readonly diagnostics: Ref.Ref<readonly IndexDiagnostic[]>
+    readonly chunkingOptions: ChunkingOptions
+    readonly batchTokens: number
     readonly snapshot: Option.Option<IndexSnapshot>
     readonly contractMatches: boolean
     readonly sparseContractMatches: boolean
@@ -308,6 +358,25 @@ const make = Effect.gen(function* () {
           sparseContractsEqual(sparseContract, sparseEmbedder.contract),
       })
       const eff = mergeConfig(opts, config)
+      const batchTokens = Math.min(config.embedder.batchTokens, config.sparseEmbedder.batchTokens)
+      const maxTokens = Math.min(
+        eff.chunkTokens,
+        batchTokens,
+        embedder.limits.operationalTokenLimit,
+        sparseEmbedder.limits.operationalTokenLimit,
+      )
+      const tokenCounts = new Map<string, number>()
+      const countTokens = (text: string) => {
+        const cached = tokenCounts.get(text)
+        if (cached !== undefined) return Effect.succeed(cached)
+        return Effect.all([embedder.countTokens(text), sparseEmbedder.countTokens(text)]).pipe(
+          Effect.map(([dense, sparse]) => {
+            const count = Math.max(dense, sparse)
+            tokenCounts.set(text, count)
+            return count
+          }),
+        )
+      }
       const extensionRegistry = buildExtensionRegistry(eff.skipExtensions)
 
       yield* d.updateInteractive("Scanning source files...")
@@ -319,27 +388,43 @@ const make = Effect.gen(function* () {
         new Set(eff.skipExtensions),
       )
 
-      const skipped = yield* Ref.make<readonly SkippedEntry[]>(
-        scanResult.skipped
+      const knownPaths = new Set(knownFiles.map((file) => file.path))
+      const previousDiagnostics = Option.match(snapshot, {
+        onNone: () => [],
+        onSome: (value) => value.meta.diagnostics.filter((entry) => knownPaths.has(entry.file)),
+      })
+      const diagnostics = yield* Ref.make<readonly IndexDiagnostic[]>([
+        ...previousDiagnostics,
+        ...scanResult.skipped
           .filter((s) => !s.reason.startsWith("Ignored by config pattern"))
-          .map((s) => ({ path: s.path, reason: s.reason })),
-      )
+          .map((s) => ({ kind: "skipped-file" as const, file: s.path, message: s.reason })),
+      ])
 
       if (unknownExtensions.size > 0) {
-        yield* Ref.update(skipped, (prev) => [
+        yield* Ref.update(diagnostics, (prev) => [
           ...prev,
           ...unknownFiles.map((f) => ({
-            path: f,
-            reason: "unknown extension",
+            kind: "skipped-file" as const,
+            file: f,
+            message: "unknown extension",
           })),
         ])
+      }
+
+      const chunkingOptions: ChunkingOptions = {
+        maxTokens,
+        overlapLines: config.overlapLines,
+        countTokens,
+        onDiagnostic: (diagnostic) => Ref.update(diagnostics, (prev) => [...prev, diagnostic]),
       }
 
       return {
         eff,
         config,
         knownFiles,
-        skipped,
+        diagnostics,
+        chunkingOptions,
+        batchTokens,
         snapshot,
         contractMatches,
         sparseContractMatches,
@@ -365,7 +450,8 @@ const make = Effect.gen(function* () {
         ctx.knownFiles,
         extractor,
         chunker,
-        ctx.skipped,
+        ctx.diagnostics,
+        ctx.chunkingOptions,
         ctx.snapshot,
         ctx.contractMatches,
         ctx.config.embedder.dtype,
@@ -530,8 +616,13 @@ const make = Effect.gen(function* () {
       const stats = yield* d.progress(
         { message: `Writing index with ${totalChunks} chunks...`, max: totalChunks },
         indexStore.persistIndex({
-          chunks: Stream.fromIterable(chunks).pipe(
-            Stream.grouped(ctx.eff.batchSize),
+          chunks: Stream.fromIterable(
+            batchPreparedChunks(
+              chunks,
+              Math.min(ctx.eff.batchSize, ctx.config.embedder.batchSize),
+              ctx.batchTokens,
+            ),
+          ).pipe(
             Stream.mapEffect((batch: readonly PreparedChunk[]) =>
               Effect.gen(function* () {
                 const keys = batch.map((chunk) =>
@@ -639,6 +730,7 @@ const make = Effect.gen(function* () {
           sparseEmbeddingCache: [...historicalSparseCache.values()],
           sparseContract: sparseEmbedder.contract,
           sparseIdf,
+          diagnostics: yield* Ref.get(ctx.diagnostics),
         }),
       )
       return {
@@ -662,14 +754,12 @@ const make = Effect.gen(function* () {
       processedFiles: number
       refresh: "full" | "incremental"
     },
-    skipped: Ref.Ref<readonly SkippedEntry[]>,
+    diagnostics: Ref.Ref<readonly IndexDiagnostic[]>,
     start: number,
   ): Effect.Effect<IndexResult> =>
     Effect.gen(function* () {
-      if (stats.refresh === "full") {
-        const collected = yield* Ref.get(skipped)
-        yield* displaySkippedNote(d, collected)
-      }
+      const collected = yield* Ref.get(diagnostics)
+      yield* displayDiagnostics(d, collected)
 
       const durationSec = ((Date.now() - start) / 1000).toFixed(1)
       const activity =
@@ -699,6 +789,7 @@ const make = Effect.gen(function* () {
         cacheMisses: stats.cacheMisses,
         reusedFiles: stats.reusedFiles,
         processedFiles: stats.processedFiles,
+        diagnostics: collected,
         embedderFallback: fallbackInfo,
       }
     })
@@ -736,7 +827,7 @@ const make = Effect.gen(function* () {
         "success",
       )
       return {
-        success: true,
+        success: true as const,
         refresh: "none",
         status: {
           chunks: status.chunks,
@@ -750,6 +841,10 @@ const make = Effect.gen(function* () {
         cacheMisses: 0,
         reusedFiles: phase.reusedFiles,
         processedFiles: 0,
+        diagnostics: Option.match(ctx.snapshot, {
+          onNone: () => [],
+          onSome: (snapshot) => snapshot.meta.diagnostics,
+        }),
       }
     })
 
@@ -779,7 +874,7 @@ const make = Effect.gen(function* () {
           ...stats,
           refresh: !ctx.contractMatches || Option.isNone(ctx.snapshot) ? "full" : "incremental",
         },
-        ctx.skipped,
+        ctx.diagnostics,
         ctx.start,
       )
     })
@@ -789,57 +884,16 @@ const make = Effect.gen(function* () {
 
 export const IndexProjectLive = Layer.effect(IndexProject, make)
 
-const groupByExtension = (entries: readonly SkippedEntry[]): Map<string, string[]> => {
-  const byExt = new Map<string, string[]>()
-  for (const s of entries) {
-    const name = getFilename(s.path)
-    const ext = getFileExtension(name)
-    if (!byExt.has(ext)) byExt.set(ext, [])
-    byExt.get(ext)!.push(name)
-  }
-  return byExt
-}
-
-const formatFileList = (files: string[], maxDisplay = 5): string =>
-  files.length > maxDisplay
-    ? `${files.slice(0, maxDisplay).join(", ")} +${files.length - maxDisplay} more`
-    : files.join(", ")
-
-const buildSkippedLines = (
-  extFailures: readonly SkippedEntry[],
-  extractErrors: readonly SkippedEntry[],
-): string[] => {
-  const lines: string[] = []
-
-  if (extFailures.length > 0) {
-    lines.push(`Unknown extensions (${extFailures.length})`)
-    for (const [ext, files] of groupByExtension(extFailures)) {
-      lines.push(`  ${ext} (${files.length}): ${formatFileList(files)}`)
-    }
-  }
-
-  if (extractErrors.length > 0) {
-    if (lines.length > 0) lines.push("")
-    lines.push(`Extraction errors (${extractErrors.length})`)
-    for (const s of extractErrors) {
-      lines.push(`  ${getFilename(s.path)}: ${s.reason}`)
-    }
-  }
-
-  return lines
-}
-
-const displaySkippedNote = (
+const displayDiagnostics = (
   d: typeof Display.Service,
-  skipped: readonly SkippedEntry[],
+  diagnostics: readonly IndexDiagnostic[],
 ): Effect.Effect<void> => {
-  if (skipped.length === 0) return Effect.void
-
-  const extFailures = skipped.filter((s) => s.reason === "unknown extension")
-  const extractErrors = skipped.filter((s) => s.reason !== "unknown extension")
-
+  if (diagnostics.length === 0) return Effect.void
   return d.note(
-    buildSkippedLines(extFailures, extractErrors).join("\n"),
-    `Skipped ${skipped.length} files`,
+    diagnostics
+      .slice(0, 20)
+      .map((diagnostic) => `${diagnostic.kind}: ${diagnostic.file}: ${diagnostic.message}`)
+      .join("\n"),
+    `Index diagnostics (${diagnostics.length})`,
   )
 }

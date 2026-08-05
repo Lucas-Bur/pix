@@ -371,9 +371,8 @@ export interface BenchmarkArtifact {
   readonly searchStrategy: RouterSearchStrategy
   readonly timings: BenchmarkTimings
   readonly chunkConfig: {
-    readonly chunkLines: number
+    readonly chunkTokens: number
     readonly overlapLines: number
-    readonly minChunkChars: number
   }
   readonly contextTokenEstimator: "utf8-bytes-divided-by-four"
   readonly contextBudgets: readonly number[]

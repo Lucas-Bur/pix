@@ -239,9 +239,8 @@ export const runRetrievalBenchmark = (
         candidateQueueShutdownDurationMs: search.candidateQueueShutdownDurationMs,
       },
       chunkConfig: {
-        chunkLines: DEFAULT_CONFIG.chunkLines,
+        chunkTokens: DEFAULT_CONFIG.chunkTokens,
         overlapLines: DEFAULT_CONFIG.overlapLines,
-        minChunkChars: DEFAULT_CONFIG.minChunkChars,
       },
       contextTokenEstimator: "utf8-bytes-divided-by-four",
       contextBudgets: CONTEXT_BUDGETS,

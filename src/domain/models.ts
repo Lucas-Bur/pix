@@ -10,6 +10,10 @@ export interface ModelInfo {
   readonly dtypes: readonly EmbeddingDtype[]
   /** Default dtype to use when healing an unsupported dtype for this model. */
   readonly defaultDtype: EmbeddingDtype
+  /** Hard maximum input length accepted by the model, including special tokens. */
+  readonly hardTokenLimit: number
+  /** Conservative per-input limit used by production embedding. Never exceeds hardTokenLimit. */
+  readonly operationalTokenLimit: number
   /** Human-readable description. */
   readonly description: string
 }
@@ -21,6 +25,8 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
     dims: 384,
     dtypes: ["fp32", "q8"],
     defaultDtype: "fp32",
+    hardTokenLimit: 512,
+    operationalTokenLimit: 512,
     description: "General-purpose sentence embeddings, 23MB q8",
   },
   "Xenova/bge-small-en-v1.5": {
@@ -28,6 +34,8 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
     dims: 384,
     dtypes: ["fp32", "q8"],
     defaultDtype: "fp32",
+    hardTokenLimit: 512,
+    operationalTokenLimit: 512,
     description: "BGE retrieval-optimized embeddings, 34MB q8",
   },
   "jinaai/jina-embeddings-v2-base-code": {
@@ -35,6 +43,8 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
     dims: 768,
     dtypes: ["fp32", "q8"],
     defaultDtype: "fp32",
+    hardTokenLimit: 8192,
+    operationalTokenLimit: 2048,
     description: "Jina code-tuned embeddings, 8192 context, 162MB q8",
   },
 }

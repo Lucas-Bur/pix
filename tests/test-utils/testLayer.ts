@@ -79,6 +79,12 @@ const defaultScannerLayer = Layer.succeed(Scanner, {
 })
 
 const defaultEmbedderLayer = Layer.succeed(Embedder, {
+  limits: {
+    model: "Xenova/all-MiniLM-L6-v2",
+    hardTokenLimit: 512,
+    operationalTokenLimit: 512,
+  },
+  countTokens: () => Effect.succeed(0),
   embed: () => Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
   batch: (texts: readonly string[]) =>
     Effect.succeed(
@@ -87,6 +93,12 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
   getFallbackInfo: () => Effect.succeed(undefined),
   createForDevice: () =>
     Effect.succeed({
+      limits: {
+        model: "Xenova/all-MiniLM-L6-v2",
+        hardTokenLimit: 512,
+        operationalTokenLimit: 512,
+      },
+      countTokens: () => Effect.succeed(0),
       embed: () =>
         Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
       batch: (texts: readonly string[]) =>
@@ -102,6 +114,12 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
 
 const defaultSparseEmbedderLayer = Layer.succeed(SparseEmbedder, {
   contract: TEST_SPARSE_CONTRACT,
+  limits: {
+    model: TEST_SPARSE_CONTRACT.model,
+    hardTokenLimit: 512,
+    operationalTokenLimit: 512,
+  },
+  countTokens: () => Effect.succeed(0),
   batch: (texts: readonly string[]) => Effect.succeed(texts.map(() => ({ terms: [] as const }))),
   loadIdf: () => Effect.succeed([]),
   tokenizeQuery: () => Effect.succeed({ tokenIds: [], contract: TEST_SPARSE_CONTRACT }),
@@ -206,6 +224,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
                 sparseEmbeddingCache: indexSeed.sparseEmbeddingCache ?? [],
                 sparseContract: TEST_SPARSE_CONTRACT,
                 sparseIdf: [],
+                diagnostics: [],
               })
             }),
           ),

@@ -16,6 +16,12 @@ export const SPARSE_QUERY_REVISION = "babf71f3c48695e2e53a978208e8aba48335e3c0"
 export const SPARSE_IDF_CONTENT_HASH =
   "da23a1c0b9252776cc8c6d70fd14723e218f484d489cd9027ac6e4065d5b9edd"
 
+/** Hard sequence length of the pinned DistilBERT sparse document encoder. */
+export const SPARSE_HARD_TOKEN_LIMIT = 512
+
+/** Conservative production sequence length for the sparse document encoder. */
+export const SPARSE_OPERATIONAL_TOKEN_LIMIT = 512
+
 /** One non-zero dimension in a learned sparse vector. */
 export interface SparseTerm {
   readonly tokenId: number

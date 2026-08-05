@@ -1,5 +1,6 @@
 import { Context, Effect, Layer } from "effect"
 
+import type { IndexDiagnostic } from "../domain/diagnostics.js"
 import type { ChunkValidationError, StoreError } from "../domain/errors.js"
 import { IndexStore } from "../domain/ports.js"
 
@@ -12,6 +13,7 @@ export interface StatusResult {
   readonly totalLines: number
   readonly byteSize: number
   readonly validationErrors: readonly ChunkValidationError[]
+  readonly diagnostics: readonly IndexDiagnostic[]
 }
 
 /** Use case: get index statistics. Depends on IndexStore via Effect tag. */

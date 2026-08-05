@@ -4,6 +4,7 @@ import { SqlClient } from "effect/unstable/sql"
 import * as SqlSchema from "effect/unstable/sql/SqlSchema"
 
 import type { Embedding } from "../domain/chunk.ts"
+import type { IndexDiagnostic } from "../domain/diagnostics.js"
 import type { EmbeddingDtype, IndexMeta } from "../domain/dtype.js"
 import { DtypeMismatchError, VectorDecodeError } from "../domain/dtype.js"
 import { ChunkValidationError, NoIndexError, StoreError } from "../domain/errors.js"
@@ -51,6 +52,7 @@ const emptyStatus: {
   totalLines: number
   byteSize: number
   validationErrors: readonly ChunkValidationError[]
+  diagnostics: readonly IndexDiagnostic[]
 } = {
   chunks: 0,
   files: 0,
@@ -59,6 +61,7 @@ const emptyStatus: {
   totalLines: 0,
   byteSize: 0,
   validationErrors: [],
+  diagnostics: [],
 }
 
 const StatusRow = Schema.Struct({
@@ -106,9 +109,9 @@ const make = Effect.gen(function* () {
 
   const insertMeta = SqlSchema.void({
     Request: IndexMetaRow.insert,
-    execute: ({ id, model, dims, dtype, lastIndex, quantized }) => sql`
-      INSERT INTO index_meta (id, model, dims, dtype, last_index, quantized)
-      VALUES (${id}, ${model}, ${dims}, ${dtype}, ${lastIndex}, ${quantized})
+    execute: ({ id, model, dims, dtype, lastIndex, quantized, diagnostics }) => sql`
+      INSERT INTO index_meta (id, model, dims, dtype, last_index, quantized, diagnostics)
+      VALUES (${id}, ${model}, ${dims}, ${dtype}, ${lastIndex}, ${quantized}, ${diagnostics})
     `,
   })
 
@@ -230,7 +233,8 @@ const make = Effect.gen(function* () {
     Request: Schema.Void,
     Result: IndexMetaRow,
     execute: () => sql`
-      SELECT id, model, dims, dtype, last_index, quantized FROM index_meta WHERE id = 1
+      SELECT id, model, dims, dtype, last_index, quantized, diagnostics
+      FROM index_meta WHERE id = 1
     `,
   })
 
@@ -568,6 +572,7 @@ const make = Effect.gen(function* () {
           dtype: input.dtype,
           lastIndex: Date.now(),
           quantized: 0,
+          diagnostics: input.diagnostics ?? [],
         })
         const shouldQuantize =
           config.vectorSearch.mode === "turboquant" ||
@@ -755,6 +760,7 @@ const make = Effect.gen(function* () {
         dims: meta.value.dims,
         dtype: meta.value.dtype,
         lastIndex: meta.value.lastIndex,
+        diagnostics: meta.value.diagnostics,
       }
       const manifest: readonly FileManifestEntry[] = files
       const { id: _id, ...sparseContract } = sparseMeta.value
@@ -810,6 +816,7 @@ const make = Effect.gen(function* () {
         model: meta.value.model,
         lastIndex: meta.value.lastIndex,
         validationErrors: [],
+        diagnostics: meta.value.diagnostics,
       }
     })
 

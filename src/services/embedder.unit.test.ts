@@ -12,10 +12,12 @@ import { createAutoBoundEmbedder, OnnxEmbedderLive } from "./embedder.js"
 
 const DIMS = 384
 
-type MockExtractor = (input: string | string[]) => Promise<{
+type MockExtractor = ((input: string | string[]) => Promise<{
   data: Float32Array
   dims: number[]
-}>
+}>) & {
+  tokenizer: (input: string | string[]) => { input_ids: { length: number } }
+}
 
 type MockPipeline = (
   task: string,
@@ -37,7 +39,11 @@ const makeMockExtractor = (): MockExtractor => {
     const n = Array.isArray(input) ? input.length : 1
     return { data: new Float32Array(n * DIMS), dims: [n, DIMS] }
   })
-  return fn
+  return Object.assign(fn, {
+    tokenizer: (input: string | string[]) => ({
+      input_ids: { length: Array.isArray(input) ? input.length : input.split(/\s+/u).length + 2 },
+    }),
+  })
 }
 
 const buildLayer = (configJson: string) => {
@@ -147,9 +153,12 @@ describe("OnnxEmbedder GPU fallback", () => {
 
 describe("OnnxEmbedder inference errors", () => {
   it.effect("wraps single and batch inference failures", () => {
-    const extractor = vi.fn(async (input: string | string[]) => {
-      throw new Error(Array.isArray(input) ? "batch failed" : "single failed")
-    })
+    const extractor = Object.assign(
+      vi.fn(async (input: string | string[]) => {
+        throw new Error(Array.isArray(input) ? "batch failed" : "single failed")
+      }),
+      { tokenizer: () => ({ input_ids: { length: 1 } }) },
+    )
     mockedPipeline.mockResolvedValue(extractor)
     const { layer } = buildLayer(
       makeConfigJson({

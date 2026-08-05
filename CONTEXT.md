@@ -12,11 +12,12 @@ Pre-computed BM25 statistics stored as schema-validated JSON inside `.pix/index.
 
 ### Chunk
 
-A piece of source code produced by the chunker. One chunk = N lines of code with overlap.
-Stored as one metadata row in `.pix/index.db`. Source text remains in the source file and is loaded only for selected query results. Maximum size is guided by 60 lines (configurable `chunkLines`), with `overlapLines` lines overlapping between consecutive line chunks.
-Line-chunk ID = `sha1(file:startLine).slice(0, 12)`. AST-chunk IDs also include the node's
-start/end row and column so distinct declarations on one line cannot collide.
-Minimum chunk size: 20 characters (configurable `minChunkChars`).
+A piece of source code produced by the chunker. AST-supported files start with top-level semantic
+units, which are greedily packed by composite token count. Parserless or malformed files use a
+token-aware line fallback. Stored as one metadata row in `.pix/index.db`; source text remains in the
+source file and is loaded only for selected query results. The effective per-chunk limit is the
+configured `chunkTokens` cap constrained by the active Dense and Sparse operational model limits.
+`overlapLines` applies only to parserless fallback chunks. Chunk IDs use the exact source range.
 
 ### ChunkEntry
 
@@ -24,7 +25,9 @@ Raw data loaded from the index and passed to scorers at query time. Contains chu
 
 ### Config
 
-Runtime configuration stored in `.pix/config.json`. Contains Dense and Sparse model contracts, devices and batch sizes, Dense dtype, chunk parameters (lines, overlap, minChunkChars, concurrency), ignored paths, and skip extensions.
+Runtime configuration stored in `.pix/config.json`. Contains Dense and Sparse model contracts, devices,
+input batch sizes and token budgets, Dense dtype, token-aware chunk parameters (`chunkTokens`,
+parserless `overlapLines`, concurrency), ignored paths, and skip extensions.
 Structurally healed on read: missing fields are filled from `DEFAULT_CONFIG` via deep-merge. Coupled rules (model exists in registry, dtype supported by model) are validated against `ModelRegistry`. Unsupported dtypes are auto-healed to the model's `defaultDtype`; unknown models produce `ConfigHealError`.
 
 ### Embedder
@@ -46,11 +49,11 @@ with batch size × sequence length × the 30,522-token vocabulary. See ADR-0020.
 
 ### ModelRegistry
 
-Port (`Context.Tag` in `src/domain/ports.ts`) for querying embedding model metadata: dimensions, supported dtypes, default dtype, description. `ModelRegistryLive` in `src/services/models.ts` wraps the static `MODEL_REGISTRY` record from `src/domain/models.ts`; test layers can inject a restricted fake registry to exercise coupled-validation edge cases. Two methods: `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. Follows the "two adapters = real seam" principle (live + test).
+Port (`Context.Tag` in `src/domain/ports.ts`) for querying embedding model metadata: dimensions, supported dtypes, default dtype, hard input limit, operational input limit, and description. `ModelRegistryLive` in `src/services/models.ts` wraps the static `MODEL_REGISTRY` record from `src/domain/models.ts`; test layers can inject a restricted fake registry to exercise coupled-validation edge cases. Two methods: `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. Follows the "two adapters = real seam" principle (live + test).
 
 ### ModelInfo
 
-Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtypes` (supported quantizations), `defaultDtype` (used when healing an unsupported dtype), `description`. Lives in `src/domain/models.ts` with the static `MODEL_REGISTRY`.
+Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtypes` (supported quantizations), `defaultDtype` (used when healing an unsupported dtype), hard input limit, conservative operational input limit, and `description`. Lives in `src/domain/models.ts` with the static `MODEL_REGISTRY`.
 
 ### DeviceDetection
 
@@ -60,7 +63,7 @@ Port (`Context.Tag` in `src/domain/ports.ts`) for detecting the best available c
 
 Two-tier process that runs on every `ConfigStore.readConfig()` call:
 
-1. **Structural heal**: deep-merge user config onto `DEFAULT_CONFIG`, then schema-decode. Missing fields are filled from defaults; bad types (`chunkLines: "sixty"`) still fail with `ConfigValidationError`.
+1. **Structural heal**: deep-merge user config onto `DEFAULT_CONFIG`, then schema-decode. Missing fields are filled from defaults; bad types (`chunkTokens: "two thousand"`) still fail with `ConfigValidationError`.
 2. **Coupled validation**: check `embedder.model` exists in `ModelRegistry` and `embedder.dtype` is in the model's `dtypes`. Unsupported dtype → auto-healed to `defaultDtype` (conflict recorded but not blocking). Unknown model → `ConfigHealError` (unhealable, blocks).
 
 `pix config heal` is the explicit command: returns a `HealPlan`, prompts for each conflict (human mode), writes the resolved config. `--json` mode: auto-applies defaults for healed conflicts, fails with `ConfigHealError` for unhealed conflicts (agent edits config and retries). Only `pix config heal` writes config; other commands heal in memory and warn via `readConfigWithConflicts()`.
@@ -518,10 +521,12 @@ Domain error type for content extraction failures. Tagged variants: `Unsupported
 
 ### Chunker
 
-`chunkText(text, file)` resolves the file extension through the shared extension registry. TypeScript,
-JavaScript, TSX, JSX, Python, and Rust use tree-sitter top-level AST nodes as indivisible semantic units, greedily packed into chunks spanning at most `chunkLines`. A single larger node remains whole.
-Parserless extensions and malformed ASTs fall back to the configured line chunker. AST parsing is a
-best-effort optimization: foreign parser failures are normalized internally and never skip indexable text.
+`chunkText(text, file, options)` resolves the file extension through the shared extension registry.
+TypeScript, JavaScript, TSX, JSX, Python, and Rust use tree-sitter top-level AST units and greedily
+pack adjacent units under the composite Dense/Sparse tokenizer count. Oversized units recurse through
+AST children, then lines, then safe lexical boundaries. Parserless extensions and malformed ASTs use
+the token-aware line fallback; only an unsplittable leaf is skipped. Parser and skip events are
+reported as persisted `IndexDiagnostic` entries instead of aborting the complete refresh.
 
 ### Scanner
 
@@ -529,7 +534,7 @@ Returns all files found during FS walk, applying `.gitignore` rules (unless `ign
 
 ### Config
 
-Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip. Fields include `embedder.batchSize` (default 16), the pinned `sparseEmbedder` model/query contracts with document batch size 2, `ignoreGitignore` (default false), and `vectorSearch` (`mode`: exact/auto/turboquant; `turboQuantThreshold`: default 50000). Updated `ignoredPaths` defaults: removed `.agents`, `.github`; added `.vite-hooks`, `.fallow`.
+Replaced `files: Record<string, number>` (unused) with `skipExtensions: readonly string[]`. Users add extensions here to opt out of indexing. Domain processor map is always the base; config overrides swap entries to skip. Fields include `chunkTokens` (default 2000), Dense/Sparse batch token budgets, `embedder.batchSize` (default 16), the pinned `sparseEmbedder` model/query contracts with document batch size 2, `ignoreGitignore` (default false), and `vectorSearch` (`mode`: exact/auto/turboquant; `turboQuantThreshold`: default 50000). Updated `ignoredPaths` defaults: removed `.agents`, `.github`; added `.vite-hooks`, `.fallow`.
 
 ### Extension→Processor mapping (Phase 2+)
 
@@ -537,11 +542,10 @@ Lookup table that decides how each file extension is processed:
 
 - **Known code extensions** (`.ts`, `.py`, `.rs`, etc.) → ContentExtractor (identity) → Chunker → Embedder (MVP behavior)
 - **Known binary extensions** (`.pdf`, `.mp4`, `.jpg`, `.zip`, `.exe`, etc.) → Skip with info log; unknown/unrecognized extensions trigger a warning. Future Phase 2+ converts to text first (e.g. PDF→text extraction, MP4→Whisper transcription)
-- **Future: AST preprocessing** — for languages where AST yields better embeddings than raw text
+- **Future: AST preprocessing** — language-specific improvements beyond the shared top-level units
 - **Future: Extension→Processor mapping** — lookup table that decides how each file extension is processed
 - Multi-model support (OpenAI, Mistral, OpenRouter)
 - Top-K retrieval to limit result set size
-- Token/character limits for chunk boundaries
 - In-memory search optimization (mmap for large indexes)
 - `.pixignore` as additional blacklist (research needed)
 - Ranking improvements for query results

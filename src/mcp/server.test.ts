@@ -260,12 +260,19 @@ it.live("the MCP server serializes overlapping query executions", () =>
           return {
             success: true,
             refresh: "none",
-            status: { chunks: 0, files: 0, totalLines: 0, byteSize: 0, validationErrors: [] },
+            status: {
+              chunks: 0,
+              files: 0,
+              totalLines: 0,
+              byteSize: 0,
+              validationErrors: [],
+            },
             durationMs: 0,
             cacheHits: 0,
             cacheMisses: 0,
             reusedFiles: 0,
             processedFiles: 0,
+            diagnostics: [],
           } as const
         }),
     })
@@ -282,6 +289,7 @@ it.live("the MCP server serializes overlapping query executions", () =>
           totalLines: 0,
           byteSize: 0,
           validationErrors: [],
+          diagnostics: [],
         }),
     })
     const aliasLayer = Layer.succeed(QueryAliasStore, {

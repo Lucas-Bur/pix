@@ -17,6 +17,12 @@ import { buildBm25Index } from "../lib/retrieval/bm25.js"
 import { QueryProject } from "./query-project.js"
 
 const nonZeroEmbedder = Layer.succeed(Embedder, {
+  limits: {
+    model: "test-model",
+    hardTokenLimit: 512,
+    operationalTokenLimit: 512,
+  },
+  countTokens: () => Effect.succeed(1),
   embed: () =>
     Effect.succeed({
       vector: new Float32Array(384).fill(0.15),
@@ -34,6 +40,12 @@ const nonZeroEmbedder = Layer.succeed(Embedder, {
   getFallbackInfo: () => Effect.succeed(undefined),
   createForDevice: () =>
     Effect.succeed({
+      limits: {
+        model: "test-model",
+        hardTokenLimit: 512,
+        operationalTokenLimit: 512,
+      },
+      countTokens: () => Effect.succeed(1),
       embed: () =>
         Effect.succeed({
           vector: new Float32Array(384).fill(0.15),
@@ -144,6 +156,12 @@ it.effect("QueryProject includes Sparse with the promoted router", () =>
         embedderLayer: nonZeroEmbedder,
         sparseEmbedderLayer: Layer.succeed(SparseEmbedder, {
           contract: TEST_SPARSE_CONTRACT,
+          limits: {
+            model: TEST_SPARSE_CONTRACT.model,
+            hardTokenLimit: 512,
+            operationalTokenLimit: 512,
+          },
+          countTokens: () => Effect.succeed(1),
           batch: (texts) => Effect.succeed(texts.map(() => ({ terms: [] }))),
           loadIdf: () => Effect.succeed([{ tokenId: 7, weight: 2 }]),
           tokenizeQuery: () => Effect.succeed({ tokenIds: [7], contract: TEST_SPARSE_CONTRACT }),

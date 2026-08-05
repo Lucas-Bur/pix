@@ -23,6 +23,7 @@ const populatedStatusLayer = Layer.mock(IndexStore)({
       totalLines: 3,
       byteSize: 19,
       validationErrors: [],
+      diagnostics: [],
     }),
 })
 

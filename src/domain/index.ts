@@ -1,11 +1,17 @@
 import { Schema } from "effect"
 
+import { IndexDiagnosticSchema } from "./diagnostics.js"
 import { ChunkValidationErrorSchema } from "./errors.js"
 
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
 
 /** Transport-independent options for refreshing a pix index. */
 export const IndexRequestSchema = Schema.Struct({
+  chunkTokens: Schema.optional(
+    PositiveInt.pipe(
+      Schema.annotate({ description: "Maximum composite tokens per embedding chunk." }),
+    ),
+  ),
   batchSize: Schema.optional(
     PositiveInt.pipe(Schema.annotate({ description: "Number of chunks embedded in one batch." })),
   ),
@@ -54,6 +60,7 @@ export const IndexResponseSchema = Schema.Struct({
   cacheMisses: Schema.Number,
   reusedFiles: Schema.Number,
   processedFiles: Schema.Number,
+  diagnostics: Schema.Array(IndexDiagnosticSchema),
   embedderFallback: Schema.optional(
     Schema.Struct({ originalDevice: Schema.String, reason: Schema.String }),
   ),
@@ -64,6 +71,8 @@ export type IndexResponse = typeof IndexResponseSchema.Type
 
 /** Normalize transport input to the options accepted by `IndexProject`. */
 export const normalizeIndexRequest = (request: IndexRequest) => ({
+  chunkTokens:
+    request.chunkTokens !== undefined && request.chunkTokens > 0 ? request.chunkTokens : undefined,
   batchSize:
     request.batchSize !== undefined && request.batchSize > 0 ? request.batchSize : undefined,
   chunkConcurrency:

@@ -83,9 +83,8 @@ export const benchmarkCachePaths = (
     dims,
     dtype,
     chunk: {
-      lines: DEFAULT_CONFIG.chunkLines,
+      tokens: DEFAULT_CONFIG.chunkTokens,
       overlap: DEFAULT_CONFIG.overlapLines,
-      minimumCharacters: DEFAULT_CONFIG.minChunkChars,
     },
     sparse: {
       model: DEFAULT_CONFIG.sparseEmbedder.model,
