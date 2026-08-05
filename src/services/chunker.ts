@@ -287,19 +287,31 @@ const astSegments = (root: Parser.SyntaxNode, length: number): readonly Range[] 
     node = node.namedChildren[0]!
   }
 
-  const children = node.namedChildren
+  const children = node.namedChildren.filter((child) => child.namedChildren.length > 0)
   if (children.length === 0) return []
 
+  const nodeStart = Math.max(0, node.startIndex)
+  const nodeEnd = Math.min(length, node.endIndex)
+  if (children.length === 1) {
+    const nested = astSegments(children[0]!, length)
+    if (nested.length < 2) return []
+    return nested.map((segment, index) => ({
+      start: index === 0 ? nodeStart : segment.start,
+      end: index === nested.length - 1 ? nodeEnd : segment.end,
+    }))
+  }
+
   const segments: Range[] = []
-  let cursor = Math.max(0, node.startIndex)
+  let cursor = nodeStart
   for (const child of children) {
     const end = Math.min(length, child.endIndex)
     if (end <= cursor) continue
     segments.push({ start: cursor, end })
     cursor = end
   }
-  if (cursor < Math.min(length, node.endIndex)) {
-    segments.push({ start: cursor, end: Math.min(length, node.endIndex) })
+  if (segments.length > 0 && cursor < nodeEnd) {
+    const last = segments[segments.length - 1]!
+    segments[segments.length - 1] = { start: last.start, end: nodeEnd }
   }
 
   return segments.length === 1 && segments[0]!.start === 0 && segments[0]!.end === length

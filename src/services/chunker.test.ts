@@ -353,6 +353,58 @@ it.effect("Chunker greedily packs AST units under the composite token limit", ()
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
+it.effect("Chunker keeps call callees attached when splitting oversized AST nodes", () =>
+  Effect.gen(function* () {
+    const chunker = yield* Chunker
+    const source = [
+      'describe("suite", () => {',
+      ...Array.from({ length: 20 }, (_, index) => `  const value${index} = ${index}`),
+      "})",
+    ].join("\n")
+    const wordCount = (text: string) =>
+      text.trim().length === 0 ? 0 : text.trim().split(/\s+/u).length
+    const countTokens = (text: string) => Effect.succeed(wordCount(text))
+
+    const chunks = yield* chunker.chunkText(source, "src/oversized-call.ts", {
+      maxTokens: 8,
+      overlapLines: 0,
+      countTokens,
+      onDiagnostic: () => Effect.void,
+    })
+
+    expect(chunks.some(({ text }) => text.includes("describe("))).toBe(true)
+    expect(chunks.some(({ text }) => text.trim() === "describe")).toBe(false)
+    expect(chunks.every(({ text }) => wordCount(text) <= 8)).toBe(true)
+    expect(chunks.map(({ text }) => text).join("")).toBe(source)
+  }).pipe(Effect.provide(testLayer), Effect.scoped),
+)
+
+it.effect("Chunker keeps closing delimiters attached when splitting oversized AST nodes", () =>
+  Effect.gen(function* () {
+    const chunker = yield* Chunker
+    const source = [
+      "export const testLayer = () => {",
+      ...Array.from({ length: 20 }, (_, index) => `  const value${index} = ${index}`),
+      "}",
+    ].join("\n")
+    const wordCount = (text: string) =>
+      text.trim().length === 0 ? 0 : text.trim().split(/\s+/u).length
+    const countTokens = (text: string) => Effect.succeed(wordCount(text))
+
+    const chunks = yield* chunker.chunkText(source, "src/oversized-function.ts", {
+      maxTokens: 8,
+      overlapLines: 0,
+      countTokens,
+      onDiagnostic: () => Effect.void,
+    })
+
+    expect(chunks.some(({ text }) => text.trim() === "}")).toBe(false)
+    expect(chunks.some(({ text }) => text.includes("}"))).toBe(true)
+    expect(chunks.every(({ text }) => wordCount(text) <= 8)).toBe(true)
+    expect(chunks.map(({ text }) => text).join("")).toBe(source)
+  }).pipe(Effect.provide(testLayer), Effect.scoped),
+)
+
 it.effect("Chunker reports parserless fallback and skips unsplittable leaves", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
