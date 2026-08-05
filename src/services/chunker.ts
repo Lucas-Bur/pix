@@ -4,7 +4,6 @@ import { Data, Effect, Layer } from "effect"
 import type Parser from "tree-sitter"
 
 import type { Chunk } from "../domain/chunk.js"
-import type { Config } from "../domain/config.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type { InferenceError, ModelLoadError, TokenLimitError } from "../domain/errors.js"
 import { OversizedChunkError } from "../domain/errors.js"
@@ -640,16 +639,15 @@ const make = Effect.gen(function* () {
     file: string,
     options?: ChunkingOptions,
   ): Effect.Effect<readonly Chunk[], ChunkingError> =>
-    chunkTextWithConfig(text, file, config, registry, options)
+    chunkTextWithRegistry(text, file, registry, options)
 
   return { chunkText } as const
 })
 
-/** Chunk source text using an explicit configuration without reading project state. */
-export const chunkTextWithConfig = (
+/** Chunk source text using an explicit extension registry without reading project state. */
+export const chunkTextWithRegistry = (
   text: string,
   file: string,
-  _config: Config,
   registry: ReturnType<typeof buildExtensionRegistry>,
   options?: ChunkingOptions,
 ): Effect.Effect<readonly Chunk[], ChunkingError> => {

@@ -53,7 +53,7 @@ Port (`Context.Tag` in `src/domain/ports.ts`) for querying embedding model metad
 
 ### ModelInfo
 
-Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtypes` (supported quantizations), `defaultDtype` (used when healing an unsupported dtype), hard input limit, conservative operational input limit, and `description`. Lives in `src/domain/models.ts` with the static `MODEL_REGISTRY`.
+Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtypes` (supported quantizations), `defaultDtype` (used when healing an unsupported dtype), hard input limit, conservative operational input limit, and `description`. Dense entries live in `MODEL_REGISTRY`; pinned learned Sparse document limits live in `SPARSE_MODEL_REGISTRY`, both in `src/domain/models.ts`.
 
 ### DeviceDetection
 
