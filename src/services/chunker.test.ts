@@ -291,6 +291,24 @@ it.effect("Chunker groups adjacent Python and Rust AST nodes", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
+it.effect("Chunker parses large Python sources through the tree-sitter input callback", () =>
+  Effect.gen(function* () {
+    const chunker = yield* Chunker
+    const source = Array.from(
+      { length: 1_200 },
+      (_, index) => `def function${index}():\n    return ${index}`,
+    ).join("\n")
+
+    const chunks = yield* chunker.chunkText(source, "src/large.py")
+
+    expect(chunks).toHaveLength(1_200)
+    expect(chunks.some(({ text }) => text.includes("def function1199"))).toBe(true)
+    expect(
+      chunks.every((chunk) => source.slice(chunk.startOffset, chunk.endOffset) === chunk.text),
+    ).toBe(true)
+  }).pipe(Effect.provide(testLayer), Effect.scoped),
+)
+
 it.effect("Chunker keeps same-line AST units from duplicating source", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
