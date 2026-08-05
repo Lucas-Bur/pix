@@ -1,6 +1,7 @@
 import Parser from "tree-sitter"
 
 import type { Identifier, IdentifierKind } from "../../domain/identifier.js"
+import { parseTreeSitterSource } from "./tree-sitter.js"
 
 const BINDING_NAME_NODE_TYPES = new Set(["identifier", "shorthand_property_identifier_pattern"])
 
@@ -38,7 +39,7 @@ export const extractIdentifiers = (
   text: string,
   chunkIndex: number,
 ): readonly Identifier[] => {
-  const tree = parser.parse(text)
+  const tree = parseTreeSitterSource(parser, text)
   const identifiers: Identifier[] = []
 
   /**
