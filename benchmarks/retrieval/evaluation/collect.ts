@@ -5,7 +5,7 @@ import type { Embedding } from "../../../src/domain/chunk.js"
 import { DEFAULT_CONFIG } from "../../../src/domain/config.js"
 import type { EmbeddingDtype } from "../../../src/domain/dtype.js"
 import type { StoredChunk } from "../../../src/domain/index-data.js"
-import { MODEL_REGISTRY } from "../../../src/domain/models.js"
+import { MODEL_REGISTRY, SPARSE_MODEL_REGISTRY } from "../../../src/domain/models.js"
 import type { BoundEmbedder, SearchData } from "../../../src/domain/ports.js"
 import { IndexStore, SparseEmbedder } from "../../../src/domain/ports.js"
 import type { ChannelRankings } from "../../../src/domain/retrieval.js"
@@ -68,6 +68,7 @@ interface ModelMeasurements {
 
 interface RepositoryMeasurements {
   readonly repository: BenchmarkArtifact["repositories"][number]
+  readonly chunkTokens: number
   readonly embeddingRuns: readonly BenchmarkArtifact["embeddingRuns"][number][]
   readonly sparseEmbeddingRuns: readonly BenchmarkArtifact["sparseEmbeddingRuns"][number][]
   readonly measurements: readonly QueryMeasurement[]
@@ -85,6 +86,7 @@ interface RepositoryMeasurements {
 
 /** Collected corpus, channel, and quality samples reused by all search stages. */
 export interface CollectedBenchmarkData {
+  readonly chunkTokens: number
   readonly repositories: readonly BenchmarkArtifact["repositories"][number][]
   readonly embeddingRuns: readonly BenchmarkArtifact["embeddingRuns"][number][]
   readonly sparseEmbeddingRuns: readonly BenchmarkArtifact["sparseEmbeddingRuns"][number][]
@@ -463,7 +465,42 @@ const collectRepositoryMeasurements = (
 ): Effect.Effect<RepositoryMeasurements, Error> =>
   Effect.gen(function* () {
     const repositoryPath = yield* prepareRepository(manifest)
-    const corpus = yield* prepareCorpus(repositoryPath, manifest)
+    if (models.length !== 1) {
+      return yield* Effect.fail(
+        new Error(`Retrieval benchmark requires exactly one model, received ${models.length}`),
+      )
+    }
+    const model = models[0]!
+    const info = MODEL_REGISTRY[model]
+    if (info === undefined) return yield* Effect.fail(new Error(`Unknown embedding model ${model}`))
+    const sparseInfo = SPARSE_MODEL_REGISTRY[DEFAULT_CONFIG.sparseEmbedder.model]
+    if (sparseInfo === undefined) {
+      return yield* Effect.fail(
+        new Error(`Unknown sparse embedding model ${DEFAULT_CONFIG.sparseEmbedder.model}`),
+      )
+    }
+    const bound = yield* createAutoBoundEmbedder({
+      model,
+      dtype: info.defaultDtype,
+      dims: info.dims,
+    }).pipe(
+      Effect.mapError(
+        (cause) => new Error(`Could not auto-select a device for ${model}`, { cause }),
+      ),
+    )
+    const maxTokens = Math.min(
+      DEFAULT_CONFIG.chunkTokens,
+      DEFAULT_CONFIG.embedder.batchTokens,
+      DEFAULT_CONFIG.sparseEmbedder.batchTokens,
+      bound.embedder.limits.operationalTokenLimit,
+      sparseInfo.operationalTokenLimit,
+    )
+    const corpus = yield* prepareCorpus(repositoryPath, manifest, {
+      maxTokens,
+      overlapLines: DEFAULT_CONFIG.overlapLines,
+      countTokens: bound.embedder.countTokens,
+      onDiagnostic: () => Effect.void,
+    })
     const targetsByQuestion: (readonly ReadonlySet<number>[])[] = []
     for (const question of manifest.questions) {
       const targets = resolveGoldTargets(
@@ -503,10 +540,13 @@ const collectRepositoryMeasurements = (
     let retrievalDurationMs = 0
 
     for (const model of models) {
-      const info = MODEL_REGISTRY[model]
-      if (info === undefined)
-        return yield* Effect.fail(new Error(`Unknown embedding model ${model}`))
-      const cachePaths = benchmarkCachePaths(manifest, model, info.dims, info.defaultDtype)
+      const cachePaths = benchmarkCachePaths(
+        manifest,
+        model,
+        info.dims,
+        info.defaultDtype,
+        maxTokens,
+      )
       const cacheState = yield* inspectBenchmarkCache(
         model,
         info.defaultDtype,
@@ -520,15 +560,6 @@ const collectRepositoryMeasurements = (
       let chunkVectors: readonly Float32Array[] = []
       let queryVectors: readonly Float32Array[] = []
       if (cacheState.rankings === undefined) {
-        const bound = yield* createAutoBoundEmbedder({
-          model,
-          dtype: info.defaultDtype,
-          dims: info.dims,
-        }).pipe(
-          Effect.mapError(
-            (cause) => new Error(`Could not auto-select a device for ${model}`, { cause }),
-          ),
-        )
         device = bound.device
         if (!cacheState.hasPersistedIndex) {
           const embeddingStartedAt = performance.now()
@@ -586,6 +617,7 @@ const collectRepositoryMeasurements = (
         chunks: corpus.chunks.length,
         preparationDurationMs: corpus.preparationDurationMs,
       },
+      chunkTokens: maxTokens,
       embeddingRuns,
       sparseEmbeddingRuns,
       measurements,
@@ -616,6 +648,7 @@ export const collectBenchmarkData = (
     >()
     const samplesByModel = new Map<string, readonly WeightSearchSample[]>()
     let retrievalDurationMs = 0
+    let chunkTokens = DEFAULT_CONFIG.chunkTokens
 
     for (const manifest of manifests) {
       const repositoryData = yield* collectRepositoryMeasurements(
@@ -623,6 +656,7 @@ export const collectBenchmarkData = (
         models,
         groupedFoldAssignments,
       )
+      chunkTokens = repositoryData.chunkTokens
       repositories.push(repositoryData.repository)
       embeddingRuns.push(...repositoryData.embeddingRuns)
       sparseEmbeddingRuns.push(...repositoryData.sparseEmbeddingRuns)
@@ -642,6 +676,7 @@ export const collectBenchmarkData = (
     }
 
     return {
+      chunkTokens,
       repositories,
       embeddingRuns,
       sparseEmbeddingRuns,

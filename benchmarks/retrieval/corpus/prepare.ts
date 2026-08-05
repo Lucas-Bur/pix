@@ -6,7 +6,7 @@ import { Effect } from "effect"
 import type { Chunk } from "../../../src/domain/chunk.js"
 import { DEFAULT_CONFIG } from "../../../src/domain/config.js"
 import type { Identifier } from "../../../src/domain/identifier.js"
-import type { Bm25Index } from "../../../src/domain/ports.js"
+import type { Bm25Index, ChunkingOptions } from "../../../src/domain/ports.js"
 import { getExtension } from "../../../src/lib/config/extension.js"
 import { extractIdentifiers } from "../../../src/lib/parsing/identifier-extractor.js"
 import { buildExtensionRegistry } from "../../../src/lib/registry.js"
@@ -30,6 +30,7 @@ export interface PreparedCorpus {
 export const prepareCorpus = (
   repositoryPath: string,
   manifest: CorpusManifest,
+  chunkingOptions?: ChunkingOptions,
 ): Effect.Effect<PreparedCorpus, Error> =>
   Effect.gen(function* () {
     const startedAt = performance.now()
@@ -41,7 +42,9 @@ export const prepareCorpus = (
         Effect.tryPromise({
           try: () => readFile(path.join(repositoryPath, ...file.split("/")), "utf8"),
           catch: (cause) => new Error(`Could not read benchmark source ${file}`, { cause }),
-        }).pipe(Effect.flatMap((text) => chunkTextWithRegistry(text, file, registry))),
+        }).pipe(
+          Effect.flatMap((text) => chunkTextWithRegistry(text, file, registry, chunkingOptions)),
+        ),
       { concurrency: DEFAULT_CONFIG.chunkConcurrency },
     )
     const chunks = chunksByFile.flat()
