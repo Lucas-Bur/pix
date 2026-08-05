@@ -1,13 +1,21 @@
 import { describe, expect, it } from "@effect/vitest"
 import Parser from "tree-sitter"
+import Python from "tree-sitter-python"
 import TypeScript from "tree-sitter-typescript"
 
 import { extractIdentifiers } from "./identifier-extractor.js"
+import { pythonMapKind } from "./python.js"
 import { typescriptMapKind } from "./typescript.js"
 
 const setupParser = (): Parser => {
   const parser = new Parser()
   parser.setLanguage(TypeScript.typescript)
+  return parser
+}
+
+const setupPythonParser = (): Parser => {
+  const parser = new Parser()
+  parser.setLanguage(Python)
   return parser
 }
 
@@ -65,6 +73,21 @@ describe("extractIdentifiers", () => {
       { name: "A", kind: "type", chunkIndex: 0 },
       { name: "greet", kind: "function", chunkIndex: 0 },
     ])
+  })
+
+  it("extracts identifiers from large sources through the tree-sitter input callback", () => {
+    const source = Array.from(
+      { length: 1_200 },
+      (_, index) => `def function${index}():\n    return ${index}`,
+    ).join("\n")
+    const result = extractIdentifiers(setupPythonParser(), pythonMapKind, source, 0)
+
+    expect(result).toHaveLength(1_200)
+    expect(result[result.length - 1]).toEqual({
+      name: "function1199",
+      kind: "function",
+      chunkIndex: 0,
+    })
   })
 
   it("extracts individual bound names from object destructuring", () => {

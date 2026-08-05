@@ -9,6 +9,7 @@ import type { InferenceError, ModelLoadError, TokenLimitError } from "../domain/
 import { OversizedChunkError } from "../domain/errors.js"
 import { ConfigStore, Chunker, type ChunkingOptions } from "../domain/ports.js"
 import { getExtension } from "../lib/config/extension.js"
+import { parseTreeSitterSource } from "../lib/parsing/tree-sitter.js"
 import { buildExtensionRegistry } from "../lib/registry.js"
 import { ConfigStoreLive } from "./config-store.js"
 
@@ -26,10 +27,6 @@ interface Range {
 }
 
 type ChunkingError = ModelLoadError | InferenceError | TokenLimitError
-
-// Tree-sitter's string input path rejects sources larger than 32 KiB; callbacks stream small slices.
-const parseSource = (parser: Parser, source: string): Parser.Tree =>
-  parser.parse((offset) => source.slice(offset, offset + 4_096))
 
 const chunkId = (file: string, location: string): string =>
   crypto.createHash("sha1").update(`${file}:${location}`).digest("hex").slice(0, 12)
@@ -369,7 +366,7 @@ const splitOversizedRange = (
 
     if (depth < 32) {
       const tree = yield* Effect.try({
-        try: () => parseSource(parser, source.slice(range.start, range.end)),
+        try: () => parseTreeSitterSource(parser, source.slice(range.start, range.end)),
         catch: (cause) => new AstChunkingError({ file, cause }),
       }).pipe(Effect.catch(() => Effect.succeed(null)))
       if (tree !== null && !tree.rootNode.hasError) {
@@ -541,7 +538,7 @@ const buildStructuralChunks = (
       if (parser === null) {
         return content.length === 0 ? [] : [rangeChunk(file, content, 0, content.length, 0, 1, 0)]
       }
-      const tree = parseSource(parser, content)
+      const tree = parseTreeSitterSource(parser, content)
       if (tree === null || tree.rootNode.hasError) {
         return content.length === 0 ? [] : [rangeChunk(file, content, 0, content.length, 0, 1, 0)]
       }
@@ -560,7 +557,7 @@ const buildAstChunks = (
 ): Effect.Effect<readonly Chunk[], ChunkingError> =>
   Effect.gen(function* () {
     const tree = yield* Effect.try({
-      try: () => parseSource(parser, content),
+      try: () => parseTreeSitterSource(parser, content),
       catch: (cause) => new AstChunkingError({ file, cause }),
     }).pipe(
       Effect.catchTag("AstChunkingError", (error) =>
