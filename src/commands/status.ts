@@ -30,6 +30,9 @@ export const statusCommand = Command.make(
       if (result.validationErrors.length > 0) {
         yield* d.log(`Warnings: ${result.validationErrors[0].message}`, "warn")
       }
+      if (result.diagnostics.length > 0) {
+        yield* d.log(`Index diagnostics: ${result.diagnostics.length}`, "warn")
+      }
     }).pipe(
       Effect.catchTags({
         StoreError: reportError,

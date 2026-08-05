@@ -4,6 +4,7 @@ import type { Stream } from "effect"
 import type { Chunk, Embedding } from "./chunk.js"
 import type { Config } from "./config.js"
 import type { DeviceType } from "./device.js"
+import type { IndexDiagnostic } from "./diagnostics.js"
 import type { EmbeddingDtype } from "./dtype.js"
 import type { DtypeMismatchError, IndexMeta, VectorDecodeError } from "./dtype.js"
 import type {
@@ -23,6 +24,7 @@ import type {
   StoreError,
   ModelLoadError,
   InferenceError,
+  TokenLimitError,
   AllProcessorErrors,
 } from "./errors.js"
 import type { IdentifierIndexMaps } from "./identifier-index.js"
@@ -38,6 +40,7 @@ import type { SparseContract, SparseQuery, SparseTerm, SparseVector } from "./sp
 /** Options for the index operation, typically from CLI flags. */
 export interface IndexOptions {
   readonly batchSize?: number
+  readonly chunkTokens?: number
   readonly chunkConcurrency?: number
   readonly skipExtensions?: readonly string[]
   readonly ignorePaths?: readonly string[]
@@ -149,12 +152,33 @@ export class ContentExtractor extends Context.Service<
 
 // === Chunker Port ===
 
+/** Token-aware options for production chunk planning. */
+export interface ChunkingOptions {
+  /** Maximum composite token count for one embedding chunk. */
+  readonly maxTokens: number
+  /** Number of source lines to overlap only for parserless fallback chunks. */
+  readonly overlapLines: number
+  /** Count tokens with all active embedding tokenizers and return the larger count. */
+  readonly countTokens: (
+    text: string,
+  ) => Effect.Effect<number, ModelLoadError | InferenceError | TokenLimitError>
+  /** Receive non-fatal parser and oversized-chunk diagnostics. */
+  readonly onDiagnostic: (diagnostic: IndexDiagnostic) => Effect.Effect<void>
+}
+
 /** Port for splitting source text into chunks for embedding. */
 export class Chunker extends Context.Service<
   Chunker,
   {
-    /** Chunk raw text with a logical file path. Used by ContentExtractor after text extraction. */
-    readonly chunkText: (text: string, file: string) => Effect.Effect<readonly Chunk[]>
+    /**
+     * Chunk raw text with a logical file path. Production callers provide actual tokenizer counts;
+     * callers without options receive structural chunks for corpus preparation and unit tests.
+     */
+    readonly chunkText: (
+      text: string,
+      file: string,
+      options?: ChunkingOptions,
+    ) => Effect.Effect<readonly Chunk[], ModelLoadError | InferenceError | TokenLimitError>
   }
 >()("Chunker") {}
 
@@ -187,26 +211,51 @@ export interface EmbedderDeviceConfig {
   readonly model: string
   readonly dtype: EmbeddingDtype
   readonly dims: number
+  readonly hardTokenLimit?: number
+  readonly operationalTokenLimit?: number
+  readonly batchSize?: number
+  readonly batchTokens?: number
+}
+
+/** Token limits reported by a loaded embedding adapter. */
+export interface EmbeddingLimits {
+  /** Model identifier used for diagnostics. */
+  readonly model: string
+  /** Hard model input limit, including special tokens. */
+  readonly hardTokenLimit: number
+  /** Conservative production input limit, never above hardTokenLimit. */
+  readonly operationalTokenLimit: number
 }
 
 /** An embedder instance bound to a specific device configuration. */
 export interface BoundEmbedder {
-  readonly embed: (text: string) => Effect.Effect<Embedding, ModelLoadError | InferenceError>
+  readonly limits: EmbeddingLimits
+  /** Count one input with special tokens and truncation disabled. */
+  readonly countTokens: (text: string) => Effect.Effect<number, ModelLoadError | InferenceError>
+  readonly embed: (
+    text: string,
+  ) => Effect.Effect<Embedding, ModelLoadError | InferenceError | TokenLimitError>
   readonly batch: (
     texts: readonly string[],
-  ) => Effect.Effect<ReadonlyArray<Embedding>, ModelLoadError | InferenceError>
+  ) => Effect.Effect<ReadonlyArray<Embedding>, ModelLoadError | InferenceError | TokenLimitError>
 }
 
 /** Port for creating vector embeddings from text. */
 export class Embedder extends Context.Service<
   Embedder,
   {
+    /** Token limits reported by the loaded active Dense tokenizer/model. */
+    readonly limits: EmbeddingLimits
+    /** Count one input with special tokens and truncation disabled. */
+    readonly countTokens: (text: string) => Effect.Effect<number, ModelLoadError | InferenceError>
     /** Embed a single text. Fails with ModelLoadError or InferenceError. */
-    readonly embed: (text: string) => Effect.Effect<Embedding, ModelLoadError | InferenceError>
+    readonly embed: (
+      text: string,
+    ) => Effect.Effect<Embedding, ModelLoadError | InferenceError | TokenLimitError>
     /** Batch-embed texts. Fails with ModelLoadError or InferenceError. */
     readonly batch: (
       texts: readonly string[],
-    ) => Effect.Effect<readonly Embedding[], ModelLoadError | InferenceError>
+    ) => Effect.Effect<readonly Embedding[], ModelLoadError | InferenceError | TokenLimitError>
     /** Returns fallback info if GPU failed and fell back to CPU. */
     readonly getFallbackInfo: () => Effect.Effect<
       { readonly originalDevice: string; readonly reason: string } | undefined
@@ -224,10 +273,14 @@ export class SparseEmbedder extends Context.Service<
   {
     /** Versioned model/tokenizer/IDF contract used for persistence and reuse checks. */
     readonly contract: SparseContract
+    /** Token limits reported by the loaded sparse document tokenizer/model. */
+    readonly limits: EmbeddingLimits
+    /** Count one document with special tokens and truncation disabled. */
+    readonly countTokens: (text: string) => Effect.Effect<number, ModelLoadError | InferenceError>
     /** Encode source chunks with the learned document transformer. */
     readonly batch: (
       texts: readonly string[],
-    ) => Effect.Effect<readonly SparseVector[], ModelLoadError | InferenceError>
+    ) => Effect.Effect<readonly SparseVector[], ModelLoadError | InferenceError | TokenLimitError>
     /** Load and hash-verify the complete static query-IDF table for index persistence. */
     readonly loadIdf: () => Effect.Effect<readonly SparseTerm[], ModelLoadError>
     /** Tokenize a query for SQLite's persisted static IDF lookup. */
@@ -388,6 +441,8 @@ export interface PersistIndexInput<E = never> {
   readonly sparseContract: SparseContract
   /** Static query-IDF table paired with the sparse contract. */
   readonly sparseIdf: readonly SparseTerm[]
+  /** Non-fatal parser and skipped-chunk diagnostics committed with this snapshot. */
+  readonly diagnostics?: readonly IndexDiagnostic[]
 }
 
 /** Decoded embedding retained across index runs by content and embedding contract. */
@@ -478,6 +533,7 @@ export class IndexStore extends Context.Service<
         totalLines: number
         byteSize: number
         validationErrors: readonly ChunkValidationError[]
+        diagnostics: readonly IndexDiagnostic[]
       },
       StoreError
     >

@@ -109,7 +109,7 @@ it.effect("Chunker chunks a source file from memory fixture", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-it.effect("Chunker computes fallback chunk-ID as sha1(file:startLine).slice(0, 12)", () =>
+it.effect("Chunker computes fallback chunk-ID from the source range", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const fallbackFile = "docs/fixture.md"
@@ -117,7 +117,7 @@ it.effect("Chunker computes fallback chunk-ID as sha1(file:startLine).slice(0, 1
     if (chunks.length === 0) return
     const expectedId = crypto
       .createHash("sha1")
-      .update(`${fallbackFile}:1`)
+      .update(`${fallbackFile}:0:${fixtureFile.length}`)
       .digest("hex")
       .slice(0, 12)
     expect(chunks[0].id).toBe(expectedId)
@@ -168,7 +168,7 @@ it.effect("Chunker.chunkText returns empty array for empty text", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-it.effect("Chunker groups adjacent AST nodes within chunkLines", () =>
+it.effect("Chunker emits top-level AST units as structural chunks", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = [
@@ -183,9 +183,11 @@ it.effect("Chunker groups adjacent AST nodes within chunkLines", () =>
 
     const chunks = yield* chunker.chunkText(source, "src/example.ts")
 
-    expect(chunks).toHaveLength(1)
-    expect([chunks[0].startLine, chunks[0].endLine]).toEqual([1, 7])
-    expect(chunks[0].text).toBe(source)
+    expect(chunks).toHaveLength(2)
+    expect(chunks.map(({ startLine, endLine }) => [startLine, endLine])).toEqual([
+      [1, 3],
+      [5, 7],
+    ])
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
@@ -209,7 +211,7 @@ it.effect("Chunker embeds leading docs and comments inside declarations", () =>
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-it.effect("Chunker preserves a detached top-level comment", () =>
+it.effect("Chunker keeps a detached top-level comment as its own unit", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = [
@@ -222,12 +224,15 @@ it.effect("Chunker preserves a detached top-level comment", () =>
 
     const chunks = yield* chunker.chunkText(source, "src/detached-comment.ts")
 
-    expect(chunks).toHaveLength(1)
-    expect(chunks[0].text).toBe(source)
+    expect(chunks).toHaveLength(2)
+    expect(chunks.map(({ text }) => text)).toEqual([
+      "// Explains the module rather than the declaration.",
+      ["function run() {", "  return true", "}"].join("\n"),
+    ])
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-it.effect("Chunker preserves trailing top-level comments", () =>
+it.effect("Chunker keeps a trailing top-level comment as its own unit", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = [
@@ -240,12 +245,15 @@ it.effect("Chunker preserves trailing top-level comments", () =>
 
     const chunks = yield* chunker.chunkText(source, "src/trailing-comment.ts")
 
-    expect(chunks).toHaveLength(1)
-    expect(chunks[0].text).toBe(source)
+    expect(chunks).toHaveLength(2)
+    expect(chunks.map(({ text }) => text)).toEqual([
+      ["function run() {", "  return true", "}"].join("\n"),
+      "// Keep this implementation note.",
+    ])
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-it.effect("Chunker keeps an AST node larger than chunkLines intact", () =>
+it.effect("Chunker keeps an AST node intact without production token options", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const body = Array.from({ length: 70 }, (_, index) => `  const value${index} = ${index}`)
@@ -272,24 +280,32 @@ it.effect("Chunker groups adjacent Python and Rust AST nodes", () =>
       "src/example.rs",
     )
 
-    expect(python.map(({ startLine, endLine }) => [startLine, endLine])).toEqual([[1, 5]])
-    expect(rust.map(({ startLine, endLine }) => [startLine, endLine])).toEqual([[1, 7]])
+    expect(python.map(({ startLine, endLine }) => [startLine, endLine])).toEqual([
+      [1, 2],
+      [4, 5],
+    ])
+    expect(rust.map(({ startLine, endLine }) => [startLine, endLine])).toEqual([
+      [1, 3],
+      [5, 7],
+    ])
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-it.effect("Chunker groups same-line AST nodes without duplicating source", () =>
+it.effect("Chunker keeps same-line AST units from duplicating source", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = "function first() {} function second() {}"
     const chunks = yield* chunker.chunkText(source, "src/same-line.ts")
 
-    expect(chunks).toHaveLength(1)
-    expect(chunks[0].text).toBe("function first() {} function second() {}")
-    expect(source.slice(chunks[0].startOffset, chunks[0].endOffset)).toBe(chunks[0].text)
+    expect(chunks).toHaveLength(2)
+    expect(chunks.map(({ text }) => text)).toEqual(["function first() {}", "function second() {}"])
+    expect(
+      chunks.every((chunk) => source.slice(chunk.startOffset, chunk.endOffset) === chunk.text),
+    ).toBe(true)
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-it.effect("Chunker does not emit one-line chunks for consecutive imports", () =>
+it.effect("Chunker keeps consecutive imports as structural units", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = Array.from(
@@ -299,22 +315,65 @@ it.effect("Chunker does not emit one-line chunks for consecutive imports", () =>
 
     const chunks = yield* chunker.chunkText(source, "src/imports.ts")
 
-    expect(chunks).toHaveLength(2)
-    expect(chunks.map(({ startLine, endLine }) => endLine - startLine + 1)).toEqual([60, 5])
-    expect(chunks.every((chunk) => chunk.startLine < chunk.endLine)).toBe(true)
+    expect(chunks).toHaveLength(65)
+    expect(chunks.every((chunk) => chunk.startLine === chunk.endLine)).toBe(true)
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )
 
-it.effect("Chunker falls back to line chunks for malformed TypeScript", () =>
+it.effect("Chunker returns a structural fallback for malformed TypeScript", () =>
   Effect.gen(function* () {
     const chunker = yield* Chunker
     const source = Array.from({ length: 70 }, (_, index) => `const value${index} =`).join("\n")
 
     const chunks = yield* chunker.chunkText(source, "src/malformed.ts")
 
-    expect(chunks.map(({ startLine, endLine }) => [startLine, endLine])).toEqual([
-      [1, 60],
-      [51, 70],
+    expect(chunks.map(({ startLine, endLine }) => [startLine, endLine])).toEqual([[1, 70]])
+  }).pipe(Effect.provide(testLayer), Effect.scoped),
+)
+
+it.effect("Chunker greedily packs AST units under the composite token limit", () =>
+  Effect.gen(function* () {
+    const chunker = yield* Chunker
+    const source = ["const first = 1", "const second = 2", "const third = 3"].join("\n")
+    const countTokens = (text: string) =>
+      Effect.succeed(text.trim().length === 0 ? 0 : text.trim().split(/\s+/u).length)
+
+    const chunks = yield* chunker.chunkText(source, "src/token-aware.ts", {
+      maxTokens: 5,
+      overlapLines: 0,
+      countTokens,
+      onDiagnostic: () => Effect.void,
+    })
+
+    expect(chunks).toHaveLength(3)
+    expect(chunks.every((chunk) => countTokens(chunk.text).pipe(Effect.runSync) <= 5)).toBe(true)
+    expect(
+      chunks.every((chunk) => source.slice(chunk.startOffset, chunk.endOffset) === chunk.text),
+    ).toBe(true)
+  }).pipe(Effect.provide(testLayer), Effect.scoped),
+)
+
+it.effect("Chunker reports parserless fallback and skips unsplittable leaves", () =>
+  Effect.gen(function* () {
+    const chunker = yield* Chunker
+    const diagnostics: unknown[] = []
+    const options = {
+      maxTokens: 3,
+      overlapLines: 0,
+      countTokens: (text: string) => Effect.succeed(text.length),
+      onDiagnostic: (diagnostic: unknown) =>
+        Effect.sync(() => {
+          diagnostics.push(diagnostic)
+        }),
+    }
+
+    const chunks = yield* chunker.chunkText("abcdef", "docs/long-word.md", options)
+
+    expect(chunks).toEqual([])
+    expect(diagnostics).toHaveLength(2)
+    expect(diagnostics.map((diagnostic) => (diagnostic as { kind: string }).kind)).toEqual([
+      "parser-fallback",
+      "skipped-chunk",
     ])
   }).pipe(Effect.provide(testLayer), Effect.scoped),
 )

@@ -80,8 +80,17 @@ const mockDeviceDetection = (devices: readonly DeviceType[]) =>
 
 const mockEmb = () => ({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const })
 const mockBatch = (texts: readonly string[]) => texts.map(mockEmb)
+const mockBoundBase = {
+  limits: {
+    model: "test-model",
+    hardTokenLimit: 512,
+    operationalTokenLimit: 512,
+  },
+  countTokens: () => Effect.succeed(1),
+} as const
 
 const embedderBase = {
+  ...mockBoundBase,
   embed: () => Effect.succeed(mockEmb()),
   batch: (texts: readonly string[]) => Effect.succeed(mockBatch(texts)),
   getFallbackInfo: () => Effect.succeed(undefined),
@@ -98,6 +107,7 @@ const createMockEmbedder = () => {
         const idx = createCallCount++
         batchCallCounts.push(0)
         return {
+          ...mockBoundBase,
           embed: () => Effect.succeed(mockEmb()),
           batch: (texts: readonly string[]) =>
             Effect.sync(() => {
@@ -134,6 +144,7 @@ const createFailingEmbedder = (failDevices: readonly string[]) => {
         const idx = createCallCount++
         batchCallCounts.push(0)
         return {
+          ...mockBoundBase,
           embed: () => Effect.succeed(mockEmb()),
           batch: (texts: readonly string[]) =>
             Effect.sync(() => {
@@ -157,6 +168,7 @@ const createColdStartBatchFailingEmbedder = () => ({
     ...embedderBase,
     createForDevice: () =>
       Effect.succeed({
+        ...mockBoundBase,
         embed: () => Effect.succeed(mockEmb()),
         batch: () =>
           Effect.fail(new InferenceError({ message: "cold-start batch inference failed" })),
@@ -173,11 +185,13 @@ const createWarmPathBatchFailingEmbedder = () => {
         const idx = createCallCount++
         if (idx === 0) {
           return {
+            ...mockBoundBase,
             embed: () => Effect.succeed(mockEmb()),
             batch: (texts: readonly string[]) => Effect.succeed(mockBatch(texts)),
           }
         }
         return {
+          ...mockBoundBase,
           embed: () => Effect.succeed(mockEmb()),
           batch: () =>
             Effect.fail(new InferenceError({ message: "warm-path batch inference failed" })),
@@ -196,11 +210,13 @@ const createSlowWarmPathEmbedder = () => {
         const idx = createCallCount++
         if (idx === 0) {
           return {
+            ...mockBoundBase,
             embed: () => Effect.succeed(mockEmb()),
             batch: (texts: readonly string[]) => Effect.succeed(mockBatch(texts)),
           }
         }
         return {
+          ...mockBoundBase,
           embed: () => Effect.succeed(mockEmb()),
           batch: (texts: readonly string[]) =>
             Effect.sleep("2 seconds").pipe(Effect.andThen(Effect.succeed(mockBatch(texts)))),
@@ -630,7 +646,7 @@ describe("(yield* BenchProject).applyConfig", () => {
       const config = yield* store.readConfig()
       expect(config.embedder.device).toBe("cuda")
       expect(config.embedder.batchSize).toBe(64)
-      expect(config.chunkLines).toBe(60)
+      expect(config.chunkTokens).toBe(2000)
       expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
     }).pipe(
       Effect.provide(testLayer({ contents: { ".pix/config.json": makeConfigJson() } })),
@@ -651,7 +667,7 @@ describe("(yield* BenchProject).applyConfig", () => {
 
   it.effect("preserves user settings when patching", () => {
     const configContent = makeConfigJson({
-      chunkLines: 100,
+      chunkTokens: 100,
       overlapLines: 20,
       embedder: { device: "auto", batchSize: 8, model: "Xenova/bge-small-en-v1.5" },
     })
@@ -666,7 +682,7 @@ describe("(yield* BenchProject).applyConfig", () => {
       const config = yield* store.readConfig()
       expect(config.embedder.device).toBe("dml")
       expect(config.embedder.batchSize).toBe(128)
-      expect(config.chunkLines).toBe(100)
+      expect(config.chunkTokens).toBe(100)
       expect(config.overlapLines).toBe(20)
       expect(config.embedder.model).toBe("Xenova/bge-small-en-v1.5")
     }).pipe(

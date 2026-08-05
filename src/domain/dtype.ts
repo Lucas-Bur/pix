@@ -1,5 +1,7 @@
 import { Data, Schema } from "effect"
 
+import { IndexDiagnosticSchema } from "./diagnostics.js"
+
 /** Single source of truth for embedding dtype literals. */
 export const EmbeddingDtypeSchema = Schema.Literals(["fp32", "fp16", "q8", "q4"])
 
@@ -12,6 +14,7 @@ const IndexMetaSchema = Schema.Struct({
   dims: Schema.Number,
   model: Schema.String,
   lastIndex: Schema.Number,
+  diagnostics: Schema.Array(IndexDiagnosticSchema),
 })
 
 /** Domain type inferred from IndexMetaSchema. */

@@ -177,6 +177,7 @@ export const makeFailingIndexStore = (
             totalLines: 0,
             byteSize: 0,
             validationErrors: [],
+            diagnostics: [],
           }),
     reset: () =>
       failingMethod === "reset"
@@ -223,6 +224,12 @@ export const makeFailingEmbedder = (
 ): Layer.Layer<Embedder> => {
   const fail = Effect.fail(new ModelLoadError({ model: "test", message }))
   return Layer.succeed(Embedder, {
+    limits: {
+      model: "test",
+      hardTokenLimit: 512,
+      operationalTokenLimit: 512,
+    },
+    countTokens: () => Effect.succeed(1),
     embed: () =>
       method === "embed"
         ? fail
@@ -236,6 +243,12 @@ export const makeFailingEmbedder = (
     getFallbackInfo: () => Effect.succeed(undefined),
     createForDevice: () =>
       Effect.succeed({
+        limits: {
+          model: "test",
+          hardTokenLimit: 512,
+          operationalTokenLimit: 512,
+        },
+        countTokens: () => Effect.succeed(1),
         embed: () =>
           Effect.succeed({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const }),
         batch: (items) =>

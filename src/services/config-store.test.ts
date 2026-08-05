@@ -26,7 +26,7 @@ it.effect("ConfigStore.writeConfig creates .pix/config.json with defaults", () =
     yield* store.writeConfig(DEFAULT_CONFIG)
     const config = yield* store.readConfig()
     expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
-    expect(config.chunkLines).toBe(60)
+    expect(config.chunkTokens).toBe(2000)
     expect(config.overlapLines).toBe(10)
     expect(config.skipExtensions).toEqual([])
     expect(config.embedder.batchSize).toBe(16)
@@ -92,8 +92,8 @@ it.effect("readConfig heals missing embedder with defaults (was validation error
     const store = yield* ConfigStore
     const config = yield* store.readConfig()
     expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
-    expect(config.chunkLines).toBe(60)
-  }).pipe(Effect.provide(makeLayer({ ".pix/config.json": JSON.stringify({ chunkLines: 60 }) }))),
+    expect(config.chunkTokens).toBe(2000)
+  }).pipe(Effect.provide(makeLayer({ ".pix/config.json": JSON.stringify({ chunkTokens: 2000 }) }))),
 )
 
 const invalidConfig = {
@@ -150,7 +150,7 @@ it.effect("readConfig heals missing embedder key with defaults", () =>
     expect(config.embedder.batchSize).toBe(16)
   }).pipe(
     Effect.provide(
-      makeLayer({ ".pix/config.json": JSON.stringify({ chunkLines: 60, overlapLines: 10 }) }),
+      makeLayer({ ".pix/config.json": JSON.stringify({ chunkTokens: 60, overlapLines: 10 }) }),
     ),
   ),
 )
@@ -180,7 +180,7 @@ it.effect("readConfig still fails on bad type (not healable)", () =>
     const result = expectLeft(yield* Effect.result(store.readConfig()))
     expect(result._tag).toBe("ConfigValidationError")
   }).pipe(
-    Effect.provide(makeLayer({ ".pix/config.json": JSON.stringify({ chunkLines: "sixty" }) })),
+    Effect.provide(makeLayer({ ".pix/config.json": JSON.stringify({ chunkTokens: "sixty" }) })),
   ),
 )
 

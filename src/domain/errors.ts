@@ -88,6 +88,26 @@ export class InferenceError extends Data.TaggedError("InferenceError")<{
   readonly cause?: unknown
 }> {}
 
+/** Input or batch exceeded a model-aware token budget before inference. */
+export class TokenLimitError extends Data.TaggedError("TokenLimitError")<{
+  readonly message: string
+  readonly model: string
+  readonly actualTokens: number
+  readonly limit: number
+  readonly scope: "input" | "batch"
+}> {}
+
+/** A source chunk could not be safely split below the configured token limit. */
+export class OversizedChunkError extends Data.TaggedError("OversizedChunkError")<{
+  readonly message: string
+  readonly file: string
+  readonly startLine: number
+  readonly endLine: number
+  readonly model: string
+  readonly actualTokens: number
+  readonly limit: number
+}> {}
+
 // === Chunk validation error ===
 
 /** Persisted chunk data failed schema validation. */
@@ -119,7 +139,7 @@ export type AllConfigErrors =
 export type AllStoreErrors = StoreError | DiskFullError | NoIndexError
 
 /** All embedder error types. */
-export type AllEmbedderErrors = ModelLoadError | InferenceError
+export type AllEmbedderErrors = ModelLoadError | InferenceError | TokenLimitError
 
 // === Content extraction errors ===
 
@@ -145,6 +165,7 @@ export type IndexError =
   | AllConfigErrors
   | AllEmbedderErrors
   | AllProcessorErrors
+  | OversizedChunkError
   | StoreError
   | DiskFullError
 

@@ -14,6 +14,7 @@ const splitCsv = (value: string): string[] =>
 
 const buildIndexOptions = (args: {
   batchSize: Option.Option<number>
+  chunkTokens: Option.Option<number>
   chunkConcurrency: Option.Option<number>
   skipExtensions: Option.Option<string>
   ignorePath: Option.Option<string>
@@ -37,6 +38,7 @@ const buildIndexOptions = (args: {
 
   return {
     batchSize: Option.getOrUndefined(args.batchSize),
+    chunkTokens: Option.getOrUndefined(args.chunkTokens),
     chunkConcurrency: Option.getOrUndefined(args.chunkConcurrency),
     skipExtensions: cliSkipExtensions,
     ignorePaths: cliIgnorePaths,
@@ -57,6 +59,7 @@ const emitIndexResult = (d: typeof Display.Service, result: IndexResponse): Effe
       cacheMisses: result.cacheMisses,
       reusedFiles: result.reusedFiles,
       processedFiles: result.processedFiles,
+      diagnostics: result.diagnostics,
       ...(result.embedderFallback && { embedderFallback: result.embedderFallback }),
     })
 
@@ -70,18 +73,28 @@ export const indexCommand = Command.make(
   {
     json: Flag.boolean("json").pipe(Flag.withDefault(false)),
     batchSize: Flag.integer("batch-size").pipe(Flag.withAlias("b"), Flag.optional),
+    chunkTokens: Flag.integer("chunk-tokens").pipe(Flag.withAlias("t"), Flag.optional),
     chunkConcurrency: Flag.integer("chunk-concurrency").pipe(Flag.withAlias("c"), Flag.optional),
     skipExtensions: Flag.string("skip-extensions").pipe(Flag.withAlias("s"), Flag.optional),
     ignorePath: Flag.string("ignore-path").pipe(Flag.optional),
     ignorePaths: Flag.string("ignore-paths").pipe(Flag.optional),
     ignoreGitignore: Flag.boolean("ignore-gitignore").pipe(Flag.withDefault(false)),
   },
-  ({ batchSize, chunkConcurrency, skipExtensions, ignorePath, ignorePaths, ignoreGitignore }) =>
+  ({
+    batchSize,
+    chunkTokens,
+    chunkConcurrency,
+    skipExtensions,
+    ignorePath,
+    ignorePaths,
+    ignoreGitignore,
+  }) =>
     Effect.gen(function* () {
       const d = yield* Display
 
       const opts = buildIndexOptions({
         batchSize,
+        chunkTokens,
         chunkConcurrency,
         skipExtensions,
         ignorePath,

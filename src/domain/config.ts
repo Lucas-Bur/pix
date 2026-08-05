@@ -10,15 +10,15 @@ import {
 } from "./sparse.js"
 
 const DeviceSchema = Schema.Literals(["auto", "cpu", "cuda", "dml", "coreml", "webgpu", "wasm"])
+const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
 
 const EmbedderConfigSchema = Schema.Struct({
   model: Schema.String,
   device: DeviceSchema,
   dtype: EmbeddingDtypeSchema,
   batchSize: Schema.Number,
+  batchTokens: PositiveInt,
 })
-
-const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
 
 const SparseEmbedderConfigSchema = Schema.Struct({
   model: Schema.String,
@@ -28,6 +28,7 @@ const SparseEmbedderConfigSchema = Schema.Struct({
   idfContentHash: Schema.String,
   device: DeviceSchema,
   batchSize: PositiveInt,
+  batchTokens: PositiveInt,
 })
 
 /** Available SQLite vector scan strategies. */
@@ -43,10 +44,9 @@ const VectorSearchConfigSchema = Schema.Struct({
  * for `.pix/config.json`.
  */
 export const ConfigSchema = Schema.Struct({
-  chunkLines: Schema.Number,
+  chunkTokens: PositiveInt,
   overlapLines: Schema.Number,
   chunkConcurrency: Schema.Number,
-  minChunkChars: Schema.Number,
   skipExtensions: Schema.Array(Schema.String),
   ignoredPaths: Schema.Array(Schema.String),
   ignoreGitignore: Schema.Boolean,
@@ -59,10 +59,9 @@ export const ConfigSchema = Schema.Struct({
 export type Config = typeof ConfigSchema.Type
 
 export const DEFAULT_CONFIG: Config = {
-  chunkLines: 60,
+  chunkTokens: 2000,
   overlapLines: 10,
   chunkConcurrency: 8,
-  minChunkChars: 20,
   skipExtensions: [],
   ignoredPaths: [
     ".pix",
@@ -85,6 +84,7 @@ export const DEFAULT_CONFIG: Config = {
     device: "auto",
     dtype: "fp32",
     batchSize: 16,
+    batchTokens: 8192,
   },
   sparseEmbedder: {
     model: SPARSE_DOCUMENT_MODEL,
@@ -94,6 +94,7 @@ export const DEFAULT_CONFIG: Config = {
     idfContentHash: SPARSE_IDF_CONTENT_HASH,
     device: "auto",
     batchSize: 2,
+    batchTokens: 1024,
   },
   vectorSearch: {
     mode: "exact",
