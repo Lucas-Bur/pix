@@ -524,8 +524,9 @@ Domain error type for content extraction failures. Tagged variants: `Unsupported
 `chunkText(text, file, options)` resolves the file extension through the shared extension registry.
 TypeScript, JavaScript, TSX, JSX, Python, and Rust use tree-sitter top-level AST units and greedily
 pack adjacent units under the composite Dense/Sparse tokenizer count. Oversized units recurse through
-AST children, then lines, then safe lexical boundaries. Parserless extensions and malformed ASTs use
-the token-aware line fallback; only an unsplittable leaf is skipped. Parser and skip events are
+AST children, ignoring atomic leaf nodes as split points and retaining outer syntax around nested
+structural children, then lines, then safe lexical boundaries. Parserless extensions and malformed ASTs
+use the token-aware line fallback; only an unsplittable leaf is skipped. Parser and skip events are
 reported as persisted `IndexDiagnostic` entries instead of aborting the complete refresh.
 
 ### Scanner
