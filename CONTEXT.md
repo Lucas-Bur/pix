@@ -235,7 +235,7 @@ fusion path and persists its IDF and postings in `.pix/index.db`.
 Schema 19 removes the benchmark-owned Sparse encoder, in-process postings implementation, and separate
 embedding caches. Benchmark profile fitting and optimizer search remain benchmark-owned, while the
 fusion adapters and evidence signals are shared with production. Benchmarks compose the production
-SparseEmbedder and IndexStore around a migrated SQLite database; current schema-23 runs persist that
+SparseEmbedder and IndexStore around a migrated SQLite database; current schema-24 runs persist that
 benchmark database and channel rankings under `benchmarks/.cache/retrieval/v1/` for warm reuse. Dense
 and Sparse ranking therefore execute through the same adapters as product queries. Experimental profile
 fitting remains benchmark-owned. Every artifact includes the authored file-qualified ground truth and
@@ -253,6 +253,11 @@ current beam elites, so a later coordinate cannot regress the best development c
 development folds and evaluated unchanged against static weights on excluded intent folds and
 repositories; authored query-form labels remain informed reference strata and are not router inputs.
 This router remains benchmark-only until holdouts justify a production change.
+Schema 24 exposes the historical `successive-halving` router search beside the default `proxy-promotion`
+mode through `PIX_BENCH_ROUTER_STRATEGY`. Successive Halving uses the original lexicographic quality
+comparator and `halvingKeepFactor`; both modes share the proxy/full evaluator pools and native worker
+queue. Artifacts record the selected algorithm so FastAPI and other corpus comparisons remain
+reproducible.
 Benchmark weight and router searches use a benchmark-only prepared evaluator: each sample and
 fusion method materializes per-chunk normalized or RRF contributions once, then candidate weights reuse
 that data. Public `fuseRankings` semantics and its existing ranking, normalization, and typed-array caches

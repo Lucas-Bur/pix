@@ -1,7 +1,38 @@
 # Preliminary Retrieval Baseline
 
 The schema-17 entries below are historical artifacts from the benchmark-owned Sparse implementation.
-Current schema-23 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
+Current schema-24 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
+
+## Schema 24: Selectable Router Search
+
+Schema 24 exposes the current `proxy-promotion` search and the historical `successive-halving`
+algorithm from commits `1754725` and `2f92428` through `PIX_BENCH_ROUTER_STRATEGY`. The legacy path
+uses the original `halvingKeepFactor: 8`, lexicographic `R@20/R@10/Context@4k/MRR` comparator, and
+does not run the later random-scout baseline. Both runs below used the same MiniLM model, pinned corpus,
+warm retrieval cache, DBSF fusion, and 11 native worker threads.
+
+### FastAPI Develop Sanity Check
+
+| Strategy             | Artifact                                  | Router time | Total time | Dynamic holdout summary (R@5/R@10/R@20/R@50/Context@4k)      |
+| -------------------- | ----------------------------------------- | ----------: | ---------: | ------------------------------------------------------------ |
+| `successive-halving` | `retrieval-2026-08-05T01-57-19.822Z.json` |     18.56 s |    23.59 s | 51.3%/64.3%/77.3%/88.7%/58.7%                                |
+| `proxy-promotion`    | `retrieval-2026-08-05T01-59-43.049Z.json` |    114.59 s |   119.64 s | objective-specific; 54.0%/65.0%/72.3%/85.0%/58.7% for direct |
+
+Successive Halving was 83.8% faster on this warm-cache control. Its objective-specific output is one
+historical candidate repeated across the current three-objective artifact rows; Proxy Promotion selects
+objective-specific candidates. This is a sanity check of behavior and queue integration, not a quality
+promotion decision.
+
+### Effect v4 Develop Sanity Check
+
+| Strategy             | Artifact                                  | Router time | Total time | Dynamic holdout summary (R@5/R@10/R@20/R@50/Context@4k)      |
+| -------------------- | ----------------------------------------- | ----------: | ---------: | ------------------------------------------------------------ |
+| `successive-halving` | `retrieval-2026-08-05T02-00-45.058Z.json` |     29.62 s |    46.62 s | 40.0%/52.0%/59.3%/82.0%/48.0%                                |
+| `proxy-promotion`    | `retrieval-2026-08-05T01-52-54.327Z.json` |    938.61 s |   954.79 s | objective-specific; 32.7%/42.0%/52.0%/80.0%/42.0% for direct |
+
+Successive Halving was 96.8% faster on the larger Effect v4 control. The worker queue completed both
+strategies successfully; the large runtime gap comes from candidate selection/evaluation volume, not
+embedding, which was reused from the persistent cache.
 
 ## Schema 20: Search-Priority DBSF Selection
 

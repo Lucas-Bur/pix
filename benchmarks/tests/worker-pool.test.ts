@@ -88,6 +88,16 @@ const searchSample = {
   chunks,
 }
 
+const halvingSamples = Array.from({ length: 40 }, (_, index) => ({
+  ...searchSample,
+  intentId: `fixture-${String(index + 1).padStart(3, "0")}`,
+  queryKind: ["identifier", "searchPhrase", "naturalQuestion", "agentTask"][index % 4] as
+    | "identifier"
+    | "searchPhrase"
+    | "naturalQuestion"
+    | "agentTask",
+}))
+
 const withoutSearchTimings = <
   T extends { readonly searchDiagnostics: { readonly timings: object } },
 >(
@@ -110,11 +120,16 @@ describe("benchmark candidate evaluation pool", () => {
           [searchSample],
           [searchSample],
           SEARCH_PRIORITY_PROFILE,
-          { workerCount: 0, evaluationQueue: candidateQueue },
+          {
+            workerCount: 0,
+            evaluationQueue: candidateQueue,
+            routerSearchStrategy: "successive-halving",
+          },
         ),
         fitRecommendedEvidenceRouter("fixture", "dbsf", [searchSample], SEARCH_PRIORITY_PROFILE, {
           workerCount: 0,
           evaluationQueue: candidateQueue,
+          routerSearchStrategy: "successive-halving",
         }),
       ])
       const serialHoldout = await optimizeEvidenceRouter(
@@ -125,12 +140,14 @@ describe("benchmark candidate evaluation pool", () => {
         [searchSample],
         [searchSample],
         SEARCH_PRIORITY_PROFILE,
+        { workerCount: 0, routerSearchStrategy: "successive-halving" },
       )
       const serialFitAll = await fitRecommendedEvidenceRouter(
         "fixture",
         "dbsf",
         [searchSample],
         SEARCH_PRIORITY_PROFILE,
+        { workerCount: 0, routerSearchStrategy: "successive-halving" },
       )
 
       expect(parallelHoldout.map(withoutSearchTimings)).toEqual(
@@ -140,6 +157,38 @@ describe("benchmark candidate evaluation pool", () => {
         serialFitAll.map(withoutSearchTimings),
       )
       expect(parallelHoldout[0]?.searchDiagnostics.timings.candidateEvaluationMs).toBeGreaterThan(0)
+    } finally {
+      await candidateQueue.close()
+    }
+  })
+
+  it("runs the historical halving stage through the worker queue", async () => {
+    const candidateQueue = await createCandidateEvaluationQueue({ workerCount: 2 })
+    try {
+      const parallel = await fitRecommendedEvidenceRouter(
+        "fixture",
+        "dbsf",
+        halvingSamples,
+        SEARCH_PRIORITY_PROFILE,
+        {
+          workerCount: 0,
+          evaluationQueue: candidateQueue,
+          routerSearchStrategy: "successive-halving",
+        },
+      )
+      const serial = await fitRecommendedEvidenceRouter(
+        "fixture",
+        "dbsf",
+        halvingSamples,
+        SEARCH_PRIORITY_PROFILE,
+        { workerCount: 0, routerSearchStrategy: "successive-halving" },
+      )
+      expect(parallel.map(withoutSearchTimings)).toEqual(serial.map(withoutSearchTimings))
+      const result = parallel[0]
+      if (result === undefined) throw new Error("Missing halving router result")
+      expect(result.searchDiagnostics.proxyEvaluations).toBeGreaterThan(0)
+      expect(result.searchDiagnostics.proxyPromotions).toBeGreaterThan(0)
+      expect(result.searchDiagnostics.timings.randomSearchMs).toBe(0)
     } finally {
       await candidateQueue.close()
     }

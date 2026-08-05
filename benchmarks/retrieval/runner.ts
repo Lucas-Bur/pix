@@ -16,10 +16,13 @@ import {
 import { renderMarkdownReport } from "./evaluation/report.js"
 import { runBenchmarkSearch, type BenchmarkSearchConfig } from "./evaluation/search.js"
 import {
-  ROUTER_SEARCH_STRATEGY,
+  DEFAULT_ROUTER_SEARCH_STRATEGY,
+  ROUTER_SEARCH_STRATEGIES,
   type BenchmarkArtifact,
   type BenchmarkProfile,
   type CorpusManifest,
+  type RouterSearchStrategy,
+  type RouterSearchStrategyName,
   type ValidationStrategy,
 } from "./evaluation/types.js"
 import { getDefaultWorkerCount, resolveWorkerCount } from "./execution/candidate-evaluation-pool.js"
@@ -114,6 +117,29 @@ const selectOptimizationProfile = (): Effect.Effect<OptimizationProfile, Error> 
     : Effect.succeed(selected)
 }
 
+export const resolveRouterSearchStrategy = (
+  requested: string | undefined,
+): RouterSearchStrategyName => {
+  if (requested === undefined) return DEFAULT_ROUTER_SEARCH_STRATEGY
+  if (!Object.hasOwn(ROUTER_SEARCH_STRATEGIES, requested)) {
+    throw new Error(
+      `Unknown PIX_BENCH_ROUTER_STRATEGY value: ${requested}; expected one of ${Object.keys(ROUTER_SEARCH_STRATEGIES).join(", ")}`,
+    )
+  }
+  const selected = (ROUTER_SEARCH_STRATEGIES as Record<string, RouterSearchStrategy | undefined>)[
+    requested
+  ]
+  if (selected === undefined)
+    throw new Error(`Router search strategy is not configured: ${requested}`)
+  return requested as RouterSearchStrategyName
+}
+
+const selectRouterSearchStrategy = (): Effect.Effect<RouterSearchStrategyName, Error> =>
+  Effect.try({
+    try: () => resolveRouterSearchStrategy(process.env.PIX_BENCH_ROUTER_STRATEGY),
+    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+  })
+
 const writeArtifact = (artifact: BenchmarkArtifact): Effect.Effect<string, Error> =>
   Effect.gen(function* () {
     const outputDirectory = path.resolve("benchmarks/results")
@@ -150,6 +176,7 @@ export const runRetrievalBenchmark = (
           fallbackToSerial: false,
         }
     const optimizationProfile = yield* selectOptimizationProfile()
+    const routerSearchStrategy = yield* selectRouterSearchStrategy()
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
     const manifests = yield* selectManifests(yield* loadCorpusManifests(), profile)
@@ -172,7 +199,7 @@ export const runRetrievalBenchmark = (
       groupedStrategy,
       optimizationProfile,
       serialSearch,
-      searchOptions,
+      { ...searchOptions, routerSearchStrategy },
     )
 
     const embeddingDurationMs = embeddingRuns.reduce(
@@ -185,7 +212,7 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 23,
+      schemaVersion: 24,
       benchmarkProfile: profile,
       optimizationProfile,
       validationProtocol: {
@@ -199,7 +226,7 @@ export const runRetrievalBenchmark = (
         nestedInnerFolds: Math.max(3, config.groupedFolds - 2),
       },
       generatedAt: new Date().toISOString(),
-      searchStrategy: ROUTER_SEARCH_STRATEGY,
+      searchStrategy: ROUTER_SEARCH_STRATEGIES[routerSearchStrategy],
       timings: {
         totalDurationMs: performance.now() - benchmarkStartedAt,
         corpusPreparationDurationMs,
