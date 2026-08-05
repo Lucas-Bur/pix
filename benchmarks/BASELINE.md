@@ -200,6 +200,20 @@ and SQLite retrieval `2.50 s`. The fit-all router evaluated `3,693` proxy candid
 candidates. The small hold-out movements are recorded rather than treated as a universal quality gain;
 future optimizer changes must compare the same pinned corpora, model, folds, and static controls.
 
+### Strategy Equivalence Check
+
+There is a matched Schema-19 `fd` smoke comparison between
+`retrieval-2026-08-02T01-31-54.105Z.json` (`successive-halving-pareto`) and
+`retrieval-2026-08-03T15-09-38.902Z.json` (`proxy-promotion`). Both use the same pinned corpus, model,
+folds, DBSF router, objectives, and guardrail settings. The weighted evidence-router holdout summaries
+are identical at the reported precision for all three objectives. Successive Halving took `97.01 s`
+of router time; proxy promotion took `111.90 s`.
+
+This supports using Successive Halving as a faster benchmark-search mode with no observed quality loss
+on this control. It is an artifact comparison, not an automated strategy A/B test, and it does not yet
+establish equivalence on the larger FastAPI and Effect-TS corpora. The older Schema-14/15 comparison
+also found only rounding-level holdout movement while successive halving reduced router time by `9.3%`.
+
 ## Schema 14: Router Search Strategy And Runtime Telemetry
 
 Schema 14 records the deterministic `halton-global-scout-elitist-beam` router search strategy and

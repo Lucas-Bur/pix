@@ -1,4 +1,5 @@
 import { Effect, Stream } from "effect"
+import { SqlClient } from "effect/unstable/sql"
 
 import type { Embedding } from "../../../src/domain/chunk.js"
 import { DEFAULT_CONFIG } from "../../../src/domain/config.js"
@@ -7,6 +8,7 @@ import type { StoredChunk } from "../../../src/domain/index-data.js"
 import { MODEL_REGISTRY } from "../../../src/domain/models.js"
 import type { BoundEmbedder, SearchData } from "../../../src/domain/ports.js"
 import { IndexStore, SparseEmbedder } from "../../../src/domain/ports.js"
+import type { ChannelRankings } from "../../../src/domain/retrieval.js"
 import type {
   SparseContract,
   SparseQuery,
@@ -18,6 +20,13 @@ import { buildQueryTermCoverage } from "../../../src/lib/retrieval/evidence-rout
 import { createAutoBoundEmbedder } from "../../../src/services/embedder.js"
 import { prepareCorpus, type PreparedCorpus } from "../corpus/prepare.js"
 import { prepareRepository } from "../corpus/repository.js"
+import {
+  benchmarkCachePaths,
+  loadCachedRankings,
+  saveCachedRankings,
+  type BenchmarkCachePaths,
+  type CachedRankingQuery,
+} from "../execution/benchmark-cache.js"
 import { withSqliteBenchmarkStore } from "../execution/sqlite-index.js"
 import { foldKey } from "./folds.js"
 import {
@@ -53,6 +62,7 @@ interface ModelMeasurements {
   readonly measurements: readonly QueryMeasurement[]
   readonly samples: readonly WeightSearchSample[]
   readonly samplesByQueryKind: ReadonlyMap<QueryKind, readonly WeightSearchSample[]>
+  readonly rankings: readonly ChannelRankings[]
   readonly retrievalDurationMs: number
 }
 
@@ -168,27 +178,22 @@ const persistBenchmarkCorpus = (
     })
   })
 
-const collectModelSamples = (
+interface BuiltModelSamples {
+  readonly measurements: readonly QueryMeasurement[]
+  readonly samples: readonly WeightSearchSample[]
+  readonly samplesByQueryKind: ReadonlyMap<QueryKind, readonly WeightSearchSample[]>
+}
+
+const buildModelSamples = (
   manifest: CorpusManifest,
   corpus: PreparedCorpus,
   queries: readonly BenchmarkQuery[],
   targetsByQuestion: readonly (readonly ReadonlySet<number>[])[],
   groupedFoldAssignments: ReadonlyMap<string, number>,
   model: string,
-  queryVectors: readonly Float32Array[],
-  sparseQueries: readonly SparseQuery[],
-  searchData: SearchData,
-  store: typeof IndexStore.Service,
-  dims: number,
-  dtype: EmbeddingDtype,
-): Effect.Effect<
-  {
-    readonly measurements: readonly QueryMeasurement[]
-    readonly samples: readonly WeightSearchSample[]
-    readonly samplesByQueryKind: ReadonlyMap<QueryKind, readonly WeightSearchSample[]>
-  },
-  Error
-> =>
+  rankingsByQuery: readonly ChannelRankings[],
+  channelDurations: readonly number[],
+): Effect.Effect<BuiltModelSamples, Error> =>
   Effect.gen(function* () {
     const modelMeasurements: QueryMeasurement[] = []
     const modelSamples: WeightSearchSample[] = []
@@ -203,16 +208,9 @@ const collectModelSamples = (
         return yield* Effect.fail(
           new Error(`No grouped fold assignment for ${manifest.id}/${question.id}`),
         )
-      const channelStartedAt = performance.now()
-      const lexicalRankings = rankLexicalChannels(entry.query, searchData)
-      const dense = yield* store.searchDense({
-        vector: queryVectors[queryIndex]!,
-        dims,
-        dtype,
-      })
-      const sparse = yield* store.searchSparse(sparseQueries[queryIndex]!)
-      const rankings = { ...lexicalRankings, dense, sparse }
-      const channelDurationMs = performance.now() - channelStartedAt
+      const rankings = rankingsByQuery[queryIndex]
+      if (rankings === undefined)
+        return yield* Effect.fail(new Error(`No cached rankings for query ${queryIndex}`))
       const sample: WeightSearchSample = {
         repository: manifest.id,
         intentId: question.id,
@@ -222,11 +220,7 @@ const collectModelSamples = (
         rankings,
         targets,
         chunks: corpus.chunks,
-        termCoverage: buildQueryTermCoverage(
-          entry.query,
-          searchData.bm25Index,
-          searchData.identifierIndex,
-        ),
+        termCoverage: buildQueryTermCoverage(entry.query, corpus.bm25Index, corpus.identifierIndex),
       }
       modelSamples.push(sample)
       samplesByQueryKind.set(entry.queryKind, [
@@ -236,7 +230,8 @@ const collectModelSamples = (
       for (const variant of RETRIEVAL_VARIANTS) {
         const variantStartedAt = performance.now()
         const ranked = fuseVariant(variant, entry.query, rankings)
-        const queryDurationMs = channelDurationMs + performance.now() - variantStartedAt
+        const queryDurationMs =
+          (channelDurations[queryIndex] ?? 0) + performance.now() - variantStartedAt
         modelMeasurements.push({
           repository: manifest.id,
           language: manifest.language,
@@ -272,6 +267,53 @@ const collectModelSamples = (
     return { measurements: modelMeasurements, samples: modelSamples, samplesByQueryKind }
   })
 
+const collectModelSamples = (
+  manifest: CorpusManifest,
+  corpus: PreparedCorpus,
+  queries: readonly BenchmarkQuery[],
+  targetsByQuestion: readonly (readonly ReadonlySet<number>[])[],
+  groupedFoldAssignments: ReadonlyMap<string, number>,
+  model: string,
+  queryVectors: readonly Float32Array[],
+  sparseQueries: readonly SparseQuery[],
+  searchData: SearchData,
+  store: typeof IndexStore.Service,
+  dims: number,
+  dtype: EmbeddingDtype,
+): Effect.Effect<BuiltModelSamples & { readonly rankings: readonly ChannelRankings[] }, Error> =>
+  Effect.gen(function* () {
+    const rankings: ChannelRankings[] = []
+    const channelDurations: number[] = []
+    for (let queryIndex = 0; queryIndex < queries.length; queryIndex++) {
+      const entry = queries[queryIndex]
+      if (entry === undefined)
+        return yield* Effect.fail(new Error(`Missing benchmark query ${queryIndex}`))
+      const channelStartedAt = performance.now()
+      const lexicalRankings = rankLexicalChannels(entry.query, searchData)
+      const dense = yield* store.searchDense({
+        vector: queryVectors[queryIndex]!,
+        dims,
+        dtype,
+      })
+      const sparse = yield* store.searchSparse(sparseQueries[queryIndex]!)
+      rankings.push({ ...lexicalRankings, dense, sparse })
+      channelDurations.push(performance.now() - channelStartedAt)
+    }
+    return {
+      ...(yield* buildModelSamples(
+        manifest,
+        corpus,
+        queries,
+        targetsByQuestion,
+        groupedFoldAssignments,
+        model,
+        rankings,
+        channelDurations,
+      )),
+      rankings,
+    }
+  })
+
 const collectModelMeasurements = (
   manifest: CorpusManifest,
   corpus: PreparedCorpus,
@@ -282,37 +324,68 @@ const collectModelMeasurements = (
   info: (typeof MODEL_REGISTRY)[string] & object,
   chunkVectors: readonly Float32Array[],
   queryVectors: readonly Float32Array[],
+  cachePaths: BenchmarkCachePaths,
+  hasPersistedIndex: boolean,
+  cachedRankings?: readonly ChannelRankings[],
 ): Effect.Effect<ModelMeasurements, Error> =>
   Effect.gen(function* () {
     const retrievalStartedAt = performance.now()
+    if (cachedRankings !== undefined) {
+      const built = yield* buildModelSamples(
+        manifest,
+        corpus,
+        queries,
+        targetsByQuestion,
+        groupedFoldAssignments,
+        model,
+        cachedRankings,
+        queries.map(() => 0),
+      )
+      return {
+        ...built,
+        rankings: cachedRankings,
+        sparseEmbeddingRun: {
+          repository: manifest.id,
+          model: DEFAULT_CONFIG.sparseEmbedder.model,
+          tokenizerModel: DEFAULT_CONFIG.sparseEmbedder.queryModel,
+          batchSize: DEFAULT_CONFIG.sparseEmbedder.batchSize,
+          chunkEmbeddingDurationMs: 0,
+          queryTokenizationDurationMs: 0,
+        },
+        retrievalDurationMs: performance.now() - retrievalStartedAt,
+      }
+    }
     const modelRun = yield* withSqliteBenchmarkStore(
       model,
       info.defaultDtype,
       Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
         const store = yield* IndexStore
         const sparseEmbedder = yield* SparseEmbedder
-        const sparseStartedAt = performance.now()
-        const sparseVectors = yield* embedSparseTexts(
-          corpus.chunks.map((chunk) => chunk.text),
-          sparseEmbedder,
-        )
-        const sparseChunkEmbeddingDurationMs = performance.now() - sparseStartedAt
-        const sparseIdf = yield* sparseEmbedder.loadIdf()
+        let sparseChunkEmbeddingDurationMs = 0
+        if (!hasPersistedIndex) {
+          const sparseStartedAt = performance.now()
+          const sparseVectors = yield* embedSparseTexts(
+            corpus.chunks.map((chunk) => chunk.text),
+            sparseEmbedder,
+          )
+          sparseChunkEmbeddingDurationMs = performance.now() - sparseStartedAt
+          yield* persistBenchmarkCorpus(
+            store,
+            corpus,
+            chunkVectors,
+            sparseVectors,
+            info.dims,
+            info.defaultDtype,
+            sparseEmbedder.contract,
+            yield* sparseEmbedder.loadIdf(),
+          )
+        }
         const sparseQueryStartedAt = performance.now()
         const sparseQueries = yield* Effect.forEach(queries, ({ query }) =>
           sparseEmbedder.tokenizeQuery(query),
         )
         const sparseQueryTokenizationDurationMs = performance.now() - sparseQueryStartedAt
-        yield* persistBenchmarkCorpus(
-          store,
-          corpus,
-          chunkVectors,
-          sparseVectors,
-          info.dims,
-          info.defaultDtype,
-          sparseEmbedder.contract,
-          sparseIdf,
-        )
         const searchData = yield* store.loadSearchData()
         const collected = yield* collectModelSamples(
           manifest,
@@ -328,6 +401,7 @@ const collectModelMeasurements = (
           info.dims,
           info.defaultDtype,
         )
+        yield* saveCachedRankings(sql, cachePaths.cacheKey, queries, collected.rankings)
         return {
           sparseEmbeddingRun: {
             repository: manifest.id,
@@ -340,15 +414,47 @@ const collectModelMeasurements = (
           ...collected,
         }
       }),
+      cachePaths.databasePath,
     )
     return {
       sparseEmbeddingRun: modelRun.sparseEmbeddingRun,
       measurements: modelRun.measurements,
       samples: modelRun.samples,
       samplesByQueryKind: modelRun.samplesByQueryKind,
+      rankings: modelRun.rankings,
       retrievalDurationMs: performance.now() - retrievalStartedAt,
     }
   })
+
+interface BenchmarkCacheState {
+  readonly rankings: readonly ChannelRankings[] | undefined
+  readonly hasPersistedIndex: boolean
+}
+
+const inspectBenchmarkCache = (
+  model: string,
+  dtype: EmbeddingDtype,
+  cachePaths: BenchmarkCachePaths,
+  queries: readonly CachedRankingQuery[],
+  chunkCount: number,
+): Effect.Effect<BenchmarkCacheState, Error> =>
+  withSqliteBenchmarkStore(
+    model,
+    dtype,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+      const store = yield* IndexStore
+      const [rankings, status] = yield* Effect.all([
+        loadCachedRankings(sql, cachePaths.cacheKey, queries),
+        store.getStatus(),
+      ])
+      return {
+        rankings,
+        hasPersistedIndex: status.chunks === chunkCount && status.files > 0,
+      }
+    }),
+    cachePaths.databasePath,
+  )
 
 const collectRepositoryMeasurements = (
   manifest: CorpusManifest,
@@ -400,28 +506,47 @@ const collectRepositoryMeasurements = (
       const info = MODEL_REGISTRY[model]
       if (info === undefined)
         return yield* Effect.fail(new Error(`Unknown embedding model ${model}`))
-      const bound = yield* createAutoBoundEmbedder({
+      const cachePaths = benchmarkCachePaths(manifest, model, info.dims, info.defaultDtype)
+      const cacheState = yield* inspectBenchmarkCache(
         model,
-        dtype: info.defaultDtype,
-        dims: info.dims,
-      }).pipe(
-        Effect.mapError(
-          (cause) => new Error(`Could not auto-select a device for ${model}`, { cause }),
-        ),
+        info.defaultDtype,
+        cachePaths,
+        queries.map(({ queryKind, query }) => ({ queryKind, query })),
+        corpus.chunks.length,
       )
-      const embeddingStartedAt = performance.now()
-      const chunkVectors = yield* embedTexts(
-        corpus.chunks.map((chunk) => chunk.text),
-        model,
-        bound.embedder,
-      )
-      const chunkEmbeddingDurationMs = performance.now() - embeddingStartedAt
-      const queryEmbeddingStartedAt = performance.now()
-      const queryVectors = yield* embedTexts(
-        queries.map((entry) => entry.query),
-        model,
-        bound.embedder,
-      )
+      let device = "cache"
+      let chunkEmbeddingDurationMs = 0
+      let queryEmbeddingDurationMs = 0
+      let chunkVectors: readonly Float32Array[] = []
+      let queryVectors: readonly Float32Array[] = []
+      if (cacheState.rankings === undefined) {
+        const bound = yield* createAutoBoundEmbedder({
+          model,
+          dtype: info.defaultDtype,
+          dims: info.dims,
+        }).pipe(
+          Effect.mapError(
+            (cause) => new Error(`Could not auto-select a device for ${model}`, { cause }),
+          ),
+        )
+        device = bound.device
+        if (!cacheState.hasPersistedIndex) {
+          const embeddingStartedAt = performance.now()
+          chunkVectors = yield* embedTexts(
+            corpus.chunks.map((chunk) => chunk.text),
+            model,
+            bound.embedder,
+          )
+          chunkEmbeddingDurationMs = performance.now() - embeddingStartedAt
+        }
+        const queryEmbeddingStartedAt = performance.now()
+        queryVectors = yield* embedTexts(
+          queries.map((entry) => entry.query),
+          model,
+          bound.embedder,
+        )
+        queryEmbeddingDurationMs = performance.now() - queryEmbeddingStartedAt
+      }
       const modelData = yield* collectModelMeasurements(
         manifest,
         corpus,
@@ -432,14 +557,17 @@ const collectRepositoryMeasurements = (
         info,
         chunkVectors,
         queryVectors,
+        cachePaths,
+        cacheState.hasPersistedIndex,
+        cacheState.rankings,
       )
       embeddingRuns.push({
         repository: manifest.id,
         model,
-        device: bound.device,
+        device,
         batchSize: EMBEDDING_BATCH_SIZE,
         chunkEmbeddingDurationMs,
-        queryEmbeddingDurationMs: performance.now() - queryEmbeddingStartedAt,
+        queryEmbeddingDurationMs,
       })
       sparseEmbeddingRuns.push(modelData.sparseEmbeddingRun)
       measurements.push(...modelData.measurements)

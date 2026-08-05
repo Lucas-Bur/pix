@@ -214,6 +214,11 @@ Short-profile fusion runs use Relative Score and DBSF; the full profile also run
 comparisons.
 Schema 14 records the router search strategy and compute-time breakdown in each artifact, including
 corpus preparation, embedding, retrieval, static fusion search, and evidence-router search duration.
+For runtime planning, `timings.evidenceRouterSearchDurationMs` is the relevant embedding-free wall-clock
+measurement. The current `develop` calibration uses one DBSF fusion, grouped 3-fold, no repository
+holdouts, one fit-all job, and three objective selections from each shared dynamic search. Its empirical
+estimate is `T ~= 32.15 + 0.14 * chunks` seconds for 60 query samples; the complete job-count and
+sample-scaling model is documented in ADR-0019.
 Schema 15 adds deterministic one-stage proxy promotion to the evidence-router search. The benchmark evaluates the
 current production router as an explicit holdout baseline, adds Recall@50, and uses one
 shared Pareto search to select objective-specific candidates for direct retrieval, reranker top-20
@@ -229,10 +234,11 @@ in schema-17 artifacts. ADR-0020 promotes the validated Sparse contract to the p
 fusion path and persists its IDF and postings in `.pix/index.db`.
 Schema 19 removes the benchmark-owned Sparse encoder, in-process postings implementation, and separate
 embedding caches. Benchmark profile fitting and optimizer search remain benchmark-owned, while the
-fusion adapters and evidence signals are shared with production. Benchmarks
-compose the production SparseEmbedder and IndexStore around a migrated in-memory SQLite database;
-Dense and Sparse ranking therefore execute through the same adapters as product queries. Experimental
-profile fitting remains benchmark-owned. Every artifact includes the authored file-qualified ground truth and
+fusion adapters and evidence signals are shared with production. Benchmarks compose the production
+SparseEmbedder and IndexStore around a migrated SQLite database; current schema-23 runs persist that
+benchmark database and channel rankings under `benchmarks/.cache/retrieval/v1/` for warm reuse. Dense
+and Sparse ranking therefore execute through the same adapters as product queries. Experimental profile
+fitting remains benchmark-owned. Every artifact includes the authored file-qualified ground truth and
 both the current Production router and a fixed five-channel `1/1/1/1/1` historical RRF baseline. Channel combinations
 and leave-one-channel-out variants use equal weights so channel contribution is not confounded by routing.
 New repositories are represented by JSON manifests in `benchmarks/corpus/`, selected with
@@ -268,8 +274,9 @@ once per worker and defaults to one candidate per task because the benchmark's c
 Serial mode keeps the same algorithm on the main thread for comparison. Native worker startup or task
 failures are surfaced and all workers are terminated before the benchmark fails.
 Repository checkouts live under ignored `benchmarks/.cache/repos/`; generated artifacts live under
-ignored `benchmarks/results/`. Dense and Sparse vectors are held only in the production in-memory
-SQLite adapter during a benchmark run. See `benchmarks/README.md` and `benchmarks/BASELINE.md`.
+ignored `benchmarks/results/`. Benchmark Dense and Sparse vectors and channel rankings live under the
+ignored `benchmarks/.cache/retrieval/v1/` cache; production indexes remain separate. See
+`benchmarks/README.md` and `benchmarks/BASELINE.md`.
 
 ### Scorer
 

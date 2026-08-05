@@ -1,5 +1,6 @@
+import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
-import { layerNoop } from "effect/FileSystem"
+import { SqlClient } from "effect/unstable/sql"
 
 import { DEFAULT_CONFIG, type Config } from "../../../src/domain/config.js"
 import type { EmbeddingDtype } from "../../../src/domain/dtype.js"
@@ -7,6 +8,7 @@ import { ConfigStore, IndexStore, SparseEmbedder } from "../../../src/domain/por
 import { SparseEmbedderBase } from "../../../src/services/sparse-embedder.js"
 import { SqliteIndexStoreBase } from "../../../src/services/sqlite-index-store.js"
 import { sqliteIndexDatabaseLayer } from "../../../src/services/sqlite-index-store/client.js"
+import { ensureBenchmarkCacheTable } from "./benchmark-cache.js"
 
 const benchmarkConfig = (model: string, dtype: EmbeddingDtype): Config => ({
   ...DEFAULT_CONFIG,
@@ -28,21 +30,28 @@ const benchmarkConfigStore = (config: Config): typeof ConfigStore.Service => ({
   configExists: () => Effect.succeed(true),
 })
 
-const sqliteBenchmarkLayer = (model: string, dtype: EmbeddingDtype) =>
+const sqliteBenchmarkLayer = (model: string, dtype: EmbeddingDtype, databasePath: string) =>
   Layer.merge(SqliteIndexStoreBase, SparseEmbedderBase).pipe(
     Layer.provideMerge(
       Layer.merge(
         Layer.succeed(ConfigStore, benchmarkConfigStore(benchmarkConfig(model, dtype))),
-        sqliteIndexDatabaseLayer(":memory:"),
+        sqliteIndexDatabaseLayer(databasePath),
       ),
     ),
-    Layer.provideMerge(layerNoop({})),
+    Layer.provideMerge(NodeServices.layer),
   )
 
-/** Run one benchmark operation against production retrieval adapters and an in-memory index. */
+/** Run one benchmark operation against production retrieval adapters and a benchmark SQLite index. */
 export const withSqliteBenchmarkStore = <A, E>(
   model: string,
   dtype: EmbeddingDtype,
-  effect: Effect.Effect<A, E, IndexStore | SparseEmbedder>,
+  effect: Effect.Effect<A, E, IndexStore | SparseEmbedder | SqlClient.SqlClient>,
+  databasePath = ":memory:",
 ): Effect.Effect<A, E | Error> =>
-  Effect.scoped(effect.pipe(Effect.provide(sqliteBenchmarkLayer(model, dtype))))
+  Effect.scoped(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+      yield* ensureBenchmarkCacheTable(sql)
+      return yield* effect
+    }).pipe(Effect.provide(sqliteBenchmarkLayer(model, dtype, databasePath))),
+  )
