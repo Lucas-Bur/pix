@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.26.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.25.0...pix-v0.26.0) (2026-08-06)
+
+
+### Features
+
+* add NDCG benchmark metrics ([2d261f8](https://github.com/Lucas-Bur/pix/commit/2d261f8a665c38c4c5ad8af21b9b5c68a8fd560f))
+* add sparse-aware embedding benchmark ([753f861](https://github.com/Lucas-Bur/pix/commit/753f8610a98c902579d05c76c3c9f91e77ebf874))
+* harden benchmark candidate promotion ([24f728c](https://github.com/Lucas-Bur/pix/commit/24f728c49daa8ab0094930cbbe86a4c179fda974))
+
+
+### Bug Fixes
+
+* address benchmark worker review feedback ([93406db](https://github.com/Lucas-Bur/pix/commit/93406dbb2bf8d88221aa2884fe1da6b4439ed999))
+* address NDCG review findings ([90a8388](https://github.com/Lucas-Bur/pix/commit/90a83885a37d211b9f6ccb9ae71737f72ad458bb))
+* address PR 178 review findings ([58077f6](https://github.com/Lucas-Bur/pix/commit/58077f64a780d39522b9d1e9b39aa349a5239b8f))
+* address remaining PR 178 review findings ([4c6011b](https://github.com/Lucas-Bur/pix/commit/4c6011b7f197f8402030a6f488db252687969d4d))
+* bundle Effect SQL with shared runtime ([d3ab76d](https://github.com/Lucas-Bur/pix/commit/d3ab76d39fb31044f80097928f4b5ac534a1f9ea))
+* harden NDCG benchmark selection ([e0a4ffc](https://github.com/Lucas-Bur/pix/commit/e0a4ffc4bc6a71d20f5e54d3bae857a48b0d8ac0))
+* honor model limits in retrieval benchmark ([c4efb05](https://github.com/Lucas-Bur/pix/commit/c4efb05e15b228b45141f5d0232fb86e141e76ef))
+* make indexing token-aware ([4d1cf6e](https://github.com/Lucas-Bur/pix/commit/4d1cf6eda256bcbf659a64d4063d6e7e084f2bec))
+* preserve semantic AST chunk boundaries ([33b493a](https://github.com/Lucas-Bur/pix/commit/33b493aca4c49b8f715a0541c84cfc952af76540))
+* require persisted chunk token metadata ([df27dd1](https://github.com/Lucas-Bur/pix/commit/df27dd1a94fcc49801057249b6de91a9fea0724e))
+* stream large AST parser inputs ([d2aa00f](https://github.com/Lucas-Bur/pix/commit/d2aa00f3e8d566d4d4d088ddaf8c7f2e69ea7b07))
+* support large tree-sitter sources ([280492b](https://github.com/Lucas-Bur/pix/commit/280492b896b8ef57539d292ce76b6e6acbce3064))
+
+
+### Performance Improvements
+
+* add shared router candidate queue ([d3409ee](https://github.com/Lucas-Bur/pix/commit/d3409eee68f99cb67bb6fbb14855746eb8d8ee37))
+* parallelize benchmark candidate search ([cf53cdb](https://github.com/Lucas-Bur/pix/commit/cf53cdbd89d7f82cc38f2cc63b299b0fa85a7af0))
+* parallelize complete router jobs ([57a8108](https://github.com/Lucas-Bur/pix/commit/57a8108199632899454a74887a899c60f8c10a5a))
+* persist retrieval benchmark cache ([8ab77d7](https://github.com/Lucas-Bur/pix/commit/8ab77d7998e3ce12023c8a8b1f7f4a550eb9c991))
+* record benchmark pool timings ([ee4b866](https://github.com/Lucas-Bur/pix/commit/ee4b8664d50429b6f34122cc0ef9b9c3ec8a4cf0))
+* restore selectable successive halving search ([9dc5305](https://github.com/Lucas-Bur/pix/commit/9dc53057f57abc3e7f95ca0e2615874d090ef68c))
+
 ## [0.25.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.24.0...pix-v0.25.0) (2026-08-04)
 
 
