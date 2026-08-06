@@ -65,6 +65,24 @@ it.effect("pix bench --batch-sizes parses comma-separated values", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
+it.effect("pix bench --sparse-batch-sizes parses separate sparse values", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
+    yield* run(["bench", "--json", "--sparse-batch-sizes", "1,2,4"])
+    const data = yield* assertJsonData(ref)
+    expect(data.sparseBatchSizes).toEqual([1, 2, 4])
+  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+})
+
+it.effect("pix bench --devices parses an explicit device list", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
+    yield* run(["bench", "--json", "--devices", "dml,cpu,dml"])
+    const data = yield* assertJsonData(ref)
+    expect(data.devices).toEqual(["dml", "cpu"])
+  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+})
+
 it.effect("pix bench --profile throughput sets profile", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {

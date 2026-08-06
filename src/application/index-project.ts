@@ -9,7 +9,6 @@ import type { AllEmbedderErrors, AllProcessorErrors, IndexError } from "../domai
 import type { IdentifierIndexMaps } from "../domain/identifier-index.js"
 import type { Identifier } from "../domain/identifier.js"
 import type { FileManifestEntry, StoredChunk } from "../domain/index-data.js"
-import { resolveChunkTokenLimit } from "../domain/models.js"
 import { Display } from "../domain/ports.js"
 import {
   ConfigStore,
@@ -36,6 +35,7 @@ import { embeddingCacheKey, sparseEmbeddingCacheKey } from "../lib/embedding-cac
 import { buildExtensionRegistry } from "../lib/registry.js"
 import { rebuildBm25Index } from "../lib/retrieval/bm25.js"
 import { buildIdentifierIndex, rebuildIdentifierIndex } from "../lib/retrieval/identifier-index.js"
+import { createTokenAwareChunking } from "../lib/token-count.js"
 import type { StatusResult } from "./get-status.js"
 
 interface IndexResult {
@@ -342,22 +342,11 @@ const make = Effect.gen(function* () {
           sparseContractsEqual(sparseContract, sparseEmbedder.contract),
       })
       const eff = mergeConfig(opts, config)
-      const maxTokens = resolveChunkTokenLimit(eff.chunkTokens, [
-        embedder.limits,
-        sparseEmbedder.limits,
-      ])
-      const tokenCounts = new Map<string, number>()
-      const countTokens = (text: string) => {
-        const cached = tokenCounts.get(text)
-        if (cached !== undefined) return Effect.succeed(cached)
-        return Effect.all([embedder.countTokens(text), sparseEmbedder.countTokens(text)]).pipe(
-          Effect.map(([dense, sparse]) => {
-            const count = Math.max(dense, sparse)
-            tokenCounts.set(text, count)
-            return count
-          }),
-        )
-      }
+      const { maxTokens, countTokens } = createTokenAwareChunking(
+        eff.chunkTokens,
+        embedder,
+        sparseEmbedder,
+      )
       const extensionRegistry = buildExtensionRegistry(eff.skipExtensions)
 
       yield* d.updateInteractive("Scanning source files...")

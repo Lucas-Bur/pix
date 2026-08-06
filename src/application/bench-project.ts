@@ -5,27 +5,51 @@ import type {
   BenchOptions,
   BenchRecommendation,
   BenchResult,
-  BenchStatus,
   Corpus,
 } from "../domain/bench.js"
 import type { Chunk as DomainChunk } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
 import type { Config } from "../domain/config.js"
-import type { AllConfigErrors, AllProcessorErrors, DiskFullError } from "../domain/errors.js"
+import { DEVICE_PRIORITY, type DeviceType } from "../domain/device.js"
+import type {
+  AllConfigErrors,
+  AllEmbedderErrors,
+  AllProcessorErrors,
+  DiskFullError,
+} from "../domain/errors.js"
 import { ConfigError, ModelLoadError } from "../domain/errors.js"
-import { DeviceDetection, Display, Embedder, type EmbedderDeviceConfig } from "../domain/ports.js"
-import { ConfigStore, Scanner, Chunker, ContentExtractor } from "../domain/ports.js"
+import {
+  ConfigStore,
+  Scanner,
+  Chunker,
+  ContentExtractor,
+  DeviceDetection,
+  Display,
+  Embedder,
+  SparseEmbedder,
+  type EmbedderDeviceConfig,
+} from "../domain/ports.js"
 import { computeRecommendations, computeRecommendation } from "../lib/bench/format.js"
 import { getExtension } from "../lib/config/extension.js"
 import { mergeConfig } from "../lib/config/validation.js"
 import { resolveEmbedderConfig } from "../lib/embedder/resolve.js"
 import { buildExtensionRegistry } from "../lib/registry.js"
+import { createTokenAwareChunking } from "../lib/token-count.js"
 
-type CorpusError = AllConfigErrors | AllProcessorErrors | DiskFullError
+type CorpusError = AllConfigErrors | AllEmbedderErrors | AllProcessorErrors | DiskFullError
 
 const COLD_START_BATCH_SIZE = 16
 
 const elapsedMillis = (start: bigint, end: bigint): number => Number(end - start) / 1_000_000
+
+type BenchmarkBatcher = {
+  readonly batch: (texts: readonly string[]) => Effect.Effect<readonly object[], AllEmbedderErrors>
+}
+
+type CreateBenchmarkBatcher = (
+  device: DeviceType,
+  batchSize: number,
+) => Effect.Effect<BenchmarkBatcher, ModelLoadError>
 
 const fisherYatesShuffle = <A>(arr: readonly A[]): Effect.Effect<A[]> =>
   Effect.gen(function* () {
@@ -50,11 +74,12 @@ const cycleChunks = (chunks: readonly DomainChunk[], needed: number): DomainChun
 }
 
 const totalWork = (opts: BenchOptions): number => {
-  const maxBatch = Math.max(...opts.batchSizes)
+  const sparseBatchSizes = opts.sparseBatchSizes ?? opts.batchSizes
+  const maxBatch = Math.max(...opts.batchSizes, ...sparseBatchSizes)
   return opts.warmup * maxBatch + opts.measureBatches * maxBatch
 }
 
-type BenchError = CorpusError | ModelLoadError
+type BenchError = CorpusError
 
 export class BenchProject extends Context.Service<
   BenchProject,
@@ -63,6 +88,7 @@ export class BenchProject extends Context.Service<
     readonly prepareCorpus: (opts: BenchOptions) => Effect.Effect<Corpus, CorpusError>
     readonly applyConfig: (
       recommendation: BenchRecommendation,
+      sparseRecommendation?: BenchRecommendation,
     ) => Effect.Effect<void, ConfigError | DiskFullError | AllConfigErrors>
   }
 >()("BenchProject") {}
@@ -74,6 +100,7 @@ const make = Effect.gen(function* () {
   const d = yield* Display
   const extractor = yield* ContentExtractor
   const embedder = yield* Embedder
+  const sparseEmbedder = yield* SparseEmbedder
   const detection = yield* DeviceDetection
 
   const prepareCorpus = (opts: BenchOptions): Effect.Effect<Corpus, CorpusError> =>
@@ -84,6 +111,11 @@ const make = Effect.gen(function* () {
       }
       const config = yield* configStore.readConfig()
       const eff = mergeConfig({}, config)
+      const { maxTokens, countTokens } = createTokenAwareChunking(
+        eff.chunkTokens,
+        embedder,
+        sparseEmbedder,
+      )
       const extensionRegistry = buildExtensionRegistry(eff.skipExtensions)
       const skippedSet = new Set(eff.skipExtensions)
 
@@ -110,9 +142,16 @@ const make = Effect.gen(function* () {
       const allChunks = yield* Stream.fromIterable(knownFiles).pipe(
         Stream.mapEffect(
           (file) =>
-            extractor
-              .extract(file.path)
-              .pipe(Effect.flatMap((text) => chunker.chunkText(text, file.path))),
+            extractor.extract(file.path).pipe(
+              Effect.flatMap((text) =>
+                chunker.chunkText(text, file.path, {
+                  maxTokens,
+                  overlapLines: config.overlapLines,
+                  countTokens,
+                  onDiagnostic: () => Effect.void,
+                }),
+              ),
+            ),
           { concurrency: eff.concurrency },
         ),
         Stream.flatMap((chunks) => Stream.fromIterable(chunks)),
@@ -147,22 +186,24 @@ const make = Effect.gen(function* () {
     })
 
   const measureColdStart = (
-    devCfg: EmbedderDeviceConfig,
+    createBatcher: CreateBenchmarkBatcher,
+    device: DeviceType,
     corpus: Corpus,
+    batchSize: number,
   ): Effect.Effect<{ latencyMs: number; error: string | undefined }, never> =>
     Effect.gen(function* () {
       const start = yield* Clock.currentTimeNanos
-      const embedderResult = yield* embedder.createForDevice(devCfg).pipe(Effect.result)
-      if (Result.isFailure(embedderResult)) {
+      const batcherResult = yield* createBatcher(device, batchSize).pipe(Effect.result)
+      if (Result.isFailure(batcherResult)) {
         const end = yield* Clock.currentTimeNanos
-        return { latencyMs: elapsedMillis(start, end), error: embedderResult.failure.message }
+        return { latencyMs: elapsedMillis(start, end), error: batcherResult.failure.message }
       }
-      const embedderInstance = embedderResult.success
-      const batchTexts = corpus.chunks.slice(0, COLD_START_BATCH_SIZE).map((c) => c.text)
+      const coldBatchSize = Math.min(COLD_START_BATCH_SIZE, batchSize)
+      const batchTexts = corpus.chunks.slice(0, coldBatchSize).map((c) => c.text)
       if (batchTexts.length === 0) {
         yield* Effect.sleep("10 millis")
       } else {
-        const batchResult = yield* embedderInstance.batch(batchTexts).pipe(Effect.result)
+        const batchResult = yield* batcherResult.success.batch(batchTexts).pipe(Effect.result)
         if (Result.isFailure(batchResult)) {
           const end = yield* Clock.currentTimeNanos
           return { latencyMs: elapsedMillis(start, end), error: batchResult.failure.message }
@@ -173,7 +214,8 @@ const make = Effect.gen(function* () {
     }).pipe(Effect.orElseSucceed(() => ({ latencyMs: 0, error: "unexpected error" })))
 
   const measureWarmPath = (
-    devCfg: EmbedderDeviceConfig,
+    createBatcher: CreateBenchmarkBatcher,
+    device: DeviceType,
     corpus: Corpus,
     batchSize: number,
     warmupBatches: number,
@@ -184,11 +226,11 @@ const make = Effect.gen(function* () {
     never
   > =>
     Effect.gen(function* () {
-      const embedderResult = yield* embedder.createForDevice(devCfg).pipe(Effect.result)
-      if (Result.isFailure(embedderResult)) {
-        return { chunksPerSec: 0, latencyPerBatchMs: 0, error: embedderResult.failure.message }
+      const batcherResult = yield* createBatcher(device, batchSize).pipe(Effect.result)
+      if (Result.isFailure(batcherResult)) {
+        return { chunksPerSec: 0, latencyPerBatchMs: 0, error: batcherResult.failure.message }
       }
-      const embedderInstance = embedderResult.success
+      const batcher = batcherResult.success
 
       const totalChunks = batchSize * measureBatches
       const availableChunks = corpus.chunks.length
@@ -199,7 +241,7 @@ const make = Effect.gen(function* () {
       for (let i = 0; i < warmupBatches; i++) {
         const offset = i * batchSize
         const texts = corpus.chunks.slice(offset, offset + batchSize).map((c) => c.text)
-        const result = yield* embedderInstance.batch(texts).pipe(Effect.result)
+        const result = yield* batcher.batch(texts).pipe(Effect.result)
         if (Result.isFailure(result)) {
           return { chunksPerSec: 0, latencyPerBatchMs: 0, error: result.failure.message }
         }
@@ -212,7 +254,7 @@ const make = Effect.gen(function* () {
         const offset = (warmupBatches + i) * batchSize
         const texts = corpus.chunks.slice(offset, offset + batchSize).map((c) => c.text)
         const batchStart = yield* Clock.currentTimeNanos
-        const result = yield* embedderInstance.batch(texts).pipe(Effect.result)
+        const result = yield* batcher.batch(texts).pipe(Effect.result)
         if (Result.isFailure(result)) {
           return { chunksPerSec: 0, latencyPerBatchMs: 0, error: result.failure.message }
         }
@@ -243,56 +285,68 @@ const make = Effect.gen(function* () {
           warmup: opts.warmup,
           measureBatches: opts.measureBatches,
           measurements: [],
+          sparseMeasurements: [],
           recommendation: { device: "cpu", batchSize: 8, profile: opts.profile },
+          sparseRecommendation: { device: "cpu", batchSize: 2, profile: opts.profile },
         }
       }
 
       const ecfg = yield* resolveEmbedderConfig(configStore)
-      const availableDevices = yield* detection.detectAll(ecfg.model, ecfg.dtype)
+      const requestedDevices = opts.devices ?? DEVICE_PRIORITY
+      const availableDevices =
+        opts.devices === undefined
+          ? yield* detection.detectAll(ecfg.model, ecfg.dtype)
+          : requestedDevices
+      const sparseBatchSizes = opts.sparseBatchSizes ?? opts.batchSizes
+      yield* d.log(
+        `${opts.devices === undefined ? "Available" : "Selected"} Dense devices: ${
+          availableDevices.length > 0 ? availableDevices.join(", ") : "none"
+        }`,
+        "info",
+      )
+      yield* d.log(`Sparse devices to probe: ${requestedDevices.join(", ")}`, "info")
 
-      if (availableDevices.length === 0) {
-        return {
-          profile: opts.profile,
-          warmup: opts.warmup,
-          measureBatches: opts.measureBatches,
-          measurements: [],
-          recommendation: { device: "cpu", batchSize: 8, profile: opts.profile },
-        }
-      }
-
-      yield* d.log(`Available devices: ${availableDevices.join(", ")}`, "info")
-
-      const totalSteps = availableDevices.length * (1 + opts.batchSizes.length)
+      const totalSteps =
+        availableDevices.length * (1 + opts.batchSizes.length) +
+        requestedDevices.length * (1 + sparseBatchSizes.length)
       let currentStep = 0
 
-      const measurements: BenchMeasurement[] = []
+      const createDenseBatcher: CreateBenchmarkBatcher = (device, batchSize) => {
+        const devCfg: EmbedderDeviceConfig = {
+          device,
+          model: ecfg.model,
+          dtype: ecfg.dtype,
+          dims: ecfg.dims,
+          batchSize,
+        }
+        return embedder
+          .createForDevice(devCfg)
+          .pipe(Effect.map((bound) => ({ batch: bound.batch }) satisfies BenchmarkBatcher))
+      }
+      const createSparseBatcher: CreateBenchmarkBatcher = (device, batchSize) =>
+        sparseEmbedder
+          .createForDevice({ device, batchSize })
+          .pipe(Effect.map((bound) => ({ batch: bound.batch }) satisfies BenchmarkBatcher))
 
-      yield* d.progress(
-        {
-          message: "Benchmarking devices...",
-          max: totalSteps,
-          style: "heavy",
-          size: 40,
-          indicator: "dots",
-          stopMessage: "Benchmark complete",
-        },
+      const benchmarkChannel = (
+        label: string,
+        devices: readonly DeviceType[],
+        batchSizes: readonly number[],
+        createBatcher: CreateBenchmarkBatcher,
+      ): Effect.Effect<BenchMeasurement[], never> =>
         Effect.gen(function* () {
-          for (const device of availableDevices) {
-            const devCfg: EmbedderDeviceConfig = {
-              device,
-              model: ecfg.model,
-              dtype: ecfg.dtype,
-              dims: ecfg.dims,
-            }
+          const measurements: BenchMeasurement[] = []
+          const coldBatchSize = Math.min(COLD_START_BATCH_SIZE, Math.max(1, ...batchSizes))
 
+          for (const device of devices) {
             currentStep++
             yield* d.updateInteractive({
-              message: `Cold-start: ${device} (${currentStep}/${totalSteps})`,
+              message: `${label} cold-start: ${device} (${currentStep}/${totalSteps})`,
               advanceBy: 1,
             })
 
             const deviceStart = yield* Clock.currentTimeNanos
-            const coldResult = yield* measureColdStart(devCfg, corpus)
+            const coldResult = yield* measureColdStart(createBatcher, device, corpus, coldBatchSize)
 
             if (coldResult.error) {
               measurements.push({
@@ -303,29 +357,28 @@ const make = Effect.gen(function* () {
                 warmLatencyPerBatchMs: 0,
                 totalDurationMs: elapsedMillis(deviceStart, yield* Clock.currentTimeNanos),
                 status: "failed",
-                error: coldResult.error ?? null,
+                error: coldResult.error,
               })
               continue
             }
 
-            for (const batchSize of opts.batchSizes) {
+            for (const batchSize of batchSizes) {
               currentStep++
               yield* d.updateInteractive({
-                message: `Warm-path: ${device} batchSize=${batchSize} (${currentStep}/${totalSteps})`,
+                message: `${label} warm-path: ${device} batchSize=${batchSize} (${currentStep}/${totalSteps})`,
                 advanceBy: 1,
               })
 
               const batchStart = yield* Clock.currentTimeNanos
               const warmResult = yield* measureWarmPath(
-                devCfg,
+                createBatcher,
+                device,
                 corpus,
                 batchSize,
                 opts.warmup,
                 opts.measureBatches,
                 opts.timeout * 1000,
               )
-
-              const status: BenchStatus = warmResult.error ? "failed" : "ok"
 
               measurements.push({
                 device,
@@ -334,12 +387,17 @@ const make = Effect.gen(function* () {
                 warmChunksPerSec: warmResult.chunksPerSec,
                 warmLatencyPerBatchMs: warmResult.latencyPerBatchMs,
                 totalDurationMs: elapsedMillis(batchStart, yield* Clock.currentTimeNanos),
-                status,
+                status: warmResult.error ? "failed" : "ok",
                 error: warmResult.error ?? null,
               })
             }
           }
 
+          return measurements
+        })
+
+      const renderChannel = (label: string, measurements: readonly BenchMeasurement[]) =>
+        Effect.gen(function* () {
           const header = ["device", "batchSize", "cold (ms)", "warm (ch/s)", "time (ms)", "status"]
           const rows = measurements.map((m) => [
             m.device,
@@ -353,12 +411,39 @@ const make = Effect.gen(function* () {
 
           const recs = computeRecommendations(measurements, opts.profile)
           if (recs.length === 0) {
-            yield* d.log("No successful measurements to recommend from", "warn")
+            yield* d.log(`No successful measurements to recommend from (${label})`, "warn")
           } else {
             for (const rec of recs) {
-              yield* d.log(rec.label, rec.isRecommended ? "success" : "info")
+              yield* d.log(`${label}: ${rec.label}`, rec.isRecommended ? "success" : "info")
             }
           }
+        })
+
+      const { denseMeasurements, sparseMeasurements } = yield* d.progress(
+        {
+          message: "Benchmarking devices...",
+          max: totalSteps,
+          style: "heavy",
+          size: 40,
+          indicator: "dots",
+          stopMessage: "Benchmark complete",
+        },
+        Effect.gen(function* () {
+          const denseMeasurements = yield* benchmarkChannel(
+            "Dense",
+            availableDevices,
+            opts.batchSizes,
+            createDenseBatcher,
+          )
+          const sparseMeasurements = yield* benchmarkChannel(
+            "Sparse",
+            requestedDevices,
+            sparseBatchSizes,
+            createSparseBatcher,
+          )
+          yield* renderChannel("Dense", denseMeasurements)
+          yield* renderChannel("Sparse", sparseMeasurements)
+          return { denseMeasurements, sparseMeasurements }
         }),
       )
 
@@ -366,10 +451,16 @@ const make = Effect.gen(function* () {
         profile: opts.profile,
         warmup: opts.warmup,
         measureBatches: opts.measureBatches,
-        measurements,
-        recommendation: computeRecommendation(measurements, opts.profile) ?? {
+        measurements: denseMeasurements,
+        sparseMeasurements,
+        recommendation: computeRecommendation(denseMeasurements, opts.profile) ?? {
           device: "cpu",
           batchSize: 8,
+          profile: opts.profile,
+        },
+        sparseRecommendation: computeRecommendation(sparseMeasurements, opts.profile) ?? {
+          device: "cpu",
+          batchSize: 2,
           profile: opts.profile,
         },
       }
@@ -377,6 +468,7 @@ const make = Effect.gen(function* () {
 
   const applyConfig = (
     recommendation: BenchRecommendation,
+    sparseRecommendation?: BenchRecommendation,
   ): Effect.Effect<void, ConfigError | DiskFullError | AllConfigErrors> =>
     Effect.gen(function* () {
       const { device, batchSize } = recommendation
@@ -391,11 +483,22 @@ const make = Effect.gen(function* () {
           device,
           batchSize,
         },
+        sparseEmbedder: sparseRecommendation
+          ? {
+              ...currentConfig.sparseEmbedder,
+              device: sparseRecommendation.device,
+              batchSize: sparseRecommendation.batchSize,
+            }
+          : currentConfig.sparseEmbedder,
       }
 
       yield* configStore.writeConfig(updated)
       yield* d.log(
-        `Applied: device=${device}, batchSize=${batchSize} to .pix/config.json`,
+        `Applied: device=${device}, batchSize=${batchSize}${
+          sparseRecommendation
+            ? `, sparseDevice=${sparseRecommendation.device}, sparseBatchSize=${sparseRecommendation.batchSize}`
+            : ""
+        } to .pix/config.json`,
         "success",
       )
     })

@@ -163,6 +163,17 @@ it.effect("QueryProject includes Sparse with the promoted router", () =>
           },
           countTokens: () => Effect.succeed(1),
           batch: (texts) => Effect.succeed(texts.map(() => ({ terms: [] }))),
+          createForDevice: () =>
+            Effect.succeed({
+              limits: {
+                model: TEST_SPARSE_CONTRACT.model,
+                hardTokenLimit: 512,
+                maxInputTokens: 512,
+              },
+              countTokens: () => Effect.succeed(1),
+              batch: (texts: readonly string[]) =>
+                Effect.succeed(texts.map(() => ({ terms: [] as const }))),
+            }),
           loadIdf: () => Effect.succeed([{ tokenId: 7, weight: 2 }]),
           tokenizeQuery: () => Effect.succeed({ tokenIds: [7], contract: TEST_SPARSE_CONTRACT }),
         }),

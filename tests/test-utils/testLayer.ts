@@ -121,6 +121,17 @@ const defaultSparseEmbedderLayer = Layer.succeed(SparseEmbedder, {
   },
   countTokens: () => Effect.succeed(0),
   batch: (texts: readonly string[]) => Effect.succeed(texts.map(() => ({ terms: [] as const }))),
+  createForDevice: () =>
+    Effect.succeed({
+      limits: {
+        model: TEST_SPARSE_CONTRACT.model,
+        hardTokenLimit: 512,
+        maxInputTokens: 512,
+      },
+      countTokens: () => Effect.succeed(0),
+      batch: (texts: readonly string[]) =>
+        Effect.succeed(texts.map(() => ({ terms: [] as const }))),
+    }),
   loadIdf: () => Effect.succeed([]),
   tokenizeQuery: () => Effect.succeed({ tokenIds: [], contract: TEST_SPARSE_CONTRACT }),
 })
