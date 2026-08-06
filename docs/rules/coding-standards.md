@@ -21,6 +21,9 @@
   generated `dist` files belong in `dependencies`.
 - Native or platform-selected packages must remain external and be verified through an npm tarball
   installed in a clean project.
+- A singleton runtime and adapters that exchange its values must share one bundle boundary: bundle
+  them together or externalize them together. Never leave an adapter external when its peer runtime
+  is bundled.
 - Native dependencies with install scripts, including transitive ones, must be listed in
   `pnpm.onlyBuiltDependencies` and verified with a forced clean install.
 - Fallow analyses source imports, not Vite+ bundle boundaries, so bundled dev dependencies can appear

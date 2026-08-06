@@ -58,7 +58,6 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "@effect/sql-sqlite-node": "4.0.0-beta.98",
     "@huggingface/transformers": "^4.2.0",
     "@sqliteai/sqlite-vector": "1.0.0",
     "tree-sitter": "^0.21.1",
@@ -70,6 +69,7 @@
     "@clack/prompts": "^1.7.0",
     "@effect/language-service": "^0.87.0",
     "@effect/platform-node": "4.0.0-beta.98",
+    "@effect/sql-sqlite-node": "4.0.0-beta.98",
     "@effect/vitest": "4.0.0-beta.98",
     "@lucas-bur/effect-memfs": "1.2.1",
     "@types/node": "^26.1.1",

@@ -11,9 +11,6 @@ importers:
 
   .:
     dependencies:
-      '@effect/sql-sqlite-node':
-        specifier: 4.0.0-beta.98
-        version: 4.0.0-beta.98(effect@4.0.0-beta.98)
       '@huggingface/transformers':
         specifier: ^4.2.0
         version: 4.2.0
@@ -42,6 +39,9 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.0-beta.98
         version: 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1)
+      '@effect/sql-sqlite-node':
+        specifier: 4.0.0-beta.98
+        version: 4.0.0-beta.98(effect@4.0.0-beta.98)
       '@effect/vitest':
         specifier: 4.0.0-beta.98
         version: 4.0.0-beta.98(effect@4.0.0-beta.98)(vitest@4.1.10)
