@@ -103,7 +103,7 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.evaluationCases.every(({ groundTruth }) => groundTruth.length > 0)).toBe(true)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(25)
+    expect(artifact.schemaVersion).toBe(26)
     expect(artifact.searchStrategy).toEqual(
       ROUTER_SEARCH_STRATEGIES[resolveRouterSearchStrategy(process.env.PIX_BENCH_ROUTER_STRATEGY)],
     )
@@ -145,6 +145,11 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.measurements.every((row) => row.recallAt20 >= row.recallAt10)).toBe(true)
     expect(artifact.measurements.every((row) => row.recallAt10 >= row.recallAt5)).toBe(true)
     expect(artifact.measurements.every((row) => row.recallAt50 >= row.recallAt20)).toBe(true)
+    expect(
+      artifact.measurements.every(
+        (row) => row.ndcgAt5 >= 0 && row.ndcgAt10 >= 0 && row.ndcgAt20 >= 0 && row.ndcgAt50 >= 0,
+      ),
+    ).toBe(true)
     expect(outputPath).toMatch(/benchmarks[\\/]results[\\/]retrieval-.*\.json$/)
   })
 

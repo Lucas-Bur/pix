@@ -28,7 +28,12 @@ import {
   type CandidateEvaluationQueue,
   type EvaluationCandidate,
 } from "../execution/candidate-evaluation-pool.js"
-import { contextRecallAtBudget, recallAt, reciprocalRank } from "./metrics.js"
+import {
+  contextRecallAtBudget,
+  normalizedDiscountedCumulativeGain,
+  recallAt,
+  reciprocalRank,
+} from "./metrics.js"
 import { SEARCH_PRIORITY_PROFILE, type OptimizationProfile } from "./optimization-profiles.js"
 import { prepareFusion, type PreparedFusionEvaluator } from "./prepared-fusion.js"
 import { buildGuardrailBlockers } from "./promotion-evidence.js"
@@ -177,6 +182,10 @@ const summarizeRanked = <T>(
       recallAt10: 0,
       recallAt20: 0,
       recallAt50: 0,
+      ndcgAt5: 0,
+      ndcgAt10: 0,
+      ndcgAt20: 0,
+      ndcgAt50: 0,
       contextRecallAt4096: 0,
       meanReciprocalRank: 0,
     }
@@ -185,6 +194,10 @@ const summarizeRanked = <T>(
   let recall10 = 0
   let recall20 = 0
   let recall50 = 0
+  let ndcg5 = 0
+  let ndcg10 = 0
+  let ndcg20 = 0
+  let ndcg50 = 0
   let contextRecall = 0
   let mrr = 0
   let totalWeight = 0
@@ -197,6 +210,10 @@ const summarizeRanked = <T>(
     recall10 += weight * recallAt(ranked, sampleTargets, 10)
     recall20 += weight * recallAt(ranked, sampleTargets, 20)
     recall50 += weight * recallAt(ranked, sampleTargets, 50)
+    ndcg5 += weight * normalizedDiscountedCumulativeGain(ranked, sampleTargets, 5)
+    ndcg10 += weight * normalizedDiscountedCumulativeGain(ranked, sampleTargets, 10)
+    ndcg20 += weight * normalizedDiscountedCumulativeGain(ranked, sampleTargets, 20)
+    ndcg50 += weight * normalizedDiscountedCumulativeGain(ranked, sampleTargets, 50)
     contextRecall += weight * contextRecallAtBudget(ranked, sampleTargets, chunks(sample), 4_096)
     mrr += weight * reciprocalRank(ranked, sampleTargets)
     totalWeight += weight
@@ -207,6 +224,10 @@ const summarizeRanked = <T>(
       recallAt10: 0,
       recallAt20: 0,
       recallAt50: 0,
+      ndcgAt5: 0,
+      ndcgAt10: 0,
+      ndcgAt20: 0,
+      ndcgAt50: 0,
       contextRecallAt4096: 0,
       meanReciprocalRank: 0,
     }
@@ -216,6 +237,10 @@ const summarizeRanked = <T>(
     recallAt10: recall10 / totalWeight,
     recallAt20: recall20 / totalWeight,
     recallAt50: recall50 / totalWeight,
+    ndcgAt5: ndcg5 / totalWeight,
+    ndcgAt10: ndcg10 / totalWeight,
+    ndcgAt20: ndcg20 / totalWeight,
+    ndcgAt50: ndcg50 / totalWeight,
     contextRecallAt4096: contextRecall / totalWeight,
     meanReciprocalRank: mrr / totalWeight,
   }
@@ -366,12 +391,26 @@ const buildProxySamples = (
 
 const OBJECTIVE_PRIORITIES: Readonly<Record<RouterObjective, readonly QualityMetric[]>> = {
   direct: [
+    "ndcgAt5",
+    "ndcgAt10",
+    "ndcgAt20",
     "recallAt5",
     "recallAt10",
     "contextRecallAt4096",
     "recallAt20",
     "recallAt50",
     "meanReciprocalRank",
+  ],
+  "direct-recall-first": [
+    "recallAt5",
+    "recallAt10",
+    "contextRecallAt4096",
+    "recallAt20",
+    "recallAt50",
+    "meanReciprocalRank",
+    "ndcgAt5",
+    "ndcgAt10",
+    "ndcgAt20",
   ],
   "reranker-top20": [
     "recallAt20",
@@ -380,6 +419,7 @@ const OBJECTIVE_PRIORITIES: Readonly<Record<RouterObjective, readonly QualityMet
     "contextRecallAt4096",
     "recallAt50",
     "meanReciprocalRank",
+    "ndcgAt20",
   ],
   "reranker-top50": [
     "recallAt50",
@@ -388,6 +428,7 @@ const OBJECTIVE_PRIORITIES: Readonly<Record<RouterObjective, readonly QualityMet
     "recallAt5",
     "contextRecallAt4096",
     "meanReciprocalRank",
+    "ndcgAt50",
   ],
 }
 
@@ -488,7 +529,8 @@ const buildHoldoutBreakdown = (
   })
 }
 
-const compareObjectiveQuality = (
+/** Compare two quality summaries using one benchmark objective's deterministic priority. */
+export const compareObjectiveQuality = (
   left: QualitySummary,
   right: QualitySummary,
   objective: RouterObjective,

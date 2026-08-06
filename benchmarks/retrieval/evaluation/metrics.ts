@@ -1,5 +1,6 @@
 import type { Chunk } from "../../../src/domain/chunk.js"
 import type { RankedChunk } from "../../../src/domain/ports.js"
+import { binaryNdcgAt } from "./metrics-core.mjs"
 import type { GoldLocation } from "./types.js"
 
 /** Indexed identifiers retained per chunk so gold symbols can be matched exactly. */
@@ -61,6 +62,19 @@ export const reciprocalRank = (
   const relevant = new Set(targets.flatMap((target) => [...target]))
   const rank = ranked.findIndex((entry) => relevant.has(entry.chunkIndex))
   return rank < 0 ? 0 : 1 / (rank + 1)
+}
+
+/** Binary NDCG at K over unique chunks that resolve at least one exact gold target. */
+export const normalizedDiscountedCumulativeGain = (
+  ranked: readonly RankedChunk[],
+  targets: readonly ReadonlySet<number>[],
+  k: number,
+): number => {
+  return binaryNdcgAt(
+    ranked.map((entry) => entry.chunkIndex),
+    targets.map((target) => [...target]),
+    k,
+  )
 }
 
 /** One-based best rank for every authored target, or null when the channel did not retrieve it. */

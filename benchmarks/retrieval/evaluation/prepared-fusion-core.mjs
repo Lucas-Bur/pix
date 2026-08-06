@@ -1,3 +1,5 @@
+import { binaryNdcgAt } from "./metrics-core.mjs"
+
 export const evaluatePreparedContributions = (matrix, weights) => {
   const activeMask =
     Number(weights.identity > 0) |
@@ -64,6 +66,10 @@ export const evaluateCandidate = (snapshot, candidate) => {
   let recall10 = 0
   let recall20 = 0
   let recall50 = 0
+  let ndcg5 = 0
+  let ndcg10 = 0
+  let ndcg20 = 0
+  let ndcg50 = 0
   let contextRecall = 0
   let meanReciprocalRank = 0
   let totalWeight = 0
@@ -81,6 +87,10 @@ export const evaluateCandidate = (snapshot, candidate) => {
     recall10 += weight * recallAt(ranked, sample.targets, 10)
     recall20 += weight * recallAt(ranked, sample.targets, 20)
     recall50 += weight * recallAt(ranked, sample.targets, 50)
+    ndcg5 += weight * binaryNdcgAt(ranked, sample.targets, 5)
+    ndcg10 += weight * binaryNdcgAt(ranked, sample.targets, 10)
+    ndcg20 += weight * binaryNdcgAt(ranked, sample.targets, 20)
+    ndcg50 += weight * binaryNdcgAt(ranked, sample.targets, 50)
     contextRecall += weight * contextRecallAtBudget(ranked, sample, 4096)
     meanReciprocalRank += weight * reciprocalRank(ranked, sample.targets)
     totalWeight += weight
@@ -92,6 +102,10 @@ export const evaluateCandidate = (snapshot, candidate) => {
       recallAt10: 0,
       recallAt20: 0,
       recallAt50: 0,
+      ndcgAt5: 0,
+      ndcgAt10: 0,
+      ndcgAt20: 0,
+      ndcgAt50: 0,
       contextRecallAt4096: 0,
       meanReciprocalRank: 0,
     }
@@ -101,6 +115,10 @@ export const evaluateCandidate = (snapshot, candidate) => {
     recallAt10: recall10 / totalWeight,
     recallAt20: recall20 / totalWeight,
     recallAt50: recall50 / totalWeight,
+    ndcgAt5: ndcg5 / totalWeight,
+    ndcgAt10: ndcg10 / totalWeight,
+    ndcgAt20: ndcg20 / totalWeight,
+    ndcgAt50: ndcg50 / totalWeight,
     contextRecallAt4096: contextRecall / totalWeight,
     meanReciprocalRank: meanReciprocalRank / totalWeight,
   }

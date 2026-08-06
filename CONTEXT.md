@@ -297,6 +297,12 @@ must all be present and pass aggregate, query-form, and repository guardrails. F
 diagnostic and inherit that decision. The last grouped fold is the explicit untouched final test and
 must pass independently. Artifacts retain exact blocker values, deterministic grouped bootstrap
 intervals, and fold-level selection/local-perturbation stability diagnostics.
+Schema 26 adds binary NDCG@5/10/20/50 without changing the corpus or Production retrieval. Unique chunks
+matching at least one resolved exact file-plus-symbol target receive gain one; duplicates and chunks
+matching multiple targets cannot add repeated gain, and zero ideal gain returns NDCG zero. The direct
+objective selects NDCG@5 first and is compared with a `direct-recall-first` ablation under identical
+folds, seeds, and guardrails. Recall@20, Recall@50, and ContextRecall@4096 remain hard direct-retrieval
+coverage guardrails; reranker objectives remain recall-first.
 
 ### Scorer
 

@@ -9,6 +9,10 @@ import type { PromotionHoldoutRow } from "../retrieval/evaluation/promotion-evid
 import type { HoldoutQuality, QualitySummary } from "../retrieval/evaluation/types.js"
 
 const quality = (recallAt20: number): QualitySummary => ({
+  ndcgAt5: recallAt20,
+  ndcgAt10: recallAt20,
+  ndcgAt20: recallAt20,
+  ndcgAt50: recallAt20,
   recallAt5: recallAt20,
   recallAt10: recallAt20,
   recallAt20,

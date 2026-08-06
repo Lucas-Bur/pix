@@ -59,7 +59,12 @@ export type QueryKind = keyof typeof QueryFormsSchema.Type
 type FusionMethod = ProductionFusionMethod
 
 /** Product retrieval scenario used to choose a router candidate. */
-export const ROUTER_OBJECTIVES = ["direct", "reranker-top20", "reranker-top50"] as const
+export const ROUTER_OBJECTIVES = [
+  "direct",
+  "direct-recall-first",
+  "reranker-top20",
+  "reranker-top50",
+] as const
 export type RouterObjective = (typeof ROUTER_OBJECTIVES)[number]
 
 /** Versioned evidence-router search strategies recorded in benchmark artifacts. */
@@ -145,6 +150,10 @@ export interface QueryMeasurement {
   readonly recallAt10: number
   readonly recallAt20: number
   readonly recallAt50: number
+  readonly ndcgAt5: number
+  readonly ndcgAt10: number
+  readonly ndcgAt20: number
+  readonly ndcgAt50: number
   readonly successAt10: boolean
   readonly successAt20: boolean
   readonly reciprocalRank: number
@@ -168,6 +177,10 @@ export interface QualitySummary {
   readonly recallAt10: number
   readonly recallAt20: number
   readonly recallAt50: number
+  readonly ndcgAt5: number
+  readonly ndcgAt10: number
+  readonly ndcgAt20: number
+  readonly ndcgAt50: number
   readonly contextRecallAt4096: number
   readonly meanReciprocalRank: number
 }
@@ -424,7 +437,7 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 25
+  readonly schemaVersion: 26
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   /** Versioned objective profile used for candidate selection and aggregate metrics. */
