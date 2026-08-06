@@ -29,6 +29,7 @@ import {
   optimizeEvidenceRouter,
   optimizeWeights,
   selectEligibleCandidate,
+  selectObjectiveArchiveCandidates,
 } from "../retrieval/evaluation/weight-search.js"
 
 const texts = [
@@ -580,10 +581,26 @@ describe("retrieval benchmark fixture", () => {
     const ndcgFirst = quality(0.9, 0.7)
     const recallFirst = quality(0.8, 0.8)
 
-    expect(compareObjectiveQuality(ndcgFirst, recallFirst, "direct")).toBeLessThan(0)
+    expect(compareObjectiveQuality(ndcgFirst, recallFirst, "direct", recallFirst)).toBeLessThan(0)
     expect(compareObjectiveQuality(ndcgFirst, recallFirst, "direct-recall-first")).toBeGreaterThan(
       0,
     )
+    expect(
+      compareObjectiveQuality(ndcgFirst, recallFirst, "reranker-top20", recallFirst),
+    ).toBeGreaterThan(0)
+    const selections = selectObjectiveArchiveCandidates(
+      [
+        { id: "ndcg", quality: ndcgFirst },
+        { id: "recall", quality: recallFirst },
+      ],
+      ({ quality }) => quality,
+      () => true,
+      recallFirst,
+    )
+    expect(selections.find(({ objective }) => objective === "direct")?.candidate?.id).toBe("ndcg")
+    expect(
+      selections.find(({ objective }) => objective === "direct-recall-first")?.candidate?.id,
+    ).toBe("recall")
   })
 
   it("selects one evidence router across queries with different reliable channels", async () => {

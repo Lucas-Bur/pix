@@ -322,6 +322,7 @@ const evidenceRouterGuardrailsMet = (
   fusion: FusionMethod,
   baselines: GuardrailBaselines,
   profile: OptimizationProfile,
+  objective: RouterObjective,
 ): boolean => {
   const holdoutProfile = unweightedProfile(profile)
   const evaluate = (partition: GuardrailBaselinePartition): boolean => {
@@ -331,13 +332,14 @@ const evidenceRouterGuardrailsMet = (
       fusion,
       holdoutProfile,
     )
-    return isWithinGuardrails(candidate, partition.baseline, holdoutProfile)
+    return isWithinGuardrails(candidate, partition.baseline, holdoutProfile, objective)
   }
   return (
     isWithinGuardrails(
       summarizeEvidenceRouter(prepareEvidenceSamples(samples), config, fusion, profile),
       baselines.overall,
       profile,
+      objective,
     ) && baselines.partitions.every(evaluate)
   )
 }
@@ -432,13 +434,31 @@ const OBJECTIVE_PRIORITIES: Readonly<Record<RouterObjective, readonly QualityMet
   ],
 }
 
+const OBJECTIVE_GUARDRAILS: Readonly<Record<RouterObjective, readonly QualityMetric[]>> = {
+  direct: ["recallAt20", "recallAt50", "contextRecallAt4096"],
+  "direct-recall-first": ["recallAt20", "recallAt50", "contextRecallAt4096"],
+  "reranker-top20": ["recallAt5", "recallAt10", "recallAt20", "recallAt50", "contextRecallAt4096"],
+  "reranker-top50": ["recallAt5", "recallAt10", "recallAt20", "recallAt50", "contextRecallAt4096"],
+}
+
+// The recall-first direct objective is an ablation over the same searched archive, not another
+// source of beam candidates. This preserves the pre-ablation budget of two candidates per scenario.
+const SEARCH_OBJECTIVES = ROUTER_OBJECTIVES.filter(
+  (objective): objective is Exclude<RouterObjective, "direct-recall-first"> =>
+    objective !== "direct-recall-first",
+)
+
 const isWithinGuardrails = (
   quality: QualitySummary,
   baseline: QualitySummary | undefined,
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+  objective?: RouterObjective,
 ): boolean =>
   baseline === undefined ||
-  profile.metricObjective.guardrailMetrics.every(
+  (objective === undefined
+    ? profile.metricObjective.guardrailMetrics
+    : OBJECTIVE_GUARDRAILS[objective]
+  ).every(
     (metric) => quality[metric] >= baseline[metric] - profile.metricObjective.guardrailTolerance,
   )
 
@@ -499,6 +519,7 @@ const buildHoldoutBreakdown = (
     evaluationProfile: OptimizationProfile,
   ) => QualitySummary,
   profile: OptimizationProfile,
+  objective?: RouterObjective,
 ): readonly HoldoutQuality[] => {
   const holdoutProfile = unweightedProfile(profile)
   const baselines = buildGuardrailBaselines(samples, profile)
@@ -514,7 +535,9 @@ const buildHoldoutBreakdown = (
       partition.name,
       candidateQuality,
       partition.baseline,
-      evaluationProfile.metricObjective.guardrailMetrics,
+      objective === undefined
+        ? evaluationProfile.metricObjective.guardrailMetrics
+        : OBJECTIVE_GUARDRAILS[objective],
       evaluationProfile.metricObjective.guardrailTolerance,
     )
     return {
@@ -537,8 +560,8 @@ export const compareObjectiveQuality = (
   baseline?: QualitySummary,
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): number => {
-  const leftGuardrails = isWithinGuardrails(left, baseline, profile)
-  const rightGuardrails = isWithinGuardrails(right, baseline, profile)
+  const leftGuardrails = isWithinGuardrails(left, baseline, profile, objective)
+  const rightGuardrails = isWithinGuardrails(right, baseline, profile, objective)
   if (leftGuardrails !== rightGuardrails) return leftGuardrails ? -1 : 1
   const priorities =
     profile.metricObjective.name === objective
@@ -1182,8 +1205,8 @@ const selectObjectiveCandidates = (
   profile: OptimizationProfile,
 ): readonly RouterCandidate[] => {
   const selected = new Map<string, RouterCandidate>()
-  const perObjective = Math.max(1, Math.floor(limit / ROUTER_OBJECTIVES.length))
-  for (const objective of ROUTER_OBJECTIVES) {
+  const perObjective = Math.max(1, Math.floor(limit / SEARCH_OBJECTIVES.length))
+  for (const objective of SEARCH_OBJECTIVES) {
     const ranked = [...candidates]
       .sort((left, right) => compareRouterCandidates(left, right, objective, baseline, profile))
       .slice(0, perObjective)
@@ -1379,6 +1402,32 @@ export const selectEligibleCandidate = <T>(
   }
 }
 
+/** Select one eligible archive candidate per objective using that objective's own comparator. */
+export const selectObjectiveArchiveCandidates = <T>(
+  candidates: readonly T[],
+  quality: (candidate: T) => QualitySummary,
+  isEligible: (candidate: T, objective: RouterObjective) => boolean,
+  baseline: QualitySummary,
+  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
+): ReadonlyArray<{
+  readonly objective: RouterObjective
+  readonly candidate: T | undefined
+  readonly promotionStatus: PromotionStatus
+}> =>
+  ROUTER_OBJECTIVES.map((objective) => {
+    const ranked = [...candidates].sort((left, right) =>
+      compareObjectiveQuality(quality(left), quality(right), objective, baseline, profile),
+    )
+    const selected = selectEligibleCandidate(ranked, (candidate) =>
+      isEligible(candidate, objective),
+    )
+    return {
+      objective,
+      candidate: selected.candidate ?? ranked[0],
+      promotionStatus: selected.promotionStatus,
+    }
+  })
+
 interface RouterSearchPreparation {
   readonly samples: readonly WeightSearchSample[]
   readonly evidenceSamples: readonly EvidenceSearchSample[]
@@ -1546,43 +1595,30 @@ const selectBestEvidenceRouter = async (
   const fallback = beam[0]
   if (fallback === undefined) throw new Error("Evidence router search produced no candidate")
   const candidates = [...searchContext.archive.values()]
-  const selections = useSuccessiveHalving
-    ? (() => {
-        const guardrailsMet = evidenceRouterGuardrailsMet(
-          samples,
-          fallback.config,
-          fusion,
-          guardrailBaselines,
-          profile,
-        )
-        return ROUTER_OBJECTIVES.map((objective) => ({
-          objective,
-          config: fallback.config,
-          quality: fallback.quality,
-          guardrailsMet,
-          promotionStatus: (guardrailsMet
-            ? "eligible"
-            : "no-eligible-candidate") as PromotionStatus,
-        }))
-      })()
-    : ROUTER_OBJECTIVES.map((objective) => {
-        const rankedCandidates = [...candidates].sort((left, right) =>
-          compareRouterCandidates(left, right, objective, productionQuality, profile),
-        )
-        const { candidate: eligibleCandidate, promotionStatus } = selectEligibleCandidate(
-          rankedCandidates,
-          (entry) =>
-            evidenceRouterGuardrailsMet(samples, entry.config, fusion, guardrailBaselines, profile),
-        )
-        const candidate = eligibleCandidate ?? rankedCandidates[0] ?? fallback
-        return {
-          objective,
-          config: candidate.config,
-          quality: candidate.quality,
-          guardrailsMet: eligibleCandidate !== undefined,
-          promotionStatus,
-        }
-      })
+  const selections = selectObjectiveArchiveCandidates(
+    candidates,
+    ({ quality }) => quality,
+    (entry, objective) =>
+      evidenceRouterGuardrailsMet(
+        samples,
+        entry.config,
+        fusion,
+        guardrailBaselines,
+        profile,
+        objective,
+      ),
+    productionQuality,
+    profile,
+  ).map(({ objective, candidate: selectedCandidate, promotionStatus }) => {
+    const candidate = selectedCandidate ?? fallback
+    return {
+      objective,
+      config: candidate.config,
+      quality: candidate.quality,
+      guardrailsMet: promotionStatus === "eligible",
+      promotionStatus,
+    }
+  })
   const randomCandidate = randomSearch?.candidate ?? fallback
   return {
     selections,
@@ -1960,6 +1996,7 @@ export const optimizeEvidenceRouter = async (
               evaluationProfile,
             ),
           profile,
+          selection.objective,
         )
         const guardrailsMet = holdoutBreakdown.every((holdout) => holdout.guardrailsMet)
         return {

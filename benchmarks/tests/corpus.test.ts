@@ -1,10 +1,11 @@
 import { expect, it } from "@effect/vitest"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 
 import type { ChunkingOptions } from "../../src/domain/ports.js"
 import { prepareCorpus } from "../retrieval/corpus/prepare.js"
 import { loadCorpusManifests, prepareRepository } from "../retrieval/corpus/repository.js"
 import { resolveGoldTargets } from "../retrieval/evaluation/metrics.js"
+import { CorpusManifestSchema } from "../retrieval/evaluation/types.js"
 
 const validationChunkingOptions: ChunkingOptions = {
   maxTokens: Number.MAX_SAFE_INTEGER,
@@ -12,6 +13,36 @@ const validationChunkingOptions: ChunkingOptions = {
   countTokens: () => Effect.succeed(0),
   onDiagnostic: () => Effect.void,
 }
+
+it("rejects benchmark questions without exact ground truth", () => {
+  expect(() =>
+    Schema.decodeUnknownSync(CorpusManifestSchema)({
+      schemaVersion: 2,
+      id: "fixture",
+      repository: "owner/repository",
+      revision: "abc123",
+      language: "TypeScript",
+      size: "small",
+      includeRoots: ["src"],
+      excludePaths: [],
+      extensions: [".ts"],
+      questions: [
+        {
+          id: "missing-ground-truth",
+          queries: {
+            identifier: "target",
+            searchPhrase: "target",
+            naturalQuestion: "Where is target?",
+            agentTask: "Find target",
+          },
+          category: "navigation",
+          difficulty: "easy",
+          groundTruth: [],
+        },
+      ],
+    }),
+  ).toThrow()
+})
 
 // This validation intentionally reads real pinned checkouts; memfs is used by other adapter tests.
 it.effect("resolves every authored gold symbol in each pinned corpus", () =>

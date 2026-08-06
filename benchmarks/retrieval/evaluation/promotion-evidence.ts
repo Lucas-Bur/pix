@@ -128,7 +128,8 @@ const buildUncertainty = (rows: readonly PromotionHoldoutRow[]): readonly Holdou
 }
 
 const objectiveMetric = (objective: RouterObjective): QualityMetric => {
-  if (objective === "direct") return "recallAt5"
+  if (objective === "direct") return "ndcgAt5"
+  if (objective === "direct-recall-first") return "recallAt5"
   return objective === "reranker-top20" ? "recallAt20" : "recallAt50"
 }
 

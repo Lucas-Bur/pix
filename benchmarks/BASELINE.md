@@ -5,19 +5,22 @@ Current schema-26 runs use the production SparseEmbedder and IndexStore without 
 
 ## Schema 26: Binary NDCG Direct-Objective Smoke
 
-The `fd` MiniLM smoke artifact `retrieval-2026-08-06T17-21-43.462Z.json` compares the new NDCG@5-first
+The `fd` MiniLM smoke artifact `retrieval-2026-08-06T18-27-13.604Z.json` compares the new NDCG@5-first
 `direct` objective with the historical `direct-recall-first` priority under the same grouped folds,
 seeds, DBSF fusion, and hard Recall@20/50 plus Context@4k guardrails. The artifact is local and ignored.
 
 | Objective      | NDCG@5 | NDCG@10 | NDCG@20 | NDCG@50 |   R@5 |  R@20 | Context@4k |
 | -------------- | -----: | ------: | ------: | ------: | ----: | ----: | ---------: |
-| NDCG@5-first   |  57.1% |   61.6% |   62.6% |   64.3% | 73.3% | 91.3% |      87.3% |
-| Recall@5-first |  58.7% |   62.6% |   63.6% |   65.2% | 75.3% | 91.3% |      87.3% |
+| NDCG@5-first   |  57.0% |   61.5% |   62.5% |   64.2% | 73.3% | 91.3% |      87.3% |
+| Recall@5-first |  59.8% |   63.2% |   64.2% |   65.8% | 76.7% | 91.3% |      87.3% |
 
 This single-repository smoke run validates the complete measurement and ablation path, but does not
 support promoting the NDCG-first candidate: Recall-first is stronger on every reported holdout NDCG
 cutoff and R@5 while tying the coverage guardrails. A full multi-repository run is still required for
 any Production decision; issue #172 itself remains benchmark-only.
+The matched Successive-Halving smoke artifact `retrieval-2026-08-06T18-27-50.835Z.json` also completed
+with objective-specific archive selection, validating that the ablation is executed rather than emitted
+as repeated labels in both supported search strategies.
 
 ## Schema 24: Selectable Router Search
 
