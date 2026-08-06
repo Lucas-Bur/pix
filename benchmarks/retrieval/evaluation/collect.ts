@@ -36,6 +36,7 @@ import { foldKey } from "./folds.js"
 import {
   contextRecallAtBudget,
   goldTargetRanks,
+  normalizedDiscountedCumulativeGain,
   recallAt,
   reciprocalRank,
   resolveGoldTargets,
@@ -257,6 +258,10 @@ const buildModelSamples = (
           recallAt10: recallAt(ranked, targets, 10),
           recallAt20: recallAt(ranked, targets, 20),
           recallAt50: recallAt(ranked, targets, 50),
+          ndcgAt5: normalizedDiscountedCumulativeGain(ranked, targets, 5),
+          ndcgAt10: normalizedDiscountedCumulativeGain(ranked, targets, 10),
+          ndcgAt20: normalizedDiscountedCumulativeGain(ranked, targets, 20),
+          ndcgAt50: normalizedDiscountedCumulativeGain(ranked, targets, 50),
           successAt10: successAt(ranked, targets, 10),
           successAt20: successAt(ranked, targets, 20),
           reciprocalRank: reciprocalRank(ranked, targets),

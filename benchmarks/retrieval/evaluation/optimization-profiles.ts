@@ -9,6 +9,10 @@ import {
 
 const NonNegativeNumber = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))
 const QualityMetrics = [
+  "ndcgAt5",
+  "ndcgAt10",
+  "ndcgAt20",
+  "ndcgAt50",
   "recallAt5",
   "recallAt10",
   "recallAt20",
@@ -73,7 +77,10 @@ const objective = (
 ): typeof MetricObjectiveSchema.Type => ({
   name,
   priority,
-  guardrailMetrics: ["recallAt5", "recallAt10", "recallAt20", "recallAt50", "contextRecallAt4096"],
+  guardrailMetrics:
+    name === "direct"
+      ? ["recallAt20", "recallAt50", "contextRecallAt4096"]
+      : ["recallAt5", "recallAt10", "recallAt20", "recallAt50", "contextRecallAt4096"],
   guardrailTolerance: 0.01,
   contextBudget: 4_096,
 })
@@ -147,6 +154,9 @@ export const SEARCH_PRIORITY_PROFILE = profile(
   COMPATIBILITY_PROFILE_CONFIG,
   { identifier: 1, agentTask: 2, naturalQuestion: 3, searchPhrase: 4 },
   objective("direct", [
+    "ndcgAt5",
+    "ndcgAt10",
+    "ndcgAt20",
     "recallAt5",
     "recallAt10",
     "contextRecallAt4096",
@@ -176,6 +186,7 @@ export const OPTIMIZATION_PROFILES = {
       "contextRecallAt4096",
       "recallAt50",
       "meanReciprocalRank",
+      "ndcgAt20",
     ]),
   ),
   "basic-exploration": profile(
@@ -183,6 +194,9 @@ export const OPTIMIZATION_PROFILES = {
     BASIC_EXPLORATION_PROFILE_CONFIG,
     { identifier: 1, agentTask: 3, naturalQuestion: 4, searchPhrase: 2 },
     objective("direct", [
+      "ndcgAt5",
+      "ndcgAt10",
+      "ndcgAt20",
       "recallAt5",
       "recallAt10",
       "recallAt20",
@@ -202,6 +216,7 @@ export const OPTIMIZATION_PROFILES = {
       "recallAt5",
       "contextRecallAt4096",
       "meanReciprocalRank",
+      "ndcgAt50",
     ]),
   ),
 } as const

@@ -9,7 +9,7 @@ surface.
 The suite answers five questions independently:
 
 1. Do identity, CamelCase, BM25, dense, and sparse retrieval each contribute useful candidates?
-2. Does production-weighted RRF improve `Recall@K` over individual channels and combinations?
+2. Does production-weighted RRF improve `Recall@K` and binary `NDCG@K` over individual channels and combinations?
 3. Does full RRF reduce the quality gap between a small general embedder and a code-specific one?
 4. How much authored ground truth fits into fixed context budgets?
 5. Can one evidence-based router outperform static weights without knowing the authored query form?
@@ -53,6 +53,11 @@ representations remain in the same validation fold. Gold targets are exact `file
 Matching uses extracted identifiers or exact declaration syntax inside the specified file; loose
 symbol-name segment matching is not accepted.
 
+The existing corpus needs no NDCG-specific labels. Every resolved chunk matching one or more exact
+gold targets has binary gain `1`; non-matching chunks have gain `0`. A chunk that resolves multiple
+targets and a duplicate occurrence of the same chunk each contribute at most once. NDCG is `0` when
+no gold target resolves, although corpus validation rejects that condition before benchmark execution.
+
 | Corpus    | Revision                                   | Language   | Size band | Indexed scope                 |
 | --------- | ------------------------------------------ | ---------- | --------- | ----------------------------- |
 | FastAPI   | `95f8322ee1dcda7ceace7b1c4f6c9915b36d748f` | Python     | medium    | `fastapi/**/*.py`             |
@@ -95,7 +100,7 @@ vp run bench:retrieval:full
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
-diagnostics. The selected profile is recorded in schema-24 artifacts without changing retrieval
+diagnostics. The selected profile is recorded in schema-26 artifacts without changing retrieval
 semantics. The full profile includes all three fusion methods; short profiles intentionally omit RRF
 to keep development runs fast.
 
@@ -251,6 +256,12 @@ It also records exact-selection frequency across outer folds, the number and wid
 single-coordinate perturbations, epsilon-neighbor fraction, and median/worst holdout drop. The search is
 currently deterministic with one seed and restart; those counts are explicit rather than implying
 unmeasured restart stability.
+
+Schema 26 reports binary NDCG at 5, 10, 20, and 50 for raw query-form/repository/model rows and for
+aggregate, fusion, and partitioned holdouts. The `direct` objective prioritizes NDCG@5, while the
+`direct-recall-first` ablation retains the historical Recall@5-first priority under the same folds,
+guardrails, and seeds. Both direct objectives retain Recall@20, Recall@50, and ContextRecall@4096 as
+hard coverage guardrails. Reranker-top20 and reranker-top50 remain recall-first.
 
 Each router result also records a deterministic `random-scout` baseline using the same parameter grid and
 global-scout budget. `Random R@20` and `Random Ctx@4k` show whether the structured search beats that

@@ -14,6 +14,10 @@ import type {
 const BOOTSTRAP_SAMPLES = 1_000
 const STABILITY_EPSILON = 0.005
 const QUALITY_METRICS: readonly QualityMetric[] = [
+  "ndcgAt5",
+  "ndcgAt10",
+  "ndcgAt20",
+  "ndcgAt50",
   "recallAt5",
   "recallAt10",
   "recallAt20",

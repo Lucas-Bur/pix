@@ -1,7 +1,23 @@
 # Preliminary Retrieval Baseline
 
 The schema-17 entries below are historical artifacts from the benchmark-owned Sparse implementation.
-Current schema-24 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
+Current schema-26 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
+
+## Schema 26: Binary NDCG Direct-Objective Smoke
+
+The `fd` MiniLM smoke artifact `retrieval-2026-08-06T17-21-43.462Z.json` compares the new NDCG@5-first
+`direct` objective with the historical `direct-recall-first` priority under the same grouped folds,
+seeds, DBSF fusion, and hard Recall@20/50 plus Context@4k guardrails. The artifact is local and ignored.
+
+| Objective      | NDCG@5 | NDCG@10 | NDCG@20 | NDCG@50 |   R@5 |  R@20 | Context@4k |
+| -------------- | -----: | ------: | ------: | ------: | ----: | ----: | ---------: |
+| NDCG@5-first   |  57.1% |   61.6% |   62.6% |   64.3% | 73.3% | 91.3% |      87.3% |
+| Recall@5-first |  58.7% |   62.6% |   63.6% |   65.2% | 75.3% | 91.3% |      87.3% |
+
+This single-repository smoke run validates the complete measurement and ablation path, but does not
+support promoting the NDCG-first candidate: Recall-first is stronger on every reported holdout NDCG
+cutoff and R@5 while tying the coverage guardrails. A full multi-repository run is still required for
+any Production decision; issue #172 itself remains benchmark-only.
 
 ## Schema 24: Selectable Router Search
 

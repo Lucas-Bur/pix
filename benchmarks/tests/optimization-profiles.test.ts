@@ -15,6 +15,12 @@ it("records the authored weighted search-priority objective without a profile sc
   })
   expect("schemaVersion" in SEARCH_PRIORITY_PROFILE).toBe(false)
   expect(SEARCH_PRIORITY_PROFILE.provenance).toBe("authored-seed")
+  expect(SEARCH_PRIORITY_PROFILE.metricObjective.priority[0]).toBe("ndcgAt5")
+  expect(SEARCH_PRIORITY_PROFILE.metricObjective.guardrailMetrics).toEqual([
+    "recallAt20",
+    "recallAt50",
+    "contextRecallAt4096",
+  ])
   expect(SEARCH_PRIORITY_PROFILE.fusionConfig.baseWeights).toEqual({
     identity: 3,
     camelcase: 1.5,

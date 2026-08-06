@@ -137,6 +137,8 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
       .map(([kind, weight]) => `${kind}=${weight}`)
       .join(", ")}.`,
     "",
+    "The `direct` objective selects NDCG@5 first; `direct-recall-first` is the matched historical-objective ablation. Reranker objectives remain recall-first.",
+    "",
     `Validation protocol: candidates use ${artifact.validationProtocol.selection}; holdouts are ${artifact.validationProtocol.holdouts.join(" and ")}; final promotion requires untouched ${artifact.validationProtocol.finalTest.strategy} fold ${artifact.validationProtocol.finalTest.fold}.`,
     "",
     `Search strategy: \`${artifact.searchStrategy.algorithm}\` (${artifact.searchStrategy.globalScouts} global scouts, beam ${artifact.searchStrategy.beamWidth}, ${artifact.searchStrategy.coordinatePasses} coordinate passes, ${artifact.searchStrategy.proxySampleFraction * 100}% proxy with minimum ${artifact.searchStrategy.proxyMinimumSamples}, ${strategyFactorLabel} factor ${strategyFactor}x).`,
@@ -162,14 +164,14 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
         `| ${run.repository} | ${run.model} | ${run.tokenizerModel} | ${run.batchSize} | ${duration(run.chunkEmbeddingDurationMs)} | ${duration(run.queryTokenizationDurationMs)} |`,
     ),
     "",
-    "| Repository | Model | Query form | Variant | R@5 | R@10 | R@20 | R@50 | S@10 | S@20 | MRR | Ctx@2k | Ctx@4k |",
-    "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Repository | Model | Query form | Variant | R@5 | R@10 | R@20 | R@50 | NDCG@5 | NDCG@10 | NDCG@20 | NDCG@50 | S@10 | S@20 | MRR | Ctx@2k | Ctx@4k |",
+    "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   ]
 
   for (const [key, rows] of [...groups].sort(([left], [right]) => left.localeCompare(right))) {
     const [repository, model, queryKind, variant] = key.split("\0")
     lines.push(
-      `| ${repository} | ${model} | ${queryKind} | ${variant} | ${percent(average(rows, (row) => row.recallAt5))} | ${percent(average(rows, (row) => row.recallAt10))} | ${percent(average(rows, (row) => row.recallAt20))} | ${percent(average(rows, (row) => row.recallAt50))} | ${percent(average(rows, (row) => Number(row.successAt10)))} | ${percent(average(rows, (row) => Number(row.successAt20)))} | ${average(rows, (row) => row.reciprocalRank).toFixed(3)} | ${percent(average(rows, (row) => row.contextRecall["2048"] ?? 0))} | ${percent(average(rows, (row) => row.contextRecall["4096"] ?? 0))} |`,
+      `| ${repository} | ${model} | ${queryKind} | ${variant} | ${percent(average(rows, (row) => row.recallAt5))} | ${percent(average(rows, (row) => row.recallAt10))} | ${percent(average(rows, (row) => row.recallAt20))} | ${percent(average(rows, (row) => row.recallAt50))} | ${percent(average(rows, (row) => row.ndcgAt5))} | ${percent(average(rows, (row) => row.ndcgAt10))} | ${percent(average(rows, (row) => row.ndcgAt20))} | ${percent(average(rows, (row) => row.ndcgAt50))} | ${percent(average(rows, (row) => Number(row.successAt10)))} | ${percent(average(rows, (row) => Number(row.successAt20)))} | ${average(rows, (row) => row.reciprocalRank).toFixed(3)} | ${percent(average(rows, (row) => row.contextRecall["2048"] ?? 0))} | ${percent(average(rows, (row) => row.contextRecall["4096"] ?? 0))} |`,
     )
   }
 
@@ -330,6 +332,22 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     )
   }
 
+  lines.push(
+    "",
+    "## Evidence Router NDCG Holdouts",
+    "",
+    "These aggregate excluded-fold rows compare each fusion and objective with the current Production router under identical validation partitions.",
+    "",
+    "| Model | Fusion | Objective | Strategy | Production NDCG@5 | Dynamic NDCG@5 | Production NDCG@10 | Dynamic NDCG@10 | Production NDCG@20 | Dynamic NDCG@20 | Production NDCG@50 | Dynamic NDCG@50 |",
+    "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+  )
+  for (const [key, rows] of routerGroups) {
+    const [model, fusion, objective, strategy] = key.split("\0")
+    lines.push(
+      `| ${model} | ${fusion} | ${objective} | ${strategy} | ${percent(weightedAverage(rows, (row) => row.productionValidation.ndcgAt5))} | ${percent(weightedAverage(rows, (row) => row.validation.ndcgAt5))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.ndcgAt10))} | ${percent(weightedAverage(rows, (row) => row.validation.ndcgAt10))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.ndcgAt20))} | ${percent(weightedAverage(rows, (row) => row.validation.ndcgAt20))} | ${percent(weightedAverage(rows, (row) => row.productionValidation.ndcgAt50))} | ${percent(weightedAverage(rows, (row) => row.validation.ndcgAt50))} |`,
+    )
+  }
+
   const holdoutRows = [
     ...artifact.fusionSearch.flatMap((result) =>
       result.holdoutBreakdown.map((holdout) => ({
@@ -365,6 +383,20 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     const holdout: HoldoutQuality = row.holdout
     lines.push(
       `| ${row.model} | ${row.fusion} | ${row.objective} | ${row.strategy} | ${row.fold} | ${holdout.dimension}:${holdout.name} | ${holdout.queries} | ${holdout.guardrailsMet ? "yes" : "no"} | ${percent(holdout.candidate.recallAt5)} | ${percent(holdout.baseline.recallAt5)} | ${percent(holdout.candidate.recallAt10)} | ${percent(holdout.baseline.recallAt10)} | ${percent(holdout.candidate.recallAt20)} | ${percent(holdout.baseline.recallAt20)} | ${percent(holdout.candidate.recallAt50)} | ${percent(holdout.baseline.recallAt50)} | ${percent(holdout.candidate.contextRecallAt4096)} | ${percent(holdout.baseline.contextRecallAt4096)} |`,
+    )
+  }
+
+  lines.push(
+    "",
+    "### Holdout NDCG Breakdown",
+    "",
+    "| Model | Fusion | Objective | Strategy | Fold | Partition | Candidate NDCG@5 | Baseline NDCG@5 | Candidate NDCG@10 | Baseline NDCG@10 | Candidate NDCG@20 | Baseline NDCG@20 | Candidate NDCG@50 | Baseline NDCG@50 |",
+    "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+  )
+  for (const row of holdoutRows) {
+    const holdout: HoldoutQuality = row.holdout
+    lines.push(
+      `| ${row.model} | ${row.fusion} | ${row.objective} | ${row.strategy} | ${row.fold} | ${holdout.dimension}:${holdout.name} | ${percent(holdout.candidate.ndcgAt5)} | ${percent(holdout.baseline.ndcgAt5)} | ${percent(holdout.candidate.ndcgAt10)} | ${percent(holdout.baseline.ndcgAt10)} | ${percent(holdout.candidate.ndcgAt20)} | ${percent(holdout.baseline.ndcgAt20)} | ${percent(holdout.candidate.ndcgAt50)} | ${percent(holdout.baseline.ndcgAt50)} |`,
     )
   }
 

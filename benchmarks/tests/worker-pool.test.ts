@@ -5,6 +5,7 @@ import { describe, expect, it } from "@effect/vitest"
 import type { Chunk } from "../../src/domain/chunk.js"
 import { SEARCH_PRIORITY_PROFILE } from "../retrieval/evaluation/optimization-profiles.js"
 import { prepareFusion } from "../retrieval/evaluation/prepared-fusion.js"
+import { ROUTER_OBJECTIVES } from "../retrieval/evaluation/types.js"
 import {
   fitRecommendedEvidenceRouter,
   fitRecommendedFusionWeights,
@@ -342,7 +343,7 @@ describe("benchmark candidate evaluation pool", () => {
   it("retains the serial evidence-router fit path", async () => {
     const result = await fitRecommendedEvidenceRouter("fixture", "dbsf", [searchSample])
 
-    expect(result).toHaveLength(3)
+    expect(result).toHaveLength(ROUTER_OBJECTIVES.length)
     expect(result.every((candidate) => candidate.fitQuality.recallAt20 >= 0)).toBe(true)
   })
 

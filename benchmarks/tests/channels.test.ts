@@ -12,6 +12,7 @@ import { buildIdentifierIndex } from "../../src/lib/retrieval/identifier-index.j
 import type { PreparedCorpus } from "../retrieval/corpus/prepare.js"
 import {
   contextRecallAtBudget,
+  normalizedDiscountedCumulativeGain,
   recallAt,
   reciprocalRank,
   resolveGoldTargets,
@@ -22,8 +23,9 @@ import {
   rankLexicalChannels,
   RETRIEVAL_VARIANTS,
 } from "../retrieval/evaluation/ranking.js"
-import { ROUTER_OBJECTIVES } from "../retrieval/evaluation/types.js"
+import { ROUTER_OBJECTIVES, type QualitySummary } from "../retrieval/evaluation/types.js"
 import {
+  compareObjectiveQuality,
   optimizeEvidenceRouter,
   optimizeWeights,
   selectEligibleCandidate,
@@ -366,6 +368,22 @@ describe("retrieval benchmark fixture", () => {
     expect(recallAt(ranked, targets, 1)).toBe(1)
   })
 
+  it("measures binary NDCG without inflating duplicate or overlapping gold chunks", () => {
+    const ranked = [
+      { chunkIndex: 2, score: 4 },
+      { chunkIndex: 0, score: 3 },
+      { chunkIndex: 0, score: 2 },
+      { chunkIndex: 1, score: 1 },
+    ]
+    const targets = [new Set([0]), new Set([0, 1])]
+
+    expect(normalizedDiscountedCumulativeGain(ranked, targets, 4)).toBeCloseTo(
+      (1 / Math.log2(3) + 1 / Math.log2(5)) / (1 + 1 / Math.log2(3)),
+    )
+    expect(normalizedDiscountedCumulativeGain(ranked, [], 5)).toBe(0)
+    expect(normalizedDiscountedCumulativeGain(ranked, [new Set()], 5)).toBe(0)
+  })
+
   it("keeps equal-weight RRF separate from production routing", () => {
     const rankings = {
       identity: [
@@ -397,6 +415,10 @@ describe("retrieval benchmark fixture", () => {
       recallAt10: recallAt(ranked, sample.targets, 10),
       recallAt20: recallAt(ranked, sample.targets, 20),
       recallAt50: recallAt(ranked, sample.targets, 50),
+      ndcgAt5: normalizedDiscountedCumulativeGain(ranked, sample.targets, 5),
+      ndcgAt10: normalizedDiscountedCumulativeGain(ranked, sample.targets, 10),
+      ndcgAt20: normalizedDiscountedCumulativeGain(ranked, sample.targets, 20),
+      ndcgAt50: normalizedDiscountedCumulativeGain(ranked, sample.targets, 50),
       contextRecallAt4096: contextRecallAtBudget(ranked, sample.targets, sample.chunks, 4_096),
       meanReciprocalRank: reciprocalRank(ranked, sample.targets),
     })
@@ -540,6 +562,28 @@ describe("retrieval benchmark fixture", () => {
     expect(result.weights.dense).toBe(0)
     expect(result.validation.recallAt20).toBe(1)
     expect(result.shapleyRecallAt20.identity).toBe(1)
+  })
+
+  it("compares NDCG-first direct selection with the matched Recall-first ablation", () => {
+    const quality = (ndcgAt5: number, recallAt5: number): QualitySummary => ({
+      ndcgAt5,
+      ndcgAt10: ndcgAt5,
+      ndcgAt20: ndcgAt5,
+      ndcgAt50: ndcgAt5,
+      recallAt5,
+      recallAt10: recallAt5,
+      recallAt20: 1,
+      recallAt50: 1,
+      contextRecallAt4096: 1,
+      meanReciprocalRank: recallAt5,
+    })
+    const ndcgFirst = quality(0.9, 0.7)
+    const recallFirst = quality(0.8, 0.8)
+
+    expect(compareObjectiveQuality(ndcgFirst, recallFirst, "direct")).toBeLessThan(0)
+    expect(compareObjectiveQuality(ndcgFirst, recallFirst, "direct-recall-first")).toBeGreaterThan(
+      0,
+    )
   })
 
   it("selects one evidence router across queries with different reliable channels", async () => {
