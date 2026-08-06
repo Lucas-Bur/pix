@@ -5,5 +5,5 @@ export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
 
   yield* sql`ALTER TABLE index_meta
-    ADD COLUMN chunk_tokens INTEGER DEFAULT NULL`
+    ADD COLUMN chunk_tokens INTEGER NOT NULL`
 })
