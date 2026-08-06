@@ -231,6 +231,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
                 files: indexSeed.files ?? [],
                 dims: indexSeed.dims ?? 384,
                 dtype: indexSeed.dtype ?? "fp32",
+                chunkTokens: 512,
                 embeddingCache: indexSeed.embeddingCache ?? [],
                 sparseEmbeddingCache: indexSeed.sparseEmbeddingCache ?? [],
                 sparseContract: TEST_SPARSE_CONTRACT,

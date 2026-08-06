@@ -56,6 +56,7 @@ const storeFixture = (
   sparseEmbeddingCache: Parameters<
     IndexStore["Service"]["persistIndex"]
   >[0]["sparseEmbeddingCache"] = [],
+  diagnostics: Parameters<IndexStore["Service"]["persistIndex"]>[0]["diagnostics"] = [],
 ) =>
   Effect.gen(function* () {
     const store = yield* IndexStore
@@ -69,10 +70,12 @@ const storeFixture = (
       files: [],
       dims: 384,
       dtype: "fp32",
+      chunkTokens: 512,
       embeddingCache,
       sparseEmbeddingCache,
       sparseContract: TEST_SPARSE_CONTRACT,
       sparseIdf: [],
+      diagnostics,
     })
     return store
   })
@@ -106,6 +109,27 @@ it.effect("IndexStore.persistIndex writes chunks and vectors to index files", ()
     expect(status.chunks).toBe(1)
     expect(status.files).toBe(1)
     expect(status.totalLines).toBe(2)
+  }).pipe(Effect.provide(isLayer), Effect.scoped),
+)
+
+it.effect("IndexStore round-trips index diagnostics and chunking metadata", () =>
+  Effect.gen(function* () {
+    const diagnostics = [
+      {
+        kind: "parser-fallback",
+        file: "src/test.ts",
+        message: "AST parser failed",
+      },
+    ] as const
+    const store = yield* storeFixture([makeChunk()], [makeEmbedding()], [], [], diagnostics)
+
+    expect((yield* store.getStatus()).diagnostics).toEqual(diagnostics)
+    const snapshot = yield* store.loadIndexSnapshot()
+    expect(snapshot._tag).toBe("Some")
+    if (snapshot._tag === "Some") {
+      expect(snapshot.value.meta.diagnostics).toEqual(diagnostics)
+      expect(snapshot.value.meta.chunkTokens).toBe(512)
+    }
   }).pipe(Effect.provide(isLayer), Effect.scoped),
 )
 
@@ -340,6 +364,7 @@ it.effect("IndexStore.searchSparse executes exact IDF-weighted inner product in 
       files: [],
       dims: 384,
       dtype: "fp32",
+      chunkTokens: 512,
       embeddingCache: [],
       sparseEmbeddingCache: [],
       sparseContract: TEST_SPARSE_CONTRACT,
@@ -370,6 +395,7 @@ it.effect("IndexStore.persistIndex replaces sparse postings without stale terms"
         files: [],
         dims: 384,
         dtype: "fp32" as const,
+        chunkTokens: 512,
         embeddingCache: [],
         sparseEmbeddingCache: [],
         sparseContract: TEST_SPARSE_CONTRACT,
@@ -528,6 +554,7 @@ it.effect("IndexStore.persistIndex rolls back when the stream fails mid-write", 
         files: [],
         dims: 384,
         dtype: "fp32",
+        chunkTokens: 512,
         embeddingCache: [],
         sparseEmbeddingCache: [],
         sparseContract: TEST_SPARSE_CONTRACT,

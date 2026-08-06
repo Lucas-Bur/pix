@@ -114,7 +114,7 @@ it.effect("Chunker computes fallback chunk-ID from the source range", () =>
     const chunker = yield* Chunker
     const fallbackFile = "docs/fixture.md"
     const chunks = yield* chunker.chunkText(fixtureFile, fallbackFile)
-    if (chunks.length === 0) return
+    expect(chunks.length).toBeGreaterThan(0)
     const expectedId = crypto
       .createHash("sha1")
       .update(`${fallbackFile}:0:${fixtureFile.length}`)

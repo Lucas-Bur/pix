@@ -39,10 +39,20 @@ const lineStartOffsets = (content: string): readonly number[] => {
   return offsets
 }
 
-const countLineBreaks = (text: string): number => {
-  let count = 0
-  for (const character of text) if (character === "\n") count++
-  return count
+const lineIndexAtOffset = (offsets: readonly number[], offset: number): number => {
+  let low = 0
+  let high = offsets.length - 1
+  let result = 0
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    if (offsets[middle]! <= offset) {
+      result = middle
+      low = middle + 1
+    } else {
+      high = middle - 1
+    }
+  }
+  return result
 }
 
 const rangeChunk = (
@@ -52,13 +62,14 @@ const rangeChunk = (
   end: number,
   baseOffset: number,
   baseLine: number,
+  lineStarts: readonly number[],
   idx: number,
 ): Chunk => {
   const text = source.slice(start, end)
-  const startLine = baseLine + countLineBreaks(source.slice(0, start))
+  const startLine = baseLine + lineIndexAtOffset(lineStarts, start)
   const endLine =
     baseLine +
-    countLineBreaks(source.slice(0, end)) -
+    lineIndexAtOffset(lineStarts, end) -
     (end > start && source[end - 1] === "\n" ? 1 : 0)
 
   return {
@@ -172,12 +183,12 @@ const findLongestSafePrefixEffect = (
   start: number,
   end: number,
   options: ChunkingOptions,
+  fullCount: number,
 ): Effect.Effect<number | null, ChunkingError> => {
   const text = source.slice(start, end)
   const offsets = codePointOffsets(text)
 
   return Effect.gen(function* () {
-    const fullCount = yield* options.countTokens(text)
     if (fullCount <= options.maxTokens) return end
 
     let low = 1
@@ -215,8 +226,18 @@ const reportOversized = (
   baseLine: number,
   actualTokens: number,
   options: ChunkingOptions,
+  lineStarts: readonly number[],
 ): Effect.Effect<void> => {
-  const chunk = rangeChunk(file, source, range.start, range.end, baseOffset, baseLine, 0)
+  const chunk = rangeChunk(
+    file,
+    source,
+    range.start,
+    range.end,
+    baseOffset,
+    baseLine,
+    lineStarts,
+    0,
+  )
   const error = new OversizedChunkError({
     message: `Cannot safely split ${file}:${chunk.startLine}-${chunk.endLine}; ${actualTokens} tokens exceed the limit of ${options.maxTokens}`,
     file,
@@ -245,6 +266,7 @@ const splitLongRange = (
   baseOffset: number,
   baseLine: number,
   options: ChunkingOptions,
+  lineStarts: readonly number[],
 ): Effect.Effect<readonly Range[], ChunkingError> =>
   Effect.gen(function* () {
     const result: Range[] = []
@@ -258,7 +280,13 @@ const splitLongRange = (
         break
       }
 
-      const next = yield* findLongestSafePrefixEffect(source, start, range.end, options)
+      const next = yield* findLongestSafePrefixEffect(
+        source,
+        start,
+        range.end,
+        options,
+        remainingTokens,
+      )
       if (next === null || next <= start) {
         yield* reportOversized(
           file,
@@ -268,6 +296,7 @@ const splitLongRange = (
           baseLine,
           remainingTokens,
           options,
+          lineStarts,
         )
         break
       }
@@ -358,6 +387,7 @@ const splitOversizedRange = (
   baseLine: number,
   parser: Parser,
   options: ChunkingOptions,
+  lineStarts: readonly number[],
   depth = 0,
 ): Effect.Effect<readonly Range[], ChunkingError> =>
   Effect.gen(function* () {
@@ -386,6 +416,7 @@ const splitOversizedRange = (
                 baseLine,
                 parser,
                 options,
+                lineStarts,
                 depth + 1,
               )),
             )
@@ -409,7 +440,17 @@ const splitOversizedRange = (
             result.push(current)
             current = null
           }
-          result.push(...(yield* splitLongRange(file, source, line, baseOffset, baseLine, options)))
+          result.push(
+            ...(yield* splitLongRange(
+              file,
+              source,
+              line,
+              baseOffset,
+              baseLine,
+              options,
+              lineStarts,
+            )),
+          )
         } else if (current === null) {
           current = line
         } else {
@@ -427,7 +468,7 @@ const splitOversizedRange = (
       return result
     }
 
-    return yield* splitLongRange(file, source, range, baseOffset, baseLine, options)
+    return yield* splitLongRange(file, source, range, baseOffset, baseLine, options, lineStarts)
   })
 
 const splitAstChunk = (
@@ -437,6 +478,7 @@ const splitAstChunk = (
 ): Effect.Effect<readonly Chunk[], ChunkingError> =>
   Effect.gen(function* () {
     const range = { start: 0, end: chunk.text.length }
+    const lineStarts = lineStartOffsets(chunk.text)
     const ranges = yield* splitOversizedRange(
       chunk.file,
       chunk.text,
@@ -445,6 +487,7 @@ const splitAstChunk = (
       chunk.startLine,
       parser,
       options,
+      lineStarts,
     )
     return ranges.map((part, idx) =>
       rangeChunk(
@@ -454,6 +497,7 @@ const splitAstChunk = (
         part.end,
         chunk.startOffset,
         chunk.startLine,
+        lineStarts,
         idx,
       ),
     )
@@ -464,10 +508,10 @@ const applyLineOverlap = (
   ranges: readonly Range[],
   overlapLines: number,
   options: ChunkingOptions,
+  lineStarts: readonly number[],
 ): Effect.Effect<readonly Range[], ChunkingError> =>
   Effect.gen(function* () {
     if (overlapLines <= 0 || ranges.length < 2) return ranges
-    const lineStarts = lineStartOffsets(source)
     const result: Range[] = []
 
     for (let index = 0; index < ranges.length; index++) {
@@ -497,6 +541,7 @@ const buildTokenLineChunks = (
   options: ChunkingOptions,
 ): Effect.Effect<readonly Chunk[], ChunkingError> =>
   Effect.gen(function* () {
+    const lineStarts = lineStartOffsets(content)
     const lines = buildLineRanges(content)
     const ranges: Range[] = []
     let index = 0
@@ -505,7 +550,7 @@ const buildTokenLineChunks = (
       const first = lines[index]!
       const firstTokens = yield* countRange(content, first, options)
       if (firstTokens > options.maxTokens) {
-        ranges.push(...(yield* splitLongRange(file, content, first, 0, 1, options)))
+        ranges.push(...(yield* splitLongRange(file, content, first, 0, 1, options, lineStarts)))
         index++
         continue
       }
@@ -522,9 +567,15 @@ const buildTokenLineChunks = (
       ranges.push(current)
     }
 
-    const overlapped = yield* applyLineOverlap(content, ranges, options.overlapLines, options)
+    const overlapped = yield* applyLineOverlap(
+      content,
+      ranges,
+      options.overlapLines,
+      options,
+      lineStarts,
+    )
     return overlapped.map((range, idx) =>
-      rangeChunk(file, content, range.start, range.end, 0, 1, idx),
+      rangeChunk(file, content, range.start, range.end, 0, 1, lineStarts, idx),
     )
   })
 
@@ -532,22 +583,27 @@ const buildStructuralChunks = (
   file: string,
   content: string,
   parser: Parser | null,
-): Effect.Effect<readonly Chunk[]> =>
-  Effect.try({
+): Effect.Effect<readonly Chunk[]> => {
+  const lineStarts = lineStartOffsets(content)
+  const wholeFile = (): readonly Chunk[] =>
+    content.length === 0 ? [] : [rangeChunk(file, content, 0, content.length, 0, 1, lineStarts, 0)]
+
+  return Effect.try({
     try: () => {
       if (parser === null) {
-        return content.length === 0 ? [] : [rangeChunk(file, content, 0, content.length, 0, 1, 0)]
+        return wholeFile()
       }
       const tree = parseTreeSitterSource(parser, content)
       if (tree === null || tree.rootNode.hasError) {
-        return content.length === 0 ? [] : [rangeChunk(file, content, 0, content.length, 0, 1, 0)]
+        return wholeFile()
       }
       return collectAstUnits(tree.rootNode).map((unit, idx) =>
         makeAstChunk(unit, idx, file, content),
       )
     },
     catch: (cause) => new AstChunkingError({ file, cause }),
-  }).pipe(Effect.catch(() => Effect.succeed([])))
+  }).pipe(Effect.catch(() => Effect.succeed(wholeFile())))
+}
 
 const buildAstChunks = (
   parser: Parser,
@@ -618,12 +674,13 @@ const buildLineChunks = (
   file: string,
   content: string,
   options?: ChunkingOptions,
-): Effect.Effect<readonly Chunk[], ChunkingError> =>
-  options === undefined
-    ? Effect.succeed(
-        content.length === 0 ? [] : [rangeChunk(file, content, 0, content.length, 0, 1, 0)],
-      )
-    : buildTokenLineChunks(file, content, options)
+): Effect.Effect<readonly Chunk[], ChunkingError> => {
+  if (options !== undefined) return buildTokenLineChunks(file, content, options)
+  const lineStarts = lineStartOffsets(content)
+  return Effect.succeed(
+    content.length === 0 ? [] : [rangeChunk(file, content, 0, content.length, 0, 1, lineStarts, 0)],
+  )
+}
 
 const buildParserlessChunks = (
   file: string,

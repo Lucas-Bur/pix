@@ -19,9 +19,27 @@ import { resolveEmbedderConfig } from "../lib/embedder/resolve.js"
 import { ConfigStoreLive } from "./config-store.js"
 import { DeviceDetectionLive, loadFirstAvailableDevice } from "./device-detect.js"
 
+const DEFAULT_TOKEN_LIMIT = 512
+const DEFAULT_BATCH_SIZE = 16
+
 interface FallbackInfo {
   readonly originalDevice: string
   readonly reason: string
+}
+
+/** Shared model and batch contract passed to embedding helpers. */
+type EmbedBatchOptions = {
+  readonly model: string
+  readonly dims: number
+  readonly dtype: EmbeddingDtype
+  readonly hardTokenLimit: number
+  readonly maxInputTokens: number
+  readonly batchSize: number
+}
+
+/** Embedding contract plus the device used by the GPU fallback workflow. */
+type GpuFallbackOptions = EmbedBatchOptions & {
+  readonly device: DeviceType
 }
 
 /**
@@ -57,12 +75,7 @@ const loadExtractor = (
 
 const makeEmbedBatch = (
   getExtractor: () => Effect.Effect<FeatureExtractionPipeline, never, never>,
-  model: string,
-  dims: number,
-  dtype: EmbeddingDtype,
-  hardTokenLimit: number,
-  maxInputTokens: number,
-  batchSize: number,
+  { model, dims, dtype, hardTokenLimit, maxInputTokens, batchSize }: EmbedBatchOptions,
 ): {
   readonly limits: EmbeddingLimits
   readonly countTokens: (text: string) => Effect.Effect<number, InferenceError>
@@ -168,8 +181,8 @@ const createBoundEmbedder = (
 ): Effect.Effect<BoundEmbedder, ModelLoadError> =>
   Effect.gen(function* () {
     const info = MODEL_REGISTRY[cfg.model]
-    const hardTokenLimit = cfg.hardTokenLimit ?? info?.hardTokenLimit ?? 512
-    const maxInputTokens = cfg.maxInputTokens ?? info?.maxInputTokens ?? 512
+    const hardTokenLimit = cfg.hardTokenLimit ?? info?.hardTokenLimit ?? DEFAULT_TOKEN_LIMIT
+    const maxInputTokens = cfg.maxInputTokens ?? info?.maxInputTokens ?? DEFAULT_TOKEN_LIMIT
     if (maxInputTokens > hardTokenLimit) {
       return yield* new ModelLoadError({
         message: `Invalid token limits for "${cfg.model}": maxInputTokens (${maxInputTokens}) exceeds hardTokenLimit (${hardTokenLimit})`,
@@ -177,15 +190,14 @@ const createBoundEmbedder = (
       })
     }
     const extractor = yield* loadExtractor(cfg.model, cfg.device, cfg.dtype)
-    return makeEmbedBatch(
-      () => Effect.succeed(extractor),
-      cfg.model,
-      cfg.dims,
-      cfg.dtype,
+    return makeEmbedBatch(() => Effect.succeed(extractor), {
+      model: cfg.model,
+      dims: cfg.dims,
+      dtype: cfg.dtype,
       hardTokenLimit,
       maxInputTokens,
-      cfg.batchSize ?? 16,
-    )
+      batchSize: cfg.batchSize ?? DEFAULT_BATCH_SIZE,
+    })
   })
 
 /** Embedding model loaded on the first working device in automatic priority order. */
@@ -215,49 +227,27 @@ export const createAutoBoundEmbedder = (cfg: {
         device,
         hardTokenLimit: info.hardTokenLimit,
         maxInputTokens: info.maxInputTokens,
-        batchSize: cfg.batchSize ?? 16,
+        batchSize: cfg.batchSize ?? DEFAULT_BATCH_SIZE,
       }),
     )
   }).pipe(Effect.map(({ device, value }) => ({ device, embedder: value })))
 
 const withGpuFallback = (
-  model: string,
-  device: DeviceType,
-  dtype: EmbeddingDtype,
-  dims: number,
-  hardTokenLimit: number,
-  maxInputTokens: number,
-  batchSize: number,
+  { device, ...options }: GpuFallbackOptions,
   d: typeof Display.Service,
   fallbackRef: Ref.Ref<Option.Option<FallbackInfo>>,
 ): Effect.Effect<BoundEmbedder, ModelLoadError> =>
   Effect.gen(function* () {
     if (device === "cpu") {
-      const extractor = yield* loadExtractor(model, device, dtype)
+      const extractor = yield* loadExtractor(options.model, device, options.dtype)
       const getExtractor = yield* Effect.succeed(() => Effect.succeed(extractor))
-      return makeEmbedBatch(
-        getExtractor,
-        model,
-        dims,
-        dtype,
-        hardTokenLimit,
-        maxInputTokens,
-        batchSize,
-      )
+      return makeEmbedBatch(getExtractor, options)
     }
 
-    const gpuResult = yield* loadExtractor(model, device, dtype).pipe(Effect.result)
+    const gpuResult = yield* loadExtractor(options.model, device, options.dtype).pipe(Effect.result)
     if (Result.isSuccess(gpuResult)) {
       const getExtractor = yield* Effect.succeed(() => Effect.succeed(gpuResult.success))
-      return makeEmbedBatch(
-        getExtractor,
-        model,
-        dims,
-        dtype,
-        hardTokenLimit,
-        maxInputTokens,
-        batchSize,
-      )
+      return makeEmbedBatch(getExtractor, options)
     }
 
     const originalError = gpuResult.failure
@@ -270,17 +260,9 @@ const withGpuFallback = (
       }),
     )
 
-    const cpuExtractor = yield* loadExtractor(model, "cpu", dtype)
+    const cpuExtractor = yield* loadExtractor(options.model, "cpu", options.dtype)
     const getCpuExtractor = yield* Effect.succeed(() => Effect.succeed(cpuExtractor))
-    return makeEmbedBatch(
-      getCpuExtractor,
-      model,
-      dims,
-      dtype,
-      hardTokenLimit,
-      maxInputTokens,
-      batchSize,
-    )
+    return makeEmbedBatch(getCpuExtractor, options)
   })
 
 const resolveEmbedderDeviceConfig = (
@@ -313,7 +295,7 @@ const resolveEmbedderDeviceConfig = (
       dims: resolved.dims,
       hardTokenLimit: MODEL_REGISTRY[resolved.model]!.hardTokenLimit,
       maxInputTokens: MODEL_REGISTRY[resolved.model]!.maxInputTokens,
-      batchSize: config?.embedder.batchSize ?? 16,
+      batchSize: config?.embedder.batchSize ?? DEFAULT_BATCH_SIZE,
     }
   })
 
@@ -324,13 +306,15 @@ const make = Effect.gen(function* () {
   const cfg = yield* resolveEmbedderDeviceConfig(configStore, detection)
   const fallbackRef = yield* Ref.make<Option.Option<FallbackInfo>>(Option.none())
   const bound = yield* withGpuFallback(
-    cfg.model,
-    cfg.device,
-    cfg.dtype,
-    cfg.dims,
-    cfg.hardTokenLimit ?? 512,
-    cfg.maxInputTokens ?? 512,
-    cfg.batchSize ?? 16,
+    {
+      model: cfg.model,
+      device: cfg.device,
+      dtype: cfg.dtype,
+      dims: cfg.dims,
+      hardTokenLimit: cfg.hardTokenLimit ?? DEFAULT_TOKEN_LIMIT,
+      maxInputTokens: cfg.maxInputTokens ?? DEFAULT_TOKEN_LIMIT,
+      batchSize: cfg.batchSize ?? DEFAULT_BATCH_SIZE,
+    },
     d,
     fallbackRef,
   )

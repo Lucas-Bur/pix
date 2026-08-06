@@ -1,9 +1,17 @@
 import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
+import type { ChunkingOptions } from "../../src/domain/ports.js"
 import { prepareCorpus } from "../retrieval/corpus/prepare.js"
 import { loadCorpusManifests, prepareRepository } from "../retrieval/corpus/repository.js"
 import { resolveGoldTargets } from "../retrieval/evaluation/metrics.js"
+
+const validationChunkingOptions: ChunkingOptions = {
+  maxTokens: Number.MAX_SAFE_INTEGER,
+  overlapLines: 0,
+  countTokens: () => Effect.succeed(0),
+  onDiagnostic: () => Effect.void,
+}
 
 // This validation intentionally reads real pinned checkouts; memfs is used by other adapter tests.
 it.effect("resolves every authored gold symbol in each pinned corpus", () =>
@@ -14,7 +22,7 @@ it.effect("resolves every authored gold symbol in each pinned corpus", () =>
 
     for (const manifest of manifests) {
       const repositoryPath = yield* prepareRepository(manifest)
-      const corpus = yield* prepareCorpus(repositoryPath, manifest)
+      const corpus = yield* prepareCorpus(repositoryPath, manifest, validationChunkingOptions)
       const unresolved = manifest.questions.flatMap((question) =>
         resolveGoldTargets(question.groundTruth, corpus.chunks, corpus.identifiersByChunk).flatMap(
           (targets, index) =>

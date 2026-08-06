@@ -222,9 +222,9 @@ const make = Effect.gen(function* () {
           const inputs = tokenizer([...texts], { padding: true, truncation: false })
           const output = await model.forward(inputs)
           const logits = output.logits
-          const [batchSize, sequenceLength, vocabularySize] = logits.dims
+          const [logitsBatchSize, sequenceLength, vocabularySize] = logits.dims
           if (
-            batchSize === undefined ||
+            logitsBatchSize === undefined ||
             sequenceLength === undefined ||
             vocabularySize === undefined
           ) {
@@ -235,7 +235,7 @@ const make = Effect.gen(function* () {
           }
           return poolSparseLogits(
             logits.data as Float32Array,
-            [batchSize, sequenceLength, vocabularySize],
+            [logitsBatchSize, sequenceLength, vocabularySize],
             Array.from(inputs.attention_mask.data, Number),
             specialTokenIds,
           )

@@ -26,3 +26,22 @@ it.effect("createCombinedTokenCounter uses the larger count and caches it", () =
     expect(sparseCalls).toBe(1)
   }),
 )
+
+it.effect("createCombinedTokenCounter evicts the least recently used count", () =>
+  Effect.gen(function* () {
+    let calls = 0
+    const countTokens = createCombinedTokenCounter(
+      () => Effect.sync(() => ++calls),
+      () => Effect.succeed(0),
+      2,
+    )
+
+    yield* countTokens("first")
+    yield* countTokens("second")
+    yield* countTokens("first")
+    yield* countTokens("third")
+    yield* countTokens("second")
+
+    expect(calls).toBe(4)
+  }),
+)

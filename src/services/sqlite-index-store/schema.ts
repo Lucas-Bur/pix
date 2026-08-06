@@ -60,6 +60,7 @@ export class IndexMetaRow extends Model.Class<IndexMetaRow>("IndexMetaRow")({
   dims: Schema.Number,
   dtype: EmbeddingDtypeSchema,
   lastIndex: Schema.Number,
+  chunkTokens: Schema.Union([Schema.Number, Schema.Null]),
   quantized: Schema.Literals([0, 1]),
   diagnostics: Schema.fromJsonString(Schema.Array(IndexDiagnosticSchema)),
 }) {}

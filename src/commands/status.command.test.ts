@@ -23,7 +23,7 @@ const populatedStatusLayer = Layer.mock(IndexStore)({
       totalLines: 3,
       byteSize: 19,
       validationErrors: [],
-      diagnostics: [],
+      diagnostics: [{ kind: "parser-fallback", file: "src/test.ts", message: "fallback" }],
     }),
 })
 
@@ -62,6 +62,9 @@ it.effect("pix status without --json logs status entries via Display", () => {
     expect(entries.some((e) => e._tag === "json")).toBe(true)
     expect(
       entries.some((entry) => entry._tag === "log" && entry.message.includes("Indexed: 2 chunks")),
+    ).toBe(true)
+    expect(
+      entries.some((entry) => entry._tag === "log" && entry.message === "Index diagnostics: 1"),
     ).toBe(true)
   }).pipe(Effect.provide(testLayer({ indexStoreLayer: populatedStatusLayer, displayLayer: layer })))
 })

@@ -11,19 +11,31 @@ type TokenAwareEmbedder = {
   readonly countTokens: TokenCounter
 }
 
+const DEFAULT_TOKEN_COUNT_CACHE_SIZE = 4_096
+
 /** Create a cached counter that uses the larger count from the active Dense and Sparse tokenizers. */
 export const createCombinedTokenCounter = (
   dense: TokenCounter,
   sparse: TokenCounter,
+  maxEntries = DEFAULT_TOKEN_COUNT_CACHE_SIZE,
 ): TokenCounter => {
   const counts = new Map<string, number>()
+  const cacheSize = Math.max(1, Math.floor(maxEntries))
 
   return (text: string) => {
     const cached = counts.get(text)
-    if (cached !== undefined) return Effect.succeed(cached)
+    if (cached !== undefined) {
+      counts.delete(text)
+      counts.set(text, cached)
+      return Effect.succeed(cached)
+    }
     return Effect.all([dense(text), sparse(text)]).pipe(
       Effect.map(([denseCount, sparseCount]) => {
         const count = Math.max(denseCount, sparseCount)
+        if (counts.size >= cacheSize) {
+          const oldest = counts.keys().next().value
+          if (oldest !== undefined) counts.delete(oldest)
+        }
         counts.set(text, count)
         return count
       }),
