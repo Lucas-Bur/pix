@@ -186,7 +186,6 @@ export const OPTIMIZATION_PROFILES = {
       "contextRecallAt4096",
       "recallAt50",
       "meanReciprocalRank",
-      "ndcgAt20",
     ]),
   ),
   "basic-exploration": profile(
@@ -216,7 +215,6 @@ export const OPTIMIZATION_PROFILES = {
       "recallAt5",
       "contextRecallAt4096",
       "meanReciprocalRank",
-      "ndcgAt50",
     ]),
   ),
 } as const

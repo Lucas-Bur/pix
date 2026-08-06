@@ -9,7 +9,7 @@ surface.
 The suite answers five questions independently:
 
 1. Do identity, CamelCase, BM25, dense, and sparse retrieval each contribute useful candidates?
-2. Does production-weighted RRF improve `Recall@K` and binary `NDCG@K` over individual channels and combinations?
+2. Does the production DBSF configuration improve `Recall@K` and binary `NDCG@K` over individual channels and combinations?
 3. Does full RRF reduce the quality gap between a small general embedder and a code-specific one?
 4. How much authored ground truth fits into fixed context budgets?
 5. Can one evidence-based router outperform static weights without knowing the authored query form?
