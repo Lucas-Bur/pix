@@ -41,6 +41,12 @@ it("records the authored weighted search-priority objective without a profile sc
   expect(
     OPTIMIZATION_PROFILES["code-navigation"].fusionConfig.baseWeights.identity,
   ).toBeGreaterThan(OPTIMIZATION_PROFILES["natural-language"].fusionConfig.baseWeights.identity)
+  expect(OPTIMIZATION_PROFILES["code-navigation"].metricObjective.priority).not.toContain(
+    "ndcgAt20",
+  )
+  expect(OPTIMIZATION_PROFILES["natural-language"].metricObjective.priority).not.toContain(
+    "ndcgAt50",
+  )
 })
 
 it("rejects semantically empty benchmark profiles", () => {

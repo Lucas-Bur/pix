@@ -588,6 +588,7 @@ describe("retrieval benchmark fixture", () => {
     expect(
       compareObjectiveQuality(ndcgFirst, recallFirst, "reranker-top20", recallFirst),
     ).toBeGreaterThan(0)
+    expect(compareObjectiveQuality(quality(0.9, 0.8), quality(0.1, 0.8), "reranker-top20")).toBe(0)
     const selections = selectObjectiveArchiveCandidates(
       [
         { id: "ndcg", quality: ndcgFirst },

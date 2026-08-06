@@ -421,7 +421,6 @@ const OBJECTIVE_PRIORITIES: Readonly<Record<RouterObjective, readonly QualityMet
     "contextRecallAt4096",
     "recallAt50",
     "meanReciprocalRank",
-    "ndcgAt20",
   ],
   "reranker-top50": [
     "recallAt50",
@@ -430,7 +429,6 @@ const OBJECTIVE_PRIORITIES: Readonly<Record<RouterObjective, readonly QualityMet
     "recallAt5",
     "contextRecallAt4096",
     "meanReciprocalRank",
-    "ndcgAt50",
   ],
 }
 
