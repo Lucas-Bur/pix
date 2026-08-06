@@ -7,7 +7,12 @@ import { Effect, Layer, Path } from "effect"
 import type { DeviceType } from "../domain/device.js"
 import { InferenceError, ModelLoadError, TokenLimitError } from "../domain/errors.js"
 import { SPARSE_MODEL_REGISTRY } from "../domain/models.js"
-import { ConfigStore, SparseEmbedder } from "../domain/ports.js"
+import {
+  ConfigStore,
+  SparseEmbedder,
+  type BoundSparseEmbedder,
+  type SparseDeviceConfig,
+} from "../domain/ports.js"
 import type { EmbeddingLimits } from "../domain/ports.js"
 import {
   type SparseContract,
@@ -170,26 +175,81 @@ const make = Effect.gen(function* () {
       : loadConfiguredDocumentModel(sparse.device),
   )
 
-  const batch = (
-    texts: readonly string[],
-  ): Effect.Effect<readonly SparseVector[], ModelLoadError | InferenceError | TokenLimitError> =>
-    Effect.gen(function* () {
-      if (texts.length === 0) return []
-      if (texts.length > sparse.batchSize) {
-        return yield* new TokenLimitError({
-          message: `Sparse batch for "${sparse.model}" has ${texts.length} inputs; the batch limit is ${sparse.batchSize}`,
-          model: sparse.model,
-          actualTokens: texts.length,
-          limit: sparse.batchSize,
-          scope: "batch",
-        })
-      }
-      const [{ tokenizer, specialTokenIds }, model] = yield* Effect.all([
-        getQueryRuntime,
-        getDocumentModel,
-      ])
-      const counts = yield* Effect.forEach(texts, (text) =>
-        Effect.try({
+  const makeBound = (
+    documentModel: Effect.Effect<SparseDocumentModel, ModelLoadError>,
+    batchSize: number,
+  ): BoundSparseEmbedder => {
+    const batch = (
+      texts: readonly string[],
+    ): Effect.Effect<readonly SparseVector[], ModelLoadError | InferenceError | TokenLimitError> =>
+      Effect.gen(function* () {
+        if (texts.length === 0) return []
+        if (texts.length > batchSize) {
+          return yield* new TokenLimitError({
+            message: `Sparse batch for "${sparse.model}" has ${texts.length} inputs; the batch limit is ${batchSize}`,
+            model: sparse.model,
+            actualTokens: texts.length,
+            limit: batchSize,
+            scope: "batch",
+          })
+        }
+        const [{ tokenizer, specialTokenIds }, model] = yield* Effect.all([
+          getQueryRuntime,
+          documentModel,
+        ])
+        const counts = yield* Effect.forEach(texts, (text) =>
+          Effect.try({
+            try: () =>
+              tokenizer(text, {
+                add_special_tokens: true,
+                truncation: false,
+                return_tensor: false,
+              }).input_ids.length,
+            catch: (cause) => new InferenceError({ message: "Sparse tokenization failed", cause }),
+          }),
+        )
+        const tooLong = counts.find((count) => count > limits.maxInputTokens)
+        if (tooLong !== undefined) {
+          return yield* new TokenLimitError({
+            message: `Sparse input for "${sparse.model}" has ${tooLong} tokens; the maximum is ${limits.maxInputTokens}`,
+            model: sparse.model,
+            actualTokens: tooLong,
+            limit: limits.maxInputTokens,
+            scope: "input",
+          })
+        }
+        return yield* Effect.tryPromise(async () => {
+          const inputs = tokenizer([...texts], { padding: true, truncation: false })
+          const output = await model.forward(inputs)
+          const logits = output.logits
+          const [batchSize, sequenceLength, vocabularySize] = logits.dims
+          if (
+            batchSize === undefined ||
+            sequenceLength === undefined ||
+            vocabularySize === undefined
+          ) {
+            throw new Error(`Unexpected sparse logits shape: ${logits.dims.join("x")}`)
+          }
+          if (logits.type !== "float32") {
+            throw new Error(`Unexpected sparse logits dtype: ${logits.type}`)
+          }
+          return poolSparseLogits(
+            logits.data as Float32Array,
+            [batchSize, sequenceLength, vocabularySize],
+            Array.from(inputs.attention_mask.data, Number),
+            specialTokenIds,
+          )
+        }).pipe(
+          Effect.mapError(
+            (cause) => new InferenceError({ message: "Sparse document inference failed", cause }),
+          ),
+        )
+      })
+
+    const countTokens = (text: string): Effect.Effect<number, ModelLoadError | InferenceError> =>
+      Effect.gen(function* () {
+        const { tokenizer } = yield* getQueryRuntime
+        return yield* Effect.try({
           try: () =>
             tokenizer(text, {
               add_special_tokens: true,
@@ -197,59 +257,23 @@ const make = Effect.gen(function* () {
               return_tensor: false,
             }).input_ids.length,
           catch: (cause) => new InferenceError({ message: "Sparse tokenization failed", cause }),
-        }),
-      )
-      const tooLong = counts.find((count) => count > limits.maxInputTokens)
-      if (tooLong !== undefined) {
-        return yield* new TokenLimitError({
-          message: `Sparse input for "${sparse.model}" has ${tooLong} tokens; the maximum is ${limits.maxInputTokens}`,
-          model: sparse.model,
-          actualTokens: tooLong,
-          limit: limits.maxInputTokens,
-          scope: "input",
         })
-      }
-      return yield* Effect.tryPromise(async () => {
-        const inputs = tokenizer([...texts], { padding: true, truncation: false })
-        const output = await model.forward(inputs)
-        const logits = output.logits
-        const [batchSize, sequenceLength, vocabularySize] = logits.dims
-        if (
-          batchSize === undefined ||
-          sequenceLength === undefined ||
-          vocabularySize === undefined
-        ) {
-          throw new Error(`Unexpected sparse logits shape: ${logits.dims.join("x")}`)
-        }
-        if (logits.type !== "float32") {
-          throw new Error(`Unexpected sparse logits dtype: ${logits.type}`)
-        }
-        return poolSparseLogits(
-          logits.data as Float32Array,
-          [batchSize, sequenceLength, vocabularySize],
-          Array.from(inputs.attention_mask.data, Number),
-          specialTokenIds,
-        )
-      }).pipe(
-        Effect.mapError(
-          (cause) => new InferenceError({ message: "Sparse document inference failed", cause }),
-        ),
-      )
-    })
-
-  const countTokens = (text: string): Effect.Effect<number, ModelLoadError | InferenceError> =>
-    Effect.gen(function* () {
-      const { tokenizer } = yield* getQueryRuntime
-      return yield* Effect.try({
-        try: () =>
-          tokenizer(text, {
-            add_special_tokens: true,
-            truncation: false,
-            return_tensor: false,
-          }).input_ids.length,
-        catch: (cause) => new InferenceError({ message: "Sparse tokenization failed", cause }),
       })
-    })
+
+    return { limits, countTokens, batch }
+  }
+
+  const bound = makeBound(getDocumentModel, sparse.batchSize)
+  const createForDevice = (
+    cfg: SparseDeviceConfig,
+  ): Effect.Effect<BoundSparseEmbedder, ModelLoadError> =>
+    loadDocumentModel(
+      sparse.model,
+      sparse.modelRevision,
+      sparse.queryModel,
+      sparse.queryRevision,
+      cfg.device,
+    ).pipe(Effect.map((model) => makeBound(Effect.succeed(model), cfg.batchSize)))
 
   const loadStaticIdf = (): Effect.Effect<readonly SparseTerm[], ModelLoadError> =>
     Effect.gen(function* () {
@@ -284,8 +308,9 @@ const make = Effect.gen(function* () {
   return {
     contract,
     limits,
-    countTokens,
-    batch,
+    countTokens: bound.countTokens,
+    batch: bound.batch,
+    createForDevice,
     loadIdf: loadStaticIdf,
     tokenizeQuery,
   } as const

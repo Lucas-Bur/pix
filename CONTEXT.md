@@ -57,7 +57,14 @@ Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtype
 
 ### DeviceDetection
 
-Port (`Context.Tag` in `src/domain/ports.ts`) for detecting the best available compute device for embedding inference. Two methods: `detect(model, dtype) → DeviceType` (probes devices in priority order, returns first that loads the model) and `detectAll(model, dtype) → readonly DeviceType[]` (tests each independently). The live adapter in `src/services/device-detect.ts` uses the shared generic first-working-device loader with `cuda → dml → coreml → webgpu → wasm → cpu`. Dense supplies its Feature Extraction loader, Sparse supplies its Masked-LM loader, and `BenchProject` uses `detectAll` to enumerate Dense devices. Explicit devices bypass fallback.
+Port (`Context.Tag` in `src/domain/ports.ts`) for detecting the best available compute device for embedding inference. Two methods: `detect(model, dtype) → DeviceType` (probes devices in priority order, returns first that loads the model) and `detectAll(model, dtype) → readonly DeviceType[]` (tests each independently). The live adapter in `src/services/device-detect.ts` uses the shared generic first-working-device loader with `cuda → dml → coreml → webgpu → wasm → cpu`. Dense uses `detectAll` for feature-extraction probing; the hardware benchmark probes Sparse devices through `SparseEmbedder.createForDevice()` because Sparse loads a masked-language model. Explicit devices bypass fallback.
+
+### Hardware Benchmark
+
+`pix bench` measures cold-start and warm throughput for Dense and learned Sparse embedding separately. Dense
+defaults to the detected working devices and batch sizes `1,4,8,16,32,64,96,128`; Sparse probes the same
+device priority with safer batch sizes `1,2,4,8`. `--devices dml` restricts both channels to DML; multiple
+devices are comma-separated. `--apply` writes both channel recommendations to `.pix/config.json`.
 
 ### Config Healing
 

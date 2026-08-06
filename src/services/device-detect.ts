@@ -1,13 +1,10 @@
 import { NodePath } from "@effect/platform-node"
 import { Effect, Layer, Path, Result } from "effect"
 
-import type { DeviceType } from "../domain/device.js"
+import { DEVICE_PRIORITY, type DeviceType } from "../domain/device.js"
 import { ModelLoadError } from "../domain/errors.js"
 import { DeviceDetection } from "../domain/ports.js"
 import { resolveTransformersCacheDir } from "../lib/model-cache.js"
-
-/** Device order used by automatic embedding inference selection. */
-const DEVICE_PRIORITY: readonly DeviceType[] = ["cuda", "dml", "coreml", "webgpu", "wasm", "cpu"]
 
 /** Load a model once on the first working device in the shared automatic priority order. */
 export const loadFirstAvailableDevice = <A>(

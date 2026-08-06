@@ -24,6 +24,10 @@ export interface BenchOptions {
   readonly warmup: number
   readonly measureBatches: number
   readonly batchSizes: readonly number[]
+  /** Sparse batch sizes; omitted values reuse the Dense candidates for API compatibility. */
+  readonly sparseBatchSizes?: readonly number[]
+  /** Explicit devices to benchmark; omitted means probe the normal device priority. */
+  readonly devices?: readonly DeviceType[]
   readonly timeout: number
   readonly profile: BenchProfile
 }
@@ -48,5 +52,7 @@ export interface BenchResult {
   readonly warmup: number
   readonly measureBatches: number
   readonly measurements: readonly BenchMeasurement[]
+  readonly sparseMeasurements: readonly BenchMeasurement[]
   readonly recommendation: BenchRecommendation
+  readonly sparseRecommendation: BenchRecommendation
 }

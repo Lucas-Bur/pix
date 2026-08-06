@@ -235,6 +235,23 @@ export interface BoundEmbedder {
   ) => Effect.Effect<ReadonlyArray<Embedding>, ModelLoadError | InferenceError | TokenLimitError>
 }
 
+/** Configuration for creating a sparse embedder bound to one benchmark device and batch size. */
+export interface SparseDeviceConfig {
+  readonly device: DeviceType
+  readonly batchSize: number
+}
+
+/** A sparse embedder instance bound to a specific device and batch size. */
+export interface BoundSparseEmbedder {
+  readonly limits: EmbeddingLimits
+  /** Count one input with special tokens and truncation disabled. */
+  readonly countTokens: (text: string) => Effect.Effect<number, ModelLoadError | InferenceError>
+  /** Encode a batch of source chunks into learned sparse vectors. */
+  readonly batch: (
+    texts: readonly string[],
+  ) => Effect.Effect<ReadonlyArray<SparseVector>, ModelLoadError | InferenceError | TokenLimitError>
+}
+
 /** Port for creating vector embeddings from text. */
 export class Embedder extends Context.Service<
   Embedder,
@@ -276,6 +293,10 @@ export class SparseEmbedder extends Context.Service<
     readonly batch: (
       texts: readonly string[],
     ) => Effect.Effect<readonly SparseVector[], ModelLoadError | InferenceError | TokenLimitError>
+    /** Create a fresh sparse encoder for an explicit device and batch size (used by benchmark). */
+    readonly createForDevice: (
+      cfg: SparseDeviceConfig,
+    ) => Effect.Effect<BoundSparseEmbedder, ModelLoadError>
     /** Load and hash-verify the complete static query-IDF table for index persistence. */
     readonly loadIdf: () => Effect.Effect<readonly SparseTerm[], ModelLoadError>
     /** Tokenize a query for SQLite's persisted static IDF lookup. */

@@ -270,6 +270,8 @@ it.effect("(yield* BenchProject).bench reports corpus size", () =>
     const result = yield* (yield* BenchProject).bench(defaultBenchOpts)
     expect(result.profile).toBe("balanced")
     expect(result.measurements.length).toBeGreaterThan(0)
+    expect(result.sparseMeasurements.length).toBeGreaterThan(0)
+    expect(result.sparseRecommendation.batchSize).toBeGreaterThan(0)
   }).pipe(Effect.provide(benchLayer(fixtures, { devices: ["cpu"] }).layer), Effect.scoped),
 )
 
@@ -390,6 +392,44 @@ describe("BenchProject measurement pipeline", () => {
       }
     }).pipe(Effect.provide(benchLayer(fixtures, { displayLayer: layer }).layer), Effect.scoped)
   })
+
+  it.effect("uses separate sparse batch-size candidates", () =>
+    Effect.gen(function* () {
+      const result = yield* (yield* BenchProject).bench({
+        warmup: 1,
+        measureBatches: 1,
+        batchSizes: [4] as const,
+        sparseBatchSizes: [1, 2] as const,
+        timeout: 60,
+        profile: "balanced" as const,
+      })
+
+      const sparseWarmMeasurements = result.sparseMeasurements.filter((m) => m.batchSize > 0)
+      expect(sparseWarmMeasurements.length).toBeGreaterThan(0)
+      expect(new Set(sparseWarmMeasurements.map((m) => m.batchSize))).toEqual(new Set([1, 2]))
+    }).pipe(Effect.provide(benchLayer(fixtures).layer), Effect.scoped),
+  )
+
+  it.effect("benchmarks only explicitly selected devices", () =>
+    Effect.gen(function* () {
+      const result = yield* (yield* BenchProject).bench({
+        warmup: 1,
+        measureBatches: 1,
+        batchSizes: [1] as const,
+        sparseBatchSizes: [1] as const,
+        devices: ["dml"] as const,
+        timeout: 60,
+        profile: "balanced" as const,
+      })
+
+      expect(new Set(result.measurements.map((measurement) => measurement.device))).toEqual(
+        new Set(["dml"]),
+      )
+      expect(new Set(result.sparseMeasurements.map((measurement) => measurement.device))).toEqual(
+        new Set(["dml"]),
+      )
+    }).pipe(Effect.provide(benchLayer(fixtures, { devices: ["cpu", "dml"] }).layer), Effect.scoped),
+  )
 
   it.effect("creates embedder per device for cold-start", () => {
     const mock = createMockEmbedder()
@@ -690,6 +730,21 @@ describe("(yield* BenchProject).applyConfig", () => {
       Effect.scoped,
     )
   })
+
+  it.effect("patches sparse device and batch size when a sparse recommendation is provided", () =>
+    Effect.gen(function* () {
+      yield* (yield* BenchProject).applyConfig(
+        { device: "cpu", batchSize: 8, profile: "balanced" },
+        { device: "cuda", batchSize: 4, profile: "balanced" },
+      )
+
+      const store = yield* ConfigStore
+      const config = yield* store.readConfig()
+      expect(config.embedder.device).toBe("cpu")
+      expect(config.sparseEmbedder.device).toBe("cuda")
+      expect(config.sparseEmbedder.batchSize).toBe(4)
+    }).pipe(Effect.provide(testLayer({ contents: {} })), Effect.scoped),
+  )
 })
 
 describe("BenchProject error and edge cases", () => {
