@@ -172,17 +172,78 @@ export interface QualitySummary {
   readonly meanReciprocalRank: number
 }
 
+/** Quality field that can participate in candidate selection or deployment guardrails. */
+export type QualityMetric = keyof QualitySummary
+
 /** Whether a benchmark candidate is eligible for production promotion. */
 export type PromotionStatus = "eligible" | "no-eligible-candidate"
 
+/** Exact reason why one candidate failed a deployment guardrail. */
+export interface GuardrailBlocker {
+  readonly partition: "aggregate" | "query-form" | "repository"
+  readonly name: string
+  readonly metric: QualityMetric
+  readonly candidateValue: number
+  readonly baselineValue: number
+  readonly tolerance: number
+  readonly delta: number
+}
+
 /** Quality and guardrail outcome for one query-form or repository holdout partition. */
 export interface HoldoutQuality {
-  readonly dimension: "query-form" | "repository"
+  readonly dimension: GuardrailBlocker["partition"]
   readonly name: string
   readonly queries: number
   readonly candidate: QualitySummary
   readonly baseline: QualitySummary
   readonly guardrailsMet: boolean
+  readonly blockers: readonly GuardrailBlocker[]
+}
+
+/** Bootstrap interval for a paired candidate-minus-baseline holdout delta. */
+export interface HoldoutUncertainty {
+  readonly strategy: ValidationStrategy
+  readonly partition: GuardrailBlocker["partition"]
+  readonly name: string
+  readonly metric: QualityMetric
+  readonly meanDelta: number
+  readonly lowerBound: number
+  readonly upperBound: number
+  readonly bootstrapSamples: number
+}
+
+/** Empirical robustness of independently selected candidates across excluded folds. */
+export interface CandidateStability {
+  readonly folds: number
+  readonly distinctSelections: number
+  readonly selectionFrequency: number
+  readonly localPerturbations: number
+  readonly plateauWidth: number
+  readonly epsilonNeighborFraction: number
+  readonly medianHoldoutDrop: number
+  readonly worstCaseHoldoutDrop: number
+  readonly seeds: number
+  readonly restarts: number
+}
+
+/** Holdout-only decision attached to a diagnostic fit-all router candidate. */
+export interface PromotionEvidence {
+  readonly model: string
+  readonly fusion: FusionMethod
+  readonly objective: RouterObjective
+  readonly promotionStatus: PromotionStatus
+  readonly missingStrategies: readonly ValidationStrategy[]
+  readonly finalTest: {
+    readonly strategy: ValidationStrategy
+    readonly fold: string
+    readonly present: boolean
+    readonly guardrailsMet: boolean
+  }
+  readonly blockers: ReadonlyArray<
+    GuardrailBlocker & { readonly strategy: ValidationStrategy; readonly fold: string }
+  >
+  readonly uncertainty: readonly HoldoutUncertainty[]
+  readonly stability: CandidateStability
 }
 
 /** One cross-validation fold with weights selected without its validation samples. */
@@ -295,9 +356,11 @@ export interface SearchBaselineComparison {
 export interface ValidationProtocol {
   readonly selection: "development-only"
   readonly holdouts: readonly ValidationStrategy[]
-  readonly finalTest: "nested-cross-validation-plan"
-  readonly nestedOuterFolds: number
-  readonly nestedInnerFolds: number
+  readonly finalTest: {
+    readonly kind: "untouched-grouped-fold"
+    readonly strategy: ValidationStrategy
+    readonly fold: string
+  }
 }
 
 /** One holdout evaluation of a router selected from query and channel evidence. */
@@ -361,7 +424,7 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 24
+  readonly schemaVersion: 25
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   /** Versioned objective profile used for candidate selection and aggregate metrics. */
@@ -415,4 +478,5 @@ export interface BenchmarkArtifact {
   readonly recommendedFusionWeights: readonly RecommendedFusionWeights[]
   readonly evidenceRouterSearch: readonly EvidenceRouterSearchResult[]
   readonly recommendedEvidenceRouters: readonly RecommendedEvidenceRouter[]
+  readonly promotionEvidence: readonly PromotionEvidence[]
 }

@@ -568,7 +568,12 @@ describe("retrieval benchmark fixture", () => {
     expect(result.searchBaseline.validation.recallAt20).toBeGreaterThanOrEqual(0)
     expect(
       result.holdoutBreakdown.map(({ dimension, name }) => `${dimension}:${name}`).sort(),
-    ).toEqual(["query-form:naturalQuestion", "query-form:searchPhrase", "repository:fixture"])
+    ).toEqual([
+      "aggregate:all",
+      "query-form:naturalQuestion",
+      "query-form:searchPhrase",
+      "repository:fixture",
+    ])
     expect(
       result.holdoutBreakdown.every(
         ({ candidate, baseline }) => candidate.recallAt20 >= 0 && baseline.recallAt20 >= 0,

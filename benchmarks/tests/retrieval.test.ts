@@ -93,13 +93,17 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
       searchPhrase: 4,
     })
     expect(artifact.validationProtocol.selection).toBe("development-only")
-    expect(artifact.validationProtocol.finalTest).toBe("nested-cross-validation-plan")
+    expect(artifact.validationProtocol.finalTest).toEqual({
+      kind: "untouched-grouped-fold",
+      strategy: groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold",
+      fold: String(groupedFolds),
+    })
     expect(artifact.repositories.length).toBeGreaterThan(0)
     expect(artifact.evaluationCases.length).toBeGreaterThan(0)
     expect(artifact.evaluationCases.every(({ groundTruth }) => groundTruth.length > 0)).toBe(true)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(24)
+    expect(artifact.schemaVersion).toBe(25)
     expect(artifact.searchStrategy).toEqual(
       ROUTER_SEARCH_STRATEGIES[resolveRouterSearchStrategy(process.env.PIX_BENCH_ROUTER_STRATEGY)],
     )
@@ -127,6 +131,9 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
       routerFusionMethods,
     )
     expect(artifact.recommendedEvidenceRouters.length).toBe(
+      artifact.models.length * routerFusionMethods * ROUTER_OBJECTIVES.length,
+    )
+    expect(artifact.promotionEvidence.length).toBe(
       artifact.models.length * routerFusionMethods * ROUTER_OBJECTIVES.length,
     )
     expect(artifact.evidenceRouterSearch.every((row) => row.proxyEvaluations >= 0)).toBe(true)

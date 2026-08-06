@@ -62,6 +62,51 @@ const formatRouterWeightColumns = (result: {
   influences: formatInfluences(result.config),
 })
 
+const renderPromotionEvidence = (artifact: BenchmarkArtifact): readonly string[] => {
+  const summaries = artifact.promotionEvidence.map(
+    (evidence) =>
+      `| ${evidence.model} | ${evidence.fusion} | ${evidence.objective} | ${promotionLabel(evidence.promotionStatus)} | ${evidence.missingStrategies.join(", ") || "none"} | ${evidence.finalTest.strategy}:${evidence.finalTest.fold} (${evidence.finalTest.guardrailsMet ? "pass" : "fail"}) | ${evidence.stability.folds} | ${evidence.stability.distinctSelections} | ${percent(evidence.stability.selectionFrequency)} | ${evidence.stability.localPerturbations} | ${evidence.stability.plateauWidth.toFixed(3)} | ${percent(evidence.stability.epsilonNeighborFraction)} | ${percent(evidence.stability.medianHoldoutDrop)} | ${percent(evidence.stability.worstCaseHoldoutDrop)} |`,
+  )
+  const blockers = artifact.promotionEvidence.flatMap((evidence) =>
+    evidence.blockers.map(
+      (blocker) =>
+        `| ${evidence.model} | ${evidence.fusion} | ${evidence.objective} | ${blocker.strategy} | ${blocker.fold} | ${blocker.partition}:${blocker.name} | ${blocker.metric} | ${percent(blocker.candidateValue)} | ${percent(blocker.baselineValue)} | ${percent(blocker.tolerance)} | ${percent(blocker.delta)} |`,
+    ),
+  )
+  const uncertainty = artifact.promotionEvidence.flatMap((evidence) =>
+    evidence.uncertainty.map(
+      (interval) =>
+        `| ${evidence.model} | ${evidence.fusion} | ${evidence.objective} | ${interval.strategy} | ${interval.partition}:${interval.name} | ${interval.metric} | ${percent(interval.meanDelta)} | ${percent(interval.lowerBound)} | ${percent(interval.upperBound)} | ${interval.bootstrapSamples} |`,
+    ),
+  )
+  return [
+    "",
+    "## Promotion Evidence",
+    "",
+    "Fit-all quality is diagnostic. Promotion status below is derived only from excluded grouped and repository holdouts; missing required strategies block promotion.",
+    "",
+    "| Model | Fusion | Objective | Promotion | Missing strategies | Final test | Folds | Distinct selections | Selection frequency | Local perturbations | Plateau width | Epsilon neighbors | Median drop | Worst drop |",
+    "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ...summaries,
+    "",
+    "### Guardrail Blockers",
+    "",
+    "| Model | Fusion | Objective | Strategy | Fold | Partition | Metric | Candidate | Baseline | Tolerance | Delta |",
+    "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
+    ...(blockers.length === 0
+      ? ["| - | - | - | - | - | - | - | - | - | - | no blockers |"]
+      : blockers),
+    "",
+    "### Holdout Uncertainty",
+    "",
+    "Deterministic grouped bootstrap intervals resample excluded folds and report paired candidate-minus-baseline deltas.",
+    "",
+    "| Model | Fusion | Objective | Strategy | Partition | Metric | Mean delta | 95% lower | 95% upper | Bootstrap samples |",
+    "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
+    ...uncertainty,
+  ]
+}
+
 /** Render quality and marginal channel contribution grouped by query representation. */
 export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
   const groups = new Map<string, QueryMeasurement[]>()
@@ -92,7 +137,7 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
       .map(([kind, weight]) => `${kind}=${weight}`)
       .join(", ")}.`,
     "",
-    `Validation protocol: candidates use ${artifact.validationProtocol.selection}; holdouts are ${artifact.validationProtocol.holdouts.join(" and ")}; final promotion requires the recorded ${artifact.validationProtocol.finalTest}.`,
+    `Validation protocol: candidates use ${artifact.validationProtocol.selection}; holdouts are ${artifact.validationProtocol.holdouts.join(" and ")}; final promotion requires untouched ${artifact.validationProtocol.finalTest.strategy} fold ${artifact.validationProtocol.finalTest.fold}.`,
     "",
     `Search strategy: \`${artifact.searchStrategy.algorithm}\` (${artifact.searchStrategy.globalScouts} global scouts, beam ${artifact.searchStrategy.beamWidth}, ${artifact.searchStrategy.coordinatePasses} coordinate passes, ${artifact.searchStrategy.proxySampleFraction * 100}% proxy with minimum ${artifact.searchStrategy.proxyMinimumSamples}, ${strategyFactorLabel} factor ${strategyFactor}x).`,
     "",
@@ -322,6 +367,8 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
       `| ${row.model} | ${row.fusion} | ${row.objective} | ${row.strategy} | ${row.fold} | ${holdout.dimension}:${holdout.name} | ${holdout.queries} | ${holdout.guardrailsMet ? "yes" : "no"} | ${percent(holdout.candidate.recallAt5)} | ${percent(holdout.baseline.recallAt5)} | ${percent(holdout.candidate.recallAt10)} | ${percent(holdout.baseline.recallAt10)} | ${percent(holdout.candidate.recallAt20)} | ${percent(holdout.baseline.recallAt20)} | ${percent(holdout.candidate.recallAt50)} | ${percent(holdout.baseline.recallAt50)} | ${percent(holdout.candidate.contextRecallAt4096)} | ${percent(holdout.baseline.contextRecallAt4096)} |`,
     )
   }
+
+  lines.push(...renderPromotionEvidence(artifact))
 
   lines.push(
     "",

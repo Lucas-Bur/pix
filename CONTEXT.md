@@ -292,6 +292,11 @@ Repository checkouts live under ignored `benchmarks/.cache/repos/`; generated ar
 ignored `benchmarks/results/`. Benchmark Dense and Sparse vectors and channel rankings live under the
 ignored `benchmarks/.cache/retrieval/v1/` cache; production indexes remain separate. See
 `benchmarks/README.md` and `benchmarks/BASELINE.md`.
+Schema 25 makes promotion an excluded-evidence decision: grouped intent folds and repository holdouts
+must all be present and pass aggregate, query-form, and repository guardrails. Fit-all candidates are
+diagnostic and inherit that decision. The last grouped fold is the explicit untouched final test and
+must pass independently. Artifacts retain exact blocker values, deterministic grouped bootstrap
+intervals, and fold-level selection/local-perturbation stability diagnostics.
 
 ### Scorer
 

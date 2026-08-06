@@ -211,10 +211,12 @@ Weight selection uses two grouped strategies:
 - Leave-one-repository-out: calibrate on two repositories and validate on the third. This is emitted
   only when multiple repositories are selected in the same run.
 
-Candidate selection is development-only. Grouped and repository holdouts are reported separately; the
-artifact records nested cross-validation as the final promotion plan rather than presenting fit-all
-quality as an untouched final test. The Markdown report also emits unweighted query-form and repository
-holdout rows with candidate-versus-production guardrail metrics.
+Candidate selection is development-only inside each outer fold. Grouped intent folds and repository
+holdouts are the outer evaluation. Schema 25 reserves the last grouped fold as the explicit untouched
+final test; its candidate is selected without those samples, and a missing or failing final fold blocks
+promotion. Fit-all quality remains diagnostic: its promotion status is copied from the aggregated
+excluded-fold evidence and can never make itself eligible. The Markdown report emits aggregate,
+unweighted query-form, and repository holdout rows with candidate-versus-production guardrails.
 
 The grid optimizes development `Recall@20`, then `Recall@10`, 4k context recall, and MRR. Each fold's
 weights are evaluated unchanged on its excluded samples. Only after cross-validation does the report
@@ -238,9 +240,17 @@ Identifier-shape and query-length slopes range from -1 to 1 so one query signal 
 while damping another. This bounded coarse-to-fine search avoids the combinatorial explosion of a full
 20-parameter product; it is deterministic but does not claim a global optimum. Exact metric ties prefer
 the lower-coefficient candidate. Each objective must remain within the configured 1% development
-guardrail against the current Production router before it can be recommended.
-If no candidate satisfies those guardrails, the artifact records `promotionStatus: no-eligible-candidate`;
-the best non-eligible candidate remains diagnostic only and must not be promoted.
+guardrail against the current Production router before it can be evaluated. Final promotion additionally
+requires every configured outer strategy and every aggregate, query-form, and repository partition to
+pass. Every failure records its strategy, fold, partition, metric, candidate value, baseline, tolerance,
+and delta. If no candidate satisfies those guardrails, the artifact records
+`promotionStatus: no-eligible-candidate`; the best non-eligible candidate remains diagnostic only.
+
+Schema 25 adds deterministic grouped bootstrap intervals for paired candidate-minus-baseline deltas.
+It also records exact-selection frequency across outer folds, the number and width of observed
+single-coordinate perturbations, epsilon-neighbor fraction, and median/worst holdout drop. The search is
+currently deterministic with one seed and restart; those counts are explicit rather than implying
+unmeasured restart stability.
 
 Each router result also records a deterministic `random-scout` baseline using the same parameter grid and
 global-scout budget. `Random R@20` and `Random Ctx@4k` show whether the structured search beats that
@@ -350,8 +360,9 @@ output size without introducing an LLM or provider-specific tokenizer.
 
 Each run writes ignored JSON and Markdown artifacts under `benchmarks/results`. JSON rows retain the
 repository, revision, language, size, category, difficulty, query form, grouped fold, model, variant,
-individual gold ranks, timing, and every metric. Schema 24 adds selectable router strategies while
-retaining shared candidate-queue lifecycle and
+individual gold ranks, timing, and every metric. Schema 25 derives promotion from excluded folds and adds
+exact blockers, grouped bootstrap uncertainty, and selection-stability evidence. It retains schema 24's
+selectable router strategies, shared candidate-queue lifecycle, and
 per-router candidate-pool initialization timings. Each artifact stores each authored query and its exact
 file-qualified ground truth once, records productive Sparse timings, and adds
 the fixed equal-weight RRF baseline. The Markdown report includes quality by query form,
