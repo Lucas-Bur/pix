@@ -21,7 +21,6 @@ import {
   type BenchmarkArtifact,
   type BenchmarkProfile,
   type CorpusManifest,
-  type RouterSearchStrategy,
   type RouterSearchStrategyName,
   type ValidationStrategy,
 } from "./evaluation/types.js"
@@ -109,29 +108,27 @@ const selectModels = (): Effect.Effect<readonly string[], Error> => {
 const selectOptimizationProfile = (): Effect.Effect<OptimizationProfile, Error> => {
   const requested = process.env.PIX_BENCH_OPTIMIZATION_PROFILE
   if (requested === undefined) return Effect.succeed(OPTIMIZATION_PROFILES["search-priority"])
-  const selected = (OPTIMIZATION_PROFILES as Record<string, OptimizationProfile | undefined>)[
-    requested
-  ]
+  const selected = Object.values(OPTIMIZATION_PROFILES).find(
+    (profile) => profile.name === requested,
+  )
   return selected === undefined
     ? Effect.fail(new Error(`Unknown PIX_BENCH_OPTIMIZATION_PROFILE value: ${requested}`))
     : Effect.succeed(selected)
 }
 
+const isRouterSearchStrategyName = (requested: string): requested is RouterSearchStrategyName =>
+  Object.keys(ROUTER_SEARCH_STRATEGIES).some((strategy) => strategy === requested)
+
 export const resolveRouterSearchStrategy = (
   requested: string | undefined,
 ): RouterSearchStrategyName => {
   if (requested === undefined) return DEFAULT_ROUTER_SEARCH_STRATEGY
-  if (!Object.hasOwn(ROUTER_SEARCH_STRATEGIES, requested)) {
+  if (!isRouterSearchStrategyName(requested)) {
     throw new Error(
       `Unknown PIX_BENCH_ROUTER_STRATEGY value: ${requested}; expected one of ${Object.keys(ROUTER_SEARCH_STRATEGIES).join(", ")}`,
     )
   }
-  const selected = (ROUTER_SEARCH_STRATEGIES as Record<string, RouterSearchStrategy | undefined>)[
-    requested
-  ]
-  if (selected === undefined)
-    throw new Error(`Router search strategy is not configured: ${requested}`)
-  return requested as RouterSearchStrategyName
+  return requested
 }
 
 const selectRouterSearchStrategy = (): Effect.Effect<RouterSearchStrategyName, Error> =>
@@ -213,7 +210,7 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 24,
+      schemaVersion: 25,
       benchmarkProfile: profile,
       optimizationProfile,
       validationProtocol: {
@@ -222,9 +219,11 @@ export const runRetrievalBenchmark = (
           config.repositoryHoldouts && repositories.length > 1
             ? [groupedStrategy, "leave-one-repository-out"]
             : [groupedStrategy],
-        finalTest: "nested-cross-validation-plan",
-        nestedOuterFolds: config.groupedFolds,
-        nestedInnerFolds: Math.max(3, config.groupedFolds - 2),
+        finalTest: {
+          kind: "untouched-grouped-fold",
+          strategy: groupedStrategy,
+          fold: String(config.groupedFolds),
+        },
       },
       generatedAt: new Date().toISOString(),
       searchStrategy: ROUTER_SEARCH_STRATEGIES[routerSearchStrategy],
@@ -265,6 +264,7 @@ export const runRetrievalBenchmark = (
       recommendedFusionWeights: search.recommendedFusionWeights,
       evidenceRouterSearch: search.evidenceRouterSearch,
       recommendedEvidenceRouters: search.recommendedEvidenceRouters,
+      promotionEvidence: search.promotionEvidence,
     }
     const outputPath = yield* writeArtifact(artifact)
     return { artifact, outputPath }

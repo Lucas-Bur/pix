@@ -8,10 +8,12 @@ import {
   type CandidateEvaluationQueue,
 } from "../execution/candidate-evaluation-pool.js"
 import type { OptimizationProfile } from "./optimization-profiles.js"
+import { derivePromotionEvidence } from "./promotion-evidence.js"
 import type {
   BenchmarkArtifact,
   EvidenceRouterSearchResult,
   RecommendedEvidenceRouter,
+  PromotionStatus,
   ValidationStrategy,
 } from "./types.js"
 import {
@@ -49,6 +51,7 @@ export interface BenchmarkSearchResults {
   readonly recommendedFusionWeights: readonly BenchmarkArtifact["recommendedFusionWeights"][number][]
   readonly evidenceRouterSearch: readonly BenchmarkArtifact["evidenceRouterSearch"][number][]
   readonly recommendedEvidenceRouters: readonly BenchmarkArtifact["recommendedEvidenceRouters"][number][]
+  readonly promotionEvidence: readonly BenchmarkArtifact["promotionEvidence"][number][]
   readonly weightSearchDurationMs: number
   readonly fusionSearchDurationMs: number
   readonly evidenceRouterSearchDurationMs: number
@@ -398,10 +401,33 @@ const runFusionSearchStage = (
           searchOptions,
         )),
       )
+    const hasRepositoryHoldouts = [...samplesByModel.values()].some(
+      (modelSamples) => new Set(modelSamples.map((sample) => sample.repository)).size > 1,
+    )
+    const expectedStrategies: readonly ValidationStrategy[] =
+      config.repositoryHoldouts && hasRepositoryHoldouts
+        ? [groupedStrategy, "leave-one-repository-out"]
+        : [groupedStrategy]
+    const validatedRecommendations = recommendedFusionWeights.map((recommendation) => {
+      const holdouts = fusionSearch.filter(
+        (row) => row.model === recommendation.model && row.fusion === recommendation.fusion,
+      )
+      const strategies = new Set(holdouts.map((row) => row.strategy))
+      const eligible =
+        expectedStrategies.every((strategy) => strategies.has(strategy)) &&
+        holdouts.length > 0 &&
+        holdouts.every((row) => row.holdoutBreakdown.every((partition) => partition.guardrailsMet))
+      const promotionStatus: PromotionStatus = eligible ? "eligible" : "no-eligible-candidate"
+      return {
+        ...recommendation,
+        guardrailsMet: eligible,
+        promotionStatus,
+      }
+    })
     return {
       productionRouterSearch,
       fusionSearch,
-      recommendedFusionWeights,
+      recommendedFusionWeights: validatedRecommendations,
       fusionSearchDurationMs: performance.now() - startedAt,
     }
   })
@@ -451,6 +477,7 @@ const runEvidenceRouterSearchStage = (
     BenchmarkSearchResults,
     | "evidenceRouterSearch"
     | "recommendedEvidenceRouters"
+    | "promotionEvidence"
     | "evidenceRouterSearchDurationMs"
     | "candidateQueueStartupDurationMs"
     | "candidateQueueShutdownDurationMs"
@@ -509,9 +536,35 @@ const runEvidenceRouterSearchStage = (
       if (result.kind === "holdout") evidenceRouterSearch.push(...result.results)
       else recommendedEvidenceRouters.push(...result.results)
     }
+    const expectedStrategies: readonly ValidationStrategy[] =
+      config.repositoryHoldouts &&
+      [...samplesByModel.values()].some(
+        (samples) => new Set(samples.map((sample) => sample.repository)).size > 1,
+      )
+        ? [groupedStrategy, "leave-one-repository-out"]
+        : [groupedStrategy]
+    const promotionEvidence = derivePromotionEvidence(evidenceRouterSearch, expectedStrategies, {
+      strategy: groupedStrategy,
+      fold: String(config.groupedFolds),
+    })
+    const validatedRecommendations = recommendedEvidenceRouters.map((recommendation) => {
+      const evidence = promotionEvidence.find(
+        (row) =>
+          row.model === recommendation.model &&
+          row.fusion === recommendation.fusion &&
+          row.objective === recommendation.objective,
+      )
+      const promotionStatus = evidence?.promotionStatus ?? "no-eligible-candidate"
+      return {
+        ...recommendation,
+        guardrailsMet: promotionStatus === "eligible",
+        promotionStatus,
+      }
+    })
     return {
       evidenceRouterSearch,
-      recommendedEvidenceRouters,
+      recommendedEvidenceRouters: validatedRecommendations,
+      promotionEvidence,
       evidenceRouterSearchDurationMs: performance.now() - startedAt,
       candidateQueueStartupDurationMs,
       candidateQueueShutdownDurationMs,

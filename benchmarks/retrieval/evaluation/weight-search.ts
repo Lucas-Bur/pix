@@ -31,6 +31,7 @@ import {
 import { contextRecallAtBudget, recallAt, reciprocalRank } from "./metrics.js"
 import { SEARCH_PRIORITY_PROFILE, type OptimizationProfile } from "./optimization-profiles.js"
 import { prepareFusion, type PreparedFusionEvaluator } from "./prepared-fusion.js"
+import { buildGuardrailBlockers } from "./promotion-evidence.js"
 import {
   ROUTER_OBJECTIVES,
   ROUTER_SEARCH_STRATEGY,
@@ -41,6 +42,7 @@ import {
   type HoldoutQuality,
   type ProductionRouterSearchResult,
   type PromotionStatus,
+  type QualityMetric,
   type QualitySummary,
   type QueryKind,
   type RecommendedEvidenceRouter,
@@ -362,14 +364,6 @@ const buildProxySamples = (
     .map(({ sample }) => sample)
 }
 
-type QualityMetric =
-  | "recallAt5"
-  | "recallAt10"
-  | "recallAt20"
-  | "recallAt50"
-  | "contextRecallAt4096"
-  | "meanReciprocalRank"
-
 const OBJECTIVE_PRIORITIES: Readonly<Record<RouterObjective, readonly QualityMetric[]>> = {
   direct: [
     "recallAt5",
@@ -412,8 +406,10 @@ const unweightedProfile = (profile: OptimizationProfile): OptimizationProfile =>
   queryFormWeights: { identifier: 1, agentTask: 1, naturalQuestion: 1, searchPhrase: 1 },
 })
 
+type GuardrailDimension = Exclude<HoldoutQuality["dimension"], "aggregate">
+
 interface GuardrailPartition {
-  readonly dimension: HoldoutQuality["dimension"]
+  readonly dimension: GuardrailDimension
   readonly name: string
   readonly samples: readonly WeightSearchSample[]
 }
@@ -421,27 +417,24 @@ interface GuardrailPartition {
 const guardrailPartitions = (
   samples: readonly WeightSearchSample[],
 ): readonly GuardrailPartition[] => {
-  const partitions = new Map<string, WeightSearchSample[]>()
+  const partitions = new Map<GuardrailDimension, Map<string, WeightSearchSample[]>>()
   for (const sample of samples) {
-    const groups = [
-      { dimension: "query-form" as const, name: sample.queryKind },
-      { dimension: "repository" as const, name: sample.repository },
+    const groups: readonly { readonly dimension: GuardrailDimension; readonly name: string }[] = [
+      { dimension: "query-form", name: sample.queryKind },
+      { dimension: "repository", name: sample.repository },
     ]
     for (const group of groups) {
-      const key = `${group.dimension}:${group.name}`
-      const partition = partitions.get(key) ?? []
+      const namedPartitions =
+        partitions.get(group.dimension) ?? new Map<string, WeightSearchSample[]>()
+      const partition = namedPartitions.get(group.name) ?? []
       partition.push(sample)
-      partitions.set(key, partition)
+      namedPartitions.set(group.name, partition)
+      partitions.set(group.dimension, namedPartitions)
     }
   }
-  return [...partitions].map(([key, partition]) => {
-    const separator = key.indexOf(":")
-    return {
-      dimension: key.slice(0, separator) as GuardrailPartition["dimension"],
-      name: key.slice(separator + 1),
-      samples: partition,
-    }
-  })
+  return [...partitions].flatMap(([dimension, namedPartitions]) =>
+    [...namedPartitions].map(([name, partition]) => ({ dimension, name, samples: partition })),
+  )
 }
 
 const buildGuardrailBaselines = (
@@ -460,19 +453,37 @@ const buildGuardrailBaselines = (
 
 const buildHoldoutBreakdown = (
   samples: readonly WeightSearchSample[],
-  candidate: (samples: readonly WeightSearchSample[]) => QualitySummary,
+  candidate: (
+    samples: readonly WeightSearchSample[],
+    evaluationProfile: OptimizationProfile,
+  ) => QualitySummary,
   profile: OptimizationProfile,
 ): readonly HoldoutQuality[] => {
   const holdoutProfile = unweightedProfile(profile)
-  return buildGuardrailBaselines(samples, profile).partitions.map((partition) => {
-    const candidateQuality = candidate(partition.samples)
+  const baselines = buildGuardrailBaselines(samples, profile)
+  const partitions: readonly GuardrailBaselinePartition[] = [
+    { dimension: "aggregate", name: "all", samples, baseline: baselines.overall },
+    ...baselines.partitions,
+  ]
+  return partitions.map((partition) => {
+    const evaluationProfile = partition.dimension === "aggregate" ? profile : holdoutProfile
+    const candidateQuality = candidate(partition.samples, evaluationProfile)
+    const blockers = buildGuardrailBlockers(
+      partition.dimension,
+      partition.name,
+      candidateQuality,
+      partition.baseline,
+      evaluationProfile.metricObjective.guardrailMetrics,
+      evaluationProfile.metricObjective.guardrailTolerance,
+    )
     return {
       dimension: partition.dimension,
       name: partition.name,
       queries: partition.samples.length,
       candidate: candidateQuality,
       baseline: partition.baseline,
-      guardrailsMet: isWithinGuardrails(candidateQuality, partition.baseline, holdoutProfile),
+      guardrailsMet: blockers.length === 0,
+      blockers,
     }
   })
 }
@@ -1645,16 +1656,14 @@ const optimizeFusionWeightsWithPool = async (
   pool: CandidateEvaluationPool,
 ): Promise<FusionSearchResult> => {
   const selected = await selectBestWeights(pool, "reranker-top20", undefined, profile)
-  const guardrailBaselines = buildGuardrailBaselines(development, profile)
-  const holdoutProfile = unweightedProfile(profile)
   const validationQuality = summarize(validationSamples, selected.weights, fusion, profile)
-  const guardrailsMet = fusionGuardrailsMet(
-    development,
-    selected.weights,
-    fusion,
-    guardrailBaselines,
+  const holdoutBreakdown = buildHoldoutBreakdown(
+    validationSamples,
+    (partition, evaluationProfile) =>
+      summarize(partition, selected.weights, fusion, evaluationProfile),
     profile,
   )
+  const guardrailsMet = holdoutBreakdown.every((holdout) => holdout.guardrailsMet)
   return {
     model,
     fusion,
@@ -1667,11 +1676,7 @@ const optimizeFusionWeightsWithPool = async (
     validation: validationQuality,
     guardrailsMet,
     promotionStatus: guardrailsMet ? "eligible" : "no-eligible-candidate",
-    holdoutBreakdown: buildHoldoutBreakdown(
-      validationSamples,
-      (partition) => summarize(partition, selected.weights, fusion, holdoutProfile),
-      profile,
-    ),
+    holdoutBreakdown,
   }
 }
 
@@ -1866,7 +1871,6 @@ export const optimizeEvidenceRouter = async (
   withEvidencePools(development, fusion, profile, options, async (dynamicSelection, fullPool) => {
     const productionValidation = summarizeProductionRouter(validation, profile)
     const validationEvidence = prepareEvidenceSamples(validation)
-    const holdoutProfile = unweightedProfile(profile)
     const randomBaseline: SearchBaselineComparison =
       dynamicSelection.randomCandidates === 0
         ? {
@@ -1903,40 +1907,49 @@ export const optimizeEvidenceRouter = async (
       options,
     )
     const results: EvidenceRouterSearchResult[] = staticSelections.map(
-      ({ selection, staticSelection }) => ({
-        model,
-        fusion,
-        objective: selection.objective,
-        strategy,
-        fold,
-        developmentQueries: development.length,
-        validationQueries: validation.length,
-        staticWeights: staticSelection.weights,
-        config: benchmarkRouterConfig(fusion, selection.config),
-        staticDevelopment: staticSelection.quality,
-        staticValidation: summarize(validation, staticSelection.weights, fusion, profile),
-        development: selection.quality,
-        validation: summarizeEvidenceRouter(validationEvidence, selection.config, fusion, profile),
-        productionDevelopment: dynamicSelection.productionQuality,
-        productionValidation,
-        guardrailsMet: selection.guardrailsMet,
-        promotionStatus: selection.promotionStatus,
-        proxyEvaluations: dynamicSelection.proxyEvaluations,
-        fullEvaluations: dynamicSelection.fullEvaluations,
-        searchDiagnostics: dynamicSelection.searchDiagnostics,
-        searchBaseline: randomBaseline,
-        holdoutBreakdown: buildHoldoutBreakdown(
+      ({ selection, staticSelection }) => {
+        const holdoutBreakdown = buildHoldoutBreakdown(
           validation,
-          (partition) =>
+          (partition, evaluationProfile) =>
             summarizeEvidenceRouter(
               prepareEvidenceSamples(partition),
               selection.config,
               fusion,
-              holdoutProfile,
+              evaluationProfile,
             ),
           profile,
-        ),
-      }),
+        )
+        const guardrailsMet = holdoutBreakdown.every((holdout) => holdout.guardrailsMet)
+        return {
+          model,
+          fusion,
+          objective: selection.objective,
+          strategy,
+          fold,
+          developmentQueries: development.length,
+          validationQueries: validation.length,
+          staticWeights: staticSelection.weights,
+          config: benchmarkRouterConfig(fusion, selection.config),
+          staticDevelopment: staticSelection.quality,
+          staticValidation: summarize(validation, staticSelection.weights, fusion, profile),
+          development: selection.quality,
+          validation: summarizeEvidenceRouter(
+            validationEvidence,
+            selection.config,
+            fusion,
+            profile,
+          ),
+          productionDevelopment: dynamicSelection.productionQuality,
+          productionValidation,
+          guardrailsMet,
+          promotionStatus: guardrailsMet ? "eligible" : "no-eligible-candidate",
+          proxyEvaluations: dynamicSelection.proxyEvaluations,
+          fullEvaluations: dynamicSelection.fullEvaluations,
+          searchDiagnostics: dynamicSelection.searchDiagnostics,
+          searchBaseline: randomBaseline,
+          holdoutBreakdown,
+        }
+      },
     )
     return results
   })
