@@ -94,6 +94,7 @@ const indexFixture = (
       files: [],
       dims: 384,
       dtype: "fp32",
+      chunkTokens: 512,
       embeddingCache: [],
       sparseEmbeddingCache: [],
       sparseContract: TEST_SPARSE_CONTRACT,

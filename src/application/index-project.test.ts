@@ -99,6 +99,32 @@ it.effect("IndexProject.index performs no embedding or commit when all files are
   ),
 )
 
+it.effect("IndexProject.index rechunks unchanged files when the token contract changes", () =>
+  Effect.gen(function* () {
+    const index = yield* IndexProject
+    const fs = yield* FileSystem
+    yield* index.index()
+
+    yield* fs.writeFileString(".pix/config.json", makeConfig({ chunkTokens: 100 }))
+    const result = yield* index.index()
+
+    expect(result.refresh).toBe("full")
+    expect(result.reusedFiles).toBe(0)
+    expect(result.processedFiles).toBe(2)
+  }).pipe(
+    Effect.provide(
+      testLayer({
+        contents: {
+          ".pix/config.json": makeConfig({ chunkTokens: 200 }),
+          ...fixtures,
+        },
+        scannerLayer: ScannerLive,
+      }),
+    ),
+    Effect.scoped,
+  ),
+)
+
 it.effect("IndexProject.index handles changed, deleted, and renamed files", () =>
   Effect.gen(function* () {
     const index = yield* IndexProject

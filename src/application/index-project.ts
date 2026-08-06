@@ -114,6 +114,16 @@ const storedChunk = ({ text, ...location }: DomainChunk): StoredChunk => ({
   contentHash: contentHash(text),
 })
 
+const sortDiagnostics = (diagnostics: readonly IndexDiagnostic[]): readonly IndexDiagnostic[] =>
+  [...diagnostics].sort(
+    (left, right) =>
+      left.file.localeCompare(right.file) ||
+      (left.startLine ?? Number.POSITIVE_INFINITY) -
+        (right.startLine ?? Number.POSITIVE_INFINITY) ||
+      left.kind.localeCompare(right.kind) ||
+      left.message.localeCompare(right.message),
+  )
+
 /** Result of classifying and optionally processing one scanned source file. */
 interface PreparedFileResult {
   readonly chunks: readonly PreparedChunk[]
@@ -325,8 +335,14 @@ const make = Effect.gen(function* () {
         yield* configStore.writeConfig(DEFAULT_CONFIG)
       }
       const config = yield* configStore.readConfig()
+      const eff = mergeConfig(opts, config)
       const modelInfo = yield* modelRegistry.get(config.embedder.model)
       const dims = Option.match(modelInfo, { onNone: () => 0, onSome: (info) => info.dims })
+      const { maxTokens, countTokens } = createTokenAwareChunking(
+        eff.chunkTokens,
+        embedder,
+        sparseEmbedder,
+      )
       const snapshot = yield* indexStore.loadIndexSnapshot()
       const sparseContractMatches = Option.match(snapshot, {
         onNone: () => false,
@@ -339,14 +355,9 @@ const make = Effect.gen(function* () {
           meta.model === config.embedder.model &&
           meta.dtype === config.embedder.dtype &&
           meta.dims === dims &&
+          meta.chunkTokens === maxTokens &&
           sparseContractsEqual(sparseContract, sparseEmbedder.contract),
       })
-      const eff = mergeConfig(opts, config)
-      const { maxTokens, countTokens } = createTokenAwareChunking(
-        eff.chunkTokens,
-        embedder,
-        sparseEmbedder,
-      )
       const extensionRegistry = buildExtensionRegistry(eff.skipExtensions)
 
       yield* d.updateInteractive("Scanning source files...")
@@ -691,11 +702,12 @@ const make = Effect.gen(function* () {
           files,
           dims: ctx.dims,
           dtype: ctx.config.embedder.dtype,
+          chunkTokens: ctx.chunkingOptions.maxTokens,
           embeddingCache: [...historicalCache.values()],
           sparseEmbeddingCache: [...historicalSparseCache.values()],
           sparseContract: sparseEmbedder.contract,
           sparseIdf,
-          diagnostics: yield* Ref.get(ctx.diagnostics),
+          diagnostics: sortDiagnostics(yield* Ref.get(ctx.diagnostics)),
         }),
       )
       return {
@@ -723,7 +735,7 @@ const make = Effect.gen(function* () {
     start: number,
   ): Effect.Effect<IndexResult> =>
     Effect.gen(function* () {
-      const collected = yield* Ref.get(diagnostics)
+      const collected = sortDiagnostics(yield* Ref.get(diagnostics))
       yield* displayDiagnostics(d, collected)
 
       const durationSec = ((Date.now() - start) / 1000).toFixed(1)

@@ -158,6 +158,7 @@ const persistBenchmarkCorpus = (
   sparseVectors: readonly SparseVector[],
   dims: number,
   dtype: EmbeddingDtype,
+  chunkTokens: number,
   sparseContract: SparseContract,
   sparseIdf: readonly SparseTerm[],
 ): Effect.Effect<void, Error> =>
@@ -177,6 +178,7 @@ const persistBenchmarkCorpus = (
       files: [],
       dims,
       dtype,
+      chunkTokens,
       embeddingCache: [],
       sparseEmbeddingCache: [],
       sparseContract,
@@ -328,6 +330,7 @@ const collectModelMeasurements = (
   groupedFoldAssignments: ReadonlyMap<string, number>,
   model: string,
   info: (typeof MODEL_REGISTRY)[string] & object,
+  chunkTokens: number,
   chunkVectors: readonly Float32Array[],
   queryVectors: readonly Float32Array[],
   cachePaths: BenchmarkCachePaths,
@@ -383,6 +386,7 @@ const collectModelMeasurements = (
             sparseVectors,
             info.dims,
             info.defaultDtype,
+            chunkTokens,
             sparseEmbedder.contract,
             yield* sparseEmbedder.loadIdf(),
           )
@@ -540,76 +544,68 @@ const collectRepositoryMeasurements = (
     >()
     let retrievalDurationMs = 0
 
-    for (const model of models) {
-      const cachePaths = benchmarkCachePaths(
-        manifest,
-        model,
-        info.dims,
-        info.defaultDtype,
-        maxTokens,
-      )
-      const cacheState = yield* inspectBenchmarkCache(
-        model,
-        info.defaultDtype,
-        cachePaths,
-        queries.map(({ queryKind, query }) => ({ queryKind, query })),
-        corpus.chunks.length,
-      )
-      let device = "cache"
-      let chunkEmbeddingDurationMs = 0
-      let queryEmbeddingDurationMs = 0
-      let chunkVectors: readonly Float32Array[] = []
-      let queryVectors: readonly Float32Array[] = []
-      if (cacheState.rankings === undefined) {
-        device = bound.device
-        if (!cacheState.hasPersistedIndex) {
-          const embeddingStartedAt = performance.now()
-          chunkVectors = yield* embedTexts(
-            corpus.chunks.map((chunk) => chunk.text),
-            model,
-            bound.embedder,
-          )
-          chunkEmbeddingDurationMs = performance.now() - embeddingStartedAt
-        }
-        const queryEmbeddingStartedAt = performance.now()
-        queryVectors = yield* embedTexts(
-          queries.map((entry) => entry.query),
+    const cachePaths = benchmarkCachePaths(manifest, model, info.dims, info.defaultDtype, maxTokens)
+    const cacheState = yield* inspectBenchmarkCache(
+      model,
+      info.defaultDtype,
+      cachePaths,
+      queries.map(({ queryKind, query }) => ({ queryKind, query })),
+      corpus.chunks.length,
+    )
+    let device = "cache"
+    let chunkEmbeddingDurationMs = 0
+    let queryEmbeddingDurationMs = 0
+    let chunkVectors: readonly Float32Array[] = []
+    let queryVectors: readonly Float32Array[] = []
+    if (cacheState.rankings === undefined) {
+      device = bound.device
+      if (!cacheState.hasPersistedIndex) {
+        const embeddingStartedAt = performance.now()
+        chunkVectors = yield* embedTexts(
+          corpus.chunks.map((chunk) => chunk.text),
           model,
           bound.embedder,
         )
-        queryEmbeddingDurationMs = performance.now() - queryEmbeddingStartedAt
+        chunkEmbeddingDurationMs = performance.now() - embeddingStartedAt
       }
-      const modelData = yield* collectModelMeasurements(
-        manifest,
-        corpus,
-        queries,
-        targetsByQuestion,
-        groupedFoldAssignments,
+      const queryEmbeddingStartedAt = performance.now()
+      queryVectors = yield* embedTexts(
+        queries.map((entry) => entry.query),
         model,
-        info,
-        chunkVectors,
-        queryVectors,
-        cachePaths,
-        cacheState.hasPersistedIndex,
-        cacheState.rankings,
+        bound.embedder,
       )
-      embeddingRuns.push({
-        repository: manifest.id,
-        model,
-        device,
-        batchSize: EMBEDDING_BATCH_SIZE,
-        chunkEmbeddingDurationMs,
-        queryEmbeddingDurationMs,
-      })
-      sparseEmbeddingRuns.push(modelData.sparseEmbeddingRun)
-      measurements.push(...modelData.measurements)
-      retrievalDurationMs += modelData.retrievalDurationMs
-      samplesByModel.set(model, modelData.samples)
-      for (const [queryKind, samples] of modelData.samplesByQueryKind) {
-        sampleGroups.set(`${model}\0${queryKind}`, { model, queryKind, samples })
-      }
+      queryEmbeddingDurationMs = performance.now() - queryEmbeddingStartedAt
     }
-
+    const modelData = yield* collectModelMeasurements(
+      manifest,
+      corpus,
+      queries,
+      targetsByQuestion,
+      groupedFoldAssignments,
+      model,
+      info,
+      maxTokens,
+      chunkVectors,
+      queryVectors,
+      cachePaths,
+      cacheState.hasPersistedIndex,
+      cacheState.rankings,
+    )
+    embeddingRuns.push({
+      repository: manifest.id,
+      model,
+      device,
+      batchSize: EMBEDDING_BATCH_SIZE,
+      chunkEmbeddingDurationMs,
+      queryEmbeddingDurationMs,
+    })
+    sparseEmbeddingRuns.push(modelData.sparseEmbeddingRun)
+    measurements.push(...modelData.measurements)
+    retrievalDurationMs += modelData.retrievalDurationMs
+    samplesByModel.set(model, modelData.samples)
+    for (const [queryKind, samples] of modelData.samplesByQueryKind) {
+      sampleGroups.set(`${model}\0${queryKind}`, { model, queryKind, samples })
+    }
     return {
       repository: {
         id: manifest.id,
@@ -649,7 +645,7 @@ export const collectBenchmarkData = (
     >()
     const samplesByModel = new Map<string, readonly WeightSearchSample[]>()
     let retrievalDurationMs = 0
-    let chunkTokens = DEFAULT_CONFIG.chunkTokens ?? 1
+    let chunkTokens: number | undefined
 
     for (const manifest of manifests) {
       const repositoryData = yield* collectRepositoryMeasurements(
@@ -657,6 +653,13 @@ export const collectBenchmarkData = (
         models,
         groupedFoldAssignments,
       )
+      if (chunkTokens !== undefined && chunkTokens !== repositoryData.chunkTokens) {
+        return yield* Effect.fail(
+          new Error(
+            `Repositories resolved different chunk token budgets: ${chunkTokens} and ${repositoryData.chunkTokens}`,
+          ),
+        )
+      }
       chunkTokens = repositoryData.chunkTokens
       repositories.push(repositoryData.repository)
       embeddingRuns.push(...repositoryData.embeddingRuns)
@@ -674,6 +677,10 @@ export const collectBenchmarkData = (
           samples: [...(current?.samples ?? []), ...group.samples],
         })
       }
+    }
+
+    if (chunkTokens === undefined) {
+      return yield* Effect.fail(new Error("Retrieval benchmark requires at least one repository"))
     }
 
     return {

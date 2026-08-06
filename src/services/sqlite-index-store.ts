@@ -109,9 +109,13 @@ const make = Effect.gen(function* () {
 
   const insertMeta = SqlSchema.void({
     Request: IndexMetaRow.insert,
-    execute: ({ id, model, dims, dtype, lastIndex, quantized, diagnostics }) => sql`
-      INSERT INTO index_meta (id, model, dims, dtype, last_index, quantized, diagnostics)
-      VALUES (${id}, ${model}, ${dims}, ${dtype}, ${lastIndex}, ${quantized}, ${diagnostics})
+    execute: ({ id, model, dims, dtype, lastIndex, chunkTokens, quantized, diagnostics }) => sql`
+      INSERT INTO index_meta (
+        id, model, dims, dtype, last_index, chunk_tokens, quantized, diagnostics
+      )
+      VALUES (
+        ${id}, ${model}, ${dims}, ${dtype}, ${lastIndex}, ${chunkTokens}, ${quantized}, ${diagnostics}
+      )
     `,
   })
 
@@ -233,7 +237,7 @@ const make = Effect.gen(function* () {
     Request: Schema.Void,
     Result: IndexMetaRow,
     execute: () => sql`
-      SELECT id, model, dims, dtype, last_index, quantized, diagnostics
+      SELECT id, model, dims, dtype, last_index, chunk_tokens, quantized, diagnostics
       FROM index_meta WHERE id = 1
     `,
   })
@@ -571,6 +575,7 @@ const make = Effect.gen(function* () {
           dims: input.dims,
           dtype: input.dtype,
           lastIndex: Date.now(),
+          chunkTokens: input.chunkTokens,
           quantized: 0,
           diagnostics: input.diagnostics ?? [],
         })
@@ -760,6 +765,7 @@ const make = Effect.gen(function* () {
         dims: meta.value.dims,
         dtype: meta.value.dtype,
         lastIndex: meta.value.lastIndex,
+        chunkTokens: meta.value.chunkTokens,
         diagnostics: meta.value.diagnostics,
       }
       const manifest: readonly FileManifestEntry[] = files

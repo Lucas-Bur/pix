@@ -356,6 +356,31 @@ it.effect("(yield* BenchProject).prepareCorpus cycles when fewer chunks than nee
   ),
 )
 
+it.effect(
+  "(yield* BenchProject).prepareCorpus bounds retained chunks for oversized corpora",
+  () => {
+    const contents = Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => [
+        `src/corpus-${index}.ts`,
+        `export const value${index} = ${index}`,
+      ]),
+    )
+    const opts = {
+      ...defaultBenchOpts,
+      warmup: 1,
+      measureBatches: 1,
+      batchSizes: [2] as const,
+    }
+
+    return Effect.gen(function* () {
+      const corpus = yield* (yield* BenchProject).prepareCorpus(opts)
+      expect(corpus.chunkCount).toBe(4)
+      expect(corpus.chunks).toHaveLength(4)
+      expect(new Set(corpus.chunks.map((chunk) => chunk.id)).size).toBe(4)
+    }).pipe(Effect.provide(testLayer({ contents, scannerLayer: ScannerLive })), Effect.scoped)
+  },
+)
+
 it.effect("(yield* BenchProject).prepareCorpus returns empty corpus for no files", () =>
   Effect.gen(function* () {
     const corpus = yield* (yield* BenchProject).prepareCorpus(defaultBenchOpts)

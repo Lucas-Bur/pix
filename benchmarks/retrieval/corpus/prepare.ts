@@ -30,7 +30,7 @@ export interface PreparedCorpus {
 export const prepareCorpus = (
   repositoryPath: string,
   manifest: CorpusManifest,
-  chunkingOptions?: ChunkingOptions,
+  chunkingOptions: ChunkingOptions,
 ): Effect.Effect<PreparedCorpus, Error> =>
   Effect.gen(function* () {
     const startedAt = performance.now()

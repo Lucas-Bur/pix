@@ -101,7 +101,7 @@ Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, ap
 
 ### IndexStore
 
-Owns `.pix/index.db`, which contains active chunks and Float32 Dense embedding BLOBs, learned Sparse metadata/IDF/postings, file observations, BM25, identifier postings, historical Dense and Sparse embedding caches, and Effect SQL migration history. Complete streamed replacements run in one SQLite transaction. Editable config and aliases remain files.
+Owns `.pix/index.db`, which contains active chunks and Float32 Dense embedding BLOBs, learned Sparse metadata/IDF/postings, file observations, BM25, identifier postings, historical Dense and Sparse embedding caches, the resolved chunk-token contract, and Effect SQL migration history. Complete streamed replacements run in one SQLite transaction. Editable config and aliases remain files. Changing the resolved chunk-token contract forces all source files through chunking again.
 
 ### Core Scope
 

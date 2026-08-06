@@ -139,7 +139,10 @@ const make = Effect.gen(function* () {
       }
 
       yield* d.updateInteractive(`Chunking ${knownFiles.length} files...`)
-      const allChunks = yield* Stream.fromIterable(knownFiles).pipe(
+      const needed = totalWork(opts)
+      const sampledChunks: DomainChunk[] = []
+      let emittedChunkCount = 0
+      yield* Stream.fromIterable(knownFiles).pipe(
         Stream.mapEffect(
           (file) =>
             extractor.extract(file.path).pipe(
@@ -155,7 +158,18 @@ const make = Effect.gen(function* () {
           { concurrency: eff.concurrency },
         ),
         Stream.flatMap((chunks) => Stream.fromIterable(chunks)),
-        Stream.runCollect,
+        Stream.runForEach((chunk) =>
+          Effect.gen(function* () {
+            emittedChunkCount++
+            if (sampledChunks.length < needed) {
+              sampledChunks.push(chunk)
+              return
+            }
+            if (needed === 0) return
+            const replacementIndex = yield* Random.nextIntBetween(0, emittedChunkCount - 1)
+            if (replacementIndex < needed) sampledChunks[replacementIndex] = chunk
+          }),
+        ),
         Effect.timeout("5 minutes"),
         Effect.catch((e) =>
           e._tag === "TimeoutError"
@@ -165,12 +179,10 @@ const make = Effect.gen(function* () {
       )
 
       yield* d.updateInteractive("Shuffling chunks...")
-      const shuffled = yield* fisherYatesShuffle(allChunks)
-
-      const needed = totalWork(opts)
+      const shuffled = yield* fisherYatesShuffle(sampledChunks)
       const corpusChunks = cycleChunks(shuffled, needed)
 
-      const uniqueCount = allChunks.length
+      const uniqueCount = emittedChunkCount
       const cycledCount = corpusChunks.length
       const message =
         cycledCount > uniqueCount
