@@ -20,9 +20,10 @@ it.effect("loads sqlite-vector and applies index migrations", () =>
     const tables = yield* sql<{ readonly name: string }>`
       SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name
     `
-    const metaColumns = yield* sql<{ readonly name: string }>`
-      PRAGMA table_info(index_meta)
-    `
+    const metaColumns = yield* sql<{
+      readonly name: string
+      readonly notnull: number
+    }>`PRAGMA table_info(index_meta)`
 
     expect(version[0]?.version).toBe("1.0.0")
     expect(tables.map(({ name }) => name)).toEqual(
@@ -38,6 +39,7 @@ it.effect("loads sqlite-vector and applies index migrations", () =>
     expect(metaColumns.map(({ name }) => name)).toEqual(
       expect.arrayContaining(["diagnostics", "chunk_tokens"]),
     )
+    expect(metaColumns.find(({ name }) => name === "chunk_tokens")?.notnull).toBe(1)
   }).pipe(Effect.provide(databaseLayer), Effect.scoped),
 )
 
@@ -113,12 +115,23 @@ it.effect("reopens a migrated file database with its committed data", () => {
       ).pipe(Effect.orDie),
     )
 
+    const missingChunkTokens = yield* run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        return yield* Effect.result(sql`
+          INSERT INTO index_meta (id, model, dims, dtype, last_index)
+          VALUES (1, 'missing-tokens', 384, 'fp32', 1)
+        `)
+      }),
+    )
+    expect(missingChunkTokens._tag).toBe("Failure")
+
     yield* run(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient
         yield* sql`
-          INSERT INTO index_meta (id, model, dims, dtype, last_index)
-          VALUES (1, 'reopen-model', 384, 'fp32', 1)
+          INSERT INTO index_meta (id, model, dims, dtype, last_index, chunk_tokens)
+          VALUES (1, 'reopen-model', 384, 'fp32', 1, 512)
         `
       }),
     )
@@ -129,12 +142,12 @@ it.effect("reopens a migrated file database with its committed data", () => {
         return yield* sql<{
           readonly model: string
           readonly diagnostics: string
-          readonly chunkTokens: number | null
+          readonly chunkTokens: number
         }>`SELECT model, diagnostics, chunk_tokens AS chunkTokens FROM index_meta WHERE id = 1`
       }),
     )
     expect(rows[0]?.model).toBe("reopen-model")
     expect(rows[0]?.diagnostics).toBe("[]")
-    expect(rows[0]?.chunkTokens).toBeNull()
+    expect(rows[0]?.chunkTokens).toBe(512)
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped)
 })

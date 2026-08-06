@@ -14,7 +14,7 @@ const IndexMetaSchema = Schema.Struct({
   dims: Schema.Number,
   model: Schema.String,
   lastIndex: Schema.Number,
-  chunkTokens: Schema.Union([Schema.Number, Schema.Null]),
+  chunkTokens: Schema.Number,
   diagnostics: Schema.Array(IndexDiagnosticSchema),
 })
 
