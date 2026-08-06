@@ -596,9 +596,7 @@ const make = Effect.gen(function* () {
       const stats = yield* d.progress(
         { message: `Writing index with ${totalChunks} chunks...`, max: totalChunks },
         indexStore.persistIndex({
-          chunks: Stream.fromIterable(
-            batchPreparedChunks(chunks, Math.min(ctx.eff.batchSize, ctx.config.embedder.batchSize)),
-          ).pipe(
+          chunks: Stream.fromIterable(batchPreparedChunks(chunks, ctx.eff.batchSize)).pipe(
             Stream.mapEffect((batch: readonly PreparedChunk[]) =>
               Effect.gen(function* () {
                 const keys = batch.map((chunk) =>

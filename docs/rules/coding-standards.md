@@ -13,6 +13,7 @@
 - `src/index.ts` = wiring (layers + runtime)
 - One command per file: `src/commands/<name>.ts`
 - Co-located tests: `<file>.test.ts` next to source
+- Low-level SQLite migration/schema tests that need raw SQL use `<file>.migration.test.ts` as an explicit exception to the public-interface-only test rule.
 
 ## CLI Packaging
 

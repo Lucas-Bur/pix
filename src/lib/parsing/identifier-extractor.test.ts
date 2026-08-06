@@ -90,6 +90,22 @@ describe("extractIdentifiers", () => {
     })
   })
 
+  it("keeps identifier extraction aligned for large non-ASCII sources", () => {
+    const smile = String.fromCodePoint(0x1f600)
+    const source = Array.from(
+      { length: 1_500 },
+      (_, index) => `const value${index} = "${smile}"`,
+    ).join("\n")
+    const result = extractIdentifiers(setupParser(), typescriptMapKind, source, 0)
+
+    expect(result).toHaveLength(1_500)
+    expect(result[result.length - 1]).toEqual({
+      name: "value1499",
+      kind: "value",
+      chunkIndex: 0,
+    })
+  })
+
   it("extracts individual bound names from object destructuring", () => {
     const parser = setupParser()
     const result = extractIdentifiers(parser, typescriptMapKind, "const { foo, bar: baz } = obj", 0)

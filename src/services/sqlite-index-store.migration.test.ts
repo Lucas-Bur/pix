@@ -3,15 +3,51 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { NodeServices } from "@effect/platform-node"
+import { SqliteClient } from "@effect/sql-sqlite-node"
 import { expect, it } from "@effect/vitest"
 import { Effect, Layer, Schema } from "effect"
 import { FileSystem } from "effect/FileSystem"
 import { SqlClient } from "effect/unstable/sql"
 
 import { sqliteIndexDatabaseLayer } from "./sqlite-index-store/client.js"
+import indexChunkTokens from "./sqlite-index-store/migrations/005-index-chunk-tokens.js"
 import { Float32ArrayFromBlob } from "./sqlite-index-store/schema.js"
 
+/**
+ * Low-level SQLite migration and schema coverage. This suite is an explicit exception to the
+ * public-interface-only rule because PRAGMA and raw SQL are required to verify the schema itself.
+ */
+
 const databaseLayer = Layer.provideMerge(sqliteIndexDatabaseLayer(":memory:"), NodeServices.layer)
+const migrationLayer = Layer.provideMerge(
+  SqliteClient.layer({ filename: ":memory:" }),
+  NodeServices.layer,
+)
+
+it.effect("migration 005 backfills chunk tokens for existing index metadata", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    yield* sql`CREATE TABLE index_meta (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      model TEXT NOT NULL,
+      dims INTEGER NOT NULL,
+      dtype TEXT NOT NULL,
+      last_index REAL NOT NULL,
+      quantized INTEGER NOT NULL DEFAULT 0
+    ) STRICT`
+    yield* sql`
+      INSERT INTO index_meta (id, model, dims, dtype, last_index)
+      VALUES (1, 'legacy-model', 384, 'fp32', 1)
+    `
+
+    yield* indexChunkTokens
+
+    const rows = yield* sql<{ readonly chunkTokens: number }>`
+      SELECT chunk_tokens AS chunkTokens FROM index_meta WHERE id = 1
+    `
+    expect(rows).toEqual([{ chunkTokens: 512 }])
+  }).pipe(Effect.provide(migrationLayer), Effect.scoped),
+)
 
 it.effect("loads sqlite-vector and applies index migrations", () =>
   Effect.gen(function* () {
@@ -115,7 +151,7 @@ it.effect("reopens a migrated file database with its committed data", () => {
       ).pipe(Effect.orDie),
     )
 
-    const missingChunkTokens = yield* run(
+    const defaultedChunkTokens = yield* run(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient
         return yield* Effect.result(sql`
@@ -124,14 +160,15 @@ it.effect("reopens a migrated file database with its committed data", () => {
         `)
       }),
     )
-    expect(missingChunkTokens._tag).toBe("Failure")
+    expect(defaultedChunkTokens._tag).toBe("Success")
 
     yield* run(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient
         yield* sql`
-          INSERT INTO index_meta (id, model, dims, dtype, last_index, chunk_tokens)
-          VALUES (1, 'reopen-model', 384, 'fp32', 1, 512)
+          UPDATE index_meta
+          SET model = 'reopen-model', chunk_tokens = 512
+          WHERE id = 1
         `
       }),
     )
