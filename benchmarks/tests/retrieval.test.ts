@@ -20,7 +20,7 @@ const foldQuestions = (prefix: string) =>
     },
     category: ["architecture", "routing", "symbol-lookup"][Math.floor(index / 4)],
     difficulty: ["easy", "medium", "hard"][index % 3] as "easy" | "medium" | "hard",
-    groundTruth: [],
+    groundTruth: [{ file: "src/fixture.ts", symbol: `target${index + 1}` }] as const,
   }))
 
 type TestQuestion = ReturnType<typeof foldQuestions>[number]
@@ -127,6 +127,9 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.evidenceRouterSearch.length).toBe(
       artifact.models.length * routerFusionMethods * ROUTER_OBJECTIVES.length * holdoutsPerModel,
     )
+    expect(new Set(artifact.evidenceRouterSearch.map(({ objective }) => objective))).toEqual(
+      new Set(ROUTER_OBJECTIVES),
+    )
     expect(new Set(artifact.evidenceRouterSearch.map((row) => row.fusion)).size).toBe(
       routerFusionMethods,
     )
@@ -147,7 +150,15 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.measurements.every((row) => row.recallAt50 >= row.recallAt20)).toBe(true)
     expect(
       artifact.measurements.every(
-        (row) => row.ndcgAt5 >= 0 && row.ndcgAt10 >= 0 && row.ndcgAt20 >= 0 && row.ndcgAt50 >= 0,
+        (row) =>
+          row.ndcgAt5 >= 0 &&
+          row.ndcgAt5 <= 1 &&
+          row.ndcgAt10 >= 0 &&
+          row.ndcgAt10 <= 1 &&
+          row.ndcgAt20 >= 0 &&
+          row.ndcgAt20 <= 1 &&
+          row.ndcgAt50 >= 0 &&
+          row.ndcgAt50 <= 1,
       ),
     ).toBe(true)
     expect(outputPath).toMatch(/benchmarks[\\/]results[\\/]retrieval-.*\.json$/)

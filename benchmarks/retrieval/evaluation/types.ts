@@ -29,7 +29,7 @@ const BenchmarkQuestionSchema = Schema.Struct({
   queries: QueryFormsSchema,
   category: Schema.String,
   difficulty: Schema.Literals(["easy", "medium", "hard"]),
-  groundTruth: Schema.Array(GoldLocationSchema),
+  groundTruth: Schema.NonEmptyArray(GoldLocationSchema),
 })
 
 /** Versioned manifest for one pinned real-world benchmark repository. */

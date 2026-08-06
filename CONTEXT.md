@@ -302,7 +302,10 @@ matching at least one resolved exact file-plus-symbol target receive gain one; d
 matching multiple targets cannot add repeated gain, and zero ideal gain returns NDCG zero. The direct
 objective selects NDCG@5 first and is compared with a `direct-recall-first` ablation under identical
 folds, seeds, and guardrails. Recall@20, Recall@50, and ContextRecall@4096 remain hard direct-retrieval
-coverage guardrails; reranker objectives remain recall-first.
+coverage guardrails; reranker objectives remain recall-first with the full Recall@5/10/20/50 and
+ContextRecall@4096 guardrail set. Empty authored ground truth is rejected by the manifest schema. The
+Recall-first direct ablation selects from the same archive without changing the three-scenario beam
+budget, and both proxy-promotion and successive-halving perform objective-specific archive selection.
 
 ### Scorer
 

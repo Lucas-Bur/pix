@@ -56,7 +56,8 @@ symbol-name segment matching is not accepted.
 The existing corpus needs no NDCG-specific labels. Every resolved chunk matching one or more exact
 gold targets has binary gain `1`; non-matching chunks have gain `0`. A chunk that resolves multiple
 targets and a duplicate occurrence of the same chunk each contribute at most once. NDCG is `0` when
-no gold target resolves, although corpus validation rejects that condition before benchmark execution.
+no gold target resolves. Manifest decoding rejects empty ground-truth arrays, and corpus preparation
+rejects authored targets that do not resolve to a chunk.
 
 | Corpus    | Revision                                   | Language   | Size band | Indexed scope                 |
 | --------- | ------------------------------------------ | ---------- | --------- | ----------------------------- |
@@ -163,8 +164,8 @@ defaulting to MiniLM. Select another with `PIX_BENCH_MODELS`. Supported values a
 The router search defaults to `proxy-promotion`. Set `PIX_BENCH_ROUTER_STRATEGY` to
 `successive-halving` to select the historical Successive-Halving variant. It uses the original
 lexicographic `R@20`, `R@10`, `Context@4k`, and MRR comparator plus its `halvingKeepFactor`.
-Both strategies use the same candidate evaluator and native worker queue, so their artifacts can be
-compared directly.
+Both strategies use the same candidate evaluator and native worker queue. Their final archive selection
+is objective-specific, so Direct and Reranker rows are real comparisons rather than repeated labels.
 
 The Jina code model cannot embed Effect's longest 7,103-token AST chunk on the tested DML GPU even as
 a single-item batch. Do not silently truncate, re-chunk only one model, or mix CPU and GPU vectors to
@@ -261,7 +262,9 @@ Schema 26 reports binary NDCG at 5, 10, 20, and 50 for raw query-form/repository
 aggregate, fusion, and partitioned holdouts. The `direct` objective prioritizes NDCG@5, while the
 `direct-recall-first` ablation retains the historical Recall@5-first priority under the same folds,
 guardrails, and seeds. Both direct objectives retain Recall@20, Recall@50, and ContextRecall@4096 as
-hard coverage guardrails. Reranker-top20 and reranker-top50 remain recall-first.
+hard coverage guardrails. Reranker-top20 and reranker-top50 remain recall-first and retain the complete
+Recall@5/10/20/50 plus ContextRecall@4096 guardrail set. The direct ablation selects from the same archive
+without consuming another beam-diversity slot, preserving the original search budget.
 
 Each router result also records a deterministic `random-scout` baseline using the same parameter grid and
 global-scout budget. `Random R@20` and `Random Ctx@4k` show whether the structured search beats that

@@ -8,7 +8,7 @@ import {
 import type { PromotionHoldoutRow } from "../retrieval/evaluation/promotion-evidence.js"
 import type { HoldoutQuality, QualitySummary } from "../retrieval/evaluation/types.js"
 
-const quality = (recallAt20: number): QualitySummary => ({
+const quality = (recallAt20: number, overrides: Partial<QualitySummary> = {}): QualitySummary => ({
   ndcgAt5: recallAt20,
   ndcgAt10: recallAt20,
   ndcgAt20: recallAt20,
@@ -19,6 +19,7 @@ const quality = (recallAt20: number): QualitySummary => ({
   recallAt50: recallAt20,
   contextRecallAt4096: recallAt20,
   meanReciprocalRank: recallAt20,
+  ...overrides,
 })
 
 const holdout = (candidate: number, baseline: number): HoldoutQuality => ({
@@ -134,5 +135,32 @@ describe("promotion evidence", () => {
       seeds: 1,
       restarts: 1,
     })
+  })
+
+  it("uses each direct objective's primary metric for stability diagnostics", () => {
+    const row = (objective: "direct" | "direct-recall-first"): PromotionHoldoutRow => ({
+      model: "fixture",
+      fusion: "dbsf",
+      objective,
+      strategy: "grouped-5-fold",
+      fold: "1",
+      validation: quality(1, { ndcgAt5: 0.9, recallAt5: 0.1 }),
+      productionValidation: quality(1, { ndcgAt5: 0.8, recallAt5: 0.9 }),
+      holdoutBreakdown: [holdout(1, 1)],
+      config: PRODUCTION_COMPATIBILITY_CONFIG,
+    })
+    const evidence = derivePromotionEvidence(
+      [row("direct"), row("direct-recall-first")],
+      ["grouped-5-fold"],
+      { strategy: "grouped-5-fold", fold: "1" },
+    )
+
+    expect(evidence.find(({ objective }) => objective === "direct")?.stability).toMatchObject({
+      medianHoldoutDrop: -0.1,
+      worstCaseHoldoutDrop: 0,
+    })
+    expect(
+      evidence.find(({ objective }) => objective === "direct-recall-first")?.stability,
+    ).toMatchObject({ medianHoldoutDrop: 0.8, worstCaseHoldoutDrop: 0.8 })
   })
 })
