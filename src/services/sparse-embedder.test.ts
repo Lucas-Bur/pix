@@ -1,5 +1,5 @@
 import { expect, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { Config, Effect, Layer } from "effect"
 
 import { makeConfigJson } from "../../tests/test-utils/fixtures.js"
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
@@ -13,6 +13,13 @@ const testLayer = Layer.provideMerge(
   }),
 )
 
+const runModelTests = Effect.runSync(
+  Config.string("PIX_RUN_MODEL_TESTS").pipe(
+    Config.withDefault(""),
+    Effect.map((value) => value === "1"),
+  ),
+)
+
 it.effect("initializes the sparse adapter without loading the document model", () =>
   Effect.gen(function* () {
     const embedder = yield* SparseEmbedder
@@ -23,7 +30,7 @@ it.effect("initializes the sparse adapter without loading the document model", (
 )
 
 // This adapter test downloads the pinned model; enable it explicitly for integration runs.
-it.effect.skipIf(process.env.PIX_RUN_MODEL_TESTS !== "1")(
+it.effect.skipIf(!runModelTests)(
   "SparseEmbedder loads the pinned model and encodes documents and queries",
   () =>
     Effect.gen(function* () {

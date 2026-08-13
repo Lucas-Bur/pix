@@ -59,10 +59,11 @@ const loadExtractor = (
   device: DeviceType,
   dtype: EmbeddingDtype,
 ): Effect.Effect<FeatureExtractionPipeline, ModelLoadError> =>
-  Effect.tryPromise(async () => {
-    const { pipeline } = await import("@huggingface/transformers")
-    return await pipeline("feature-extraction", model, { device, dtype })
-  }).pipe(
+  Effect.tryPromise(() =>
+    import("@huggingface/transformers").then(({ pipeline }) =>
+      pipeline("feature-extraction", model, { device, dtype }),
+    ),
+  ).pipe(
     Effect.mapError(
       (cause) =>
         new ModelLoadError({

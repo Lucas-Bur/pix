@@ -35,9 +35,9 @@ vi.mock("@huggingface/transformers", () => ({
 }))
 
 const makeMockExtractor = (): MockExtractor => {
-  const fn = vi.fn(async (input: string | string[]) => {
+  const fn = vi.fn((input: string | string[]) => {
     const n = Array.isArray(input) ? input.length : 1
-    return { data: new Float32Array(n * DIMS), dims: [n, DIMS] }
+    return Promise.resolve({ data: new Float32Array(n * DIMS), dims: [n, DIMS] })
   })
   return Object.assign(fn, {
     tokenizer: (input: string | string[]) => ({
@@ -154,9 +154,9 @@ describe("OnnxEmbedder GPU fallback", () => {
 describe("OnnxEmbedder inference errors", () => {
   it.effect("wraps single and batch inference failures", () => {
     const extractor = Object.assign(
-      vi.fn(async (input: string | string[]) => {
-        throw new Error(Array.isArray(input) ? "batch failed" : "single failed")
-      }),
+      vi.fn((input: string | string[]) =>
+        Promise.reject(new Error(Array.isArray(input) ? "batch failed" : "single failed")),
+      ),
       { tokenizer: () => ({ input_ids: { length: 1 } }) },
     )
     mockedPipeline.mockResolvedValue(extractor)

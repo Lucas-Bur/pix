@@ -14,8 +14,8 @@ const RANKING_IMPLEMENTATION_VERSION = 1
 const CACHE_BATCH_SIZE = 100
 
 const RankedChunkSchema = Schema.Struct({
-  chunkIndex: Schema.Number,
-  score: Schema.Number,
+  chunkIndex: Schema.Finite,
+  score: Schema.Finite,
 })
 
 const ChannelRankingsSchema = Schema.Struct({
@@ -28,7 +28,7 @@ const ChannelRankingsSchema = Schema.Struct({
 
 const RankingRowSchema = Schema.Struct({
   cacheKey: Schema.String,
-  queryIndex: Schema.Number,
+  queryIndex: Schema.Finite,
   queryKind: Schema.String,
   query: Schema.String,
   rankingsJson: Schema.String,
@@ -124,7 +124,7 @@ export const ensureBenchmarkCacheTable = (sql: SqlClient.SqlClient): Effect.Effe
 
 const decodeRankings = (value: string): ChannelRankings | undefined => {
   try {
-    return Schema.decodeUnknownSync(ChannelRankingsSchema)(JSON.parse(value))
+    return Schema.decodeUnknownSync(Schema.fromJsonString(ChannelRankingsSchema))(value)
   } catch {
     return undefined
   }

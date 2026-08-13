@@ -39,7 +39,8 @@ The embedder adapter converts from its native format (ONNX `Float32Array`, OpenA
 
 The `dtype` config option (`fp32`, `fp16`, `q8`, `q4`) controls **model weight precision**, not **output activation dtype**. Regardless of weight dtype, `FeatureExtractionPipeline` always returns `tensor.type: "float32"` with `tensor.data` as `Float32Array`.
 
-**Verified experimentally** across all working dtype/model combinations (see `tests/scripts/check-dtype-output.mjs`):
+**Verified experimentally** across the working dtype/model combinations recorded during the
+embedding migration:
 
 | Model                                      | fp32         | fp16          | q8           | q4                |
 | ------------------------------------------ | ------------ | ------------- | ------------ | ----------------- |

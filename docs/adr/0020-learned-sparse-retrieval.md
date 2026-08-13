@@ -73,5 +73,5 @@ as OneDrive reparse points, even though Node.js can read the same files.
   already fresh.
 - Model, tokenizer, revision, or IDF hash changes invalidate Sparse reuse and rebuild the complete
   committed snapshot.
-- ADRs 0009, 0017, 0018, and 0019 remain valid; this ADR changes their four-channel/future-Sparse
+- ADRs 0009, 0017, 0018, and 0019 remain valid; this ADR changes their earlier two- and four-channel
   descriptions to a five-channel production system.

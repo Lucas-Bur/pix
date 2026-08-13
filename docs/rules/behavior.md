@@ -20,19 +20,19 @@
 - Use Vite+ commands for project package and quality operations; do not invoke pnpm directly.
 - Keep the project and CI on the `packageManager`-pinned pnpm major.
 - Keep pnpm 11 workspace settings and native-script approvals in `pnpm-workspace.yaml`.
-- Run Effect diagnostics through the package scripts backed by `@effect/tsgo`; do not reinstall the
-  legacy `@effect/language-service` npm package.
+- Run Effect diagnostics through the package scripts backed by `@effect/tsgo`; the
+  `@effect/language-service` name remains only as the embedded `tsconfig.json` plugin identifier.
 
 ## Config Design
 
 - Think through each field: what is it? why is it there?
-- `files` in Config = mtime cache for incremental indexing (Phase 3 prep)
+- File observations in `IndexStore` = mtime, size, and content hash used for incremental indexing
 - Document purpose and format of each field clearly
 
 ## Hexagonal Architecture (Goal)
 
-- Domain logic in inner layer (pure functions, no dependencies)
-- Ports (`Context.Tag` in `src/domain/ports.ts`) define what the application needs
+- Domain models and contracts avoid infrastructure I/O; pure transformations remain dependency-light
+- Ports (`Context.Service` in `src/domain/ports.ts`) define what the application needs
 - Adapters (`src/services/`) implement ports as `Effect.Layer`
 - Dependency injection via Effect layers
 - Current state:

@@ -34,15 +34,20 @@ The map shape uses plain `Record` (not `Map`) for direct JSON serialization at t
 
 `IdentifierKind` is a language-agnostic three-category vocabulary: `"function" | "type" | "value"`. Each tree-sitter grammar's specific node types (e.g. `function_declaration`, `class_declaration`, `variable_declarator`) are mapped onto this vocabulary at extraction time via a per-language `mapKind` table.
 
-The RRF channel layout, query routing, and channel weight definitions live at the top of `src/application/query-project.ts` for visibility and easy hand-tuning.
+The retrieval channel layout is defined in `src/domain/retrieval.ts`; query routing consumes the
+validated production configuration from that module.
 
 ## Rationale
 
-**Why RRF channels, not a post-rank rerank** (e.g. the cross-encoder in #101): RRF is a trivial composition. Adding a new channel is one new pure function wired into `fuseResults`. A post-rank rerank adds a model dependency, ~10–50× query latency, and a separate training/evaluation story. We can add a cross-encoder later as a _fifth_ channel without disturbing the existing four.
+**Why RRF channels, not a post-rank rerank** (e.g. the cross-encoder in #101): RRF is a trivial composition. Adding a new channel is one new pure function wired into `fuseResults`. A post-rank rerank adds a model dependency, ~10–50× query latency, and a separate training/evaluation story. We can add a cross-encoder later as another channel without disturbing the existing five-channel seam.
 
-**Why hardcoded weights, not config**: Weights are a tuning surface, not a user-facing setting. The BM25/Dense weights already work heuristically; the new weights (3.0 / 1.5) are chosen to give exact-name match ~3× the influence of conceptual match. If empirical evaluation later shows a different balance, changing the constants is a one-line diff. Premature configurability would force every reader to consider the weight axis without data to anchor on.
+**Why production configuration, not user config**: Weights are a tuning surface, not a user-facing
+setting. Benchmark-owned candidates are validated before the promoted configuration is written into
+the domain module; runtime callers do not need to understand the search procedure.
 
-**Why identity weight > camelcase weight > others**: Exact-name match is the strongest signal available — if the query string is an identifier name, the user knows what they're looking for. CamelCase split is a softer signal — it could match a coincidental constituent word. The 3.0 / 1.5 / 1.0 / 1.0 ordering matches this confidence gradient.
+**Why identifier signals remain explicit**: Exact-name and CamelCase matches are content signals, while
+BM25, Dense, and Sparse are broader lexical-semantic channels. The evidence router keeps those signals
+visible and independently adjustable.
 
 **Why two maps, not one with match logic at query time**: Storing the split map pre-computed makes the camelCase scorer a `Record` lookup per constituent word (O(1) per word). A single-map design with a list of "constituent words" per name would force the scorer to walk the full index for every query, which doesn't scale.
 
@@ -54,9 +59,9 @@ The RRF channel layout, query routing, and channel weight definitions live at th
 
 ## Consequences
 
-- Four-channel fusion produces more competitive rankings; weights are now a first-class tuning surface (the four `const` at the top of `query-project.ts`).
+- Five-channel fusion produces more competitive rankings; weights are now a first-class tuning surface in the production fusion configuration.
 - Tree-sitter becomes a runtime dependency (deferred decision documented in [ADR-0014](0014-tree-sitter-identifier-extraction.md)).
 - Identifier storage is small (a few KB per 1000 chunks) and grows linearly with identifier count, not chunk count.
-- Flat-file indexes are rebuilt into SQLite once to obtain the current four-channel data.
+- Flat-file indexes are rebuilt into SQLite once to obtain the current five-channel data.
 - The `IdentifierKind` field is captured but not consumed by the MVP scorers. Future use cases (e.g. #85 call-graph queries) can filter on it without re-indexing.
-- The four-channel architecture can accommodate additional channels (cross-encoder rerank from #101, future heuristics) without changing the fusion logic.
+- The five-channel architecture can accommodate additional channels (cross-encoder rerank from #101, future heuristics) through the same fusion seam.

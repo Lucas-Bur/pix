@@ -22,13 +22,13 @@ reviews:
     - path: "src/domain/**"
       instructions: >
         Domain layer — entities and value objects are pure TypeScript with no I/O.
-        Lightweight Effect primitives are permitted for ports and errors: Context.Tag,
+        Lightweight Effect primitives are permitted for ports and errors: Context.Service,
         Data.TaggedError, and Effect.Effect type signatures (not runtime computation).
         Every exported type must have JSDoc. Use Option<T> internally, T | null at
         boundaries. No `as any`, no try-catch.
     - path: "src/application/**"
       instructions: >
-        Use cases as Effect.Service classes. Use Effect.gen for imperative style.
+        Use cases as Context.Service classes. Use Effect.gen for imperative style.
         Depend on ports via yield* PortTag — never touch filesystem or ONNX directly.
         Error types must mirror the port's error signature. Tests exist for every use
         case (co-located *.test.ts). One test at a time, vertical slices. Test behavior
@@ -41,7 +41,7 @@ reviews:
         `as never`, `as unknown`. mtime is Option<Date>, not Date | undefined.
     - path: "src/commands/**"
       instructions: >
-        CLI command layer using @effect/cli. Depends on application services via
+        CLI command layer using effect/unstable/cli. Depends on application services via
         yield*. Co-located test file required (<name>.test.ts + <name>.integration.test.ts).
     - path: "**/*.test.ts"
       instructions: >

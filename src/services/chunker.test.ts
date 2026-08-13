@@ -8,7 +8,7 @@ import { Chunker } from "../domain/ports.js"
 import { ChunkerLive } from "./chunker.js"
 import { ConfigStoreLive } from "./config-store.js"
 
-const fixtureFile = `import { Effect } from "effect"
+const fixtureFile = `import { Context, Effect } from "effect"
 
 // Line 3
 export interface Test {
@@ -19,7 +19,7 @@ export interface Test {
 }
 
 // Line 10
-export class Service extends Effect.Service<Service>()("Service", {
+export class Service extends Context.Service<Service>()("Service", {
   // Line 12
   accessors: true,
   // Line 14

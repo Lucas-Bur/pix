@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
 
 import { NodeServices } from "@effect/platform-node"
 import { SqliteClient } from "@effect/sql-sqlite-node"
 import { expect, it } from "@effect/vitest"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Layer, Path, Schema } from "effect"
 import { FileSystem } from "effect/FileSystem"
 import { SqlClient } from "effect/unstable/sql"
 
@@ -133,7 +132,12 @@ it.effect("rejects malformed Float32 BLOB byte lengths", () =>
 )
 
 it.effect("reopens a migrated file database with its committed data", () => {
-  const path = join(tmpdir(), `pix-index-${randomUUID()}.db`)
+  const path = Effect.runSync(
+    Effect.gen(function* () {
+      const pathService = yield* Path.Path
+      return pathService.join(tmpdir(), `pix-index-${randomUUID()}.db`)
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
   const layer = Layer.provideMerge(sqliteIndexDatabaseLayer(path), NodeServices.layer)
   const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
     effect.pipe(Effect.provide(layer), Effect.scoped)

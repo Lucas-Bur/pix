@@ -7,7 +7,7 @@ import {
   type EvidenceRouterParameters,
 } from "../../../src/domain/retrieval.js"
 
-const NonNegativeNumber = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))
+const NonNegativeNumber = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
 const QualityMetrics = [
   "ndcgAt5",
   "ndcgAt10",
@@ -43,7 +43,7 @@ const MetricObjectiveSchema = Schema.Struct({
   name: Schema.Literals(["direct", "reranker-top20", "reranker-top50"]),
   priority: Schema.Array(QualityMetricSchema),
   guardrailMetrics: Schema.Array(QualityMetricSchema),
-  guardrailTolerance: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+  guardrailTolerance: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
   contextBudget: Schema.Int.check(Schema.isGreaterThan(0)),
 })
 

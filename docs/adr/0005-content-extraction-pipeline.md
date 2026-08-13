@@ -34,7 +34,8 @@ Replaced `files: Record<string, number>` with `skipExtensions: readonly string[]
 
 ### Chunker refactor
 
-Chunker exposes two methods: `chunkFile(file)` reads file then delegates to `chunkText(text, file)`. All extraction flows through `chunkText` before embedding.
+Chunking exposes the `chunkText(text, file, options?)` port method. File reading remains in the
+application pipeline, so all extraction flows through `chunkText` before embedding.
 
 ### Unknown extensions
 
@@ -46,7 +47,7 @@ Skipped and collected in a set, reported at end of scan. Index pipeline continue
 
 ## Rationale
 
-The extension→processor mapping was chosen over a simple whitelist because it separates file discovery from file processing, enabling future transform pipelines (PDF extraction, audio transcription) without changing the scanner or chunker. The opt-out `skipExtensions` config is simpler for users than maintaining a whitelist — most projects only need to exclude a few types rather than enumerate all supported ones. Keeping processors as plain `Effect` functions (not a `Context.Tag`) avoids unnecessary indirection for a lookup table that is deterministic and doesn't need swapping at runtime.
+The extension→processor mapping was chosen over a simple whitelist because it separates file discovery from file processing, enabling future transform pipelines (PDF extraction, audio transcription) without changing the scanner or chunker. The opt-out `skipExtensions` config is simpler for users than maintaining a whitelist — most projects only need to exclude a few types rather than enumerate all supported ones. Keeping processors as plain `Effect` functions (not a `Context.Service`) avoids unnecessary indirection for a lookup table that is deterministic and doesn't need swapping at runtime.
 
 ## Consequences
 

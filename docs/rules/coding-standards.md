@@ -89,7 +89,7 @@ explicit part of the model. Layer integer or range checks on that finite base.
 - TypeScript 7 provides the native TypeScript-Go compiler and language server binary.
 - `@effect/tsgo` supplies Effect diagnostics; run them through `vp run lint:effect*`.
 - Keep the `tsconfig.json` plugin name `@effect/language-service`; it is the internal plugin
-  identifier expected by `@effect/tsgo`, not the legacy npm package.
+  identifier expected by `@effect/tsgo`, not an npm dependency.
 - Use `@effect/vitest` test APIs for Effect-returning tests. Import `vi` from `vitest` where static
   `vi.mock` transformation requires the canonical Vitest module.
 
@@ -108,7 +108,7 @@ const getStatus = (): Effect.Effect<StatusResult, PlatformError> => ...
 ## @effect/platform Quirks
 
 - `FileSystem.Info.mtime` is `Option<Date>`, not `Date | undefined` — use `Option.map` to extract
-- `FileSystem.Info.size` may be a branded `Size` type, not plain `number` — cast via `unknown` first: `size as unknown as number`
+- `FileSystem.Info.size` may be a branded `Size` type, not plain `number` — use the platform-provided numeric conversion at the boundary.
 
 ## Stream Safety
 

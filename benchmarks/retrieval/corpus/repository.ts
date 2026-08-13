@@ -45,7 +45,7 @@ export const loadCorpusManifests = (): Effect.Effect<readonly CorpusManifest[], 
       }).pipe(
         Effect.flatMap((text) =>
           Effect.try({
-            try: () => Schema.decodeUnknownSync(CorpusManifestSchema)(JSON.parse(text)),
+            try: () => Schema.decodeUnknownSync(Schema.fromJsonString(CorpusManifestSchema))(text),
             catch: (cause) => new Error(`Invalid corpus manifest ${name}`, { cause }),
           }),
         ),

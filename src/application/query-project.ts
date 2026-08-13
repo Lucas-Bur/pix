@@ -1,6 +1,4 @@
-import { isAbsolute, relative } from "node:path"
-
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Path } from "effect"
 import ignore from "ignore"
 
 import type { DtypeMismatchError, VectorDecodeError } from "../domain/dtype.js"
@@ -40,18 +38,26 @@ interface RankedResult extends SearchResult {
 }
 
 /** Normalize an absolute or relative path to a forward-slash relative path for the `ignore` package. */
-const normalizeForIgnore = (p: string): string => {
+const normalizeForIgnore = (
+  p: string,
+  path: Path.Path | undefined,
+  cwd: string | undefined,
+): string => {
   const normalized = p.replace(/\\/g, "/")
-  if (!isAbsolute(p)) return normalized
-  return relative(process.cwd(), p).replace(/\\/g, "/")
+  if (path === undefined || cwd === undefined || !path.isAbsolute(p)) return normalized
+  return path.relative(cwd, p).replace(/\\/g, "/")
 }
 
-const buildIgnoreFilter = (patterns: readonly string[]): PathFilter => {
+const buildIgnoreFilter = (
+  patterns: readonly string[],
+  path?: Path.Path,
+  cwd?: string,
+): PathFilter => {
   const ig = ignore().add([...patterns])
   return {
     ignores: (p: string) => {
       try {
-        return ig.ignores(normalizeForIgnore(p))
+        return ig.ignores(normalizeForIgnore(p, path, cwd))
       } catch {
         return false
       }
@@ -59,11 +65,17 @@ const buildIgnoreFilter = (patterns: readonly string[]): PathFilter => {
   }
 }
 
-const makeIgnoreFilter = (patterns: readonly string[]): PathFilter | null =>
-  patterns.length > 0 ? buildIgnoreFilter(patterns) : null
+const makeIgnoreFilter = (
+  patterns: readonly string[],
+  path?: Path.Path,
+  cwd?: string,
+): PathFilter | null => (patterns.length > 0 ? buildIgnoreFilter(patterns, path, cwd) : null)
 
-const makeOnlyFilter = (patterns: readonly string[]): PathFilter | null =>
-  patterns.length > 0 ? buildIgnoreFilter(patterns) : null
+const makeOnlyFilter = (
+  patterns: readonly string[],
+  path?: Path.Path,
+  cwd?: string,
+): PathFilter | null => (patterns.length > 0 ? buildIgnoreFilter(patterns, path, cwd) : null)
 
 /**
  * Apply `--ignore` and `--only` path filters to ranked search results. Both filters are deny/allow
@@ -74,9 +86,11 @@ const makeOnlyFilter = (patterns: readonly string[]): PathFilter | null =>
 export const filterResults = <T extends Pick<SearchResult, "file">>(
   results: readonly T[],
   options: SearchOptions | undefined,
+  path?: Path.Path,
+  cwd?: string,
 ): T[] => {
-  const ignoreFilter = makeIgnoreFilter(options?.ignorePaths ?? [])
-  const onlyFilter = makeOnlyFilter(options?.onlyPaths ?? [])
+  const ignoreFilter = makeIgnoreFilter(options?.ignorePaths ?? [], path, cwd)
+  const onlyFilter = makeOnlyFilter(options?.onlyPaths ?? [], path, cwd)
   if (!ignoreFilter && !onlyFilter) return [...results]
   return results.filter((r) => {
     if (ignoreFilter && ignoreFilter.ignores(r.file)) return false
@@ -141,6 +155,8 @@ export class QueryProject extends Context.Service<
 >()("QueryProject") {}
 
 const make = Effect.gen(function* () {
+  const path = yield* Path.Path
+  const cwd = path.resolve()
   const embedder = yield* Embedder
   const sparseEmbedder = yield* SparseEmbedder
   const store = yield* IndexStore
@@ -211,7 +227,7 @@ const make = Effect.gen(function* () {
       const results = Object.values(rankings).some((list) => list.length > 0)
         ? fuseResults(rankings, evidence, profile.config, entryMap)
         : []
-      const filtered = filterResults(results, options)
+      const filtered = filterResults(results, options, path, cwd)
 
       const topK = options?.topK
       const finalResults =

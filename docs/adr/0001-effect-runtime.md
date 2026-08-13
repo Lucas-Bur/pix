@@ -12,7 +12,7 @@ those runtime guarantees.
 
 ## Decision
 
-Use Effect v4 for the runtime, platform adapters, CLI, schemas, and tests. Vite+ remains the test
+Use Effect `4.0.0-rc.108` for the runtime, platform adapters, CLI, schemas, and tests. Vite+ remains the test
 runner; Effect-aware tests use `@effect/vitest`. TypeScript 7 supplies the native TypeScript-Go
 compiler and language server, while `@effect/tsgo` adds Effect-specific diagnostics and editor
 features.
@@ -21,7 +21,7 @@ features.
 
 One runtime model covers typed errors, layers, scoped resources, concurrency, deterministic test
 clocks, CLI commands, and MCP integration. The TypeScript-Go tooling checks the same Effect-specific
-invariants locally and in CI without restoring the legacy language-service package.
+invariants locally and in CI without adding a separate language-service package.
 
 ## Consequences
 
