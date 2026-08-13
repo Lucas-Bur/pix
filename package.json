@@ -72,7 +72,7 @@
     "@effect/tsgo": "0.36.4",
     "@effect/vitest": "4.0.0-rc.108",
     "@lucas-bur/effect-memfs": "1.2.1",
-    "@types/node": "^26.1.1",
+    "@types/node": "^26.2.0",
     "@vitest/coverage-v8": "^4.1.8",
     "effect": "4.0.0-rc.108",
     "fallow": "^3.5.1",
