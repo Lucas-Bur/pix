@@ -3,6 +3,7 @@
   "production": false,
   "entry": [
     "src/index.ts",
+    "benchmarks/tests/**/*.test.ts",
     "tests/scripts/bench-startup.mjs",
     "tests/scripts/check-dtype-output.mjs"
   ],
