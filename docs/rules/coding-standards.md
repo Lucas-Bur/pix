@@ -12,6 +12,8 @@
 - `src/cli.ts` = command composition (root + subcommands)
 - `src/index.ts` = wiring (layers + runtime)
 - One command per file: `src/commands/<name>.ts`
+- Attach each command's services with `Command.provide`. Keep command-layer modules behind
+  `loadLayer(() => import(...))`: layers build lazily, but static ESM imports still load eagerly and regress CLI startup.
 - Co-located tests: `<file>.test.ts` next to source
 - Low-level SQLite migration/schema tests that need raw SQL use `<file>.migration.test.ts` as an explicit exception to the public-interface-only test rule.
 

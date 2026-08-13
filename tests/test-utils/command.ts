@@ -28,7 +28,9 @@ export const runCommand =
     command: Command.Command<Name, Input, ContextInput, E, R>,
   ) =>
   (args: string[]) =>
-    Command.runWith(command, { version: "0.0.0" })(args).pipe(Effect.provide(commandPlatformLayer))
+    Command.runWith(command, { version: "0.0.0" })(
+      args[0] === command.name ? args.slice(1) : args,
+    ).pipe(Effect.provide(commandPlatformLayer))
 
 export const expectLogEntry = (
   ref: Ref.Ref<ReadonlyArray<DisplayEntry>>,

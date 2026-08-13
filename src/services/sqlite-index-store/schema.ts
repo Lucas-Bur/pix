@@ -1,11 +1,11 @@
-import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect"
+import { Effect, Schema, SchemaGetter, SchemaIssue } from "effect"
 import { Model } from "effect/unstable/schema"
 
 import { IndexDiagnosticSchema } from "../../domain/diagnostics.js"
 import { EmbeddingDtypeSchema } from "../../domain/dtype.js"
 
 const invalidVector = (value: unknown, message: string): SchemaIssue.InvalidValue =>
-  new SchemaIssue.InvalidValue(Option.some(value), { message })
+  new SchemaIssue.InvalidValue({ message }, value, { reportInput: true })
 
 /** SQLite BLOB codec for the Float32 vectors used by pix. */
 export const Float32ArrayFromBlob = Schema.Uint8Array.pipe(
