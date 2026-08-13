@@ -55,17 +55,16 @@ Run them in order: `vp check && vp test && vp run lint:fallow`.
 
 ## Effect-TS Guidelines
 
-When working with code that imports from `effect`, **invoke the `/effect-ts` skill** before starting implementation. It provides detailed patterns, reference docs, and critical rules.
+When working with code that imports from `effect`, **invoke the `/effect-ts` skill** before starting implementation.
 
 Follow the coding standards in `@docs/rules/coding-standards.md` for Effect-TS patterns, TypeScript rules, and TDD process.
 
-### Prerequisites Check
+### Learning More About Effect
 
-Before starting any Effect-related work, verify the Effect-TS source code exists at `~/.effect`. If missing, stop and inform the user to clone it:
-
-```bash
-git clone https://github.com/Effect-TS/effect.git ~/.effect
-```
+Before writing Effect code, read `node_modules/effect/AGENTS.md` completely when the installed
+Effect version provides it, and follow its linked guidance. If it is absent, use the installed source
+under `node_modules/effect/src` together with this repository's rules; do not require a separate
+`~/.effect` checkout.
 
 ### Stream Safety
 

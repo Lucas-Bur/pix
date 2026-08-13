@@ -126,4 +126,5 @@ const getStatus = (): Effect.Effect<StatusResult, PlatformError> => ...
 - When you don't know the API → start a subagent to research
 - Don't guess or use `as any` as workaround
 - Read `.d.ts` files in `node_modules` for correct types
-- Check `~/.effect/packages/effect/src/` for Effect-TS source code
+- Read `node_modules/effect/AGENTS.md` when the installed version provides it; otherwise inspect
+  `node_modules/effect/src/` for Effect API details
