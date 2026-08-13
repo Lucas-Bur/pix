@@ -3,9 +3,9 @@ import { Schema } from "effect"
 import type { RankedChunk } from "./ports.js"
 
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
-const NonNegativeNumber = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))
-const BoundedInfluence = Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))
-const SignedInfluence = Schema.Number.check(Schema.isBetween({ minimum: -1, maximum: 1 }))
+const NonNegativeNumber = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
+const BoundedInfluence = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }))
+const SignedInfluence = Schema.Finite.check(Schema.isBetween({ minimum: -1, maximum: 1 }))
 
 /** Physical retrieval channels that can contribute to a fused ranking. */
 export const CHANNEL_NAMES = ["identity", "camelcase", "bm25", "dense", "sparse"] as const

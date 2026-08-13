@@ -5,12 +5,12 @@ import type { EmbeddingDtype } from "./dtype.js"
 /** Shared source-location fields for working and persisted chunks. */
 export const ChunkLocationSchema = Schema.Struct({
   id: Schema.String,
-  idx: Schema.Number,
+  idx: Schema.Finite,
   file: Schema.String,
-  startLine: Schema.Number,
-  endLine: Schema.Number,
-  startOffset: Schema.Number,
-  endOffset: Schema.Number,
+  startLine: Schema.Finite,
+  endLine: Schema.Finite,
+  startOffset: Schema.Finite,
+  endOffset: Schema.Finite,
 })
 
 /** Runtime schema for a working chunk before source text is removed for persistence. */

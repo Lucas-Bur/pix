@@ -47,9 +47,9 @@
     "test:coverage": "vp test --coverage",
     "check": "vp check",
     "ci": "vp run check && vp run test:coverage && vp run build && vp run lint:effect && vp run lint:fallow",
-    "lint:effect": "effect-language-service diagnostics --project tsconfig.json --format pretty --strict",
-    "lint:effect:ci": "effect-language-service diagnostics --project tsconfig.json --format github-actions --strict",
-    "lint:effect:agent": "effect-language-service diagnostics --project tsconfig.json --format json --strict",
+    "lint:effect": "effect-tsgo diagnostics --project tsconfig.json --format pretty --strict",
+    "lint:effect:ci": "effect-tsgo diagnostics --project tsconfig.json --format github-actions --severity error,warning --strict",
+    "lint:effect:agent": "effect-tsgo diagnostics --project tsconfig.json --format json --strict",
     "lint:fallow": "fallow",
     "lint:fallow:ci": "vp exec fallow audit --base origin/main",
     "lint:fallow:health": "fallow health --format badge",
@@ -67,37 +67,19 @@
   },
   "devDependencies": {
     "@clack/prompts": "^1.7.0",
-    "@effect/language-service": "^0.87.0",
     "@effect/platform-node": "4.0.0-beta.98",
     "@effect/sql-sqlite-node": "4.0.0-beta.98",
+    "@effect/tsgo": "0.36.4",
     "@effect/vitest": "4.0.0-beta.98",
     "@lucas-bur/effect-memfs": "1.2.1",
     "@types/node": "^26.1.1",
-    "@typescript/native-preview": "7.0.0-dev.20260604.1",
     "@vitest/coverage-v8": "^4.1.8",
     "effect": "4.0.0-beta.98",
     "fallow": "^3.5.1",
     "ignore": "^7.0.6",
-    "typescript": "^6.0.3",
-    "vite-plus": "^0.2.4",
+    "typescript": "^7.0.2",
+    "vite-plus": "^0.2.9",
     "vitest": "4.1.10"
   },
-  "packageManager": "pnpm@10.33.3",
-  "pnpm": {
-    "overrides": {
-      "vite": "npm:@voidzero-dev/vite-plus-core@latest"
-    },
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "fallow",
-      "msgpackr-extract",
-      "onnxruntime-node",
-      "protobufjs",
-      "sharp",
-      "tree-sitter",
-      "tree-sitter-python",
-      "tree-sitter-rust",
-      "tree-sitter-typescript"
-    ]
-  }
+  "packageManager": "pnpm@11.21.0"
 }

@@ -16,7 +16,7 @@ const EmbedderConfigSchema = Schema.Struct({
   model: Schema.String,
   device: DeviceSchema,
   dtype: EmbeddingDtypeSchema,
-  batchSize: Schema.Number,
+  batchSize: Schema.Finite,
 })
 
 const SparseEmbedderConfigSchema = Schema.Struct({
@@ -34,7 +34,7 @@ const VectorSearchModeSchema = Schema.Literals(["exact", "auto", "turboquant"])
 
 const VectorSearchConfigSchema = Schema.Struct({
   mode: VectorSearchModeSchema,
-  turboQuantThreshold: Schema.Number,
+  turboQuantThreshold: Schema.Finite,
 })
 
 /**
@@ -43,8 +43,8 @@ const VectorSearchConfigSchema = Schema.Struct({
  */
 export const ConfigSchema = Schema.Struct({
   chunkTokens: Schema.optional(PositiveInt),
-  overlapLines: Schema.Number,
-  chunkConcurrency: Schema.Number,
+  overlapLines: Schema.Finite,
+  chunkConcurrency: Schema.Finite,
   skipExtensions: Schema.Array(Schema.String),
   ignoredPaths: Schema.Array(Schema.String),
   ignoreGitignore: Schema.Boolean,

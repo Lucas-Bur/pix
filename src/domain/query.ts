@@ -79,11 +79,11 @@ export const QueryRequestSchema = Schema.Struct({
 export type QueryRequest = typeof QueryRequestSchema.Type
 
 const QueryResultSchema = Schema.Struct({
-  score: Schema.Number,
-  rel: Schema.Number,
+  score: Schema.Finite,
+  rel: Schema.Finite,
   file: Schema.String,
-  startLine: Schema.Number,
-  endLine: Schema.Number,
+  startLine: Schema.Finite,
+  endLine: Schema.Finite,
   text: Schema.Union([Schema.String, Schema.Null]),
   contextBefore: Schema.Union([Schema.String, Schema.Null]),
   contextAfter: Schema.Union([Schema.String, Schema.Null]),
@@ -91,16 +91,16 @@ const QueryResultSchema = Schema.Struct({
 
 const QueryIndexRefreshSchema = Schema.Struct({
   kind: Schema.Literals(["full", "incremental", "none"]),
-  processedFiles: Schema.Number,
-  reusedFiles: Schema.Number,
-  cacheHits: Schema.Number,
-  cacheMisses: Schema.Number,
+  processedFiles: Schema.Finite,
+  reusedFiles: Schema.Finite,
+  cacheHits: Schema.Finite,
+  cacheMisses: Schema.Finite,
 })
 
 const QueryWarningSchema = Schema.Struct({
   _tag: Schema.Literal("TopKClamped"),
-  requested: Schema.Number,
-  applied: Schema.Number,
+  requested: Schema.Finite,
+  applied: Schema.Finite,
 })
 
 /** Structured response shared by CLI and MCP query adapters. */

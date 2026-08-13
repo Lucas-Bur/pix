@@ -28,7 +28,7 @@ Trigger: PR to `main`. Sequential pipeline:
 2. `vp run check` — format, lint, type-check via `package.json#scripts.check` (blocking)
 3. `vp run test:coverage` — run tests with V8 coverage via `package.json#scripts.test:coverage` (blocking)
 4. `vp run build` — production build via `package.json#scripts.build` (blocking)
-5. `vp run lint:effect:ci` — Effect diagnostics, emits `::notice` annotations on PR diffs (non-blocking, `continue-on-error: true`)
+5. `vp run lint:effect:ci` — Effect errors and warnings as PR annotations (non-blocking, `continue-on-error: true`)
 6. `vp run lint:fallow:ci` — incremental code quality audit against `main`, badge format (non-blocking, `continue-on-error: true`)
 
 Both non-blocking steps include crash instrumentation: a subsequent `if: failure()` step
@@ -47,6 +47,9 @@ of truth. Consumer-facing format variants use `:ci` and `:agent` suffixes:
 | `lint:fallow`       | Human    | default                   |
 | `lint:fallow:ci`    | CI       | human (incremental audit) |
 | `lint:fallow:agent` | Agent    | json                      |
+
+Human and agent Effect diagnostics retain suggestion-level messages for local cleanup. CI filters
+those messages and annotates only errors and warnings so newly added advisory rules do not flood PRs.
 
 A convenience `ci` script is available for humans: `vp run check && vp run test:coverage && vp run build && vp run lint:effect && vp run lint:fallow`.
 

@@ -44,7 +44,7 @@ jobs:
 
       - name: Effect diagnostics crash warning
         if: ${{ steps.effect-diag.outcome == 'failure' }}
-        run: echo "::warning::Effect diagnostics step crashed — check that effect-language-service is installed and not segfaulting"
+        run: echo "::warning::Effect diagnostics step crashed — check that effect-tsgo is installed and not segfaulting"
 
       - name: Fallow quality audit
         id: fallow-audit

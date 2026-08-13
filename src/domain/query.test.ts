@@ -1,7 +1,7 @@
 import { expect, test } from "@effect/vitest"
 import { Schema } from "effect"
 
-import { normalizeQueryRequest, QueryRequestSchema } from "./query.js"
+import { normalizeQueryRequest, QueryRequestSchema, QueryResponseSchema } from "./query.js"
 
 test("a query request applies transport-independent defaults", () => {
   const request = Schema.decodeUnknownSync(QueryRequestSchema)({ queryText: "display service" })
@@ -32,3 +32,34 @@ test("query transport options reject fractional and invalid bounded values", () 
 test("top remains clampable at the application boundary", () => {
   expect(Schema.is(QueryRequestSchema)({ queryText: "test", top: 0 })).toBe(true)
 })
+
+test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+  "query responses reject non-finite scores: %s",
+  (score) => {
+    expect(
+      Schema.is(QueryResponseSchema)({
+        indexRefresh: {
+          kind: "none",
+          processedFiles: 0,
+          reusedFiles: 0,
+          cacheHits: 0,
+          cacheMisses: 0,
+        },
+        results: [
+          {
+            score,
+            rel: 1,
+            file: "src/index.ts",
+            startLine: 1,
+            endLine: 1,
+            text: null,
+            contextBefore: null,
+            contextAfter: null,
+          },
+        ],
+        validationErrors: [],
+        warnings: [],
+      }),
+    ).toBe(false)
+  },
+)
