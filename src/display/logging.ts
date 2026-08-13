@@ -1,4 +1,4 @@
-import { Effect, Exit } from "effect"
+import { DateTime, Effect, Exit } from "effect"
 import { FileSystem } from "effect/FileSystem"
 
 import { DisplayLogError } from "../domain/errors.js"
@@ -35,7 +35,8 @@ export const appendLogEntry = (
     const dirExists = yield* withLogError(fs.exists(LOG_DIR), "check log dir", LOG_DIR)
     if (!dirExists)
       yield* withLogError(fs.makeDirectory(LOG_DIR, { recursive: true }), "create log dir", LOG_DIR)
-    const line = JSON.stringify({ timestamp: new Date().toISOString(), ...entry }) + "\n"
+    const timestamp = DateTime.formatIso(yield* DateTime.now)
+    const line = JSON.stringify({ timestamp, ...entry }) + "\n"
     yield* withLogError(
       fs.writeFileString(LOG_FILE, line, { flag: "a" }),
       "append log entry",

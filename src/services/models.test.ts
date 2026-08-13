@@ -29,7 +29,7 @@ it.effect("ModelRegistryLive returns Option.none for unknown model", () =>
 it.effect("ModelRegistryLive.list returns all registered model IDs", () =>
   Effect.gen(function* () {
     const registry = yield* ModelRegistry
-    const ids = yield* registry.list()
+    const ids = yield* registry.list
     expect(ids).toContain("Xenova/all-MiniLM-L6-v2")
     expect(ids).toContain("Xenova/bge-small-en-v1.5")
     expect(ids).toContain("jinaai/jina-embeddings-v2-base-code")

@@ -90,7 +90,7 @@ const defaultEmbedderLayer = Layer.succeed(Embedder, {
     Effect.succeed(
       texts.map(() => ({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const })),
     ),
-  getFallbackInfo: () => Effect.succeed(undefined),
+  getFallbackInfo: Effect.map(Effect.void, () => undefined),
   createForDevice: () =>
     Effect.succeed({
       limits: {
@@ -132,7 +132,7 @@ const defaultSparseEmbedderLayer = Layer.succeed(SparseEmbedder, {
       batch: (texts: readonly string[]) =>
         Effect.succeed(texts.map(() => ({ terms: [] as const }))),
     }),
-  loadIdf: () => Effect.succeed([]),
+  loadIdf: Effect.succeed([]),
   tokenizeQuery: () => Effect.succeed({ tokenIds: [], contract: TEST_SPARSE_CONTRACT }),
 })
 

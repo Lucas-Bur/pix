@@ -97,14 +97,14 @@ export class ConfigStore extends Context.Service<
   ConfigStore,
   {
     /** Read and heal config in memory. Fails on unhealable conflicts (unknown model). */
-    readonly readConfig: () => Effect.Effect<Config, AllConfigErrors>
+    readonly readConfig: Effect.Effect<Config, AllConfigErrors>
     /** Read and heal config, returning a full plan with all conflicts (including unhealed). */
-    readonly healConfig: () => Effect.Effect<
+    readonly healConfig: Effect.Effect<
       HealPlan,
       ConfigError | ConfigNotFoundError | ConfigMalformedError | ConfigValidationError
     >
     readonly writeConfig: (config: Config) => Effect.Effect<void, ConfigError | DiskFullError>
-    readonly configExists: () => Effect.Effect<boolean>
+    readonly configExists: Effect.Effect<boolean>
   }
 >()("ConfigStore") {}
 
@@ -117,7 +117,7 @@ export class ModelRegistry extends Context.Service<
     /** Look up model info by HuggingFace model identifier. Returns Option.none if unknown. */
     readonly get: (id: string) => Effect.Effect<Option.Option<ModelInfo>>
     /** List all registered model IDs. */
-    readonly list: () => Effect.Effect<readonly string[]>
+    readonly list: Effect.Effect<readonly string[]>
   }
 >()("ModelRegistry") {}
 
@@ -269,7 +269,7 @@ export class Embedder extends Context.Service<
       texts: readonly string[],
     ) => Effect.Effect<readonly Embedding[], ModelLoadError | InferenceError | TokenLimitError>
     /** Returns fallback info if GPU failed and fell back to CPU. */
-    readonly getFallbackInfo: () => Effect.Effect<
+    readonly getFallbackInfo: Effect.Effect<
       { readonly originalDevice: string; readonly reason: string } | undefined
     >
     /** Create a fresh embedder instance for a specific device (used by benchmark). */
@@ -298,7 +298,7 @@ export class SparseEmbedder extends Context.Service<
       cfg: SparseDeviceConfig,
     ) => Effect.Effect<BoundSparseEmbedder, ModelLoadError>
     /** Load and hash-verify the complete static query-IDF table for index persistence. */
-    readonly loadIdf: () => Effect.Effect<readonly SparseTerm[], ModelLoadError>
+    readonly loadIdf: Effect.Effect<readonly SparseTerm[], ModelLoadError>
     /** Tokenize a query for SQLite's persisted static IDF lookup. */
     readonly tokenizeQuery: (
       text: string,
@@ -516,7 +516,7 @@ export class IndexStore extends Context.Service<
       input: PersistIndexInput<E>,
     ) => Effect.Effect<IndexStats, StoreError | DiskFullError | E>
     /** Load all index data needed for hybrid search (chunks + vectors + BM25 + identifiers). */
-    readonly loadSearchData: () => Effect.Effect<
+    readonly loadSearchData: Effect.Effect<
       SearchData,
       StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
     >
@@ -531,18 +531,15 @@ export class IndexStore extends Context.Service<
     /** Load and verify source text for one selected chunk. */
     readonly loadSource: (request: SourceRequest) => Effect.Effect<SourceContent, StoreError>
     /** Load all valid content-addressed embeddings. Missing cache returns an empty list. */
-    readonly loadEmbeddingCache: () => Effect.Effect<readonly CachedEmbedding[], StoreError>
+    readonly loadEmbeddingCache: Effect.Effect<readonly CachedEmbedding[], StoreError>
     /** Load all valid content-addressed sparse vectors. Missing cache returns an empty list. */
-    readonly loadSparseEmbeddingCache: () => Effect.Effect<
-      readonly CachedSparseEmbedding[],
-      StoreError
-    >
+    readonly loadSparseEmbeddingCache: Effect.Effect<readonly CachedSparseEmbedding[], StoreError>
     /** Remove both optional embedding caches without touching the committed index. */
-    readonly clearEmbeddingCache: () => Effect.Effect<boolean, StoreError | DiskFullError>
+    readonly clearEmbeddingCache: Effect.Effect<boolean, StoreError | DiskFullError>
     /** Load the committed snapshot without comparing it to current config. */
-    readonly loadIndexSnapshot: () => Effect.Effect<Option.Option<IndexSnapshot>, StoreError>
+    readonly loadIndexSnapshot: Effect.Effect<Option.Option<IndexSnapshot>, StoreError>
     /** Return index statistics: chunk/file counts, model, last index time, etc. */
-    readonly getStatus: () => Effect.Effect<
+    readonly getStatus: Effect.Effect<
       {
         chunks: number
         files: number
@@ -556,7 +553,7 @@ export class IndexStore extends Context.Service<
       StoreError
     >
     /** Delete all index data (chunks + vectors) and return what was freed. */
-    readonly reset: () => Effect.Effect<ResetResult, StoreError | DiskFullError>
+    readonly reset: Effect.Effect<ResetResult, StoreError | DiskFullError>
   }
 >()("IndexStore") {}
 
@@ -584,7 +581,7 @@ export class QueryAliasStore extends Context.Service<
       options: QueryAliasOptions,
     ) => Effect.Effect<QueryAlias, AliasStoreError | AliasValidationError>
     /** List all aliases sorted by name. */
-    readonly list: () => Effect.Effect<readonly QueryAlias[], AliasStoreError>
+    readonly list: Effect.Effect<readonly QueryAlias[], AliasStoreError>
     /** Load a query alias by name. */
     readonly get: (
       name: string,

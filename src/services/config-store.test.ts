@@ -24,7 +24,7 @@ it.effect("ConfigStore.writeConfig creates .pix/config.json with defaults", () =
   Effect.gen(function* () {
     const store = yield* ConfigStore
     yield* store.writeConfig(DEFAULT_CONFIG)
-    const config = yield* store.readConfig()
+    const config = yield* store.readConfig
     expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
     expect(config.chunkTokens).toBeUndefined()
     expect(config.overlapLines).toBe(10)
@@ -56,7 +56,7 @@ it.effect("ConfigStore.writeConfig creates .pix/config.json with defaults", () =
 it.effect("ConfigStore.readConfig returns ConfigError when config doesn't exist", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = expectLeft(yield* Effect.result(store.readConfig()))
+    const result = expectLeft(yield* Effect.result(store.readConfig))
     expect(result._tag).toBe("ConfigError")
     expect(result.message).toBe("Failed to read config.json")
   }).pipe(Effect.provide(makeLayer())),
@@ -65,7 +65,7 @@ it.effect("ConfigStore.readConfig returns ConfigError when config doesn't exist"
 it.effect("ConfigStore.configExists returns false when no config", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const exists = yield* store.configExists()
+    const exists = yield* store.configExists
     expect(exists).toBe(false)
   }).pipe(Effect.provide(makeLayer())),
 )
@@ -74,7 +74,7 @@ it.effect("ConfigStore.configExists returns true when config exists", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
     yield* store.writeConfig(DEFAULT_CONFIG)
-    const exists = yield* store.configExists()
+    const exists = yield* store.configExists
     expect(exists).toBe(true)
   }).pipe(Effect.provide(makeLayer())),
 )
@@ -82,7 +82,7 @@ it.effect("ConfigStore.configExists returns true when config exists", () =>
 it.effect("readConfig returns ConfigMalformedError for invalid JSON", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = expectLeft(yield* Effect.result(store.readConfig()))
+    const result = expectLeft(yield* Effect.result(store.readConfig))
     expect(result._tag).toBe("ConfigMalformedError")
   }).pipe(Effect.provide(makeLayer({ ".pix/config.json": "not json" }))),
 )
@@ -90,7 +90,7 @@ it.effect("readConfig returns ConfigMalformedError for invalid JSON", () =>
 it.effect("readConfig heals missing embedder with defaults (was validation error pre-heal)", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const config = yield* store.readConfig()
+    const config = yield* store.readConfig
     expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
     expect(config.chunkTokens).toBe(2000)
   }).pipe(Effect.provide(makeLayer({ ".pix/config.json": JSON.stringify({ chunkTokens: 2000 }) }))),
@@ -104,7 +104,7 @@ const invalidConfig = {
 it.effect("readConfig returns ConfigValidationError for invalid enum value", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = expectLeft(yield* Effect.result(store.readConfig()))
+    const result = expectLeft(yield* Effect.result(store.readConfig))
     expect(result._tag).toBe("ConfigValidationError")
     expect(result.message).toContain("device")
   }).pipe(
@@ -117,7 +117,7 @@ it.effect("readConfig returns ConfigValidationError for invalid enum value", () 
 
 it.effect("readConfig rejects a non-positive sparse batch size", () =>
   Effect.gen(function* () {
-    const result = expectLeft(yield* Effect.result((yield* ConfigStore).readConfig()))
+    const result = expectLeft(yield* Effect.result((yield* ConfigStore).readConfig))
     expect(result._tag).toBe("ConfigValidationError")
     expect(result.message).toContain('["sparseEmbedder"]["batchSize"]')
   }).pipe(
@@ -135,7 +135,7 @@ it.effect("readConfig rejects a non-positive sparse batch size", () =>
 it.effect("readConfig passes through a valid config", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const config = yield* store.readConfig()
+    const config = yield* store.readConfig
     expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
   }).pipe(Effect.provide(makeLayer({ ".pix/config.json": makeConfigJson() }))),
 )
@@ -143,7 +143,7 @@ it.effect("readConfig passes through a valid config", () =>
 it.effect("readConfig heals missing embedder key with defaults", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const config = yield* store.readConfig()
+    const config = yield* store.readConfig
     expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
     expect(config.embedder.device).toBe("auto")
     expect(config.embedder.dtype).toBe("fp32")
@@ -158,7 +158,7 @@ it.effect("readConfig heals missing embedder key with defaults", () =>
 it.effect("readConfig heals partial embedder with defaults", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const config = yield* store.readConfig()
+    const config = yield* store.readConfig
     expect(config.embedder.model).toBe("Xenova/bge-small-en-v1.5")
     expect(config.embedder.device).toBe("auto")
     expect(config.embedder.dtype).toBe("fp32")
@@ -177,7 +177,7 @@ it.effect("readConfig heals partial embedder with defaults", () =>
 it.effect("readConfig still fails on bad type (not healable)", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = expectLeft(yield* Effect.result(store.readConfig()))
+    const result = expectLeft(yield* Effect.result(store.readConfig))
     expect(result._tag).toBe("ConfigValidationError")
   }).pipe(
     Effect.provide(makeLayer({ ".pix/config.json": JSON.stringify({ chunkTokens: "sixty" }) })),
@@ -187,7 +187,7 @@ it.effect("readConfig still fails on bad type (not healable)", () =>
 it.effect("readConfig heals unsupported dtype with model defaultDtype", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const config = yield* store.readConfig()
+    const config = yield* store.readConfig
     expect(config.embedder.dtype).toBe("fp32")
     expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
   }).pipe(
@@ -202,7 +202,7 @@ it.effect("readConfig heals unsupported dtype with model defaultDtype", () =>
 it.effect("healConfig returns healed dtype as a conflict", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = yield* store.healConfig()
+    const result = yield* store.healConfig
     expect(result.config.embedder.dtype).toBe("fp32")
     expect(result.conflicts).toHaveLength(1)
     expect(result.conflicts[0].field).toBe("embedder.dtype")
@@ -221,7 +221,7 @@ it.effect("healConfig returns healed dtype as a conflict", () =>
 it.effect("readConfig fails with ConfigHealError on unknown model", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const result = expectLeft(yield* Effect.result(store.readConfig()))
+    const result = expectLeft(yield* Effect.result(store.readConfig))
     expect(result._tag).toBe("ConfigHealError")
     if (result._tag === "ConfigHealError") {
       expect(result.conflicts).toHaveLength(1)
@@ -241,7 +241,7 @@ it.effect("readConfig fails with ConfigHealError on unknown model", () =>
 it.effect("healConfig returns plan with unhealed conflict for unknown model", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const plan = yield* store.healConfig()
+    const plan = yield* store.healConfig
     expect(plan.conflicts).toHaveLength(1)
     expect(plan.conflicts[0].field).toBe("embedder.model")
     expect(plan.conflicts[0].healed).toBe(false)
@@ -258,7 +258,7 @@ it.effect("healConfig returns plan with unhealed conflict for unknown model", ()
 it.effect("healConfig returns plan with healed conflict for unsupported dtype", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const plan = yield* store.healConfig()
+    const plan = yield* store.healConfig
     expect(plan.conflicts).toHaveLength(1)
     expect(plan.conflicts[0].field).toBe("embedder.dtype")
     expect(plan.conflicts[0].healed).toBe(true)
@@ -276,7 +276,7 @@ it.effect("healConfig returns plan with healed conflict for unsupported dtype", 
 it.effect("healConfig returns empty conflicts for valid config", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
-    const plan = yield* store.healConfig()
+    const plan = yield* store.healConfig
     expect(plan.conflicts).toHaveLength(0)
     expect(plan.config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
   }).pipe(Effect.provide(makeLayer({ ".pix/config.json": makeConfigJson() }))),

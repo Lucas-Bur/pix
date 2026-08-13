@@ -8,13 +8,13 @@ import type { ResetResult } from "../domain/ports.js"
 export class ResetIndex extends Context.Service<
   ResetIndex,
   {
-    readonly reset: () => Effect.Effect<ResetResult, StoreError | DiskFullError>
+    readonly reset: Effect.Effect<ResetResult, StoreError | DiskFullError>
   }
 >()("ResetIndex") {}
 
 const make = Effect.gen(function* () {
   const store = yield* IndexStore
-  const reset = (): Effect.Effect<ResetResult, StoreError | DiskFullError> => store.reset()
+  const reset = store.reset
   return { reset } as const
 })
 

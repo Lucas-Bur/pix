@@ -99,7 +99,7 @@ describe("OnnxEmbedder GPU fallback", () => {
       expect(result.dims).toBe(DIMS)
       expect(result.vector.length).toBe(DIMS)
 
-      const fallback = yield* embedder.getFallbackInfo()
+      const fallback = yield* embedder.getFallbackInfo
       expect(fallback).toBeUndefined()
     }).pipe(Effect.provide(layer), Effect.scoped)
   })
@@ -112,7 +112,7 @@ describe("OnnxEmbedder GPU fallback", () => {
       const result = yield* embedder.embed("hello world")
       expect(result.dims).toBe(DIMS)
 
-      const fallback = yield* embedder.getFallbackInfo()
+      const fallback = yield* embedder.getFallbackInfo
       expect(fallback).toBeDefined()
       expect(fallback!.originalDevice).toBe("cuda")
       expect(fallback!.reason).toContain("cuda")

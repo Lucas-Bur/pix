@@ -12,7 +12,7 @@ const clearCacheCommand = Command.make(
   () =>
     Effect.gen(function* () {
       const d = yield* Display
-      const removed = yield* (yield* ClearEmbeddingCache).clear()
+      const removed = yield* (yield* ClearEmbeddingCache).clear
       yield* d.json({ status: "ok", removed })
       yield* d.log(removed ? "Embedding cache cleared." : "Embedding cache already empty.", "info")
     }).pipe(Effect.catch(reportError)),

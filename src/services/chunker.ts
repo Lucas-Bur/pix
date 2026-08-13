@@ -398,7 +398,7 @@ const splitOversizedRange = (
       const tree = yield* Effect.try({
         try: () => parseTreeSitterSource(parser, source.slice(range.start, range.end)),
         catch: (cause) => new AstChunkingError({ file, cause }),
-      }).pipe(Effect.catch(() => Effect.succeed(null)))
+      }).pipe(Effect.orElseSucceed(() => null))
       if (tree !== null && !tree.rootNode.hasError) {
         const segments = astSegments(tree.rootNode, range.end - range.start).map((segment) => ({
           start: range.start + segment.start,
@@ -602,7 +602,7 @@ const buildStructuralChunks = (
       )
     },
     catch: (cause) => new AstChunkingError({ file, cause }),
-  }).pipe(Effect.catch(() => Effect.succeed(wholeFile())))
+  }).pipe(Effect.orElseSucceed(wholeFile))
 }
 
 const buildAstChunks = (
@@ -699,9 +699,7 @@ const buildParserlessChunks = (
 const make = Effect.gen(function* () {
   const configStore = yield* ConfigStore
 
-  const config = yield* configStore
-    .readConfig()
-    .pipe(Effect.catch(() => Effect.succeed(DEFAULT_CONFIG)))
+  const config = yield* configStore.readConfig.pipe(Effect.orElseSucceed(() => DEFAULT_CONFIG))
   const registry = buildExtensionRegistry(config.skipExtensions)
 
   const chunkText = (

@@ -27,7 +27,7 @@ export const healCommand = Command.make(
     Effect.gen(function* () {
       const d = yield* Display
       const store = yield* ConfigStore
-      const plan = yield* store.healConfig()
+      const plan = yield* store.healConfig
 
       const choices = yield* Effect.forEach(plan.conflicts, (conflict) =>
         d.select(

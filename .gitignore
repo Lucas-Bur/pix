@@ -6,6 +6,7 @@ dist
 settings.local.json
 .pix
 coverage
+.repos
 benchmarks/.cache
 benchmarks/results/*.json
 benchmarks/results/retrieval-*.md

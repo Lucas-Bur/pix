@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, Schema, Stream } from "effect"
+import { Clock, Effect, Layer, Option, Schema, Stream } from "effect"
 import { FileSystem } from "effect/FileSystem"
 import { SqlClient } from "effect/unstable/sql"
 import * as SqlSchema from "effect/unstable/sql/SqlSchema"
@@ -492,9 +492,9 @@ const make = Effect.gen(function* () {
     input: PersistIndexInput<E>,
   ): Effect.Effect<IndexStats, StoreError | E> =>
     Effect.gen(function* () {
-      const config = yield* configStore
-        .readConfig()
-        .pipe(Effect.mapError(asStoreError("read config for index commit")))
+      const config = yield* configStore.readConfig.pipe(
+        Effect.mapError(asStoreError("read config for index commit")),
+      )
       let ordinal = 0
       let totalLines = 0
       let byteSize = 0
@@ -574,7 +574,7 @@ const make = Effect.gen(function* () {
           model: config.embedder.model,
           dims: input.dims,
           dtype: input.dtype,
-          lastIndex: Date.now(),
+          lastIndex: yield* Clock.currentTimeMillis,
           chunkTokens: input.chunkTokens,
           quantized: 0,
           diagnostics: input.diagnostics ?? [],
@@ -595,31 +595,30 @@ const make = Effect.gen(function* () {
       return { chunks: ordinal, files: seenFiles.size, totalLines, byteSize }
     })
 
-  const loadSearchData = (): Effect.Effect<
+  const loadSearchData: Effect.Effect<
     SearchData,
     StoreError | NoIndexError | DtypeMismatchError | VectorDecodeError
-  > =>
-    Effect.gen(function* () {
-      const meta = yield* requireMeta()
-      const config = yield* configStore
-        .readConfig()
-        .pipe(Effect.mapError(asStoreError("read config for search")))
-      if (meta.dtype !== config.embedder.dtype) {
-        return yield* new DtypeMismatchError({
-          message: `Index was built with dtype "${meta.dtype}" but config expects "${config.embedder.dtype}". Re-index to fix.`,
-          storedDtype: meta.dtype,
-          configDtype: config.embedder.dtype,
-        })
-      }
-      const entries = toMetadata(yield* readChunkMetadata())
-      const indexes = yield* readRetrievalIndexes()
-      return {
-        entries,
-        bm25Index: indexes.bm25Index,
-        identifierIndex: indexes.identifierIndex,
-        malformedLines: 0,
-      }
-    })
+  > = Effect.gen(function* () {
+    const meta = yield* requireMeta()
+    const config = yield* configStore.readConfig.pipe(
+      Effect.mapError(asStoreError("read config for search")),
+    )
+    if (meta.dtype !== config.embedder.dtype) {
+      return yield* new DtypeMismatchError({
+        message: `Index was built with dtype "${meta.dtype}" but config expects "${config.embedder.dtype}". Re-index to fix.`,
+        storedDtype: meta.dtype,
+        configDtype: config.embedder.dtype,
+      })
+    }
+    const entries = toMetadata(yield* readChunkMetadata())
+    const indexes = yield* readRetrievalIndexes()
+    return {
+      entries,
+      bm25Index: indexes.bm25Index,
+      identifierIndex: indexes.identifierIndex,
+      malformedLines: 0,
+    }
+  })
 
   const searchDense = (
     embedding: Embedding,
@@ -632,9 +631,9 @@ const make = Effect.gen(function* () {
           dtype: "fp32",
         })
       }
-      const config = yield* configStore
-        .readConfig()
-        .pipe(Effect.mapError(asStoreError("read vector search config")))
+      const config = yield* configStore.readConfig.pipe(
+        Effect.mapError(asStoreError("read vector search config")),
+      )
       const status = yield* selectStatus(undefined).pipe(
         Effect.mapError(asStoreError("count vectors for search")),
       )
@@ -693,24 +692,22 @@ const make = Effect.gen(function* () {
       return matches.map(({ ordinal, score }) => ({ chunkIndex: ordinal, score }))
     })
 
-  const loadEmbeddingCache = (): Effect.Effect<readonly CachedEmbedding[], StoreError> =>
-    selectCache(undefined).pipe(
-      Effect.map((rows) =>
-        rows
-          .filter((row) => row.embedding.length === row.dims)
-          .map((row) => ({
-            contentHash: row.contentHash,
-            model: row.model,
-            embedding: { vector: row.embedding, dims: row.dims, dtype: row.dtype },
-          })),
-      ),
-      Effect.mapError(asStoreError("read embedding cache")),
-    )
+  const loadEmbeddingCache: Effect.Effect<readonly CachedEmbedding[], StoreError> = selectCache(
+    undefined,
+  ).pipe(
+    Effect.map((rows) =>
+      rows
+        .filter((row) => row.embedding.length === row.dims)
+        .map((row) => ({
+          contentHash: row.contentHash,
+          model: row.model,
+          embedding: { vector: row.embedding, dims: row.dims, dtype: row.dtype },
+        })),
+    ),
+    Effect.mapError(asStoreError("read embedding cache")),
+  )
 
-  const loadSparseEmbeddingCache = (): Effect.Effect<
-    readonly CachedSparseEmbedding[],
-    StoreError
-  > =>
+  const loadSparseEmbeddingCache: Effect.Effect<readonly CachedSparseEmbedding[], StoreError> =
     selectSparseCache(undefined).pipe(
       Effect.map((rows) =>
         rows.map((row) => ({
@@ -729,19 +726,18 @@ const make = Effect.gen(function* () {
       Effect.mapError(asStoreError("read sparse embedding cache")),
     )
 
-  const clearEmbeddingCache = (): Effect.Effect<boolean, StoreError> =>
-    Effect.gen(function* () {
-      const [{ count: denseCount }, { count: sparseCount }] = yield* Effect.all([
-        selectCacheCount(undefined),
-        selectSparseCacheCount(undefined),
-      ])
-      yield* sql`DELETE FROM embedding_cache`
-      yield* sql`DELETE FROM sparse_embedding_cache`
-      return denseCount + sparseCount > 0
-    }).pipe(Effect.mapError(asStoreError("clear embedding cache")))
+  const clearEmbeddingCache: Effect.Effect<boolean, StoreError> = Effect.gen(function* () {
+    const [{ count: denseCount }, { count: sparseCount }] = yield* Effect.all([
+      selectCacheCount(undefined),
+      selectSparseCacheCount(undefined),
+    ])
+    yield* sql`DELETE FROM embedding_cache`
+    yield* sql`DELETE FROM sparse_embedding_cache`
+    return denseCount + sparseCount > 0
+  }).pipe(Effect.mapError(asStoreError("clear embedding cache")))
 
-  const loadIndexSnapshot = (): Effect.Effect<Option.Option<IndexSnapshot>, StoreError> =>
-    Effect.gen(function* () {
+  const loadIndexSnapshot: Effect.Effect<Option.Option<IndexSnapshot>, StoreError> = Effect.gen(
+    function* () {
       const meta = yield* readMeta()
       if (Option.isNone(meta)) return Option.none()
       const sparseMeta = yield* selectSparseMeta(undefined).pipe(
@@ -780,7 +776,8 @@ const make = Effect.gen(function* () {
         sparseContract,
         sparseIdf,
       })
-    })
+    },
+  )
 
   const loadSource = (request: SourceRequest): Effect.Effect<SourceContent, StoreError> =>
     Effect.gen(function* () {
@@ -810,49 +807,47 @@ const make = Effect.gen(function* () {
       }
     })
 
-  const getStatus = () =>
-    Effect.gen(function* () {
-      const meta = yield* readMeta()
-      if (Option.isNone(meta)) return emptyStatus
-      const status = yield* selectStatus(undefined).pipe(
-        Effect.mapError(asStoreError("read index status")),
-      )
-      return {
-        ...status,
-        model: meta.value.model,
-        lastIndex: meta.value.lastIndex,
-        validationErrors: [],
-        diagnostics: meta.value.diagnostics,
-      }
-    })
+  const getStatus = Effect.gen(function* () {
+    const meta = yield* readMeta()
+    if (Option.isNone(meta)) return emptyStatus
+    const status = yield* selectStatus(undefined).pipe(
+      Effect.mapError(asStoreError("read index status")),
+    )
+    return {
+      ...status,
+      model: meta.value.model,
+      lastIndex: meta.value.lastIndex,
+      validationErrors: [],
+      diagnostics: meta.value.diagnostics,
+    }
+  })
 
-  const reset = (): Effect.Effect<
+  const reset: Effect.Effect<
     { deletedChunks: boolean; deletedVectors: boolean; freedBytes: number },
     StoreError
-  > =>
-    Effect.gen(function* () {
-      const meta = yield* readMeta()
-      if (Option.isNone(meta)) {
-        return { deletedChunks: false, deletedVectors: false, freedBytes: 0 }
-      }
-      const status = yield* selectStatus(undefined)
-      yield* sql.withTransaction(
-        Effect.gen(function* () {
-          yield* sql`DELETE FROM sparse_terms`
-          yield* sql`DELETE FROM sparse_idf`
-          yield* sql`DELETE FROM sparse_index_meta`
-          yield* sql`DELETE FROM index_meta`
-          yield* sql`DELETE FROM retrieval_indexes`
-          yield* sql`DELETE FROM files`
-          yield* sql`DELETE FROM chunks`
-        }),
-      )
-      return {
-        deletedChunks: status.chunks > 0,
-        deletedVectors: status.chunks > 0,
-        freedBytes: status.byteSize,
-      }
-    }).pipe(Effect.mapError(asStoreError("reset index")))
+  > = Effect.gen(function* () {
+    const meta = yield* readMeta()
+    if (Option.isNone(meta)) {
+      return { deletedChunks: false, deletedVectors: false, freedBytes: 0 }
+    }
+    const status = yield* selectStatus(undefined)
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`DELETE FROM sparse_terms`
+        yield* sql`DELETE FROM sparse_idf`
+        yield* sql`DELETE FROM sparse_index_meta`
+        yield* sql`DELETE FROM index_meta`
+        yield* sql`DELETE FROM retrieval_indexes`
+        yield* sql`DELETE FROM files`
+        yield* sql`DELETE FROM chunks`
+      }),
+    )
+    return {
+      deletedChunks: status.chunks > 0,
+      deletedVectors: status.chunks > 0,
+      freedBytes: status.byteSize,
+    }
+  }).pipe(Effect.mapError(asStoreError("reset index")))
 
   return {
     persistIndex,

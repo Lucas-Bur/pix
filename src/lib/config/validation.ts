@@ -53,16 +53,14 @@ const clampPositive = (value: number, min = 1): number => Math.max(min, value)
  * Decode an unknown value against a schema, converting schema-level errors into the project's
  * `ConfigValidationError` so callers see a single failure type.
  *
- * The cast narrows the third type parameter from `unknown` (what `decodeUnknownEffect` returns for
- * a generic schema) to `never`: at runtime the schema's decoding needs no services, and the Effect
- * produced here has no requirement. This is the standard pattern for `Schema.decodeUnknownEffect`
- * callers in this codebase; see also `mergeConfig`.
+ * The decoder is restricted to schemas that need no services, which keeps the returned Effect
+ * independent of the runtime environment.
  */
 export const decodeObjectWithErrors = <A>(
-  schema: Schema.Schema<A>,
+  schema: Schema.Decoder<A, never>,
   value: unknown,
 ): Effect.Effect<A, ConfigValidationError> =>
-  (Schema.decodeUnknownEffect(schema)(value) as Effect.Effect<A, Schema.SchemaError, never>).pipe(
+  Schema.decodeUnknownEffect(schema)(value).pipe(
     Effect.mapError(
       (error: Schema.SchemaError) =>
         new ConfigValidationError({

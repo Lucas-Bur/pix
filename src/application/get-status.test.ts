@@ -8,13 +8,13 @@ const getStatusLayer = (status: StatusResult) =>
   Layer.provide(
     GetStatusLive,
     Layer.mock(IndexStore)({
-      getStatus: () => Effect.succeed(status),
+      getStatus: Effect.succeed(status),
     }),
   )
 
 it.effect("GetStatus.getStatus returns the persisted index model", () =>
   Effect.gen(function* () {
-    const result = yield* (yield* GetStatus).getStatus()
+    const result = yield* (yield* GetStatus).getStatus
     expect(result.chunks).toBe(2)
     expect(result.files).toBe(2)
     expect(result.model).toBe("test-model")
@@ -25,7 +25,7 @@ it.effect("GetStatus.getStatus returns the persisted index model", () =>
         chunks: 2,
         files: 2,
         model: "test-model",
-        lastIndex: Date.now(),
+        lastIndex: 1,
         totalLines: 3,
         byteSize: 19,
         validationErrors: [],
@@ -37,7 +37,7 @@ it.effect("GetStatus.getStatus returns the persisted index model", () =>
 
 it.effect("GetStatus.getStatus returns empty model when no index exists", () =>
   Effect.gen(function* () {
-    const result = yield* (yield* GetStatus).getStatus()
+    const result = yield* (yield* GetStatus).getStatus
     expect(result.model).toBe("")
     expect(result.chunks).toBe(2)
     expect(result.files).toBe(2)

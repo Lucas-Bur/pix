@@ -24,10 +24,10 @@ const benchmarkConfig = (model: string, dtype: EmbeddingDtype): Config => ({
 })
 
 const benchmarkConfigStore = (config: Config): typeof ConfigStore.Service => ({
-  readConfig: () => Effect.succeed(config),
-  healConfig: () => Effect.succeed({ config, conflicts: [] }),
+  readConfig: Effect.succeed(config),
+  healConfig: Effect.succeed({ config, conflicts: [] }),
   writeConfig: () => Effect.void,
-  configExists: () => Effect.succeed(true),
+  configExists: Effect.succeed(true),
 })
 
 const sqliteBenchmarkLayer = (model: string, dtype: EmbeddingDtype, databasePath: string) =>

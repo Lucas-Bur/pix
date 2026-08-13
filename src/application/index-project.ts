@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Ref, Stream } from "effect"
+import { Clock, Context, Effect, Layer, Option, Ref, Stream } from "effect"
 
 import type { Chunk as DomainChunk, Embedding } from "../domain/chunk.js"
 import { DEFAULT_CONFIG } from "../domain/config.js"
@@ -330,11 +330,11 @@ const make = Effect.gen(function* () {
 
   const prepareIndexContext = (opts: IndexOptions): Effect.Effect<IndexContext, IndexError> =>
     Effect.gen(function* () {
-      const hasConfig = yield* configStore.configExists()
+      const hasConfig = yield* configStore.configExists
       if (!hasConfig) {
         yield* configStore.writeConfig(DEFAULT_CONFIG)
       }
-      const config = yield* configStore.readConfig()
+      const config = yield* configStore.readConfig
       const eff = mergeConfig(opts, config)
       const modelInfo = yield* modelRegistry.get(config.embedder.model)
       const dims = Option.match(modelInfo, { onNone: () => 0, onSome: (info) => info.dims })
@@ -343,7 +343,7 @@ const make = Effect.gen(function* () {
         embedder,
         sparseEmbedder,
       )
-      const snapshot = yield* indexStore.loadIndexSnapshot()
+      const snapshot = yield* indexStore.loadIndexSnapshot
       const sparseContractMatches = Option.match(snapshot, {
         onNone: () => false,
         onSome: ({ sparseContract }) =>
@@ -409,7 +409,7 @@ const make = Effect.gen(function* () {
         contractMatches,
         sparseContractMatches,
         dims,
-        start: Date.now(),
+        start: yield* Clock.currentTimeMillis,
       }
     })
 
@@ -500,8 +500,8 @@ const make = Effect.gen(function* () {
       const embeddedRef = yield* Ref.make(0)
       const cacheHits = yield* Ref.make(0)
       const cacheMisses = yield* Ref.make(0)
-      const cached = yield* indexStore.loadEmbeddingCache()
-      const cachedSparse = yield* indexStore.loadSparseEmbeddingCache()
+      const cached = yield* indexStore.loadEmbeddingCache
+      const cachedSparse = yield* indexStore.loadSparseEmbeddingCache
       const dims = ctx.dims
       const available = new Map<string, CachedEmbedding>()
       const availableSparse = new Map<string, SparseVector>()
@@ -591,7 +591,7 @@ const make = Effect.gen(function* () {
       const sparseIdf =
         ctx.sparseContractMatches && Option.isSome(ctx.snapshot)
           ? ctx.snapshot.value.sparseIdf
-          : yield* sparseEmbedder.loadIdf()
+          : yield* sparseEmbedder.loadIdf
 
       const stats = yield* d.progress(
         { message: `Writing index with ${totalChunks} chunks...`, max: totalChunks },
@@ -736,7 +736,8 @@ const make = Effect.gen(function* () {
       const collected = sortDiagnostics(yield* Ref.get(diagnostics))
       yield* displayDiagnostics(d, collected)
 
-      const durationSec = ((Date.now() - start) / 1000).toFixed(1)
+      const end = yield* Clock.currentTimeMillis
+      const durationSec = ((end - start) / 1000).toFixed(1)
       const activity =
         stats.refresh === "full"
           ? `Indexed ${stats.chunks} chunks from ${stats.files} files`
@@ -747,7 +748,7 @@ const make = Effect.gen(function* () {
         "info",
       )
 
-      const fallbackInfo = yield* embedder.getFallbackInfo()
+      const fallbackInfo = yield* embedder.getFallbackInfo
 
       return {
         success: true as const,
@@ -759,7 +760,7 @@ const make = Effect.gen(function* () {
           byteSize: stats.byteSize,
           validationErrors: [],
         },
-        durationMs: Date.now() - start,
+        durationMs: end - start,
         cacheHits: stats.cacheHits,
         cacheMisses: stats.cacheMisses,
         reusedFiles: stats.reusedFiles,
@@ -796,7 +797,7 @@ const make = Effect.gen(function* () {
     phase: Phase1Result,
   ): Effect.Effect<IndexResult, IndexError> =>
     Effect.gen(function* () {
-      const status = yield* indexStore.getStatus()
+      const status = yield* indexStore.getStatus
       yield* d.log(
         `Index already fresh (${status.files} files, ${status.chunks} chunks)`,
         "success",
@@ -811,7 +812,7 @@ const make = Effect.gen(function* () {
           byteSize: status.byteSize,
           validationErrors: status.validationErrors,
         },
-        durationMs: Date.now() - ctx.start,
+        durationMs: (yield* Clock.currentTimeMillis) - ctx.start,
         cacheHits: 0,
         cacheMisses: 0,
         reusedFiles: phase.reusedFiles,

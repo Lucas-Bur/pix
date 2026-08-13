@@ -33,7 +33,7 @@ export const addAlias = (request: AliasAddRequest) =>
 /** List saved query aliases in stable name order. */
 export const listAliases = Effect.gen(function* () {
   const store = yield* QueryAliasStore
-  return yield* store.list()
+  return yield* store.list
 })
 
 /** Remove a query alias. */

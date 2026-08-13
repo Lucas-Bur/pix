@@ -14,17 +14,16 @@ import { statusCommand } from "./status.js"
 
 const run = runCommand(statusCommand)
 const populatedStatusLayer = Layer.mock(IndexStore)({
-  getStatus: () =>
-    Effect.succeed({
-      chunks: 2,
-      files: 2,
-      model: "test-model",
-      lastIndex: Date.now(),
-      totalLines: 3,
-      byteSize: 19,
-      validationErrors: [],
-      diagnostics: [{ kind: "parser-fallback", file: "src/test.ts", message: "fallback" }],
-    }),
+  getStatus: Effect.succeed({
+    chunks: 2,
+    files: 2,
+    model: "test-model",
+    lastIndex: 1,
+    totalLines: 3,
+    byteSize: 19,
+    validationErrors: [],
+    diagnostics: [{ kind: "parser-fallback", file: "src/test.ts", message: "fallback" }],
+  }),
 })
 
 it.effect("pix status --json outputs correct status from index files", () => {

@@ -26,9 +26,7 @@ export const resolveEmbedderConfig = (
   configStore: typeof ConfigStore.Service,
 ): Effect.Effect<ResolvedEmbedderConfig, ModelLoadError> =>
   Effect.gen(function* () {
-    const config = yield* configStore
-      .readConfig()
-      .pipe(Effect.catch(() => Effect.succeed(undefined)))
+    const config = yield* configStore.readConfig.pipe(Effect.orElseSucceed(() => undefined))
     const model = config?.embedder.model ?? "Xenova/all-MiniLM-L6-v2"
     const dtype: EmbeddingDtype = config?.embedder.dtype ?? "fp32"
     const modelInfo = MODEL_REGISTRY[model]

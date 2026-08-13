@@ -152,7 +152,7 @@ export const makeFailingIndexStore = (
       failingMethod === "persistIndex"
         ? failEffect
         : Effect.succeed({ chunks: 0, files: 0, totalLines: 0, byteSize: 0 }),
-    loadSearchData: () =>
+    loadSearchData:
       failingMethod === "loadSearchData"
         ? failEffect
         : Effect.succeed({
@@ -164,11 +164,11 @@ export const makeFailingIndexStore = (
     searchDense: () => Effect.succeed([]),
     searchSparse: () => Effect.succeed([]),
     loadSource: () => Effect.succeed({ text: "", contextBefore: null, contextAfter: null }),
-    loadEmbeddingCache: () => Effect.succeed([]),
-    loadSparseEmbeddingCache: () => Effect.succeed([]),
-    clearEmbeddingCache: () => Effect.succeed(false),
-    loadIndexSnapshot: () => Effect.succeed(Option.none()),
-    getStatus: () =>
+    loadEmbeddingCache: Effect.succeed([]),
+    loadSparseEmbeddingCache: Effect.succeed([]),
+    clearEmbeddingCache: Effect.succeed(false),
+    loadIndexSnapshot: Effect.succeed(Option.none()),
+    getStatus:
       failingMethod === "getStatus"
         ? failEffect
         : Effect.succeed({
@@ -181,7 +181,7 @@ export const makeFailingIndexStore = (
             validationErrors: [],
             diagnostics: [],
           }),
-    reset: () =>
+    reset:
       failingMethod === "reset"
         ? failEffect
         : Effect.succeed({ deletedChunks: false, deletedVectors: false, freedBytes: 0 }),
@@ -211,11 +211,11 @@ export const makeFailingConfigStore = (
 ): Layer.Layer<ConfigStore> => {
   const fail = Effect.fail(new ConfigError({ message }))
   return Layer.succeed(ConfigStore, {
-    readConfig: () => (method === "readConfig" ? fail : Effect.succeed(DEFAULT_CONFIG)),
-    healConfig: () =>
+    readConfig: method === "readConfig" ? fail : Effect.succeed(DEFAULT_CONFIG),
+    healConfig:
       method === "healConfig" ? fail : Effect.succeed({ config: DEFAULT_CONFIG, conflicts: [] }),
     writeConfig: () => (method === "writeConfig" ? fail : Effect.void),
-    configExists: () => Effect.succeed(false),
+    configExists: Effect.succeed(false),
   })
 }
 
@@ -242,7 +242,7 @@ export const makeFailingEmbedder = (
         : Effect.succeed(
             items.map(() => ({ vector: new Float32Array(384), dims: 384, dtype: "fp32" as const })),
           ),
-    getFallbackInfo: () => Effect.succeed(undefined),
+    getFallbackInfo: Effect.map(Effect.void, () => undefined),
     createForDevice: () =>
       Effect.succeed({
         limits: {
