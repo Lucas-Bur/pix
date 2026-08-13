@@ -30,72 +30,72 @@ export const Float32ArrayFromBlob = Schema.Uint8Array.pipe(
 )
 
 const Bm25IndexSchema = Schema.Struct({
-  avgChunkLength: Schema.Number,
-  chunkLengths: Schema.Array(Schema.Number),
-  docFreqs: Schema.Record(Schema.String, Schema.Number),
+  avgChunkLength: Schema.Finite,
+  chunkLengths: Schema.Array(Schema.Finite),
+  docFreqs: Schema.Record(Schema.String, Schema.Finite),
   chunkTfs: Schema.Record(
     Schema.String,
-    Schema.Array(Schema.Tuple([Schema.Number, Schema.Number])),
+    Schema.Array(Schema.Tuple([Schema.Finite, Schema.Finite])),
   ),
 })
 
 const IdentifierIndexSchema = Schema.Struct({
-  exact: Schema.Record(Schema.String, Schema.Array(Schema.Number)),
-  split: Schema.Record(Schema.String, Schema.Array(Schema.Number)),
+  exact: Schema.Record(Schema.String, Schema.Array(Schema.Finite)),
+  split: Schema.Record(Schema.String, Schema.Array(Schema.Finite)),
 })
 
 const SparseVectorSchema = Schema.Struct({
   terms: Schema.Array(
     Schema.Struct({
       tokenId: Schema.Int,
-      weight: Schema.Number,
+      weight: Schema.Finite,
     }),
   ),
 })
 
 /** Persisted singleton describing the active index snapshot. */
 export class IndexMetaRow extends Model.Class<IndexMetaRow>("IndexMetaRow")({
-  id: Schema.Number,
+  id: Schema.Finite,
   model: Schema.String,
-  dims: Schema.Number,
+  dims: Schema.Finite,
   dtype: EmbeddingDtypeSchema,
-  lastIndex: Schema.Number,
-  chunkTokens: Schema.Number,
+  lastIndex: Schema.Finite,
+  chunkTokens: Schema.Finite,
   quantized: Schema.Literals([0, 1]),
   diagnostics: Schema.fromJsonString(Schema.Array(IndexDiagnosticSchema)),
 }) {}
 
 /** Persisted chunk metadata and its Float32 embedding. */
 export class ChunkRow extends Model.Class<ChunkRow>("ChunkRow")({
-  ordinal: Schema.Number,
+  ordinal: Schema.Finite,
   id: Schema.String,
-  idx: Schema.Number,
+  idx: Schema.Finite,
   file: Schema.String,
-  startLine: Schema.Number,
-  endLine: Schema.Number,
-  startOffset: Schema.Number,
-  endOffset: Schema.Number,
+  startLine: Schema.Finite,
+  endLine: Schema.Finite,
+  startOffset: Schema.Finite,
+  endOffset: Schema.Finite,
   contentHash: Schema.String,
   embedding: Float32ArrayFromBlob,
 }) {}
 
 /** Chunk row projected without its embedding for query-time retrieval metadata. */
 export class ChunkMetadataRow extends Model.Class<ChunkMetadataRow>("ChunkMetadataRow")({
-  ordinal: Schema.Number,
+  ordinal: Schema.Finite,
   id: Schema.String,
-  idx: Schema.Number,
+  idx: Schema.Finite,
   file: Schema.String,
-  startLine: Schema.Number,
-  endLine: Schema.Number,
-  startOffset: Schema.Number,
-  endOffset: Schema.Number,
+  startLine: Schema.Finite,
+  endLine: Schema.Finite,
+  startOffset: Schema.Finite,
+  endOffset: Schema.Finite,
   contentHash: Schema.String,
 }) {}
 
 /** Decoded result from an exact or quantized SQLite vector scan. */
 export const DenseMatchRow = Schema.Struct({
-  ordinal: Schema.Number,
-  distance: Schema.Number,
+  ordinal: Schema.Finite,
+  distance: Schema.Finite,
 })
 
 /** Schema-transformed request vector passed to sqlite-vector. */
@@ -116,32 +116,32 @@ export class SparseIndexMetaRow extends Model.Class<SparseIndexMetaRow>("SparseI
 export class SparseTermRow extends Model.Class<SparseTermRow>("SparseTermRow")({
   chunkOrdinal: Schema.Int,
   tokenId: Schema.Int,
-  weight: Schema.Number,
+  weight: Schema.Finite,
 }) {}
 
 /** One static query-IDF weight persisted by tokenizer token ID. */
 export class SparseIdfRow extends Model.Class<SparseIdfRow>("SparseIdfRow")({
   tokenId: Schema.Int,
-  weight: Schema.Number,
+  weight: Schema.Finite,
 }) {}
 
 /** Decoded result from exact sparse inner-product ranking. */
 export const SparseMatchRow = Schema.Struct({
   ordinal: Schema.Int,
-  score: Schema.Number,
+  score: Schema.Finite,
 })
 
 /** Persisted source-file observation used by incremental indexing. */
 export class FileManifestRow extends Model.Class<FileManifestRow>("FileManifestRow")({
   file: Schema.String,
-  mtimeMs: Schema.Number,
-  size: Schema.Number,
+  mtimeMs: Schema.Finite,
+  size: Schema.Finite,
   contentHash: Schema.String,
 }) {}
 
 /** Schema-transformed retrieval indexes stored as JSON text in SQLite. */
 export class RetrievalIndexesRow extends Model.Class<RetrievalIndexesRow>("RetrievalIndexesRow")({
-  id: Schema.Number,
+  id: Schema.Finite,
   bm25Index: Schema.fromJsonString(Bm25IndexSchema),
   identifierIndex: Schema.fromJsonString(IdentifierIndexSchema),
 }) {}
@@ -150,7 +150,7 @@ export class RetrievalIndexesRow extends Model.Class<RetrievalIndexesRow>("Retri
 export class EmbeddingCacheRow extends Model.Class<EmbeddingCacheRow>("EmbeddingCacheRow")({
   contentHash: Schema.String,
   model: Schema.String,
-  dims: Schema.Number,
+  dims: Schema.Finite,
   dtype: EmbeddingDtypeSchema,
   embedding: Float32ArrayFromBlob,
 }) {}

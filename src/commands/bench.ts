@@ -83,20 +83,20 @@ const benchCommand = Command.make(
       const d = yield* Display
 
       const parsedBatchSizes = Result.match(parseBatchSizes(batchSizes), {
-        onFailure: (e) => Effect.fail(new Error(e)),
+        onFailure: Effect.fail,
         onSuccess: Effect.succeed,
       })
       const sizes = yield* parsedBatchSizes
       const parsedSparseBatchSizes = Result.match(
         parseBatchSizes(sparseBatchSizes, "--sparse-batch-sizes"),
         {
-          onFailure: (e) => Effect.fail(new Error(e)),
+          onFailure: Effect.fail,
           onSuccess: Effect.succeed,
         },
       )
       const sparseSizes = yield* parsedSparseBatchSizes
       const selectedDevices = yield* Result.match(parseDevices(devices), {
-        onFailure: (e) => Effect.fail(new Error(e)),
+        onFailure: Effect.fail,
         onSuccess: Effect.succeed,
       })
 

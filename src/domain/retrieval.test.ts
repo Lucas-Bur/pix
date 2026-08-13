@@ -43,6 +43,18 @@ it("rejects malformed production configurations", () => {
   ).toThrow()
 })
 
+it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+  "rejects non-finite router values: %s",
+  (value) => {
+    expect(() =>
+      decodeEvidenceRouterConfig({
+        ...PRODUCTION_COMPATIBILITY_CONFIG,
+        baseWeights: { ...PRODUCTION_COMPATIBILITY_CONFIG.baseWeights, dense: value },
+      }),
+    ).toThrow()
+  },
+)
+
 it("registers named runtime profiles while matrix-specific values are pending", () => {
   expect(Object.keys(PRODUCTION_PROFILES)).toEqual([
     "compatibility",

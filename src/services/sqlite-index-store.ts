@@ -65,13 +65,13 @@ const emptyStatus: {
 }
 
 const StatusRow = Schema.Struct({
-  chunks: Schema.Number,
-  files: Schema.Number,
-  totalLines: Schema.Number,
-  byteSize: Schema.Number,
+  chunks: Schema.Finite,
+  files: Schema.Finite,
+  totalLines: Schema.Finite,
+  byteSize: Schema.Finite,
 })
 
-const CacheCountRow = Schema.Struct({ count: Schema.Number })
+const CacheCountRow = Schema.Struct({ count: Schema.Finite })
 
 const LEGACY_INDEX_FILES = [
   ".pix/chunks.jsonl",

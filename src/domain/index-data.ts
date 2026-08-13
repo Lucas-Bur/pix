@@ -14,8 +14,8 @@ export type StoredChunk = typeof StoredChunkSchema.Type
 /** Runtime schema for one observed source file in the index manifest. */
 const FileManifestEntrySchema = Schema.Struct({
   file: Schema.String,
-  mtimeMs: Schema.Number,
-  size: Schema.Number,
+  mtimeMs: Schema.Finite,
+  size: Schema.Finite,
   contentHash: Schema.String,
 })
 

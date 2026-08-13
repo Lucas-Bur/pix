@@ -11,10 +11,10 @@ export type EmbeddingDtype = typeof EmbeddingDtypeSchema.Type
 /** Runtime schema for index metadata persisted in `.pix/index.db`. */
 const IndexMetaSchema = Schema.Struct({
   dtype: EmbeddingDtypeSchema,
-  dims: Schema.Number,
+  dims: Schema.Finite,
   model: Schema.String,
-  lastIndex: Schema.Number,
-  chunkTokens: Schema.Number,
+  lastIndex: Schema.Finite,
+  chunkTokens: Schema.Finite,
   diagnostics: Schema.Array(IndexDiagnosticSchema),
 })
 

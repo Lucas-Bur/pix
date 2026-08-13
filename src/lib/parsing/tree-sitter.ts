@@ -10,7 +10,7 @@ interface SourceOffsets {
 const buildSourceOffsets = (source: string): SourceOffsets => {
   const lineOffsets = [0]
 
-  for (let stringOffset = 0; stringOffset < source.length; ) {
+  for (let stringOffset = 0; stringOffset < source.length;) {
     const codePoint = source.codePointAt(stringOffset)!
     const codeUnitLength = codePoint > 0xffff ? 2 : 1
     const nextStringOffset = stringOffset + codeUnitLength
