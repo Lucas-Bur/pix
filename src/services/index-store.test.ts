@@ -82,7 +82,7 @@ const storeFixture = (
 
 it.effect("IndexStore.getStatus returns 0 when no index exists", () =>
   Effect.gen(function* () {
-    const result = yield* (yield* GetStatus).getStatus()
+    const result = yield* (yield* GetStatus).getStatus
     expect(result.chunks).toBe(0)
     expect(result.files).toBe(0)
     expect(result.model).toBe("")
@@ -95,7 +95,7 @@ it.effect("IndexStore.getStatus returns 0 when no index exists", () =>
 it.effect("IndexStore.reset returns 0/0/false when no index exists", () =>
   Effect.gen(function* () {
     const store = yield* IndexStore
-    const resetResult = yield* store.reset()
+    const resetResult = yield* store.reset
     expect(resetResult.deletedChunks).toBe(false)
     expect(resetResult.deletedVectors).toBe(false)
     expect(resetResult.freedBytes).toBe(0)
@@ -105,7 +105,7 @@ it.effect("IndexStore.reset returns 0/0/false when no index exists", () =>
 it.effect("IndexStore.persistIndex writes chunks and vectors to index files", () =>
   Effect.gen(function* () {
     const store = yield* storeFixture([makeChunk()], [makeEmbedding()])
-    const status = yield* store.getStatus()
+    const status = yield* store.getStatus
     expect(status.chunks).toBe(1)
     expect(status.files).toBe(1)
     expect(status.totalLines).toBe(2)
@@ -123,8 +123,8 @@ it.effect("IndexStore round-trips index diagnostics and chunking metadata", () =
     ] as const
     const store = yield* storeFixture([makeChunk()], [makeEmbedding()], [], [], diagnostics)
 
-    expect((yield* store.getStatus()).diagnostics).toEqual(diagnostics)
-    const snapshot = yield* store.loadIndexSnapshot()
+    expect((yield* store.getStatus).diagnostics).toEqual(diagnostics)
+    const snapshot = yield* store.loadIndexSnapshot
     expect(snapshot._tag).toBe("Some")
     if (snapshot._tag === "Some") {
       expect(snapshot.value.meta.diagnostics).toEqual(diagnostics)
@@ -168,8 +168,8 @@ it.effect("IndexStore.clearEmbeddingCache removes persisted embeddings", () =>
         },
       ],
     )
-    expect(yield* store.loadEmbeddingCache()).toHaveLength(1)
-    expect(yield* store.loadSparseEmbeddingCache()).toEqual([
+    expect(yield* store.loadEmbeddingCache).toHaveLength(1)
+    expect(yield* store.loadSparseEmbeddingCache).toEqual([
       {
         contentHash: "cached-sparse",
         contract: TEST_SPARSE_CONTRACT,
@@ -177,9 +177,9 @@ it.effect("IndexStore.clearEmbeddingCache removes persisted embeddings", () =>
       },
     ])
 
-    expect(yield* store.clearEmbeddingCache()).toBe(true)
-    expect(yield* store.loadEmbeddingCache()).toHaveLength(0)
-    expect(yield* store.loadSparseEmbeddingCache()).toHaveLength(0)
+    expect(yield* store.clearEmbeddingCache).toBe(true)
+    expect(yield* store.loadEmbeddingCache).toHaveLength(0)
+    expect(yield* store.loadSparseEmbeddingCache).toHaveLength(0)
   }).pipe(Effect.provide(isLayer), Effect.scoped),
 )
 
@@ -207,7 +207,7 @@ it.effect("IndexStore.reset deletes index files when they exist", () =>
   Effect.gen(function* () {
     yield* storeFixture([makeChunk()], [makeEmbedding()])
     const store = yield* IndexStore
-    const result = yield* store.reset()
+    const result = yield* store.reset
     expect(result.deletedChunks).toBe(true)
     expect(result.deletedVectors).toBe(true)
     expect(result.freedBytes).toBeGreaterThan(0)
@@ -229,18 +229,18 @@ it.effect("IndexStore.reset preserves the historical embedding cache", () =>
         },
       ],
     )
-    yield* store.reset()
+    yield* store.reset
 
-    expect(yield* store.loadEmbeddingCache()).toHaveLength(1)
-    expect(yield* store.loadSparseEmbeddingCache()).toHaveLength(1)
-    expect((yield* store.getStatus()).chunks).toBe(0)
+    expect(yield* store.loadEmbeddingCache).toHaveLength(1)
+    expect(yield* store.loadSparseEmbeddingCache).toHaveLength(1)
+    expect((yield* store.getStatus).chunks).toBe(0)
   }).pipe(Effect.provide(indexStoreLayer()), Effect.scoped),
 )
 
 it.effect("IndexStore.persistIndex works when .pix directory already exists", () =>
   Effect.gen(function* () {
     const store = yield* storeFixture([makeChunk()], [makeEmbedding()])
-    const status = yield* store.getStatus()
+    const status = yield* store.getStatus
     expect(status.chunks).toBe(1)
   }).pipe(Effect.provide(indexStoreLayer()), Effect.scoped),
 )
@@ -289,7 +289,7 @@ it.effect("IndexStore rejects malformed chunk rows through SQLite constraints", 
     )
     expect(insert._tag).toBe("Failure")
 
-    const status = yield* store.getStatus()
+    const status = yield* store.getStatus
     expect(status.chunks).toBe(2)
     expect(status.totalLines).toBe(4)
     expect(status.files).toBe(1)
@@ -318,7 +318,7 @@ it.effect("IndexStore.loadSearchData returns bm25Index after indexing", () =>
       [makeEmbedding(0.1), makeEmbedding(0.1)],
     )
     const store = yield* IndexStore
-    const data = yield* store.loadSearchData()
+    const data = yield* store.loadSearchData
     expect(data.entries).toHaveLength(2)
     expect(data.bm25Index).not.toBeNull()
     expect(data.bm25Index!.chunkLengths).toHaveLength(2)
@@ -505,7 +505,7 @@ it.effect("IndexStore.reset deletes active retrieval indexes", () =>
     const sql = yield* SqlClient.SqlClient
     yield* storeFixture([makeChunk()], [makeEmbedding()])
     const store = yield* IndexStore
-    yield* store.reset()
+    yield* store.reset
     const rows = yield* sql<{ readonly count: number }>`
       SELECT COUNT(*) AS count FROM retrieval_indexes
     `
@@ -523,7 +523,7 @@ it.effect("IndexStore.loadSearchData fails when retrieval indexes are missing", 
     const sql = yield* SqlClient.SqlClient
     yield* sql`DELETE FROM retrieval_indexes`
     const store = yield* IndexStore
-    const result = yield* Effect.result(store.loadSearchData())
+    const result = yield* Effect.result(store.loadSearchData)
     expect(result._tag).toBe("Failure")
   }).pipe(Effect.provide(isLayer), Effect.scoped),
 )
@@ -563,7 +563,7 @@ it.effect("IndexStore.persistIndex rolls back when the stream fails mid-write", 
     )
     expect(result._tag).toBe("Failure")
 
-    const data = yield* store.loadSearchData()
+    const data = yield* store.loadSearchData
     expect(data.entries.map(({ id }) => id)).toEqual(["committed"])
   }).pipe(Effect.provide(isLayer), Effect.scoped),
 )

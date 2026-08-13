@@ -7,13 +7,13 @@ import { IndexStore } from "../domain/ports.js"
 export class ClearEmbeddingCache extends Context.Service<
   ClearEmbeddingCache,
   {
-    readonly clear: () => Effect.Effect<boolean, StoreError | DiskFullError>
+    readonly clear: Effect.Effect<boolean, StoreError | DiskFullError>
   }
 >()("ClearEmbeddingCache") {}
 
 const make = Effect.gen(function* () {
   const store = yield* IndexStore
-  return { clear: () => store.clearEmbeddingCache() } as const
+  return { clear: store.clearEmbeddingCache } as const
 })
 
 export const ClearEmbeddingCacheLive = Layer.effect(ClearEmbeddingCache, make)

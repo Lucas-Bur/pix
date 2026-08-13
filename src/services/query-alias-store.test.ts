@@ -27,7 +27,7 @@ it.effect("QueryAliasStore.save writes aliases.json and leaves no temp file", ()
 it.effect("QueryAliasStore.list returns empty when aliases.json is missing", () =>
   Effect.gen(function* () {
     const store = yield* QueryAliasStore
-    expect(yield* store.list()).toEqual([])
+    expect(yield* store.list).toEqual([])
   }).pipe(Effect.provide(aliasLayer())),
 )
 
@@ -36,7 +36,7 @@ it.effect("QueryAliasStore.remove deletes an alias from aliases.json", () =>
     const store = yield* QueryAliasStore
     yield* store.save("auth", "find auth handlers", {})
     yield* store.remove("auth")
-    expect(yield* store.list()).toEqual([])
+    expect(yield* store.list).toEqual([])
   }).pipe(Effect.provide(aliasLayer())),
 )
 
@@ -73,7 +73,7 @@ it.effect("QueryAliasStore.save rejects invalid alias names", () =>
 it.effect("QueryAliasStore fails with AliasStoreError for corrupted aliases.json", () =>
   Effect.gen(function* () {
     const store = yield* QueryAliasStore
-    const error = yield* store.list().pipe(Effect.catch((err) => Effect.succeed(err)))
+    const error = yield* store.list.pipe(Effect.catch((err) => Effect.succeed(err)))
     expect(error).toBeInstanceOf(AliasStoreError)
     expect((error as AliasStoreError).message).toContain("decode")
   }).pipe(Effect.provide(aliasLayer({ ".pix/aliases.json": "not valid json" }))),

@@ -160,18 +160,18 @@ const make = Effect.gen(function* () {
     | ModelMismatchError
   > =>
     Effect.gen(function* () {
-      const status = yield* store.getStatus()
+      const status = yield* store.getStatus
       if (status.model === "") {
         return yield* new NoIndexError({ message: "No index found. Run pix index first." })
       }
-      const config = yield* configStore.readConfig()
+      const config = yield* configStore.readConfig
       if (config.embedder.model !== status.model) {
         return yield* new ModelMismatchError({
           configModel: config.embedder.model,
           indexModel: status.model,
         })
       }
-      const { entries, bm25Index, identifierIndex, malformedLines } = yield* store.loadSearchData()
+      const { entries, bm25Index, identifierIndex, malformedLines } = yield* store.loadSearchData
       if (entries.length === 0) {
         return {
           results: [],

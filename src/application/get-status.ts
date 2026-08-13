@@ -20,17 +20,14 @@ export interface StatusResult {
 export class GetStatus extends Context.Service<
   GetStatus,
   {
-    readonly getStatus: () => Effect.Effect<StatusResult, StoreError>
+    readonly getStatus: Effect.Effect<StatusResult, StoreError>
   }
 >()("GetStatus") {}
 
 const make = Effect.gen(function* () {
   const store = yield* IndexStore
 
-  const getStatus = (): Effect.Effect<StatusResult, StoreError> =>
-    Effect.gen(function* () {
-      return yield* store.getStatus()
-    })
+  const getStatus = store.getStatus
 
   return { getStatus } as const
 })

@@ -99,15 +99,13 @@ const make = Effect.gen(function* () {
       const gitignorePath = `${cwd}/.gitignore`
       const gitignoreExists = yield* fs
         .exists(gitignorePath)
-        .pipe(Effect.catch(() => Effect.succeed(false)))
+        .pipe(Effect.orElseSucceed(() => false))
       if (gitignoreExists) {
         yield* loadIgnoreFile(gitignorePath, ig, skipped)
       }
 
       const excludePath = `${cwd}/.git/info/exclude`
-      const excludeExists = yield* fs
-        .exists(excludePath)
-        .pipe(Effect.catch(() => Effect.succeed(false)))
+      const excludeExists = yield* fs.exists(excludePath).pipe(Effect.orElseSucceed(() => false))
       if (excludeExists) {
         yield* loadIgnoreFile(excludePath, ig, skipped)
       }
@@ -161,7 +159,10 @@ const make = Effect.gen(function* () {
           files: [
             {
               path: fullPath,
-              mtimeMs: Option.getOrElse(info.mtime, () => new Date(0)).getTime(),
+              mtimeMs: Option.match(info.mtime, {
+                onNone: () => 0,
+                onSome: (mtime) => mtime.getTime(),
+              }),
               size: Number(info.size),
             },
           ],

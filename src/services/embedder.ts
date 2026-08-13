@@ -279,9 +279,7 @@ const resolveEmbedderDeviceConfig = (
       })
     }
 
-    const config = yield* configStore
-      .readConfig()
-      .pipe(Effect.catch(() => Effect.succeed(undefined)))
+    const config = yield* configStore.readConfig.pipe(Effect.orElseSucceed(() => undefined))
     const deviceConfig = config?.embedder.device ?? "auto"
     const device =
       deviceConfig === "auto"
@@ -338,8 +336,7 @@ const make = Effect.gen(function* () {
       return yield* b.countTokens(text)
     })
 
-  const getFallbackInfo = () =>
-    Ref.get(fallbackRef).pipe(Effect.map(Option.getOrElse(() => undefined)))
+  const getFallbackInfo = Ref.get(fallbackRef).pipe(Effect.map(Option.getOrElse(() => undefined)))
 
   const createForDevice = createBoundEmbedder
 

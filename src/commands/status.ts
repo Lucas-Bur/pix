@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { DateTime, Effect } from "effect"
 import { Command, Flag } from "effect/unstable/cli"
 
 import { GetStatus } from "../application/get-status.js"
@@ -15,12 +15,12 @@ export const statusCommand = Command.make(
     Effect.gen(function* () {
       const d = yield* Display
       const svc = yield* GetStatus
-      const result = yield* svc.getStatus()
+      const result = yield* svc.getStatus
 
       yield* d.json(result)
 
       const lastIndexStr =
-        result.lastIndex > 0 ? new Date(result.lastIndex).toLocaleString() : "never"
+        result.lastIndex > 0 ? DateTime.formatLocal(DateTime.makeUnsafe(result.lastIndex)) : "never"
       yield* d.log(`Indexed: ${result.chunks} chunks across ${result.files} files`, "info")
       yield* d.log(`Model: ${result.model || "none"}`, "info")
       yield* d.log(`Total lines: ${result.totalLines.toLocaleString()}`, "info")

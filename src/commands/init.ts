@@ -15,7 +15,7 @@ export const initCommand = Command.make(
     Effect.gen(function* () {
       const d = yield* Display
       const registry = yield* ModelRegistry
-      const modelIds = yield* registry.list()
+      const modelIds = yield* registry.list
 
       const defaultModel = "Xenova/all-MiniLM-L6-v2"
       const selectedModel = yield* d.select(

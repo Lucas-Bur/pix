@@ -17,7 +17,7 @@ export const resetCommand = Command.make(
       const d = yield* Display
       const start = yield* Clock.currentTimeMillis
       const svc = yield* ResetIndex
-      const result = yield* d.spinner("Resetting index...", svc.reset())
+      const result = yield* d.spinner("Resetting index...", svc.reset)
       const end = yield* Clock.currentTimeMillis
       const elapsedMs = end - start
 

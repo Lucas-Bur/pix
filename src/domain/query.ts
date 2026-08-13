@@ -97,8 +97,7 @@ const QueryIndexRefreshSchema = Schema.Struct({
   cacheMisses: Schema.Finite,
 })
 
-const QueryWarningSchema = Schema.Struct({
-  _tag: Schema.Literal("TopKClamped"),
+const QueryWarningSchema = Schema.TaggedStruct("TopKClamped", {
   requested: Schema.Finite,
   applied: Schema.Finite,
 })

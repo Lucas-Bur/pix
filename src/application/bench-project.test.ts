@@ -93,7 +93,7 @@ const embedderBase = {
   ...mockBoundBase,
   embed: () => Effect.succeed(mockEmb()),
   batch: (texts: readonly string[]) => Effect.succeed(mockBatch(texts)),
-  getFallbackInfo: () => Effect.succeed(undefined),
+  getFallbackInfo: Effect.map(Effect.void, () => undefined),
 } as const
 
 const createMockEmbedder = () => {
@@ -708,7 +708,7 @@ describe("(yield* BenchProject).applyConfig", () => {
       })
 
       const store = yield* ConfigStore
-      const config = yield* store.readConfig()
+      const config = yield* store.readConfig
       expect(config.embedder.device).toBe("cuda")
       expect(config.embedder.batchSize).toBe(64)
       expect(config.chunkTokens).toBeUndefined()
@@ -724,7 +724,7 @@ describe("(yield* BenchProject).applyConfig", () => {
       yield* (yield* BenchProject).applyConfig({ device: "cpu", batchSize: 32, profile: "cold" })
 
       const store = yield* ConfigStore
-      const config = yield* store.readConfig()
+      const config = yield* store.readConfig
       expect(config.embedder.device).toBe("cpu")
       expect(config.embedder.batchSize).toBe(32)
     }).pipe(Effect.provide(testLayer({ contents: {} })), Effect.scoped),
@@ -744,7 +744,7 @@ describe("(yield* BenchProject).applyConfig", () => {
       })
 
       const store = yield* ConfigStore
-      const config = yield* store.readConfig()
+      const config = yield* store.readConfig
       expect(config.embedder.device).toBe("dml")
       expect(config.embedder.batchSize).toBe(128)
       expect(config.chunkTokens).toBe(100)
@@ -764,7 +764,7 @@ describe("(yield* BenchProject).applyConfig", () => {
       )
 
       const store = yield* ConfigStore
-      const config = yield* store.readConfig()
+      const config = yield* store.readConfig
       expect(config.embedder.device).toBe("cpu")
       expect(config.sparseEmbedder.device).toBe("cuda")
       expect(config.sparseEmbedder.batchSize).toBe(4)
@@ -912,15 +912,15 @@ describe("BenchProject error and edge cases", () => {
     Effect.gen(function* () {
       const store = yield* ConfigStore
 
-      const existsBefore = yield* store.configExists()
+      const existsBefore = yield* store.configExists
       expect(existsBefore).toBe(false)
 
       yield* (yield* BenchProject).prepareCorpus(defaultBenchOpts)
 
-      const existsAfter = yield* store.configExists()
+      const existsAfter = yield* store.configExists
       expect(existsAfter).toBe(true)
 
-      const config = yield* store.readConfig()
+      const config = yield* store.readConfig
       expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
     }).pipe(
       Effect.provide(

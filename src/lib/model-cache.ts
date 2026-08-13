@@ -13,7 +13,7 @@ export interface ModelCacheOptions {
 }
 
 const readOptionalEnv = (name: string): Effect.Effect<Option.Option<string>> =>
-  Config.option(Config.string(name)).pipe(Effect.catch(() => Effect.succeed(Option.none())))
+  Config.option(Config.string(name)).pipe(Effect.orElseSucceed(() => Option.none()))
 
 const readOneDriveRoots = (): Effect.Effect<readonly string[]> =>
   Effect.all([

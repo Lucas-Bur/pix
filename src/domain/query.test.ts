@@ -4,7 +4,7 @@ import { Schema } from "effect"
 import { normalizeQueryRequest, QueryRequestSchema, QueryResponseSchema } from "./query.js"
 
 test("a query request applies transport-independent defaults", () => {
-  const request = Schema.decodeUnknownSync(QueryRequestSchema)({ queryText: "display service" })
+  const request = Schema.decodeSync(QueryRequestSchema)({ queryText: "display service" })
 
   expect(normalizeQueryRequest(request)).toEqual({
     queryText: "display service",

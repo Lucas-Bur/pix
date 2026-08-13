@@ -26,7 +26,7 @@ const structurallyHeal = (
   content: string,
 ): Effect.Effect<Config, ConfigMalformedError | ConfigValidationError> =>
   Effect.gen(function* () {
-    const parsed = yield* Schema.decodeUnknownEffect(
+    const parsed = yield* Schema.decodeEffect(
       Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)),
     )(content).pipe(
       Effect.mapError(
@@ -86,7 +86,7 @@ const validateCoupled = (
 
 /** List all model IDs in the registry (for error messages and conflict options). */
 const listModelIds = (registry: typeof ModelRegistry.Service): Effect.Effect<readonly string[]> =>
-  registry.list()
+  registry.list
 
 /** Read file, structural heal, coupled validation. Returns config + all conflicts. */
 const readAndHeal = (
@@ -135,32 +135,28 @@ const make = Effect.gen(function* () {
       )
     })
 
-  const readConfig = () =>
-    readAndHeal(fs, registry).pipe(
-      Effect.flatMap(({ config, conflicts }) => {
-        const unhealed = conflicts.filter((c) => !c.healed)
-        if (unhealed.length > 0) {
-          return Effect.fail(
-            new ConfigHealError({
-              conflicts: unhealed.map((c) => ({
-                field: c.field,
-                currentValue: c.currentValue,
-                validOptions: c.validOptions,
-                reason: c.reason,
-              })),
-            }),
-          )
-        }
-        return Effect.succeed(config)
-      }),
-    )
+  const readConfig = readAndHeal(fs, registry).pipe(
+    Effect.flatMap(({ config, conflicts }) => {
+      const unhealed = conflicts.filter((c) => !c.healed)
+      if (unhealed.length > 0) {
+        return Effect.fail(
+          new ConfigHealError({
+            conflicts: unhealed.map((c) => ({
+              field: c.field,
+              currentValue: c.currentValue,
+              validOptions: c.validOptions,
+              reason: c.reason,
+            })),
+          }),
+        )
+      }
+      return Effect.succeed(config)
+    }),
+  )
 
-  const healConfig = () => readAndHeal(fs, registry)
+  const healConfig = readAndHeal(fs, registry)
 
-  const configExists = (): Effect.Effect<boolean> =>
-    Effect.gen(function* () {
-      return yield* fs.exists(CONFIG_PATH)
-    }).pipe(Effect.catch(() => Effect.succeed(false)))
+  const configExists = fs.exists(CONFIG_PATH).pipe(Effect.orElseSucceed(() => false))
 
   return { writeConfig, readConfig, healConfig, configExists } as const
 })

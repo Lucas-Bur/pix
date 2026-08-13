@@ -29,7 +29,7 @@ it.effect.skipIf(process.env.PIX_RUN_MODEL_TESTS !== "1")(
     Effect.gen(function* () {
       const embedder = yield* SparseEmbedder
       const documents = yield* embedder.batch(["SQLite sparse retrieval", "Effect service layers"])
-      const idf = yield* embedder.loadIdf()
+      const idf = yield* embedder.loadIdf
       const query = yield* embedder.tokenizeQuery("SQLite retrieval")
 
       expect(documents).toHaveLength(2)

@@ -292,21 +292,20 @@ it.live("the MCP server serializes overlapping query executions", () =>
       queryProject: () => Effect.succeed({ results: [], validationErrors: [] }),
     })
     const statusLayer = Layer.succeed(GetStatus, {
-      getStatus: () =>
-        Effect.succeed({
-          chunks: 0,
-          files: 0,
-          model: "",
-          lastIndex: 0,
-          totalLines: 0,
-          byteSize: 0,
-          validationErrors: [],
-          diagnostics: [],
-        }),
+      getStatus: Effect.succeed({
+        chunks: 0,
+        files: 0,
+        model: "",
+        lastIndex: 0,
+        totalLines: 0,
+        byteSize: 0,
+        validationErrors: [],
+        diagnostics: [],
+      }),
     })
     const aliasLayer = Layer.succeed(QueryAliasStore, {
       save: (name, queryText, options) => Effect.succeed({ name, queryText, options }),
-      list: () => Effect.succeed([]),
+      list: Effect.succeed([]),
       get: (name) => Effect.die(new Error(`Unexpected alias read: ${name}`)),
       remove: () => Effect.void,
     })

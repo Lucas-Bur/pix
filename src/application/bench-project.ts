@@ -105,11 +105,11 @@ const make = Effect.gen(function* () {
 
   const prepareCorpus = (opts: BenchOptions): Effect.Effect<Corpus, CorpusError> =>
     Effect.gen(function* () {
-      const hasConfig = yield* configStore.configExists()
+      const hasConfig = yield* configStore.configExists
       if (!hasConfig) {
         yield* configStore.writeConfig(DEFAULT_CONFIG)
       }
-      const config = yield* configStore.readConfig()
+      const config = yield* configStore.readConfig
       const eff = mergeConfig({}, config)
       const { maxTokens, countTokens } = createTokenAwareChunking(
         eff.chunkTokens,
@@ -282,9 +282,7 @@ const make = Effect.gen(function* () {
       return { chunksPerSec, latencyPerBatchMs, error: undefined }
     }).pipe(
       Effect.timeout(`${timeoutMs} millis`),
-      Effect.catch(() =>
-        Effect.succeed({ chunksPerSec: 0, latencyPerBatchMs: 0, error: "timeout" }),
-      ),
+      Effect.orElseSucceed(() => ({ chunksPerSec: 0, latencyPerBatchMs: 0, error: "timeout" })),
     )
 
   const bench = (opts: BenchOptions): Effect.Effect<BenchResult, BenchError> =>
@@ -485,8 +483,8 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const { device, batchSize } = recommendation
 
-      const hasConfig = yield* configStore.configExists()
-      const currentConfig = hasConfig ? yield* configStore.readConfig() : DEFAULT_CONFIG
+      const hasConfig = yield* configStore.configExists
+      const currentConfig = hasConfig ? yield* configStore.readConfig : DEFAULT_CONFIG
 
       const updated: Config = {
         ...currentConfig,

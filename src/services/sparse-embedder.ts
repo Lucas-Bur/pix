@@ -120,7 +120,7 @@ const loadDocumentModel = (
 const make = Effect.gen(function* () {
   const path = yield* Path.Path
   env.cacheDir = yield* resolveTransformersCacheDir({ projectRoot: path.resolve() })
-  const config = yield* (yield* ConfigStore).readConfig()
+  const config = yield* (yield* ConfigStore).readConfig
   const sparse = config.sparseEmbedder
   const modelInfo = SPARSE_MODEL_REGISTRY[sparse.model]
   if (modelInfo === undefined) {
@@ -275,8 +275,8 @@ const make = Effect.gen(function* () {
       cfg.device,
     ).pipe(Effect.map((model) => makeBound(Effect.succeed(model), cfg.batchSize)))
 
-  const loadStaticIdf = (): Effect.Effect<readonly SparseTerm[], ModelLoadError> =>
-    Effect.gen(function* () {
+  const loadStaticIdf: Effect.Effect<readonly SparseTerm[], ModelLoadError> = Effect.gen(
+    function* () {
       const { tokenizer } = yield* getQueryRuntime
       return yield* loadIdf(
         sparse.queryModel,
@@ -284,7 +284,8 @@ const make = Effect.gen(function* () {
         sparse.idfContentHash,
         tokenizer,
       )
-    })
+    },
+  )
 
   const tokenizeQuery = (
     text: string,

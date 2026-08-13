@@ -1,5 +1,5 @@
 import { expect, it } from "@effect/vitest"
-import { Console, Effect, Exit } from "effect"
+import { Effect, Exit } from "effect"
 import { FileSystem } from "effect/FileSystem"
 
 import { makeFailingIndexStore } from "../../tests/test-utils/command.js"
@@ -158,13 +158,13 @@ it.effect("IndexProject keeps only displaced embeddings in the historical cache"
     const store = yield* IndexStore
     const fs = yield* FileSystem
     yield* index.index()
-    expect(yield* store.loadEmbeddingCache()).toHaveLength(0)
-    expect(yield* store.loadSparseEmbeddingCache()).toHaveLength(0)
+    expect(yield* store.loadEmbeddingCache).toHaveLength(0)
+    expect(yield* store.loadSparseEmbeddingCache).toHaveLength(0)
 
     yield* fs.writeFileString("src/a.ts", `${sourceFile}\nexport const changed = true`)
     yield* index.index()
-    expect((yield* store.loadEmbeddingCache()).length).toBeGreaterThan(0)
-    expect((yield* store.loadSparseEmbeddingCache()).length).toBeGreaterThan(0)
+    expect((yield* store.loadEmbeddingCache).length).toBeGreaterThan(0)
+    expect((yield* store.loadSparseEmbeddingCache).length).toBeGreaterThan(0)
 
     yield* fs.writeFileString("src/a.ts", sourceFile)
     const reverted = yield* index.index()
@@ -234,7 +234,7 @@ it.effect("IndexProject.index assigns global chunk indices to identifiers across
   Effect.gen(function* () {
     yield* (yield* IndexProject).index()
     const store = yield* IndexStore
-    const { identifierIndex, entries } = yield* store.loadSearchData()
+    const { identifierIndex, entries } = yield* store.loadSearchData
 
     expect(entries.length).toBe(2)
     const alphaIdxs = identifierIndex.exact["alpha"]
@@ -244,7 +244,6 @@ it.effect("IndexProject.index assigns global chunk indices to identifiers across
     expect(alphaIdxs.length).toBe(1)
     expect(betaIdxs.length).toBe(1)
     expect(alphaIdxs[0]).not.toBe(betaIdxs[0])
-    Effect.runSync(Console.log(alphaIdxs, betaIdxs))
   }).pipe(
     Effect.provide(
       testLayer({
@@ -296,11 +295,11 @@ it.effect("IndexProject.index respects chunkConcurrency values", () =>
 it.effect("IndexProject.index auto-initializes when config is missing", () =>
   Effect.gen(function* () {
     const configStore = yield* ConfigStore
-    expect(yield* configStore.configExists()).toBe(false)
+    expect(yield* configStore.configExists).toBe(false)
 
     const result = yield* (yield* IndexProject).index()
     expect(result.success).toBe(true)
-    const exists = yield* configStore.configExists()
+    const exists = yield* configStore.configExists
     expect(exists).toBe(true)
   }).pipe(
     Effect.provide(

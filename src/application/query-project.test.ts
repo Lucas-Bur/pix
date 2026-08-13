@@ -37,7 +37,7 @@ const nonZeroEmbedder = Layer.succeed(Embedder, {
         dtype: "fp32" as const,
       })),
     ),
-  getFallbackInfo: () => Effect.succeed(undefined),
+  getFallbackInfo: Effect.map(Effect.void, () => undefined),
   createForDevice: () =>
     Effect.succeed({
       limits: {
@@ -175,7 +175,7 @@ it.effect("QueryProject includes Sparse with the promoted router", () =>
               batch: (texts: readonly string[]) =>
                 Effect.succeed(texts.map(() => ({ terms: [] as const }))),
             }),
-          loadIdf: () => Effect.succeed([{ tokenId: 7, weight: 2 }]),
+          loadIdf: Effect.succeed([{ tokenId: 7, weight: 2 }]),
           tokenizeQuery: () => Effect.succeed({ tokenIds: [7], contract: TEST_SPARSE_CONTRACT }),
         }),
       }),

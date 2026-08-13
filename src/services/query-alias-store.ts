@@ -30,7 +30,7 @@ const validateName = (name: string): Effect.Effect<void, AliasValidationError> =
 }
 
 const decodeRegistry = (content: string): Effect.Effect<QueryAliasRegistry, AliasStoreError> =>
-  Schema.decodeUnknownEffect(AliasRegistryJson)(content).pipe(
+  Schema.decodeEffect(AliasRegistryJson)(content).pipe(
     Effect.mapError(
       (cause) =>
         new AliasStoreError({
@@ -129,14 +129,13 @@ const make = Effect.gen(function* () {
       return { name, ...entry }
     })
 
-  const list = (): Effect.Effect<readonly QueryAlias[], AliasStoreError> =>
-    readRegistry.pipe(
-      Effect.map((registry) =>
-        Object.entries(registry)
-          .map(([name, entry]) => ({ name, ...entry }))
-          .sort((a, b) => a.name.localeCompare(b.name)),
-      ),
-    )
+  const list = readRegistry.pipe(
+    Effect.map((registry) =>
+      Object.entries(registry)
+        .map(([name, entry]) => ({ name, ...entry }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    ),
+  )
 
   const get = (
     name: string,

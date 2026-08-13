@@ -116,7 +116,7 @@ it.effect("round-trips sliced Float32 arrays through the SQLite BLOB schema", ()
   Effect.gen(function* () {
     const source = new Float32Array([99, 1.25, -2.5, 99]).subarray(1, 3)
     const encoded = yield* Schema.encodeEffect(Float32ArrayFromBlob)(source)
-    const decoded = yield* Schema.decodeUnknownEffect(Float32ArrayFromBlob)(encoded)
+    const decoded = yield* Schema.decodeEffect(Float32ArrayFromBlob)(encoded)
 
     expect(encoded.byteLength).toBe(2 * Float32Array.BYTES_PER_ELEMENT)
     expect([...decoded]).toEqual([1.25, -2.5])
@@ -126,7 +126,7 @@ it.effect("round-trips sliced Float32 arrays through the SQLite BLOB schema", ()
 it.effect("rejects malformed Float32 BLOB byte lengths", () =>
   Effect.gen(function* () {
     const result = yield* Effect.result(
-      Schema.decodeUnknownEffect(Float32ArrayFromBlob)(new Uint8Array(3)),
+      Schema.decodeEffect(Float32ArrayFromBlob)(new Uint8Array(3)),
     )
     expect(result._tag).toBe("Failure")
   }),

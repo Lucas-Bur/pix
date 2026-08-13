@@ -393,7 +393,7 @@ const collectModelMeasurements = (
             info.defaultDtype,
             chunkTokens,
             sparseEmbedder.contract,
-            yield* sparseEmbedder.loadIdf(),
+            yield* sparseEmbedder.loadIdf,
           )
         }
         const sparseQueryStartedAt = performance.now()
@@ -401,7 +401,7 @@ const collectModelMeasurements = (
           sparseEmbedder.tokenizeQuery(query),
         )
         const sparseQueryTokenizationDurationMs = performance.now() - sparseQueryStartedAt
-        const searchData = yield* store.loadSearchData()
+        const searchData = yield* store.loadSearchData
         const collected = yield* collectModelSamples(
           manifest,
           corpus,
@@ -461,7 +461,7 @@ const inspectBenchmarkCache = (
       const store = yield* IndexStore
       const [rankings, status] = yield* Effect.all([
         loadCachedRankings(sql, cachePaths.cacheKey, queries),
-        store.getStatus(),
+        store.getStatus,
       ])
       return {
         rankings,

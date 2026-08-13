@@ -131,7 +131,7 @@ const QueryToolHandlersLive = PixToolkit.toLayer(
       status: () =>
         Effect.gen(function* () {
           const getStatus = yield* GetStatus
-          return yield* toToolFailure(getStatus.getStatus())
+          return yield* toToolFailure(getStatus.getStatus)
         }),
       index: (request: typeof IndexRequestSchema.Type) =>
         querySemaphore.withPermits(1)(toToolFailure(runIndex(request))),
