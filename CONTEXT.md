@@ -49,7 +49,7 @@ with batch size × sequence length × the 30,522-token vocabulary. See ADR-0020.
 
 ### ModelRegistry
 
-Port (`Context.Tag` in `src/domain/ports.ts`) for querying embedding model metadata: dimensions, supported dtypes, default dtype, hard input limit, maximum accepted input, and description. `ModelRegistryLive` in `src/services/models.ts` wraps the static `MODEL_REGISTRY` record from `src/domain/models.ts`; test layers can inject a restricted fake registry to exercise coupled-validation edge cases. Two methods: `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. Follows the "two adapters = real seam" principle (live + test).
+Port (`Context.Service` in `src/domain/ports.ts`) for querying embedding model metadata: dimensions, supported dtypes, default dtype, hard input limit, maximum accepted input, and description. `ModelRegistryLive` in `src/services/models.ts` wraps the static `MODEL_REGISTRY` record from `src/domain/models.ts`; test layers can inject a restricted fake registry to exercise coupled-validation edge cases. Two methods: `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. Follows the "two adapters = real seam" principle (live + test).
 
 ### ModelInfo
 
@@ -57,7 +57,7 @@ Metadata for a registered embedding model: `id` (HuggingFace ID), `dims`, `dtype
 
 ### DeviceDetection
 
-Port (`Context.Tag` in `src/domain/ports.ts`) for detecting the best available compute device for embedding inference. Two methods: `detect(model, dtype) → DeviceType` (probes devices in priority order, returns first that loads the model) and `detectAll(model, dtype) → readonly DeviceType[]` (tests each independently). The live adapter in `src/services/device-detect.ts` uses the shared generic first-working-device loader with `cuda → dml → coreml → webgpu → wasm → cpu`. Dense uses `detectAll` for feature-extraction probing; the hardware benchmark probes Sparse devices through `SparseEmbedder.createForDevice()` because Sparse loads a masked-language model. Explicit devices bypass fallback.
+Port (`Context.Service` in `src/domain/ports.ts`) for detecting the best available compute device for embedding inference. Two methods: `detect(model, dtype) → DeviceType` (probes devices in priority order, returns first that loads the model) and `detectAll(model, dtype) → readonly DeviceType[]` (tests each independently). The live adapter in `src/services/device-detect.ts` uses the shared generic first-working-device loader with `cuda → dml → coreml → webgpu → wasm → cpu`. Dense uses `detectAll` for feature-extraction probing; the hardware benchmark probes Sparse devices through `SparseEmbedder.createForDevice()` because Sparse loads a masked-language model. Explicit devices bypass fallback.
 
 ### Hardware Benchmark
 
@@ -73,7 +73,7 @@ Two-tier process that runs on every `ConfigStore.readConfig()` call:
 1. **Structural heal**: deep-merge user config onto `DEFAULT_CONFIG`, then schema-decode. Missing fields are filled from defaults; bad types (`chunkTokens: "two thousand"`) still fail with `ConfigValidationError`. Omitted `chunkTokens` means the active model limits determine chunk size.
 2. **Coupled validation**: check `embedder.model` exists in `ModelRegistry` and `embedder.dtype` is in the model's `dtypes`. Unsupported dtype → auto-healed to `defaultDtype` (conflict recorded but not blocking). Unknown model → `ConfigHealError` (unhealable, blocks).
 
-`pix config heal` is the explicit command: returns a `HealPlan`, prompts for each conflict (human mode), writes the resolved config. `--json` mode: auto-applies defaults for healed conflicts, fails with `ConfigHealError` for unhealed conflicts (agent edits config and retries). Only `pix config heal` writes config; other commands heal in memory and warn via `readConfigWithConflicts()`.
+`pix config heal` is the explicit command: returns a `HealPlan`, prompts for each conflict (human mode), writes the resolved config. `--json` mode: auto-applies defaults for healed conflicts, fails with `ConfigHealError` for unhealed conflicts (agent edits config and retries). Only `pix config heal` writes config; other commands call `ConfigStore.readConfig` and heal in memory.
 
 ### HealConflict
 
@@ -317,7 +317,7 @@ Multiplier applied to a scorer's RRF contribution, set by query routing. Dialogs
 
 ### Effect
 
-Runtime and CLI framework (`effect`, `@effect/cli`, `@effect/platform-node`). Chosen as a learning project and foundation for typed errors + structured concurrency.
+Runtime and CLI framework (`effect@4.0.0-rc.108`, `effect/unstable/cli`, `@effect/platform-node@4.0.0-rc.108`). Chosen as a learning project and foundation for typed errors + structured concurrency.
 
 ### TypeScript and Effect Toolchain
 
@@ -344,7 +344,7 @@ Tests a single use case (`src/application/*.ts`) through `testLayer()` with real
 
 ### Display Service
 
-`Context.Tag("Display")` in `src/domain/ports.ts`. Abstracts all CLI output behind structured methods. Commands and services use `yield* Display` — never `Console.log` or `Effect.logInfo` directly. Implementations in `src/display/`: `clack-display.ts`, `json-display.ts`, `silent-display.ts`. Entry types in `entries.ts`.
+`Context.Service("Display")` in `src/domain/ports.ts`. Abstracts all CLI output behind structured methods. Commands and services use `yield* Display` — never `Console.log` or `Effect.logInfo` directly. Implementations in `src/display/`: `clack-display.ts`, `json-display.ts`, `silent-display.ts`. Entry types in `entries.ts`.
 
 Methods:
 
@@ -439,7 +439,7 @@ pix follows hexagonal architecture with three DDD layers. See [ADR 0003](docs/ad
 
 ### Port
 
-A `Context.Tag` interface in `src/domain/ports.ts` declaring what the application needs — no implementation, no I/O. Examples: `ConfigStore`, `Scanner`, `ContentExtractor`, `Chunker`, `Embedder`, `IndexStore`, `Display`.
+A `Context.Service` interface in `src/domain/ports.ts` declaring what the application needs — no implementation, no infrastructure I/O. Examples: `ConfigStore`, `Scanner`, `ContentExtractor`, `Chunker`, `Embedder`, `IndexStore`, `Display`.
 
 ### Adapter
 
@@ -447,11 +447,11 @@ A concrete implementation of a port, living in `src/services/`. Each adapter is 
 
 ### Domain Layer (`src/domain/`)
 
-Pure TypeScript types — no Effect, no I/O. Entities (`Config`, `Chunk`), value objects (`Embedding` with `dtype: EmbeddingDtype`), error types (`ConfigError`), and port declarations.
+Domain models and contracts — no infrastructure I/O. Entities (`Config`, `Chunk`), value objects (`Embedding` with `dtype: EmbeddingDtype`), typed errors (`ConfigError`), and `Context.Service` port declarations use lightweight Effect primitives where needed.
 
 ### Application Layer (`src/application/`)
 
-Use cases as `Effect.Service` classes. Orchestration only — declares port dependencies via `yield*`, never touches files or ONNX directly. Examples: `InitProject`, `IndexProject`, `QueryProject`, `GetStatus`.
+Use cases as `Context.Service` classes. Orchestration only — declares port dependencies via `yield*`, never touches files or ONNX directly. Examples: `InitProject`, `IndexProject`, `QueryProject`, `GetStatus`.
 
 ### Infrastructure Layer (`src/services/`)
 
@@ -459,7 +459,7 @@ Concrete adapters implementing domain ports. Reads/writes files, runs ONNX model
 
 ### Use Case
 
-A single business operation in the application layer. Depends on ports via Effect tags. Testable with mock adapters.
+A single business operation in the application layer. Depends on ports via `Context.Service` values. Testable with mock adapters.
 
 ### Composition Root (`src/index.ts`)
 

@@ -313,11 +313,14 @@ export class DeviceDetection extends Context.Service<
   DeviceDetection,
   {
     /** Detect the best available device by attempting model load on each device in priority order. */
-    readonly detect: (model: string, dtype: string) => Effect.Effect<DeviceType, ModelLoadError>
+    readonly detect: (
+      model: string,
+      dtype: EmbeddingDtype,
+    ) => Effect.Effect<DeviceType, ModelLoadError>
     /** Test all devices independently and return the working devices in priority order. */
     readonly detectAll: (
       model: string,
-      dtype: string,
+      dtype: EmbeddingDtype,
     ) => Effect.Effect<readonly DeviceType[], never>
   }
 >()("DeviceDetection") {}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Effect, Layer, Ref } from "effect"
+import { Effect, Layer, Ref, Schema } from "effect"
 import { FileSystem } from "effect/FileSystem"
 
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
@@ -204,7 +204,11 @@ describe("JsonDisplay file logging", () => {
       return content
         .trim()
         .split("\n")
-        .map((l) => JSON.parse(l))
+        .map((line) =>
+          Schema.decodeSync(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(
+            line,
+          ),
+        )
     })
 
   it.effect("writes log entry to .pix/logs/events.jsonl", () =>

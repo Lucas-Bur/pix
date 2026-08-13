@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "@effect/vitest"
-import { pipeline as mockPipeline } from "@huggingface/transformers"
+import { FeatureExtractionPipeline, pipeline as mockPipeline } from "@huggingface/transformers"
 import { Effect } from "effect"
 import { vi } from "vitest"
 
@@ -9,10 +9,12 @@ import { DeviceDetectionLive, loadFirstAvailableDevice } from "./device-detect.j
 
 vi.mock("@huggingface/transformers", () => ({
   pipeline: vi.fn(),
+  FeatureExtractionPipeline: class FeatureExtractionPipeline {},
   env: { cacheDir: ".pix/cache" },
 }))
 
 const mockedPipeline = vi.mocked(mockPipeline)
+const mockPipelineResult = FeatureExtractionPipeline.prototype
 
 beforeEach(() => {
   mockedPipeline.mockReset()
@@ -61,7 +63,7 @@ describe("DeviceDetection", () => {
 
   it.effect("detect returns 'cuda' when cuda succeeds", () =>
     Effect.gen(function* () {
-      mockedPipeline.mockResolvedValue({} as any)
+      mockedPipeline.mockResolvedValue(mockPipelineResult)
 
       const detection = yield* DeviceDetection
       const result = yield* detection.detect("test-model", "fp32")
@@ -78,7 +80,7 @@ describe("DeviceDetection", () => {
   it.effect("detect falls back to 'dml' when cuda fails", () =>
     Effect.gen(function* () {
       mockedPipeline.mockRejectedValueOnce(new Error("cuda not available"))
-      mockedPipeline.mockResolvedValue({} as any)
+      mockedPipeline.mockResolvedValue(mockPipelineResult)
 
       const detection = yield* DeviceDetection
       const result = yield* detection.detect("test-model", "fp32")
@@ -92,7 +94,7 @@ describe("DeviceDetection", () => {
     Effect.gen(function* () {
       mockedPipeline.mockRejectedValueOnce(new Error("cuda not available"))
       mockedPipeline.mockRejectedValueOnce(new Error("dml not available"))
-      mockedPipeline.mockResolvedValue({} as any)
+      mockedPipeline.mockResolvedValue(mockPipelineResult)
 
       const detection = yield* DeviceDetection
       const result = yield* detection.detect("test-model", "fp32")
@@ -109,7 +111,7 @@ describe("DeviceDetection", () => {
       mockedPipeline.mockRejectedValueOnce(new Error("coreml not available"))
       mockedPipeline.mockRejectedValueOnce(new Error("webgpu not available"))
       mockedPipeline.mockRejectedValueOnce(new Error("wasm not available"))
-      mockedPipeline.mockResolvedValue({} as any)
+      mockedPipeline.mockResolvedValue(mockPipelineResult)
 
       const detection = yield* DeviceDetection
       const result = yield* detection.detect("test-model", "fp32")
@@ -141,13 +143,13 @@ describe("DeviceDetection", () => {
       const result = yield* Effect.flip(detection.detect("test-model", "fp32"))
 
       expect(result).toBeInstanceOf(ModelLoadError)
-      expect((result.cause as { cause: unknown }).cause).toBe(cpuError)
+      expect(result.cause).toMatchObject({ cause: cpuError })
     }).pipe(Effect.provide(DeviceDetectionLive), Effect.scoped),
   )
 
   it.effect("detect uses correct dtype in pipeline options", () =>
     Effect.gen(function* () {
-      mockedPipeline.mockResolvedValue({} as any)
+      mockedPipeline.mockResolvedValue(mockPipelineResult)
 
       const detection = yield* DeviceDetection
       yield* detection.detect("test-model", "q8")
@@ -166,7 +168,7 @@ describe("DeviceDetection", () => {
       mockedPipeline.mockRejectedValueOnce(new Error("fail"))
       mockedPipeline.mockRejectedValueOnce(new Error("fail"))
       mockedPipeline.mockRejectedValueOnce(new Error("fail"))
-      mockedPipeline.mockResolvedValue({} as any)
+      mockedPipeline.mockResolvedValue(mockPipelineResult)
 
       const detection = yield* DeviceDetection
       yield* detection.detect("test-model", "fp32")
@@ -183,7 +185,7 @@ describe("DeviceDetection", () => {
 
   it.effect("detectAll returns all devices when all succeed", () =>
     Effect.gen(function* () {
-      mockedPipeline.mockResolvedValue({} as any)
+      mockedPipeline.mockResolvedValue(mockPipelineResult)
 
       const detection = yield* DeviceDetection
       const devices = yield* detection.detectAll("test-model", "fp32")
@@ -197,7 +199,7 @@ describe("DeviceDetection", () => {
     Effect.gen(function* () {
       mockedPipeline.mockRejectedValueOnce(new Error("cuda unavailable"))
       mockedPipeline.mockRejectedValueOnce(new Error("dml unavailable"))
-      mockedPipeline.mockResolvedValue({} as any)
+      mockedPipeline.mockResolvedValue(mockPipelineResult)
 
       const detection = yield* DeviceDetection
       const devices = yield* detection.detectAll("test-model", "fp32")
@@ -220,7 +222,7 @@ describe("DeviceDetection", () => {
 
   it.effect("detectAll preserves priority order in results", () =>
     Effect.gen(function* () {
-      mockedPipeline.mockResolvedValue({} as any)
+      mockedPipeline.mockResolvedValue(mockPipelineResult)
 
       const detection = yield* DeviceDetection
       const devices = yield* detection.detectAll("test-model", "fp32")

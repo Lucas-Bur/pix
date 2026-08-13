@@ -26,17 +26,16 @@ Deep-merge user config onto `DEFAULT_CONFIG` before schema decode. Missing field
 
 ### Coupled validation via ModelRegistry port
 
-Introduce `ModelRegistry` as a `Context.Tag` port (`src/domain/ports.ts`) with `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. The live adapter lives in `src/services/models.ts`. `ConfigStoreLive` depends on it via `yield* ModelRegistry`. `ModelInfo` gains a `defaultDtype` field for auto-healing unsupported dtypes.
+Introduce `ModelRegistry` as a `Context.Service` port (`src/domain/ports.ts`) with `get(id) → Option<ModelInfo>` and `list() → readonly string[]`. The live adapter lives in `src/services/models.ts`. `ConfigStoreLive` depends on it via `yield* ModelRegistry`. `ModelInfo` gains a `defaultDtype` field for auto-healing unsupported dtypes.
 
 Two outcomes:
 
 - **Unsupported dtype** → auto-healed to `model.defaultDtype`, conflict recorded as healed
 - **Unknown model** → unhealable, `ConfigHealError` with valid model options
 
-### Three read methods
+### Two read methods
 
 - `readConfig()` — heals silently, returns `Config`. Fails on unhealable conflicts.
-- `readConfigWithConflicts()` — heals, returns `{ config, conflicts }`. Fails on unhealable. For commands that warn (`pix index`, `pix status`).
 - `healConfig()` — returns `HealPlan` with all conflicts (including unhealed). Never fails on coupled issues. For `pix config heal` command.
 
 ### Only `pix config heal` writes
@@ -49,7 +48,7 @@ New `Display.select(message, options, defaultValue?)` method. `pix config heal` 
 
 ## Rationale
 
-- **Deep module**: `ConfigStore` has a thin interface (5 methods) and deep implementation (structural merge + schema decode + registry-coupled validation). Callers get a valid `Config` without knowing about merge or registry rules. Deletion test: removing this logic would scatter merge + validation across 6 call sites.
+- **Deep module**: `ConfigStore` has a thin interface (4 methods) and deep implementation (structural merge + schema decode + registry-coupled validation). Callers get a valid `Config` without knowing about merge or registry rules. Deletion test: removing this logic would scatter merge + validation across 6 call sites.
 - **ModelRegistry as port**: enables testing coupled validation with a restricted fake registry (e.g. a model that only supports `fp32`). Follows the "two adapters = real seam" principle. The port is thin (`get` + `list`); the implementation is a 30-line wrapper around a static record.
 - **`defaultDtype` on ModelInfo**: explicit, self-documenting, future-proofs the "q8-only model" case. Alternative was "first in dtypes list is default" — convention over configuration, but fragile.
 - **Only `pix config heal` writes**: keeps `readConfig()` pure of side effects. `pix status` (read-only) can heal in memory without mutating `.pix/`. Predictable: no command silently grows the config file.

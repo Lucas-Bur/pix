@@ -21,13 +21,16 @@ The review surfaced 12 candidates. The three that were truly fundamental — fix
 2. **Eliminated three duplication clusters** flagged by fallow (112 lines total):
    - **`computeRecommendation`**: 31-line pure function existed in both `src/application/bench-project.ts:62-95` and `src/lib/bench/format.ts:30-63` (latter was unexported). Exported from `lib/bench/format.ts` and deleted from `bench-project.ts`.
 
-   - **`readConfigWithConflicts`**: 17-line method in `src/services/config-store.ts:159-177` that was functionally identical to `healConfig()` — same input, same output, both threw on unhealed conflicts. Removed the redundant method, renamed the test that exercised it to test `healConfig` instead.
+   - **Redundant config conflict read**: a 17-line method in `src/services/config-store.ts` was functionally identical to `healConfig()` — same input, same output, both threw on unhealed conflicts. Removed the redundant method, renamed the test that exercised it to test `healConfig` instead.
 
    - **Embedder config resolution**: 8-line block duplicated between `src/services/embedder.ts:144-151` (resolveEmbedderConfig) and `src/application/bench-project.ts:157-175` (getEmbedderConfig). Extracted `src/lib/embedder/resolve.ts` with the shared "read config → resolve model → fail on unknown" logic. `embedder.ts` adds device detection on top; `bench-project.ts` uses the bare resolver.
 
-3. **Collapsed `IndexStore` staging lifecycle** behind a single `persistIndex` operation. The port had 5 lifecycle methods (`storeBegin`, `storeBatch`, `storeIdentifierIndex`, `storeCommit`, `storeAbort`) that forced the use case to orchestrate them in the right order with explicit `Effect.matchEffect` cleanup. The adapter was the only thing that knew the order mattered, and the staging was an implementation detail of the temp-file atomic-rename strategy — not business logic.
+3. **Collapsed `IndexStore` staging lifecycle** behind a single `persistIndex` operation. The port had
+   multiple staging methods that forced the use case to orchestrate the adapter's order with explicit
+   cleanup. The adapter was the only thing that knew the order mattered, and the staging was an
+   implementation detail of the temp-file atomic-rename strategy — not business logic.
    - Port now exposes one method: `persistIndex(input: { chunks: Stream<ChunkBatch, E>, identifierIndex: IdentifierIndexMaps }) → Effect<IndexStats, StoreError | DiskFullError | E>`. The stream's error type is parameterised so use cases can stream embedder results that can fail inference mid-batch.
-   - Adapter owns begin → consume stream → write identifier index → commit/abort internally. Failure cleanup is guaranteed by the adapter, not by the use case remembering to call `storeAbort`.
+   - Adapter owns begin → consume stream → write identifier index → commit/abort internally. Failure cleanup is guaranteed by the adapter.
    - Use case `src/application/index-project.ts:200-237` is now 8 lines shorter and reads as: "embed chunks, then hand the stream + identifier index to the store".
    - Five lifecycle tests collapsed into one integration test (`persistIndex aborts and cleans up when stream errors mid-write`).
 

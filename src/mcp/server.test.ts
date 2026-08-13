@@ -44,14 +44,15 @@ const makeTestClient = <E>(
     yield* Effect.addFinalizer(() => Effect.promise(dispose))
 
     let sessionId: string | null = null
-    const customFetch: typeof fetch = async (input, init) => {
+    const customFetch: typeof fetch = (input, init) => {
       const request = input instanceof Request ? input : new Request(input, init)
       request.headers.set("Accept", "application/json, text/event-stream")
       request.headers.set("MCP-Protocol-Version", "2025-06-18")
       if (sessionId !== null) request.headers.set("Mcp-Session-Id", sessionId)
-      const response = await handler(request)
-      sessionId = response.headers.get("Mcp-Session-Id") ?? sessionId
-      return response
+      return handler(request).then((response) => {
+        sessionId = response.headers.get("Mcp-Session-Id") ?? sessionId
+        return response
+      })
     }
     const clientLayer = RpcClient.layerProtocolHttp({ url: "http://localhost/mcp" }).pipe(
       Layer.provideMerge(Layer.merge(FetchHttpClient.layer, RpcSerialization.layerJsonRpc())),

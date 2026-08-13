@@ -1,9 +1,9 @@
 import { createRequire } from "node:module"
-import { dirname } from "node:path"
 
+import { NodePath } from "@effect/platform-node"
 import { SqliteClient } from "@effect/sql-sqlite-node"
 import { getPlatformPackageName } from "@sqliteai/sqlite-vector"
-import { Context, Effect, Layer, Schema, String } from "effect"
+import { Context, Effect, Layer, Path, Schema, String } from "effect"
 import { FileSystem } from "effect/FileSystem"
 import { SqlClient } from "effect/unstable/sql"
 
@@ -24,13 +24,15 @@ const ensureDatabaseDirectory = (filename: string) =>
     ? Effect.void
     : Effect.gen(function* () {
         const fs = yield* FileSystem
-        yield* fs.makeDirectory(dirname(filename), { recursive: true })
+        const path = yield* Path.Path
+        yield* fs.makeDirectory(path.dirname(filename), { recursive: true })
       })
 
 /** Build a migrated SQLite client with sqlite-vector loaded for one database path. */
 export const sqliteIndexDatabaseLayer = (filename: string) => {
   const client = Layer.unwrap(
     ensureDatabaseDirectory(filename).pipe(
+      Effect.provide(NodePath.layer),
       Effect.as(
         SqliteClient.layer({
           filename,

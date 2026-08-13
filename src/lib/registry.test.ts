@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
-import { FileSystem } from "effect/FileSystem"
+import { Effect } from "effect"
+import * as FileSystem from "effect/FileSystem"
 
 import { buildExtensionRegistry } from "./registry.js"
 
@@ -8,7 +8,7 @@ import { buildExtensionRegistry } from "./registry.js"
  * Stub FileSystem layer. The skip processor never reads the FS, so any implementation suffices --
  * we just need the service in scope for the type check.
  */
-const noopFileSystemLayer = Layer.succeed(FileSystem, {} as never)
+const noopFileSystemLayer = FileSystem.layerNoop({})
 
 describe("buildExtensionRegistry", () => {
   it("includes all default extensions with no skip", () => {

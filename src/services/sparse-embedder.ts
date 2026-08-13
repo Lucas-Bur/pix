@@ -2,7 +2,8 @@ import { createHash } from "node:crypto"
 
 import { NodePath } from "@effect/platform-node"
 import { AutoConfig, AutoModelForMaskedLM, AutoTokenizer, env } from "@huggingface/transformers"
-import { Effect, Layer, Path } from "effect"
+import { Effect, Layer, Path, Schema } from "effect"
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
 
 import type { DeviceType } from "../domain/device.js"
 import { InferenceError, ModelLoadError, TokenLimitError } from "../domain/errors.js"
@@ -28,6 +29,7 @@ import { loadFirstAvailableDevice } from "./device-detect.js"
 const DOCUMENT_MODULE = "document_0_MLMTransformer"
 const DOCUMENT_ONNX_MODULE = `${DOCUMENT_MODULE}/onnx`
 const IDF_DOWNLOAD_TIMEOUT_MS = 60_000
+const IdfJsonSchema = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
 
 /** Loaded tokenizer type inferred from Transformers.js. */
 type SparseTokenizer = Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>
@@ -64,35 +66,44 @@ const loadIdf = (
   expectedHash: string,
   tokenizer: SparseTokenizer,
 ): Effect.Effect<readonly SparseTerm[], ModelLoadError> =>
-  Effect.tryPromise(async () => {
-    const response = await fetch(
-      `https://huggingface.co/${encodeModelPath(model)}/resolve/${encodeURIComponent(revision)}/idf.json`,
-      { signal: AbortSignal.timeout(IDF_DOWNLOAD_TIMEOUT_MS) },
+  Effect.gen(function* () {
+    const fetch = yield* FetchHttpClient.Fetch
+    const file = yield* Effect.tryPromise(() =>
+      fetch(
+        `https://huggingface.co/${encodeModelPath(model)}/resolve/${encodeURIComponent(revision)}/idf.json`,
+        { signal: AbortSignal.timeout(IDF_DOWNLOAD_TIMEOUT_MS) },
+      )
+        .then((response) => {
+          if (!response.ok)
+            throw new Error(`Sparse IDF download failed with HTTP ${response.status}`)
+          return response.arrayBuffer()
+        })
+        .then((buffer) => {
+          const file = new Uint8Array(buffer)
+          const actualHash = createHash("sha256").update(file).digest("hex")
+          if (actualHash !== expectedHash) {
+            throw new Error(`Sparse IDF hash mismatch: expected ${expectedHash}, got ${actualHash}`)
+          }
+          return Schema.decodePromise(IdfJsonSchema)(new TextDecoder().decode(file))
+        })
+        .then((parsed) => {
+          const specialTokenIds = new Set(tokenizer.all_special_ids)
+          const weights: SparseTerm[] = []
+          for (const [token, tokenId] of tokenizer.get_vocab()) {
+            const weight = Reflect.get(parsed, token)
+            if (
+              typeof weight === "number" &&
+              Number.isFinite(weight) &&
+              weight > 0 &&
+              !specialTokenIds.has(tokenId)
+            ) {
+              weights.push({ tokenId, weight })
+            }
+          }
+          return weights.sort((left, right) => left.tokenId - right.tokenId)
+        }),
     )
-    if (!response.ok) throw new Error(`Sparse IDF download failed with HTTP ${response.status}`)
-    const file = new Uint8Array(await response.arrayBuffer())
-    const actualHash = createHash("sha256").update(file).digest("hex")
-    if (actualHash !== expectedHash) {
-      throw new Error(`Sparse IDF hash mismatch: expected ${expectedHash}, got ${actualHash}`)
-    }
-    const parsed: unknown = JSON.parse(new TextDecoder().decode(file))
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      throw new Error("Sparse IDF payload must be an object")
-    }
-    const specialTokenIds = new Set(tokenizer.all_special_ids)
-    const weights: SparseTerm[] = []
-    for (const [token, tokenId] of tokenizer.get_vocab()) {
-      const weight = Reflect.get(parsed, token)
-      if (
-        typeof weight === "number" &&
-        Number.isFinite(weight) &&
-        weight > 0 &&
-        !specialTokenIds.has(tokenId)
-      ) {
-        weights.push({ tokenId, weight })
-      }
-    }
-    return weights.sort((left, right) => left.tokenId - right.tokenId)
+    return file
   }).pipe(Effect.mapError(asModelLoadError(model, `Failed to load sparse IDF from "${model}"`)))
 
 const loadDocumentModel = (
@@ -102,18 +113,17 @@ const loadDocumentModel = (
   configRevision: string,
   device: DeviceType,
 ): Effect.Effect<SparseDocumentModel, ModelLoadError> =>
-  Effect.tryPromise(async () => {
-    // The repository root is a Sentence-Transformers router. Transformers.js needs the standard
-    // DistilBERT module config while it still owns download, cache, ONNX selection, and execution.
-    const config = await AutoConfig.from_pretrained(configModel, { revision: configRevision })
-    return await AutoModelForMaskedLM.from_pretrained(model, {
-      revision,
-      subfolder: DOCUMENT_ONNX_MODULE,
-      config,
-      device,
-      dtype: "fp32",
-    })
-  }).pipe(
+  Effect.tryPromise(() =>
+    AutoConfig.from_pretrained(configModel, { revision: configRevision }).then((config) =>
+      AutoModelForMaskedLM.from_pretrained(model, {
+        revision,
+        subfolder: DOCUMENT_ONNX_MODULE,
+        config,
+        device,
+        dtype: "fp32",
+      }),
+    ),
+  ).pipe(
     Effect.mapError(asModelLoadError(model, `Failed to load sparse document model "${model}"`)),
   )
 
@@ -218,27 +228,28 @@ const make = Effect.gen(function* () {
             scope: "input",
           })
         }
-        return yield* Effect.tryPromise(async () => {
+        return yield* Effect.tryPromise(() => {
           const inputs = tokenizer([...texts], { padding: true, truncation: false })
-          const output = await model.forward(inputs)
-          const logits = output.logits
-          const [logitsBatchSize, sequenceLength, vocabularySize] = logits.dims
-          if (
-            logitsBatchSize === undefined ||
-            sequenceLength === undefined ||
-            vocabularySize === undefined
-          ) {
-            throw new Error(`Unexpected sparse logits shape: ${logits.dims.join("x")}`)
-          }
-          if (logits.type !== "float32") {
-            throw new Error(`Unexpected sparse logits dtype: ${logits.type}`)
-          }
-          return poolSparseLogits(
-            logits.data as Float32Array,
-            [logitsBatchSize, sequenceLength, vocabularySize],
-            Array.from(inputs.attention_mask.data, Number),
-            specialTokenIds,
-          )
+          return model.forward(inputs).then((output) => {
+            const logits = output.logits
+            const [logitsBatchSize, sequenceLength, vocabularySize] = logits.dims
+            if (
+              logitsBatchSize === undefined ||
+              sequenceLength === undefined ||
+              vocabularySize === undefined
+            ) {
+              throw new Error(`Unexpected sparse logits shape: ${logits.dims.join("x")}`)
+            }
+            if (logits.type !== "float32") {
+              throw new Error(`Unexpected sparse logits dtype: ${logits.type}`)
+            }
+            return poolSparseLogits(
+              logits.data as Float32Array,
+              [logitsBatchSize, sequenceLength, vocabularySize],
+              Array.from(inputs.attention_mask.data, Number),
+              specialTokenIds,
+            )
+          })
         }).pipe(
           Effect.mapError(
             (cause) => new InferenceError({ message: "Sparse document inference failed", cause }),

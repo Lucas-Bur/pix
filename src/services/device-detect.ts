@@ -2,9 +2,16 @@ import { NodePath } from "@effect/platform-node"
 import { Effect, Layer, Path, Result } from "effect"
 
 import { DEVICE_PRIORITY, type DeviceType } from "../domain/device.js"
+import type { EmbeddingDtype } from "../domain/dtype.js"
 import { ModelLoadError } from "../domain/errors.js"
 import { DeviceDetection } from "../domain/ports.js"
 import { resolveTransformersCacheDir } from "../lib/model-cache.js"
+
+type FeatureExtractionPipelineLoader = (
+  task: "feature-extraction",
+  model: string,
+  options: { readonly device: DeviceType; readonly dtype: EmbeddingDtype },
+) => Promise<unknown>
 
 /** Load a model once on the first working device in the shared automatic priority order. */
 export const loadFirstAvailableDevice = <A>(
@@ -29,9 +36,9 @@ export const loadFirstAvailableDevice = <A>(
 
 const tryDevice = (
   model: string,
-  dtype: string,
+  dtype: EmbeddingDtype,
   device: DeviceType,
-  loadPipeline: () => Promise<any>,
+  loadPipeline: () => Promise<FeatureExtractionPipelineLoader>,
 ): Effect.Effect<DeviceType, ModelLoadError> =>
   Effect.tryPromise(() =>
     loadPipeline().then((p) => p("feature-extraction", model, { device, dtype })),
@@ -53,12 +60,18 @@ const make = Effect.gen(function* () {
   transformers.env.cacheDir = yield* resolveTransformersCacheDir({ projectRoot: path.resolve() })
   const { pipeline } = transformers
 
-  const detect = (model: string, dtype: string): Effect.Effect<DeviceType, ModelLoadError> =>
+  const detect = (
+    model: string,
+    dtype: EmbeddingDtype,
+  ): Effect.Effect<DeviceType, ModelLoadError> =>
     loadFirstAvailableDevice(model, (device) =>
       tryDevice(model, dtype, device, () => Promise.resolve(pipeline)),
     ).pipe(Effect.map(({ device }) => device))
 
-  const detectAll = (model: string, dtype: string): Effect.Effect<readonly DeviceType[], never> =>
+  const detectAll = (
+    model: string,
+    dtype: EmbeddingDtype,
+  ): Effect.Effect<readonly DeviceType[], never> =>
     Effect.gen(function* () {
       const working: DeviceType[] = []
       for (const device of DEVICE_PRIORITY) {

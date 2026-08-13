@@ -1,4 +1,4 @@
-import { DateTime, Effect, Exit } from "effect"
+import { DateTime, Effect, Exit, Schema } from "effect"
 import { FileSystem } from "effect/FileSystem"
 
 import { DisplayLogError } from "../domain/errors.js"
@@ -8,6 +8,7 @@ import { payloadText } from "./interactive-state.js"
 
 const LOG_DIR = ".pix/logs"
 const LOG_FILE = `${LOG_DIR}/events.jsonl`
+const JsonStringSchema = Schema.fromJsonString(Schema.Unknown)
 
 const toLogError =
   (operation: string, path?: string) =>
@@ -36,7 +37,8 @@ export const appendLogEntry = (
     if (!dirExists)
       yield* withLogError(fs.makeDirectory(LOG_DIR, { recursive: true }), "create log dir", LOG_DIR)
     const timestamp = DateTime.formatIso(yield* DateTime.now)
-    const line = JSON.stringify({ timestamp, ...entry }) + "\n"
+    const encoded = yield* Schema.encodeEffect(JsonStringSchema)({ timestamp, ...entry })
+    const line = encoded + "\n"
     yield* withLogError(
       fs.writeFileString(LOG_FILE, line, { flag: "a" }),
       "append log entry",
@@ -62,7 +64,8 @@ export const makeJsonHandler =
   (fs: typeof FileSystem.Service): DisplayService["json"] =>
   (data) =>
     appendLogEntry(fs, { type: "json" }).pipe(
-      Effect.andThen(Effect.sync(() => process.stdout.write(`${JSON.stringify(data)}\n`))),
+      Effect.andThen(Schema.encodeEffect(JsonStringSchema)(data).pipe(Effect.orDie)),
+      Effect.andThen((encoded) => Effect.sync(() => process.stdout.write(`${encoded}\n`))),
     )
 
 export const updatePayloadLog = (payload: DisplayUpdatePayload): Record<string, unknown> => ({

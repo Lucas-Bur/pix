@@ -55,7 +55,8 @@
     "lint:fallow:health": "fallow health --format badge",
     "lint:fallow:agent": "fallow --format json",
     "fallow": "fallow",
-    "prepublishOnly": "vp run build"
+    "prepublishOnly": "vp run build",
+    "prepare": "effect-tsgo patch --typescript --oxlint"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

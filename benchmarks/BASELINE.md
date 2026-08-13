@@ -88,7 +88,7 @@ Benchmark-owned optimization profiles retain their authored base priors and are 
 
 ## Schema 17: Experimental Sparse Smoke
 
-Schema 17 adds the benchmark-only Distill sparse ONNX channel while leaving production's four-channel
+Schema 17 adds the benchmark-only Distill sparse ONNX channel while leaving production's earlier four-channel
 RRF router unchanged. The first smoke artifact is
 `benchmarks/results/retrieval-2026-08-01T01-16-16.441Z.json`; the warm-cache rerun is
 `benchmarks/results/retrieval-2026-08-01T01-23-05.432Z.json`.
@@ -96,14 +96,14 @@ RRF router unchanged. The first smoke artifact is
 The cold `fd` smoke run loaded the 67M document model in `16.19 s` and spent `7.44 s` encoding/cache
 writing. The warm rerun reported `cacheHit=yes`, `0.56 s` model load, and `0.00 s` chunk/cache work.
 Sparse-only `R@20` was `66.7%` for agent tasks, `80.0%` for identifiers, `60.0%` for natural questions,
-and `66.7%` for search phrases. Sparse-inclusive RRF matched the existing four-channel RRF at aggregate
+and `66.7%` for search phrases. Sparse-inclusive RRF matched the existing four-channel historical RRF at aggregate
 `R@20` on this smoke corpus; this is an implementation check, not holdout evidence for production.
 
 The warm full-corpus validate artifact is
 `benchmarks/results/retrieval-2026-08-01T01-58-14.247Z.json`. All three sparse caches hit. The static
 DBSF candidate with sparse included reached grouped `R@5/R@10/R@20/Context@4k = 60.6%/71.7%/79.4%/63.6%`
 and LORO `61.4%/73.1%/81.7%/67.5%`; the fit-all candidate selected `0.40/0.00/1.00/0.70/0.00`
-in Identity/CamelCase/BM25/Dense/Sparse order. The production four-channel RRF holdouts remained the
+in Identity/CamelCase/BM25/Dense/Sparse order. The historical four-channel RRF holdouts remained the
 Schema-16 values exactly (`55.0%/63.6%/70.3%/84.7%/58.6%` for both grouped and LORO). Sparse is
 therefore wired and measurable, but the current validate run does not justify production promotion.
 
@@ -663,7 +663,7 @@ leave-one-channel-out ablations. It does not include a reranker.
 
 ## Findings
 
-1. The current four-channel RRF is not consistently the strongest configuration. CamelCase hurts
+1. The historical four-channel RRF was not consistently the strongest configuration. CamelCase hurt
    `R@20` on every measured FastAPI model and on both Effect models. Its constituent-word matches
    are too broad for natural-language questions at the current weight.
 2. This does not provide evidence for adding a reranker yet. Removing or routing a noisy channel

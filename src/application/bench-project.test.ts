@@ -11,7 +11,7 @@ import { ConfigStore, DeviceDetection, Display, Embedder, Scanner } from "../dom
 import { ScannerLive } from "../services/scanner.js"
 import { BenchProject } from "./bench-project.js"
 
-const sourceFile = `import { Effect } from "effect"
+const sourceFile = `import { Context, Effect } from "effect"
 // Line 2 - ${"padding ".repeat(50)}
 export interface AppConfig { name: string; version: string }
 // Line 5 - ${"padding ".repeat(50)}
@@ -19,7 +19,7 @@ export const DEFAULT_NAME = "pix-app"
 // Line 8 - ${"padding ".repeat(50)}
 export const createConfig = (name: string) => ({ name, version: "1.0.0" })
 // Line 11 - ${"padding ".repeat(50)}
-export class Service extends Effect.Service<Service>()("Service", {
+export class Service extends Context.Service<Service>()("Service", {
   accessors: true,
   effect: Effect.gen(function* () { return {} }),
 }) {}

@@ -10,14 +10,17 @@ The index pipeline is split into two phases: Phase 1 (extract + chunk) runs fast
 
 ```text
 Phase 1: Stream.fromIterable(files) → mapEffect(extract) → mapEffect(chunkText) → flatMap → runCollect
-Phase 2: Stream.fromIterable(chunks) → grouped(batchSize) → mapEffect(embed) → mapEffect(storeBatch) → drain
+Phase 2: Stream.fromIterable(chunks) → grouped(batchSize) → mapEffect(embed) → persistIndex → drain
 ```
 
 Scanner stays `Effect<ScanResult>` (discovery operation, not a stream), converted to `Stream` in the use case via `Stream.fromIterable`.
 
-### IndexStore lifecycle
+### IndexStore persistence
 
-Four new port methods replace the single `store()`: `storeBegin()` (idempotent — cleans stale temp files), `storeBatch()` (append to temp files), `storeCommit()` (atomic rename, return stats), `storeAbort()` (delete temp files). The use case wraps Phase 2 in `d.progress()` which handles the spinner→progress bar transition.
+`persistIndex()` owns the adapter transaction and cleanup. The use case passes the embedding stream
+and identifier index; the adapter drains batches, commits atomically, and preserves the previous
+snapshot on failure. The use case wraps Phase 2 in `d.progress()` which handles the spinner→progress
+bar transition.
 
 ### Embedder simplification
 
@@ -25,7 +28,7 @@ Four new port methods replace the single `store()`: `storeBegin()` (idempotent �
 
 ### Error handling
 
-Non-blocking errors (unsupported formats, extraction failures) are collected in a `Ref<SkippedEntry[]>` and reported as a grouped summary note after the progress bar. Config pattern matches are filtered out. The stream fails on the first fatal error. `storeAbort()` cleans up temp files on failure.
+Non-blocking errors (unsupported formats, extraction failures) are collected in a `Ref<SkippedEntry[]>` and reported as a grouped summary note after the progress bar. Config pattern matches are filtered out. The stream fails on the first fatal error. `persistIndex()` cleans up its transaction on failure.
 
 ### Progress reporting
 
@@ -40,12 +43,12 @@ Phase 1 uses a spinner ("Processing N files..."). Phase 2 uses a progress bar wi
 - **True single stream (chunking + embedding overlap):** Rejected — chunker is orders of magnitude faster than embedder, so backpressure keeps them in lockstep. Progress bar never gets ahead. Split pipeline gives the total needed for progress display.
 - **Two-phase progress (unknown → known transition via buffer):** Rejected — buffer doesn't solve the "know the total" problem. Split is cleaner.
 - **`storeTransaction` callback pattern:** Rejected — inversion of control is less idiomatic for streams and harder to test.
-- **Adapter tracks stats vs use case:** Adapter returns stats in `storeCommit()` — it already serializes the data, no duplication.
+- **Adapter tracks stats vs use case:** Adapter returns stats from `persistIndex()` — it already owns transaction serialization, no duplication.
 
 ### Consequences
 
 - Memory pressure drops significantly — only one batch of embeddings in memory at a time (Phase 2)
 - Progress bar shows percentage with known total from Phase 1
-- Four new port methods on IndexStore; all tests and mocks must update
+- One adapter-owned persistence operation on IndexStore; tests and mocks provide the stream boundary
 - Embedder `batch()` is simpler but loses internal safety — misconfigured `batchSize` can OOM
 - CLI flags (`--batch-size`, `--chunk-concurrency`, etc.) override config for one-off runs

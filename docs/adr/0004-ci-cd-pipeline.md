@@ -53,7 +53,7 @@ those messages and annotates only errors and warnings so newly added advisory ru
 
 A convenience `ci` script is available for humans: `vp run check && vp run test:coverage && vp run build && vp run lint:effect && vp run lint:fallow`.
 
-Vite+ provides `voidzero-dev/setup-vp@v1` which handles Node.js version, pnpm setup,
+Vite+ provides `voidzero-dev/setup-vp@v1.10.0` which handles Node.js version, pnpm setup,
 and dependency caching in a single action — replacing `setup-node`, `pnpm/action-setup`, and
 `actions/cache`.
 

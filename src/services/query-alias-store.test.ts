@@ -1,5 +1,5 @@
 import { expect, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Schema } from "effect"
 import { FileSystem } from "effect/FileSystem"
 
 import { memoryFsLayer } from "../../tests/test-utils/memfs.js"
@@ -18,7 +18,9 @@ it.effect("QueryAliasStore.save writes aliases.json and leaves no temp file", ()
     yield* store.save("auth", "find auth handlers", { top: 3 })
 
     const aliasesContent = yield* fs.readFileString(".pix/aliases.json")
-    const aliases = JSON.parse(aliasesContent)
+    const aliases = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(
+      aliasesContent,
+    )
     expect(aliases).toEqual({ auth: { queryText: "find auth handlers", options: { top: 3 } } })
     expect(yield* fs.exists(".pix/aliases.json.tmp")).toBe(false)
   }).pipe(Effect.provide(aliasLayer())),

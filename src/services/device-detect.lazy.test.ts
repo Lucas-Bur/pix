@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest"
+import { Effect } from "effect"
 
 /**
  * Regression test: source-level verification of lazy @huggingface/transformers import.
@@ -11,20 +12,22 @@ import { describe, expect, it } from "@effect/vitest"
  * need the embedder (status, reset, init, config).
  */
 describe("device-detect lazy import", () => {
-  it("has no static @huggingface/transformers import at top level", async () => {
-    // Read the source file text and verify no static import pattern exists
-    const { readFileSync } = await import("node:fs")
-    const { resolve } = await import("node:path")
-    const path = resolve(import.meta.dirname ?? __dirname, "device-detect.ts")
-    const source = readFileSync(path, "utf-8")
+  it.effect("has no static @huggingface/transformers import at top level", () =>
+    Effect.gen(function* () {
+      // Read the source file text and verify no static import pattern exists
+      const { readFileSync } = yield* Effect.promise(() => import("node:fs"))
+      const { resolve } = yield* Effect.promise(() => import("node:path"))
+      const path = resolve(import.meta.dirname ?? __dirname, "device-detect.ts")
+      const source = readFileSync(path, "utf-8")
 
-    // Check that there's no top-level static import (before any function/class)
-    // Split at the first function/class/const keyword that indicates body start
-    const topLevelSection = source.split("\nconst ")[0] ?? ""
-    const hasStaticImport = topLevelSection.includes('from "@huggingface/transformers"')
-    const hasStaticRequire = topLevelSection.includes('require("@huggingface/transformers")')
+      // Check that there's no top-level static import (before any function/class)
+      // Split at the first function/class/const keyword that indicates body start
+      const topLevelSection = source.split("\nconst ")[0] ?? ""
+      const hasStaticImport = topLevelSection.includes('from "@huggingface/transformers"')
+      const hasStaticRequire = topLevelSection.includes('require("@huggingface/transformers")')
 
-    expect(hasStaticImport).toBe(false)
-    expect(hasStaticRequire).toBe(false)
-  })
+      expect(hasStaticImport).toBe(false)
+      expect(hasStaticRequire).toBe(false)
+    }),
+  )
 })

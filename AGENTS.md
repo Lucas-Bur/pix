@@ -39,18 +39,21 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 
 ### Quality Pipeline
 
-Every change must pass three quality gates before marking work as complete:
+Every change must run the repository quality checks before marking work as complete:
 
-1. **`vp check`** (mandatory) — Format, lint, type check. Fix errors with `vp check --fix`.
-2. **`vp test`** — Run all tests. All tests must be green.
-3. **`vp run lint:fallow`** — Code quality gate via fallow (duplication, dead code, complexity).
+1. **`vp check`** (blocking) — Format, lint, and type check. Fix errors with `vp check --fix`.
+2. **`vp test`** (blocking) — Run the complete test suite.
+3. **`vp run lint:fallow`** (review) — Inspect duplication, dead-code, and complexity findings. Existing
+   findings remain visible and must not be suppressed just to make the command pass.
 
 Run them in order: `vp check && vp test && vp run lint:fallow`.
+The CI blocking gates are `check`, `test:coverage`, and `build`; Effect diagnostics and the base-aware
+Fallow audit are non-blocking reporting steps.
 
 ### Review Checklist
 
 - [ ] Run `vp install` after pulling remote changes and before getting started.
-- [ ] Run `vp check`, `vp test`, and `vp run lint:fallow` — all quality gates must pass.
+- [ ] Run `vp check`, `vp test`, and `vp run lint:fallow` — review all findings honestly.
 - [ ] Check if there are `vite.config.ts` tasks or `package.json` scripts necessary for validation, run via `vp run <script>`.
 
 ## Effect-TS Guidelines
@@ -63,8 +66,8 @@ Follow the coding standards in `@docs/rules/coding-standards.md` for Effect-TS p
 
 Before writing Effect code, read `node_modules/effect/AGENTS.md` completely when the installed
 Effect version provides it, and follow its linked guidance. If it is absent, use the installed source
-under `node_modules/effect/src` together with this repository's rules; do not require a separate
-`~/.effect` checkout.
+under `node_modules/effect/src` together with this repository's rules. For v3-to-v4 migration lookups
+and upstream history, use the validated canonical checkout at `.repos/effect` and its `MIGRATION.md`.
 
 ### Stream Safety
 

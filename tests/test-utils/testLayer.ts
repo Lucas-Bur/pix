@@ -1,3 +1,4 @@
+import { NodePath } from "@effect/platform-node"
 import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Layer, Stream } from "effect"
 import { FileSystem } from "effect/FileSystem"
@@ -181,6 +182,7 @@ export const testLayer = (opts: TestLayerOptions = {}) => {
   const configuredChunker = Layer.provideMerge(ChunkerBase, selectedConfigStore)
 
   const servicesLayer = Layer.mergeAll(
+    NodePath.layer,
     selectedConfigStore,
     ModelRegistryLive,
     scannerLayer ?? defaultScannerLayer,
