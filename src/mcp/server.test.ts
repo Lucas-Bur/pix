@@ -1,6 +1,7 @@
 import { expect, it } from "@effect/vitest"
 import { Cause, Effect, Exit, Fiber, Layer, Queue, Ref, Sink, Stream } from "effect"
 import * as Stdio from "effect/Stdio"
+import * as McpProtocol from "effect/unstable/ai/McpProtocol"
 import * as McpSchema from "effect/unstable/ai/McpSchema"
 import * as McpServer from "effect/unstable/ai/McpServer"
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient"
@@ -29,7 +30,14 @@ const makeTestClient = <E>(
 ) =>
   Effect.gen(function* () {
     const serverLayer = PixMcpToolsLive.pipe(
-      Layer.provide(McpServer.layerHttp({ name: "pix", version: "test", path: "/mcp" })),
+      Layer.provide(
+        McpServer.layerHttp({
+          name: "pix",
+          version: "test",
+          path: "/mcp",
+          protocols: [McpProtocol.v2025_06_18],
+        }),
+      ),
       Layer.provide(applicationLayer),
     )
     const { dispose, handler } = HttpRouter.toWebHandler(serverLayer, { disableLogger: true })
@@ -38,6 +46,8 @@ const makeTestClient = <E>(
     let sessionId: string | null = null
     const customFetch: typeof fetch = async (input, init) => {
       const request = input instanceof Request ? input : new Request(input, init)
+      request.headers.set("Accept", "application/json, text/event-stream")
+      request.headers.set("MCP-Protocol-Version", "2025-06-18")
       if (sessionId !== null) request.headers.set("Mcp-Session-Id", sessionId)
       const response = await handler(request)
       sessionId = response.headers.get("Mcp-Session-Id") ?? sessionId
@@ -125,12 +135,14 @@ it.effect("the MCP query tool returns the shared structured response", () =>
 it.effect("the MCP query tool reports invalid shared request parameters", () =>
   Effect.gen(function* () {
     const client = yield* makeTestClient(defaultApplicationLayer)
-    const response = yield* client["tools/call"]({
-      name: "query",
-      arguments: { top: 1 },
-    })
+    const exit = yield* Effect.exit(
+      client["tools/call"]({
+        name: "query",
+        arguments: { top: 1 },
+      }),
+    )
 
-    expect(response.isError).toBe(true)
+    expect(Exit.isFailure(exit)).toBe(true)
   }),
 )
 

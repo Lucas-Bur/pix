@@ -1,5 +1,6 @@
 import { Effect, Layer, Logger, Schema, Semaphore } from "effect"
 import { McpServer, Tool, Toolkit } from "effect/unstable/ai"
+import * as McpProtocol from "effect/unstable/ai/McpProtocol"
 
 import { GetStatus } from "../application/get-status.js"
 import { IndexProject } from "../application/index-project.js"
@@ -153,6 +154,8 @@ export const PixMcpToolsLive = McpServer.toolkit(PixToolkit).pipe(
 /** Build the stdio MCP layer while leaving application services and `Stdio` injectable. */
 export const pixMcpStdioLayer = (version: string) =>
   PixMcpToolsLive.pipe(
-    Layer.provide(McpServer.layerStdio({ name: "pix", version })),
+    Layer.provide(
+      McpServer.layerStdio({ name: "pix", version, protocols: [McpProtocol.v2025_06_18] }),
+    ),
     Layer.provide(Layer.succeed(Logger.LogToStderr)(true)),
   )
