@@ -18,6 +18,20 @@ Before starting any Effect-related work, verify the Effect-TS source code exists
 git clone https://github.com/Effect-TS/effect.git ~/.effect
 ```
 
+## TypeScript-Go Tooling
+
+For repositories using TypeScript 7 and `@effect/tsgo`:
+
+- Use the repository's package scripts, such as `vp run lint:effect`, instead of invoking a global
+  TypeScript or Effect language-service binary.
+- `@effect/tsgo` is the installed package and `effect-tsgo` is its CLI.
+- Keep `{ "name": "@effect/language-service" }` in `tsconfig.json`; this is the internal plugin
+  identifier consumed by `@effect/tsgo`, not the legacy npm package.
+- Treat error and warning diagnostics as actionable. Do not silence them through severity filters
+  when the domain model or Effect code can express the invariant correctly.
+- Suggestions are advisory cleanup candidates. Group broad rules such as schema or service-interface
+  migrations into separate verified slices rather than applying them blindly.
+
 ## Research Strategy
 
 Effect-TS has many ways to accomplish the same task. Proactively research best practices using the Task tool to spawn
@@ -99,6 +113,7 @@ Apply these core principles when writing Effect code:
 - Use `Effect.gen` for readable sequential code
 - Implement proper testing patterns using Effect's testing utilities
 - Prefer `Effect.fn()` for automatic telemetry and better stack traces
+- Use `Schema.Finite` for numeric boundaries unless `NaN` or infinity is explicitly valid
 
 ## Critical Rules
 

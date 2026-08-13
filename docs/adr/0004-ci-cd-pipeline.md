@@ -11,7 +11,7 @@ Version management was manual via `bumpp` (since removed). Badges and quality me
 We needed a pipeline that:
 
 - Gates merges on quality (format, lint, type-check, test, build)
-- Surfaces Effect code quality diagnostics (non-blocking `@effect/language-service`)
+- Surfaces Effect code quality diagnostics (non-blocking `@effect/tsgo`)
 - Provides code quality metrics non-blockingly
 - Automates versioning and changelog generation
 - Publishes to npm on release
@@ -95,10 +95,11 @@ README displays: CI status, coverage (via Codecov), fallow metrics (static), npm
   tool failures.
 - **Script-as-truth**: ci.yml references `package.json` scripts exclusively via `vp run <script>`.
   Zero inline command duplication — no drift possible between CI and local development.
-- **Effect diagnostics**: `@effect/language-service` (configured via `tsconfig.json` plugins)
-  surfaces Effect-specific issues like `preferSchemaOverJson`, `unnecessaryFailYieldableError`,
-  and `effectSucceedWithVoid`. Uses `--format github-actions` so each finding appears as an
-  inline annotation on the relevant PR diff line.
+- **Effect diagnostics**: `@effect/tsgo` supplies the TypeScript-Go language server and
+  `effect-tsgo diagnostics`. The `tsconfig.json` plugin remains named `@effect/language-service`;
+  that is the embedded plugin identifier, not an npm dependency. CI uses
+  `--format github-actions --severity error,warning` so actionable findings appear inline without
+  flooding PRs with suggestions.
 - **release-please**: Zero-config after install, native GitHub Action, conventional commits
   already used by the project. No local tooling or npm token needed for release management
 - **Codecov**: Free for open source, minimal config, native vitest integration

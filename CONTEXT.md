@@ -319,6 +319,16 @@ Multiplier applied to a scorer's RRF contribution, set by query routing. Dialogs
 
 Runtime and CLI framework (`effect`, `@effect/cli`, `@effect/platform-node`). Chosen as a learning project and foundation for typed errors + structured concurrency.
 
+### TypeScript and Effect Toolchain
+
+TypeScript 7 is the project compiler and native TypeScript-Go language server. Vite+ runs formatting,
+Oxlint, TypeScript-Go type checking, Vitest, and packaging. `@effect/tsgo` wraps TypeScript-Go with
+Effect diagnostics and editor features; the `tsconfig.json` plugin identifier remains
+`@effect/language-service` because that is the embedded plugin name. Effect tests use
+`@effect/vitest`, while Vite+ remains the test runner. pnpm 11 is pinned through `packageManager`;
+workspace-level overrides and the explicit native-script `allowBuilds` policy live in
+`pnpm-workspace.yaml`.
+
 ### fallow
 
 Rust-native codebase intelligence tool for TS/JS. Finds dead code, duplication, complexity hotspots.
@@ -407,7 +417,9 @@ Structured JSON output on stdout (not stderr). Enables piping between `pix` and 
 ### CI (Continuous Integration)
 
 Automated quality pipeline on PR to `main`: format + lint + type-check + test + build.
-Effect diagnostics and fallow audit run non-blocking for surfacing insights. See [ADR 0004](docs/adr/0004-ci-cd-pipeline.md).
+Effect TS-Go errors and warnings plus the fallow audit run non-blocking for surfacing insights;
+suggestion-level Effect diagnostics remain available locally and to agents. See
+[ADR 0004](docs/adr/0004-ci-cd-pipeline.md).
 
 ### Conventional Commits
 
