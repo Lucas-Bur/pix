@@ -75,7 +75,7 @@
     "@types/node": "^26.2.0",
     "@vitest/coverage-v8": "^4.1.8",
     "effect": "4.0.0-rc.108",
-    "fallow": "^3.5.1",
+    "fallow": "^3.15.0",
     "ignore": "^7.0.6",
     "typescript": "^7.0.2",
     "vite-plus": "^0.2.9",
