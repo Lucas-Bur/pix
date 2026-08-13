@@ -23,7 +23,7 @@ export interface ExtensionEntry {
   readonly mapKind?: Record<string, IdentifierKind>
 }
 
-const createParser = (language: unknown): Parser => {
+const createParser = (language: NonNullable<Parameters<Parser["setLanguage"]>[0]>): Parser => {
   const parser = new Parser()
   parser.setLanguage(language)
   return parser

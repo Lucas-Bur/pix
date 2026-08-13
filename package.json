@@ -60,10 +60,10 @@
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
     "@sqliteai/sqlite-vector": "1.0.0",
-    "tree-sitter": "^0.21.1",
-    "tree-sitter-python": "^0.21.0",
-    "tree-sitter-rust": "^0.21.0",
-    "tree-sitter-typescript": "^0.21.2"
+    "tree-sitter": "^0.25.1",
+    "tree-sitter-python": "^0.25.0",
+    "tree-sitter-rust": "^0.24.0",
+    "tree-sitter-typescript": "^0.23.2"
   },
   "devDependencies": {
     "@clack/prompts": "^1.7.0",
