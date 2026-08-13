@@ -111,3 +111,19 @@ The `return` keyword makes termination explicit and improves code readability.
 - External API responses → normalize to `Option<T>` at boundary
 
 See `OPTION_NULL.md` for comprehensive patterns.
+
+## Numeric Schema Boundaries
+
+**Use `Schema.Finite` for ordinary domain, transport, and persisted numbers.** `Schema.Number`
+accepts `NaN`, `Infinity`, and `-Infinity`, which silently admits invalid states for counts, sizes,
+offsets, scores, timestamps, and configuration values.
+
+Build stricter schemas on the finite base:
+
+```typescript
+const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
+const Weight = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }))
+```
+
+Use `Schema.Number` only when non-finite IEEE-754 values are deliberately part of the model and that
+decision is documented and tested.

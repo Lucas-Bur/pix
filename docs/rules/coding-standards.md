@@ -24,8 +24,8 @@
 - A singleton runtime and adapters that exchange its values must share one bundle boundary: bundle
   them together or externalize them together. Never leave an adapter external when its peer runtime
   is bundled.
-- Native dependencies with install scripts, including transitive ones, must be listed in
-  `pnpm.onlyBuiltDependencies` and verified with a forced clean install.
+- Native dependencies with install scripts, including transitive ones, must be explicitly enabled
+  in `pnpm-workspace.yaml#allowBuilds` and verified with a clean pnpm 11 install.
 - Fallow analyses source imports, not Vite+ bundle boundaries, so bundled dev dependencies can appear
   as `dev dependencies used in production`. Do not move them solely to silence that finding. The PR
   regression gate is `vp run lint:fallow:ci`; the full `vp run lint:fallow` remains the health report.
@@ -78,6 +78,18 @@ type MyType = typeof MySchema.Type
 | Optional + nullable + exact | `Schema.optionalWith(Schema.Union(Schema.String, Schema.Null), { exact: true })` | `note?: string \| null` (exact)     | Both missing-key support and exact optional semantics      |
 
 Config validation is strict (`optionalWith` + `exact: true`). Chunk validation is non-blocking (skip malformed lines, return errors in the success value).
+Use `Schema.Finite` for domain, transport, and persisted numbers unless `NaN` or infinity is an
+explicit part of the model. Layer integer or range checks on that finite base.
+
+### Effect Tooling
+
+- Vite+ remains the runner and primary `vp check` toolchain.
+- TypeScript 7 provides the native TypeScript-Go compiler and language server binary.
+- `@effect/tsgo` supplies Effect diagnostics; run them through `vp run lint:effect*`.
+- Keep the `tsconfig.json` plugin name `@effect/language-service`; it is the internal plugin
+  identifier expected by `@effect/tsgo`, not the legacy npm package.
+- Use `@effect/vitest` test APIs for Effect-returning tests. Import `vi` from `vitest` where static
+  `vi.mock` transformation requires the canonical Vitest module.
 
 ### Error Propagation in Services
 

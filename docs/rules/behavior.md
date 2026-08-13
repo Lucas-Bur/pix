@@ -15,6 +15,14 @@
 - Explain magic values (e.g., `schema: "1"` = MVP schema version)
 - Config interfaces must explain each field's purpose
 
+## Toolchain Maintenance
+
+- Use Vite+ commands for project package and quality operations; do not invoke pnpm directly.
+- Keep the project and CI on the `packageManager`-pinned pnpm major.
+- Keep pnpm 11 workspace settings and native-script approvals in `pnpm-workspace.yaml`.
+- Run Effect diagnostics through the package scripts backed by `@effect/tsgo`; do not reinstall the
+  legacy `@effect/language-service` npm package.
+
 ## Config Design
 
 - Think through each field: what is it? why is it there?

@@ -2,6 +2,10 @@
 
 This is a pragmatic guide for writing _deterministic_ tests in Effect-TS codebases, especially when using `@effect/vitest`.
 
+Use `@effect/vitest` for Effect-aware test APIs while keeping the repository's configured runner
+(Vite+ in pix). Import `vi` directly from `vitest` when `vi.mock` needs Vitest's canonical module for
+static transformation.
+
 ## The #1 gotcha: `it.effect` uses `TestClock`
 
 `@effect/vitest`'s `it.effect` runs your test with a **TestContext** (including **`TestClock`**).
