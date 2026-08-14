@@ -1,5 +1,5 @@
 import { Effect, Option } from "effect"
-import { Argument, Command, Flag } from "effect/unstable/cli"
+import { Argument, Command } from "effect/unstable/cli"
 
 import { addAlias, getAliasQuery, listAliases, removeAlias } from "../application/query-aliases.js"
 import { Display } from "../domain/ports.js"
@@ -26,7 +26,6 @@ const aliasAddCommand = Command.make(
     name: Argument.string("name"),
     queryText: Argument.string("query"),
     ...queryAliasFlags,
-    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
   ({
     name,
@@ -58,22 +57,17 @@ const aliasAddCommand = Command.make(
 )
 
 /** CLI command: pix alias list [--json] */
-const aliasListCommand = Command.make(
-  "list",
-  {
-    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
-  },
-  () =>
-    Effect.gen(function* () {
-      const d = yield* Display
-      const aliases = yield* listAliases
-      yield* d.json(aliases)
-      if (aliases.length === 0) {
-        yield* d.log("No aliases saved", "warn")
-      } else {
-        yield* d.table(["Name", "Query", "Options"], aliases.map(aliasToRow))
-      }
-    }).pipe(Effect.catch(reportError)),
+const aliasListCommand = Command.make("list", {}, () =>
+  Effect.gen(function* () {
+    const d = yield* Display
+    const aliases = yield* listAliases
+    yield* d.json(aliases)
+    if (aliases.length === 0) {
+      yield* d.log("No aliases saved", "warn")
+    } else {
+      yield* d.table(["Name", "Query", "Options"], aliases.map(aliasToRow))
+    }
+  }).pipe(Effect.catch(reportError)),
 )
 
 /** CLI command: pix alias remove <name> */
@@ -81,7 +75,6 @@ const aliasRemoveCommand = Command.make(
   "remove",
   {
     name: Argument.string("name"),
-    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
   ({ name }) =>
     Effect.gen(function* () {

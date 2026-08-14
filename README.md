@@ -37,7 +37,8 @@ not run the document transformer.
 | `pix status`                 | Show index statistics                                                                                                                                                            | `--json`  |
 | `pix reset`                  | Delete index files (chunks + vectors)                                                                                                                                            | `--json`  |
 
-All one-shot commands support `--json` for structured output on stdout — ideal for piping to AI agents.
+All one-shot commands support the global `--json` flag before or after a subcommand for structured
+output on stdout — ideal for piping to AI agents.
 Use `--profile compatibility|balanced|code-navigation|natural-language` to select a runtime profile.
 Compatibility is currently the only matrix-calibrated profile and uses the benchmark-selected DBSF
 fusion; the other named profiles temporarily reuse it until the matrix determines distinct values. Profile

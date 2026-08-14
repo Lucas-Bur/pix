@@ -482,7 +482,12 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 - `pix cache clear` — Delete the content-addressed embedding cache.
 - `pix config heal` — Validate and repair `.pix/config.json`. Structural heal (fill missing fields from defaults) + coupled validation (model registry check). Prompts for each conflict in human mode; `--json` mode auto-applies defaults for healed conflicts, fails with `ConfigHealError` for unhealed conflicts.
 
-All one-shot commands support `--json` for agent-ready structured output on stdout. Single JSON object emitted at end of successful operations (e.g. `{ chunks, files, totalLines, byteSize, durationMs }`). Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent).
+All one-shot commands support the global `--json` setting before or after any subcommand for
+agent-ready structured output on stdout. `JsonOutput` in `src/cli-output.ts` is an Effect
+`GlobalFlag.setting`; its parsed value selects the `Display` adapter without raw argument inspection.
+A single JSON object is emitted at the end of successful operations (e.g.
+`{ chunks, files, totalLines, byteSize, durationMs }`). Error output uses `reportError`, which calls
+both `d.log(..., "error")` (human) and `d.json(error)` (agent).
 
 ## Relationships
 
@@ -498,7 +503,12 @@ All one-shot commands support `--json` for agent-ready structured output on stdo
 
 ### Display service with JSON mode switching
 
-CLI output goes through a `Display` context tag (`src/domain/ports.ts`). Two production implementations selectable by `--json`: `ClackDisplay` (`src/display/clack-display.ts`, interactive, uses `@clack/prompts` for spinners, styled status, frames) and `JsonDisplay` (`src/display/json-display.ts`, machine-readable, no-ops interactive methods, writes JSON to stdout). A third implementation (`SilentDisplay`, `src/display/silent-display.ts`) records calls to a `Ref<DisplayEntry[]>` for test assertions. Entry types defined in `src/display/entries.ts`.
+CLI output goes through a `Display` context tag (`src/domain/ports.ts`). `CliDisplayLive` is a dynamic
+layer selected from the parsed global `JsonOutput` setting. Its production adapters are `ClackDisplay`
+(`src/display/clack-display.ts`, interactive, uses `@clack/prompts` for spinners, styled status, frames)
+and `JsonDisplay` (`src/display/json-display.ts`, machine-readable, no-ops interactive methods, writes
+JSON to stdout). A third implementation (`SilentDisplay`, `src/display/silent-display.ts`) records calls
+to a `Ref<DisplayEntry[]>` for test assertions. Entry types are defined in `src/display/entries.ts`.
 
 **Output separation**: `ClackDisplay.json` is a no-op — structured output never appears in human mode. `JsonDisplay` no-ops all interactive methods. Each Display handles its own surface. Commands call all methods unconditionally; no `if (!json)` branching. Error output uses `reportError` which calls both `d.log(..., "error")` (human) and `d.json(error)` (agent) — ClackDisplay renders the log, JsonDisplay emits the JSON.
 
