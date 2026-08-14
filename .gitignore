@@ -4,7 +4,6 @@ dist
 .DS_Store
 .env
 settings.local.json
-.pix
 coverage
 .repos
 benchmarks/.cache

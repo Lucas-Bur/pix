@@ -17,6 +17,9 @@ pix index
 pix query "authentication middleware"
 ```
 
+`pix init` creates `.pix/.gitignore`, so generated pix data stays out of Git without changing the
+project's root `.gitignore`.
+
 The first index downloads both the Dense model and the pinned OpenSearch learned Sparse document model
 into `.pix/cache/`. On Windows projects stored below OneDrive, model files are placed in
 `%LOCALAPPDATA%\pix\transformers-cache` because ONNX Runtime cannot load OneDrive reparse points.
@@ -27,7 +30,7 @@ not run the document transformer.
 
 | Command                      | Description                                                                                                                                                                      | JSON flag |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `pix init`                   | Create `.pix/config.json` with defaults                                                                                                                                          | `--json`  |
+| `pix init`                   | Create `.pix/config.json` and a local `.gitignore`                                                                                                                               | `--json`  |
 | `pix index`                  | Scan, chunk, embed, and store project files                                                                                                                                      | `--json`  |
 | `pix query "<text>" [flags]` | Five-channel evidence-routed search with DBSF compatibility fusion (`--top`, `--context-lines`, `--ignore-path`, `--only-path`, `--max-characters`, `--no-content`, `--profile`) | `--json`  |
 | `pix mcp`                    | Run the host-managed MCP stdio server with the same retrieval options as `pix query`                                                                                             | —         |

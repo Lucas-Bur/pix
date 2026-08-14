@@ -1,6 +1,7 @@
 import { expect, it } from "@effect/vitest"
 import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Layer, Result } from "effect"
+import { FileSystem } from "effect/FileSystem"
 
 const expectLeft = <A>(result: Result.Result<unknown, A>): A => {
   expect(Result.isFailure(result)).toBe(true)
@@ -20,10 +21,12 @@ const makeLayer = (contents?: FileTree) =>
     ModelRegistryLive,
   )
 
-it.effect("ConfigStore.writeConfig creates .pix/config.json with defaults", () =>
+it.effect("ConfigStore.writeConfig creates .pix config and self-ignore files", () =>
   Effect.gen(function* () {
     const store = yield* ConfigStore
+    const fs = yield* FileSystem
     yield* store.writeConfig(DEFAULT_CONFIG)
+    expect(yield* fs.readFileString(".pix/.gitignore")).toBe("*\n")
     const config = yield* store.readConfig
     expect(config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
     expect(config.chunkTokens).toBeUndefined()

@@ -25,7 +25,8 @@ Raw data loaded from the index and passed to scorers at query time. Contains chu
 
 ### Config
 
-Runtime configuration stored in `.pix/config.json`. Contains Dense and Sparse model contracts, devices,
+Runtime configuration stored in `.pix/config.json`. `pix init` also writes `.pix/.gitignore` with `*`,
+so all pix-owned state ignores itself without requiring a root `.gitignore` entry. Contains Dense and Sparse model contracts, devices,
 input batch sizes, Dense dtype, optional token-aware chunk parameters (`chunkTokens`, parserless
 `overlapLines`, concurrency), ignored paths, and skip extensions.
 Structurally healed on read: missing fields are filled from `DEFAULT_CONFIG` via deep-merge. Coupled rules (model exists in registry, dtype supported by model) are validated against `ModelRegistry`. Unsupported dtypes are auto-healed to the model's `defaultDtype`; unknown models produce `ConfigHealError`.
@@ -97,7 +98,12 @@ Result of `ConfigStore.healConfig()`: `{ config, conflicts }`. The `config` has 
 
 ### Scanner
 
-Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, applies `.gitignore` rules via the `ignore` package, and returns all files. Extension-based filtering is handled downstream by the ContentExtractor processor map. Configurable `ignoredPaths` patterns (gitignore-style) merged with `.gitignore` and `.git/info/exclude`. Always ignores: `.pix`, `node_modules`, `.git`, `dist`, `build`, `.next`.
+Discovers files to index. Walks the project tree via `FileSystem.FileSystem`, applies root and nested
+`.gitignore` rules relative to their directories via the `ignore` package, and returns all files.
+Deeper rules can override matching parent rules while ignored parent directories remain untraversed.
+Extension-based filtering is handled downstream by the ContentExtractor processor map. Configurable
+`ignoredPaths` patterns are merged with the root `.gitignore` and `.git/info/exclude`. Always ignores:
+`.pix`, `node_modules`, `.git`, `dist`, `build`, `.next`.
 
 ### IndexStore
 
@@ -467,7 +473,7 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 
 ### CLI Commands
 
-- `pix init` — Create `.pix/config.json`. Prompts for model selection (human mode); `--json` uses default model.
+- `pix init` — Create `.pix/config.json` and the self-ignoring `.pix/.gitignore`. Prompts for model selection (human mode); `--json` uses default model.
 - `pix index` — Incrementally refresh the index. Unchanged files reuse chunk metadata, vectors, BM25 terms, and identifier postings; changed chunks use the embedding cache before inference.
 - `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content] [--profile compatibility|balanced|code-navigation|natural-language]` — Ensure the index is fresh, then run hybrid search. Missing indexes, source changes, and model/dtype changes are repaired automatically. Source text loads only after top-K selection; `compatibility` is the matrix-calibrated runtime configuration and the other named profiles currently reuse it.
 - `pix mcp` — Run the host-managed MCP stdio server exposing the shared read-only query API.
@@ -564,7 +570,11 @@ reported as persisted `IndexDiagnostic` entries instead of aborting the complete
 
 ### Scanner
 
-Returns all files found during FS walk, applying `.gitignore` rules (unless `ignoreGitignore` is true), `.git/info/exclude`, and `ignoredPaths` patterns. No extension filtering — that concern moved to `ContentExtractor`. `scanFiles(ignoredPaths, ignoreGitignore?)` applies ignore patterns during directory walk.
+Returns all files found during FS walk, applying root and nested `.gitignore` rules (unless
+`ignoreGitignore` is true), `.git/info/exclude`, and `ignoredPaths` patterns. Each nested `.gitignore`
+is evaluated relative to its directory and inherited only by that subtree. No extension filtering —
+that concern moved to `ContentExtractor`. `scanFiles(ignoredPaths, ignoreGitignore?)` applies ignore
+patterns during directory walk.
 
 ### Config
 

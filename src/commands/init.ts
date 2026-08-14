@@ -31,9 +31,5 @@ export const initCommand = Command.make(
 
       yield* d.json(result)
       yield* d.log(`Created .pix/config.json with model "${selectedModel}".`, "success")
-      yield* d.note(
-        "Add `.pix` to your `.gitignore` file to avoid committing the index.",
-        "Reminder",
-      )
     }).pipe(Effect.catch(reportError)),
 )

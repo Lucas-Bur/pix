@@ -5,6 +5,12 @@ import ignore from "ignore"
 import type { ScanResult, ScannedFile, SkippedEntry } from "../domain/ports.js"
 import { Scanner } from "../domain/ports.js"
 
+/** Gitignore matcher whose patterns are relative to one directory. */
+type IgnoreScope = {
+  readonly directory: string
+  readonly matcher: ReturnType<typeof ignore>
+}
+
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem
 
@@ -54,6 +60,23 @@ const make = Effect.gen(function* () {
 
   const computeRelative = (fullPath: string, cwd: string): string =>
     fullPath.startsWith(cwd) ? fullPath.slice(cwd.length + 1) : fullPath
+
+  const isIgnored = (
+    fullPath: string,
+    isDirectory: boolean,
+    scopes: readonly IgnoreScope[],
+  ): boolean => {
+    let ignored = false
+
+    for (const scope of scopes) {
+      const relativePath = computeRelative(fullPath, scope.directory)
+      const result = scope.matcher.test(isDirectory ? `${relativePath}/` : relativePath)
+      if (result.ignored) ignored = true
+      if (result.unignored) ignored = false
+    }
+
+    return ignored
+  }
 
   const loadIgnoreFile = (
     filePath: string,
@@ -116,7 +139,7 @@ const make = Effect.gen(function* () {
   const processEntry = (
     entry: string,
     dir: string,
-    ig: ReturnType<typeof ignore>,
+    scopes: readonly IgnoreScope[],
     cwd: string,
   ): Effect.Effect<
     | { files: ScannedFile[]; skipped: SkippedEntry[]; recurse?: false }
@@ -138,7 +161,7 @@ const make = Effect.gen(function* () {
 
       if (info.type === "Directory") {
         const relativeDir = computeRelative(fullPath, cwd)
-        if (ig.ignores(relativeDir)) {
+        if (isIgnored(fullPath, true, scopes)) {
           return {
             files: [],
             skipped: [{ path: fullPath, reason: `Ignored by config pattern: ${relativeDir}` }],
@@ -149,7 +172,7 @@ const make = Effect.gen(function* () {
 
       if (info.type === "File") {
         const relativePath = computeRelative(fullPath, cwd)
-        if (ig.ignores(relativePath)) {
+        if (isIgnored(fullPath, false, scopes)) {
           return {
             files: [],
             skipped: [{ path: fullPath, reason: `Ignored by config pattern: ${relativePath}` }],
@@ -175,23 +198,39 @@ const make = Effect.gen(function* () {
 
   const walk = (
     dir: string,
-    ig: ReturnType<typeof ignore>,
+    scopes: readonly IgnoreScope[],
     cwd: string,
+    loadNestedGitignores: boolean,
   ): Effect.Effect<{ files: ScannedFile[]; skipped: SkippedEntry[] }, never> =>
     Effect.gen(function* () {
+      let activeScopes = scopes
+      const skipped: SkippedEntry[] = []
+
+      if (loadNestedGitignores && dir !== cwd) {
+        const gitignorePath = `${dir}/.gitignore`
+        const gitignoreExists = yield* fs
+          .exists(gitignorePath)
+          .pipe(Effect.orElseSucceed(() => false))
+
+        if (gitignoreExists) {
+          const matcher = ignore()
+          yield* loadIgnoreFile(gitignorePath, matcher, skipped)
+          activeScopes = [...scopes, { directory: dir, matcher }]
+        }
+      }
+
       const result = yield* readDirectoryWithSkip(dir)
 
       let files: ScannedFile[] = []
-      const skipped: SkippedEntry[] = []
       if (result.skipped) skipped.push(result.skipped)
 
       for (const entry of result.entries) {
-        const entryResult = yield* processEntry(entry, dir, ig, cwd)
+        const entryResult = yield* processEntry(entry, dir, activeScopes, cwd)
         files.push(...entryResult.files)
         skipped.push(...entryResult.skipped)
 
         if ("recurse" in entryResult) {
-          const sub = yield* walk(`${dir}/${entry}`, ig, cwd)
+          const sub = yield* walk(`${dir}/${entry}`, activeScopes, cwd, loadNestedGitignores)
           files.push(...sub.files)
           skipped.push(...sub.skipped)
         }
@@ -211,7 +250,12 @@ const make = Effect.gen(function* () {
         ? loadGitignoreRules(ignoredPaths)
         : loadGitignoreRulesWithFiles(ignoredPaths, cwd)
 
-      const { files, skipped: walkSkipped } = yield* walk(cwd, ig, cwd)
+      const { files, skipped: walkSkipped } = yield* walk(
+        cwd,
+        [{ directory: cwd, matcher: ig }],
+        cwd,
+        !ignoreGitignore,
+      )
 
       return {
         files,
