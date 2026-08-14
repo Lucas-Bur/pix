@@ -20,6 +20,7 @@ import { ModelRegistryLive } from "./models.js"
 
 const CONFIG_DIR = ".pix"
 const CONFIG_PATH = `${CONFIG_DIR}/config.json`
+const GITIGNORE_PATH = `${CONFIG_DIR}/.gitignore`
 
 /** Parse JSON string, deep-merge with DEFAULT_CONFIG, validate against ConfigSchema. */
 const structurallyHeal = (
@@ -127,6 +128,11 @@ const make = Effect.gen(function* () {
         fs.makeDirectory(CONFIG_DIR, { recursive: true }),
         "create .pix directory",
         CONFIG_DIR,
+      )
+      yield* withConfigError(
+        fs.writeFileString(GITIGNORE_PATH, "*\n"),
+        "write .pix/.gitignore",
+        GITIGNORE_PATH,
       )
       yield* withConfigError(
         fs.writeFileString(CONFIG_PATH, configJson),

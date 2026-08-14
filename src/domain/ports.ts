@@ -128,9 +128,9 @@ export class Scanner extends Context.Service<
   Scanner,
   {
     /**
-     * Scan project files, applying .gitignore rules (unless ignoreGitignore is true), ignoredPaths
-     * patterns, and .git/info/exclude. Returns all discovered files. Per-entry skips are reported
-     * in ScanResult.skipped. Fatal errors are caught and logged as skipped entries.
+     * Scan project files, applying hierarchical .gitignore rules (unless ignoreGitignore is true),
+     * ignoredPaths patterns, and .git/info/exclude. Returns all discovered files. Per-entry skips
+     * are reported in ScanResult.skipped. Fatal errors are caught and logged as skipped entries.
      */
     readonly scanFiles: (
       ignoredPaths: readonly string[],

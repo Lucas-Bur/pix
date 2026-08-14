@@ -18,7 +18,7 @@ const assertInitDisplayEntries = (ref: Ref.Ref<ReadonlyArray<DisplayEntry>>) =>
     const entries = yield* Ref.get(ref)
     expect(entries.some((entry) => entry._tag === "spinner")).toBe(true)
     expect(entries.some((entry) => entry._tag === "log")).toBe(true)
-    expect(entries.some((entry) => entry._tag === "note")).toBe(true)
+    expect(entries.some((entry) => entry._tag === "note")).toBe(false)
     const jsonEntry = entries.find((entry) => entry._tag === "json")
     expect(jsonEntry).toBeDefined()
     if (jsonEntry?._tag === "json") {
@@ -36,7 +36,7 @@ it.effect("pix init --json outputs config JSON via Display", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-it.effect("pix init without --json shows status and note via Display", () => {
+it.effect("pix init without --json shows status via Display", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* run(["init"])

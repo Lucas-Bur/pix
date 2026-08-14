@@ -95,3 +95,51 @@ it.effect("Scanner respects config ignoredPaths patterns", () =>
     expect(scanResult.files.some((f) => f.path.includes("init.ts"))).toBe(true)
   }).pipe(Effect.provide(edgeTestLayer)),
 )
+
+const nestedIgnoreFixtures = {
+  ".gitignore": "*.log\n",
+  "packages/app/.gitignore": "generated/\n*.tmp\n!keep.log\n",
+  "packages/app/generated/output.ts": "export const generated = true",
+  "packages/app/cache.tmp": "temporary",
+  "packages/app/keep.log": "keep",
+  "packages/app/drop.log": "drop",
+  "packages/app/src/main.ts": "export const main = true",
+  "packages/other/generated/output.ts": "export const generated = true",
+  "packages/other/cache.tmp": "temporary",
+}
+
+const nestedIgnoreTestLayer = Layer.provideMerge(ScannerLive, memoryFsLayer(nestedIgnoreFixtures))
+
+it.effect("Scanner applies nested .gitignore rules only below their directory", () =>
+  Effect.gen(function* () {
+    const scanResult = yield* (yield* Scanner).scanFiles([])
+    const paths = scanResult.files.map((file) => file.path)
+
+    expect(paths.some((path) => path.includes("packages/app/generated/"))).toBe(false)
+    expect(paths.some((path) => path.endsWith("packages/app/cache.tmp"))).toBe(false)
+    expect(paths.some((path) => path.endsWith("packages/app/src/main.ts"))).toBe(true)
+    expect(paths.some((path) => path.includes("packages/other/generated/"))).toBe(true)
+    expect(paths.some((path) => path.endsWith("packages/other/cache.tmp"))).toBe(true)
+  }).pipe(Effect.provide(nestedIgnoreTestLayer)),
+)
+
+it.effect("Scanner lets nested negations override matching parent rules", () =>
+  Effect.gen(function* () {
+    const scanResult = yield* (yield* Scanner).scanFiles([])
+    const paths = scanResult.files.map((file) => file.path)
+
+    expect(paths.some((path) => path.endsWith("packages/app/keep.log"))).toBe(true)
+    expect(paths.some((path) => path.endsWith("packages/app/drop.log"))).toBe(false)
+  }).pipe(Effect.provide(nestedIgnoreTestLayer)),
+)
+
+it.effect("Scanner skips root and nested ignore files when gitignore handling is disabled", () =>
+  Effect.gen(function* () {
+    const scanResult = yield* (yield* Scanner).scanFiles([], true)
+    const paths = scanResult.files.map((file) => file.path)
+
+    expect(paths.some((path) => path.includes("packages/app/generated/"))).toBe(true)
+    expect(paths.some((path) => path.endsWith("packages/app/cache.tmp"))).toBe(true)
+    expect(paths.some((path) => path.endsWith("packages/app/drop.log"))).toBe(true)
+  }).pipe(Effect.provide(nestedIgnoreTestLayer)),
+)
