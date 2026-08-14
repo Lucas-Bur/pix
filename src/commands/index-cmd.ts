@@ -71,14 +71,13 @@ const emitIndexResult = (d: typeof Display.Service, result: IndexResponse): Effe
 export const indexCommand = Command.make(
   "index",
   {
-    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
     batchSize: Flag.integer("batch-size").pipe(Flag.withAlias("b"), Flag.optional),
     chunkTokens: Flag.integer("chunk-tokens").pipe(Flag.withAlias("t"), Flag.optional),
     chunkConcurrency: Flag.integer("chunk-concurrency").pipe(Flag.withAlias("c"), Flag.optional),
     skipExtensions: Flag.string("skip-extensions").pipe(Flag.withAlias("s"), Flag.optional),
     ignorePath: Flag.string("ignore-path").pipe(Flag.optional),
     ignorePaths: Flag.string("ignore-paths").pipe(Flag.optional),
-    ignoreGitignore: Flag.boolean("ignore-gitignore").pipe(Flag.withDefault(false)),
+    ignoreGitignore: Flag.boolean("ignore-gitignore"),
   },
   ({
     batchSize,

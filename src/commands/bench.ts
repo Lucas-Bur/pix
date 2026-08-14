@@ -76,7 +76,6 @@ const benchCommand = Command.make(
       Flag.withDefault(DEFAULT_PROFILE),
     ),
     apply: Flag.choice("apply", ["throughput", "cold", "balanced"]).pipe(Flag.optional),
-    json: Flag.boolean("json").pipe(Flag.withDefault(false)),
   },
   ({ warmup, measureBatches, batchSizes, sparseBatchSizes, devices, timeout, profile, apply }) =>
     Effect.gen(function* () {

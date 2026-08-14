@@ -14,7 +14,7 @@ export const queryAliasFlags = {
   ignorePath: Flag.string("ignore-path").pipe(Flag.atLeast(0)),
   onlyPath: Flag.string("only-path").pipe(Flag.atLeast(0)),
   maxCharacters: Flag.integer("max-characters").pipe(Flag.optional),
-  noContent: Flag.boolean("no-content").pipe(Flag.withDefault(false)),
+  noContent: Flag.boolean("no-content"),
   profile: Flag.choice("profile", [
     "compatibility",
     "balanced",
@@ -26,8 +26,7 @@ export const queryAliasFlags = {
 /** CLI flags accepted by `pix alias run` and `pix run`. */
 export const queryAliasRunFlags = {
   ...queryAliasFlags,
-  json: Flag.boolean("json").pipe(Flag.withDefault(false)),
-  copy: Flag.boolean("copy").pipe(Flag.withDefault(false)),
+  copy: Flag.boolean("copy"),
 }
 
 /** CLI flags accepted by `pix query`. */
@@ -45,6 +44,5 @@ const queryCommandRetrievalFlags = {
 export const queryCommandConfig = {
   queryText: Argument.string("query"),
   ...queryCommandRetrievalFlags,
-  json: Flag.boolean("json").pipe(Flag.withDefault(false)),
-  copy: Flag.boolean("copy").pipe(Flag.withDefault(false)),
+  copy: Flag.boolean("copy"),
 }

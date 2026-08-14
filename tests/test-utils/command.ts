@@ -10,6 +10,7 @@ import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Exit, Layer, Option, Ref } from "effect"
 import { Command } from "effect/unstable/cli"
 
+import { JsonOutput } from "../../src/cli-output.js"
 import type { DisplayEntry } from "../../src/display/entries.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
 import { ConfigError, ModelLoadError, StoreError } from "../../src/domain/errors.js"
@@ -27,10 +28,12 @@ export const runCommand =
   <Name extends string, Input, ContextInput, E, R>(
     command: Command.Command<Name, Input, ContextInput, E, R>,
   ) =>
-  (args: string[]) =>
-    Command.runWith(command, { version: "0.0.0" })(
+  (args: string[]) => {
+    const runnable = command.pipe(Command.withGlobalFlags([JsonOutput]))
+    return Command.runWith(runnable, { version: "0.0.0" })(
       args[0] === command.name ? args.slice(1) : args,
     ).pipe(Effect.provide(commandPlatformLayer))
+  }
 
 export const expectLogEntry = (
   ref: Ref.Ref<ReadonlyArray<DisplayEntry>>,

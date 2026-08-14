@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { Command } from "effect/unstable/cli"
 
+import { CliDisplayLive, JsonOutput } from "./cli-output.js"
 import { aliasCommand, runAliasShortcutCommand } from "./commands/alias.js"
 import { benchCommand } from "./commands/bench.js"
 import { cacheCommand } from "./commands/cache.js"
@@ -11,8 +12,6 @@ import { mcpCommand } from "./commands/mcp.js"
 import { queryCommand } from "./commands/query.js"
 import { resetCommand } from "./commands/reset.js"
 import { statusCommand } from "./commands/status.js"
-import { ClackDisplayLive } from "./display/clack-display.js"
-import { JsonDisplayLive } from "./display/json-display.js"
 import { Display } from "./domain/ports.js"
 import { loadLayer } from "./layers/load-layer.js"
 import { VERSION } from "./version.js"
@@ -62,13 +61,9 @@ const pix = rootCommand.pipe(
     ),
     mcpCommand,
   ]),
+  Command.provide(CliDisplayLive),
+  Command.withGlobalFlags([JsonOutput]),
 )
 
-export const cli = (args: readonly string[]) => {
-  const isJson = args.some((a) => a === "--json")
-  const displayLayer = isJson ? JsonDisplayLive : ClackDisplayLive
-
-  const effect = Command.run(pix, { version: VERSION })
-
-  return { effect, displayLayer }
-}
+/** Runnable pix CLI using arguments from the platform Stdio service. */
+export const cli = Command.run(pix, { version: VERSION })
