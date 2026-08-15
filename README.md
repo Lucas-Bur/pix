@@ -30,7 +30,7 @@ not run the document transformer.
 
 | Command                      | Description                                                                                                                                                                      | JSON flag |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `pix init`                   | Create `.pix/config.json` and a local `.gitignore`                                                                                                                               | `--json`  |
+| `pix init [--model MODEL]`   | Create `.pix/config.json` and a local `.gitignore`; optionally select the model without prompting                                                                                | `--json`  |
 | `pix index`                  | Scan, chunk, embed, and store project files                                                                                                                                      | `--json`  |
 | `pix query "<text>" [flags]` | Five-channel evidence-routed search with DBSF compatibility fusion (`--top`, `--context-lines`, `--ignore-path`, `--only-path`, `--max-characters`, `--no-content`, `--profile`) | `--json`  |
 | `pix mcp`                    | Run the host-managed MCP stdio server with the same retrieval options as `pix query`                                                                                             | —         |
@@ -39,10 +39,16 @@ not run the document transformer.
 
 All one-shot commands support the global `--json` flag before or after a subcommand for structured
 output on stdout — ideal for piping to AI agents.
+Run `pix --help` or `pix <command> --help` for descriptions, accepted formats, defaults, and examples.
+Repeat `pix index --ignore-path PATTERN` to add multiple one-shot indexing exclusions.
+Repeat `--skip-extension EXTENSION`, `pix bench --device DEVICE`, `--batch-size COUNT`, or
+`--sparse-batch-size COUNT` for list-valued options.
+Use `pix bench --profile PROFILE --apply` to persist the recommendation for the selected benchmark
+profile.
 Use `--profile compatibility|balanced|code-navigation|natural-language` to select a runtime profile.
 Compatibility is currently the only matrix-calibrated profile and uses the benchmark-selected DBSF
 fusion; the other named profiles temporarily reuse it until the matrix determines distinct values. Profile
-selection is request-scoped and is also available on alias-run and the MCP `profile` argument; it is not
+selection is request-scoped and is also available on `pix run` and the MCP `profile` argument; it is not
 a global `.pix/config.json` setting.
 
 ## MCP Server
@@ -52,7 +58,7 @@ process, communicates over stdio, and stops it by closing stdin. The server uses
 directory, refreshes that project's index before each query, and does not run as a detached daemon.
 
 The server exposes `query`, `status`, `index`, `alias_list`, `alias_add`, `alias_remove`, and
-`alias_run`. Query and alias-run share the same retrieval options as the CLI. Reset, cache clearing,
+`alias_run`. Queries through saved aliases share the same retrieval options as the CLI. Reset, cache clearing,
 initialization, and config healing are intentionally not exposed through MCP.
 
 After installing pix globally, add it to any MCP client. All clients use the same stdio shape — just the config file location differs.

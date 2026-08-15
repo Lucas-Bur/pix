@@ -2,21 +2,22 @@ import { Schema } from "effect"
 
 import { IndexDiagnosticSchema } from "./diagnostics.js"
 import { ChunkValidationErrorSchema } from "./errors.js"
-
-const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
+import { PositiveIntSchema } from "./numeric.js"
 
 /** Transport-independent options for refreshing a pix index. */
 export const IndexRequestSchema = Schema.Struct({
   chunkTokens: Schema.optional(
-    PositiveInt.pipe(
+    PositiveIntSchema.pipe(
       Schema.annotate({ description: "Maximum composite tokens per embedding chunk." }),
     ),
   ),
   batchSize: Schema.optional(
-    PositiveInt.pipe(Schema.annotate({ description: "Number of chunks embedded in one batch." })),
+    PositiveIntSchema.pipe(
+      Schema.annotate({ description: "Number of chunks embedded in one batch." }),
+    ),
   ),
   chunkConcurrency: Schema.optional(
-    PositiveInt.pipe(
+    PositiveIntSchema.pipe(
       Schema.annotate({ description: "Maximum number of chunks processed concurrently." }),
     ),
   ),

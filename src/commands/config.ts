@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { Command } from "effect/unstable/cli"
+import { CliError, Command } from "effect/unstable/cli"
 
 import type { Config } from "../domain/config.js"
 import type { EmbeddingDtype } from "../domain/dtype.js"
@@ -76,12 +76,18 @@ export const healCommand = Command.make("heal", {}, () =>
       DiskFullError: reportError,
     }),
   ),
+).pipe(
+  Command.withDescription("Validate .pix/config.json and repair missing or incompatible values"),
+  Command.withShortDescription("Validate and repair .pix/config.json"),
 )
 
 /** CLI command: pix config — namespace for config management commands. */
-export const configCommand = Command.make("config", {}, () =>
-  Effect.gen(function* () {
-    const d = yield* Display
-    yield* d.log("Usage: pix config <command>", "info")
-  }),
-).pipe(Command.withSubcommands([healCommand]))
+export const configCommand = Command.make(
+  "config",
+  {},
+  () => new CliError.ShowHelp({ commandPath: ["pix", "config"], errors: [] }),
+).pipe(
+  Command.withSubcommands([healCommand]),
+  Command.withDescription("Inspect and repair project-local pix configuration"),
+  Command.withShortDescription("Manage and repair pix configuration"),
+)

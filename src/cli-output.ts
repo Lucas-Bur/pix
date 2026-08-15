@@ -6,7 +6,10 @@ import { JsonDisplayLive } from "./display/json-display.js"
 
 /** Global CLI setting for selecting machine-readable JSON output. */
 export const JsonOutput = GlobalFlag.setting("json-output")({
-  flag: Flag.boolean("json").pipe(Flag.withDescription("Emit machine-readable JSON output")),
+  flag: Flag.boolean("json").pipe(
+    Flag.withAlias("j"),
+    Flag.withDescription("Emit machine-readable JSON output"),
+  ),
 })
 
 /** Display adapter selected from the parsed global output setting. */

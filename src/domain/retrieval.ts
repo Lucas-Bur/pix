@@ -139,7 +139,8 @@ export const PROMOTED_SEARCH_PRIORITY_CONFIG: EvidenceRouterConfig = decodeEvide
  */
 export const PRODUCTION_COMPATIBILITY_CONFIG = PROMOTED_SEARCH_PRIORITY_CONFIG
 
-const PRODUCTION_PROFILE_NAMES = [
+/** Runtime retrieval profile names shared by every transport. */
+export const PRODUCTION_PROFILE_NAMES = [
   "compatibility",
   "balanced",
   "code-navigation",

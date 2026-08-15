@@ -1,5 +1,4 @@
-import { Effect } from "effect"
-import { Command } from "effect/unstable/cli"
+import { CliError, Command } from "effect/unstable/cli"
 
 import { CliDisplayLive, JsonOutput } from "./cli-output.js"
 import { aliasCommand, runAliasShortcutCommand } from "./commands/alias.js"
@@ -12,18 +11,17 @@ import { mcpCommand } from "./commands/mcp.js"
 import { queryCommand } from "./commands/query.js"
 import { resetCommand } from "./commands/reset.js"
 import { statusCommand } from "./commands/status.js"
-import { Display } from "./domain/ports.js"
 import { loadLayer } from "./layers/load-layer.js"
 import { VERSION } from "./version.js"
 
-const rootCommand = Command.make("pix", {}, () =>
-  Effect.gen(function* () {
-    const d = yield* Display
-    yield* d.log(`pix v${VERSION} - Lightweight local semantic project indexer`, "info")
-  }),
-)
+const rootCommand = Command.make(
+  "pix",
+  {},
+  () => new CliError.ShowHelp({ commandPath: ["pix"], errors: [] }),
+).pipe(Command.withDescription("Local semantic code search for humans and AI agents"))
 
-const pix = rootCommand.pipe(
+/** Root pix command tree. */
+export const pixCommand = rootCommand.pipe(
   Command.withSubcommands([
     initCommand.pipe(
       Command.provide(loadLayer(() => import("./layers/init-layer.js").then((m) => m.InitLayer))),
@@ -66,4 +64,4 @@ const pix = rootCommand.pipe(
 )
 
 /** Runnable pix CLI using arguments from the platform Stdio service. */
-export const cli = Command.run(pix, { version: VERSION })
+export const cli = Command.run(pixCommand, { version: VERSION })

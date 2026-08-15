@@ -48,6 +48,14 @@ it.effect("global --json works before and after a subcommand", () =>
   }),
 )
 
+it.effect("global -j alias selects JSON output", () =>
+  Effect.gen(function* () {
+    const output = yield* captureStdout(["-j", "probe"])
+
+    expect(output).toEqual(['{"mode":"json"}\n'])
+  }),
+)
+
 it.effect("missing --json and explicit --no-json select human display output", () =>
   Effect.gen(function* () {
     const absent = yield* captureStdout(["probe"])

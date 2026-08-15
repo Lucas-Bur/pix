@@ -1,15 +1,20 @@
 import { Effect, Option } from "effect"
-import { Argument, Command } from "effect/unstable/cli"
+import { Argument, CliError, Command } from "effect/unstable/cli"
 
 import { addAlias, getAliasQuery, listAliases, removeAlias } from "../application/query-aliases.js"
 import { Display } from "../domain/ports.js"
 import type { QueryAlias } from "../domain/query-alias.js"
+import { NonEmptyTextSchema } from "../domain/text.js"
 import { reportError } from "../lib/errors/error-format.js"
 import { executeQuery } from "./execute-query.js"
 import { queryAliasFlags, queryAliasRunFlags } from "./query-options.js"
 
 const aliasRunConfig = {
-  aliasName: Argument.string("name"),
+  aliasName: Argument.string("name").pipe(
+    Argument.withSchema(NonEmptyTextSchema),
+    Argument.withMetavar("NAME"),
+    Argument.withDescription("Saved alias name"),
+  ),
   ...queryAliasRunFlags,
 }
 
@@ -23,8 +28,16 @@ const aliasToRow = (alias: QueryAlias): readonly string[] => [
 const aliasAddCommand = Command.make(
   "add",
   {
-    name: Argument.string("name"),
-    queryText: Argument.string("query"),
+    name: Argument.string("name").pipe(
+      Argument.withSchema(NonEmptyTextSchema),
+      Argument.withMetavar("NAME"),
+      Argument.withDescription("Unique alias name"),
+    ),
+    queryText: Argument.string("query").pipe(
+      Argument.withSchema(NonEmptyTextSchema),
+      Argument.withMetavar("QUERY"),
+      Argument.withDescription("Query text saved with the alias"),
+    ),
     ...queryAliasFlags,
   },
   ({
@@ -54,6 +67,9 @@ const aliasAddCommand = Command.make(
       yield* d.json(alias)
       yield* d.log(`Saved alias "${alias.name}"`, "success")
     }).pipe(Effect.catch(reportError)),
+).pipe(
+  Command.withDescription("Save a named query and optional retrieval settings"),
+  Command.withShortDescription("Save a query alias"),
 )
 
 /** CLI command: pix alias list [--json] */
@@ -68,13 +84,21 @@ const aliasListCommand = Command.make("list", {}, () =>
       yield* d.table(["Name", "Query", "Options"], aliases.map(aliasToRow))
     }
   }).pipe(Effect.catch(reportError)),
+).pipe(
+  Command.withAlias("ls"),
+  Command.withDescription("List every saved query alias and its persisted retrieval settings"),
+  Command.withShortDescription("List saved query aliases"),
 )
 
 /** CLI command: pix alias remove <name> */
 const aliasRemoveCommand = Command.make(
   "remove",
   {
-    name: Argument.string("name"),
+    name: Argument.string("name").pipe(
+      Argument.withSchema(NonEmptyTextSchema),
+      Argument.withMetavar("NAME"),
+      Argument.withDescription("Alias name to delete"),
+    ),
   },
   ({ name }) =>
     Effect.gen(function* () {
@@ -83,10 +107,16 @@ const aliasRemoveCommand = Command.make(
       yield* d.json(result)
       yield* d.log(`Removed alias "${name}"`, "success")
     }).pipe(Effect.catch(reportError)),
+).pipe(
+  Command.withAlias("rm"),
+  Command.withDescription("Delete a saved query alias"),
+  Command.withShortDescription("Delete a saved query alias"),
 )
 
-/** Build an alias runner command. Shared by `pix alias run` and top-level `pix run`. */
-const aliasRunCommand = Command.make("run", aliasRunConfig, ({ aliasName, ...flags }) =>
+const runAliasHandler = ({
+  aliasName,
+  ...flags
+}: Command.Command.Config.Infer<typeof aliasRunConfig>) =>
   Effect.gen(function* () {
     const request = yield* getAliasQuery({
       aliasName,
@@ -95,22 +125,31 @@ const aliasRunCommand = Command.make("run", aliasRunConfig, ({ aliasName, ...fla
       ignorePath: flags.ignorePath,
       onlyPath: flags.onlyPath,
       maxCharacters: Option.getOrUndefined(flags.maxCharacters),
-      noContent: flags.noContent,
+      noContent: Option.getOrUndefined(flags.noContent),
       profile: Option.getOrUndefined(flags.profile),
     })
     yield* executeQuery(request, flags.copy)
-  }).pipe(Effect.catch(reportError)),
+  }).pipe(Effect.catch(reportError))
+
+/** CLI command: pix run <name> [query overrides...] */
+export const runAliasShortcutCommand = Command.make("run", aliasRunConfig, runAliasHandler).pipe(
+  Command.withDescription("Execute a saved query alias with optional one-shot overrides"),
+  Command.withShortDescription("Run a saved query alias"),
+  Command.withExamples([
+    {
+      command: "pix run auth --top 10",
+      description: "Run an alias through the top-level shortcut",
+    },
+  ]),
 )
 
 /** CLI command: pix alias <add|list|remove|run>. */
-export const aliasCommand = Command.make("alias", {}, () =>
-  Effect.gen(function* () {
-    const d = yield* Display
-    yield* d.log("Usage: pix alias <add|list|remove|run>", "info")
-  }),
+export const aliasCommand = Command.make(
+  "alias",
+  {},
+  () => new CliError.ShowHelp({ commandPath: ["pix", "alias"], errors: [] }),
 ).pipe(
-  Command.withSubcommands([aliasAddCommand, aliasListCommand, aliasRemoveCommand, aliasRunCommand]),
+  Command.withSubcommands([aliasAddCommand, aliasListCommand, aliasRemoveCommand]),
+  Command.withDescription("Create, inspect, delete, and execute saved query presets"),
+  Command.withShortDescription("Manage saved query presets"),
 )
-
-/** CLI command: pix run <name> [query overrides...] */
-export const runAliasShortcutCommand = aliasRunCommand

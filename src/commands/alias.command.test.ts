@@ -59,6 +59,35 @@ it.effect("pix alias add rejects invalid alias names", () => {
   ).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
+it.effect("pix alias commands reject empty names and query text", () =>
+  Effect.gen(function* () {
+    const invalidArgs = [
+      ["add", "", "find auth handlers"],
+      ["add", "auth", ""],
+      ["remove", ""],
+    ]
+
+    for (const args of invalidArgs) {
+      const exit = yield* Effect.exit(runAlias(args))
+      expect(exit._tag).toBe("Failure")
+    }
+
+    const runExit = yield* Effect.exit(runTopLevelAlias([""]))
+    expect(runExit._tag).toBe("Failure")
+  }).pipe(Effect.provide(testLayer({}))),
+)
+
+it.effect("pix alias accepts ls and rm command aliases", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
+    yield* runAlias(["add", "auth", "find auth handlers"])
+    yield* runAlias(["ls"])
+    yield* runAlias(["rm", "auth"])
+
+    yield* expectLogEntry(ref, { severity: "success", messageIncludes: "Removed" })
+  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+})
+
 it.effect("pix alias add accepts command names as query alias names", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
@@ -74,21 +103,7 @@ it.effect("pix alias add accepts command names as query alias names", () => {
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 
-it.effect("pix alias run executes the saved query with runtime overrides", () => {
-  const { ref, layer } = silentDisplay()
-  return Effect.gen(function* () {
-    yield* runAlias(["add", "auth", "test", "--top", "1"])
-    yield* runAlias(["run", "auth", "--json", "--top", "2"])
-
-    yield* expectJsonEntry(ref, (data) => {
-      expect(data).toMatchObject({ results: expect.any(Array) })
-      const results = (data as { results: readonly unknown[] }).results
-      expect(results).toHaveLength(2)
-    })
-  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, indexSeed, displayLayer: layer })))
-})
-
-it.effect("pix run is a short form for pix alias run", () => {
+it.effect("pix run executes a saved query with runtime overrides", () => {
   const { ref, layer } = silentDisplay()
   return Effect.gen(function* () {
     yield* runAlias(["add", "auth", "test", "--top", "1"])
@@ -102,29 +117,28 @@ it.effect("pix run is a short form for pix alias run", () => {
   }).pipe(Effect.provide(testLayer({ contents: indexFixtures, indexSeed, displayLayer: layer })))
 })
 
-it.effect("pix alias run with nonexistent alias reports error", () => {
+it.effect("pix run --content overrides a saved --no-content preference", () => {
   const { ref, layer } = silentDisplay()
-  return assertCommandError(runAlias(["run", "nonexistent"]), ref, "ALIAS_NOT_FOUND").pipe(
+  return Effect.gen(function* () {
+    yield* runAlias(["add", "compact", "test", "--no-content"])
+    yield* runTopLevelAlias(["compact", "--content", "--json"])
+
+    yield* expectJsonEntry(ref, (data) => {
+      const results = (data as { results: ReadonlyArray<{ text?: unknown }> }).results
+      expect(results.length).toBeGreaterThan(0)
+      expect(results[0].text).toEqual(expect.any(String))
+    })
+  }).pipe(Effect.provide(testLayer({ contents: indexFixtures, indexSeed, displayLayer: layer })))
+})
+
+it.effect("pix run with nonexistent alias reports error", () => {
+  const { ref, layer } = silentDisplay()
+  return assertCommandError(runTopLevelAlias(["nonexistent"]), ref, "ALIAS_NOT_FOUND").pipe(
     Effect.provide(testLayer({ displayLayer: layer })),
   )
 })
 
-it.effect("pix alias run with --copy copies results to clipboard", () => {
-  const { ref: displayRef, layer: displayLayer } = silentDisplay()
-  const { ref: clipboardRef, layer: clipboardLayer } = testClipboard()
-  return Effect.gen(function* () {
-    yield* runAlias(["add", "auth", "test", "--top", "1"])
-    yield* runAlias(["run", "auth", "--copy", "--json"])
-
-    const copied = yield* Ref.get(clipboardRef)
-    expect(copied).toContain("src/")
-    yield* expectLogEntry(displayRef, { severity: "success", messageIncludes: "Copied" })
-  }).pipe(
-    Effect.provide(testLayer({ contents: indexFixtures, indexSeed, displayLayer, clipboardLayer })),
-  )
-})
-
-it.effect("pix run --copy copies results to clipboard as short form", () => {
+it.effect("pix run --copy copies results to clipboard", () => {
   const { ref: displayRef, layer: displayLayer } = silentDisplay()
   const { ref: clipboardRef, layer: clipboardLayer } = testClipboard()
   return Effect.gen(function* () {

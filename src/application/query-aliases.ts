@@ -58,7 +58,7 @@ const resolveAliasQuery = (alias: QueryAlias, request: AliasRunRequest): QueryRe
       ? request.onlyPath
       : alias.options.onlyPath,
   maxCharacters: request.maxCharacters ?? alias.options.maxCharacters,
-  noContent: request.noContent === true || alias.options.noContent === true,
+  noContent: request.noContent ?? alias.options.noContent,
   profile: request.profile ?? alias.options.profile,
 })
 

@@ -16,6 +16,14 @@
   `loadLayer(() => import(...))`: layers build lazily, but static ESM imports still load eagerly and regress CLI startup.
 - Define cross-cutting CLI settings once with `GlobalFlag.setting` on the root command. Consume their
   values from the Effect context instead of repeating local flags or inspecting raw arguments.
+- Give every public command and flag generated-help metadata. Use descriptions, unit-bearing
+  metavariables, visible defaults, and focused examples.
+- Name boolean flags positively and let Effect generate their `--no-*` form. For example, define
+  `content` with a true default so users can pass `--no-content`; do not define a boolean named
+  `no-content`, which would also generate the nonsensical `--no-no-content` form.
+- Validate CLI values with the same domain Schemas used by other transports. Transform structured
+  inputs in the flag definition so handlers receive domain values, and derive handler input with
+  `Command.Command.Config.Infer` instead of mirroring flag fields in a manual type.
 - Co-located tests: `<file>.test.ts` next to source
 - Low-level SQLite migration/schema tests that need raw SQL use `<file>.migration.test.ts` as an explicit exception to the public-interface-only test rule.
 
