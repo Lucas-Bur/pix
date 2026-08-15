@@ -1,11 +1,10 @@
 import { Schema } from "effect"
 
 import { ChunkValidationErrorSchema } from "./errors.js"
+import { NonNegativeIntSchema, PositiveIntSchema } from "./numeric.js"
 import { ProductionProfileNameSchema, type ProductionProfileName } from "./retrieval.js"
 
 const Int = Schema.Int
-const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
-const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 
 /** Defaults shared by every query transport. */
 export const QUERY_DEFAULTS = {
@@ -25,7 +24,7 @@ export const QueryOptionsSchema = Schema.Struct({
     ),
   ),
   contextLines: Schema.optional(
-    NonNegativeInt.pipe(
+    NonNegativeIntSchema.pipe(
       Schema.annotate({
         description: "Number of source lines to include before and after each result.",
       }),
@@ -44,7 +43,7 @@ export const QueryOptionsSchema = Schema.Struct({
     ),
   ),
   maxCharacters: Schema.optional(
-    PositiveInt.pipe(
+    PositiveIntSchema.pipe(
       Schema.annotate({ description: "Maximum number of characters in the complete response." }),
     ),
   ),

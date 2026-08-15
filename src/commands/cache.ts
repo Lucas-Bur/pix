@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { Command } from "effect/unstable/cli"
+import { CliError, Command } from "effect/unstable/cli"
 
 import { ClearEmbeddingCache } from "../application/clear-embedding-cache.js"
 import { Display } from "../domain/ports.js"
@@ -13,12 +13,18 @@ const clearCacheCommand = Command.make("clear", {}, () =>
     yield* d.json({ status: "ok", removed })
     yield* d.log(removed ? "Embedding cache cleared." : "Embedding cache already empty.", "info")
   }).pipe(Effect.catch(reportError)),
+).pipe(
+  Command.withDescription("Delete historical Dense and Sparse embeddings from the local index"),
+  Command.withShortDescription("Delete cached embeddings"),
 )
 
 /** CLI namespace for cache maintenance. */
-export const cacheCommand = Command.make("cache", {}, () =>
-  Effect.gen(function* () {
-    const d = yield* Display
-    yield* d.log("Usage: pix cache <command>", "info")
-  }),
-).pipe(Command.withSubcommands([clearCacheCommand]))
+export const cacheCommand = Command.make(
+  "cache",
+  {},
+  () => new CliError.ShowHelp({ commandPath: ["pix", "cache"], errors: [] }),
+).pipe(
+  Command.withSubcommands([clearCacheCommand]),
+  Command.withDescription("Inspect and clear local embedding caches"),
+  Command.withShortDescription("Manage the embedding cache"),
+)

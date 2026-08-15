@@ -8,8 +8,9 @@ import {
 import { expect } from "@effect/vitest"
 import type { FileTree } from "@lucas-bur/effect-memfs"
 import { Effect, Exit, Layer, Option, Ref } from "effect"
-import { Command } from "effect/unstable/cli"
+import { CliConfig, Command } from "effect/unstable/cli"
 
+import { PixCliConfig } from "../../src/cli-config.js"
 import { JsonOutput } from "../../src/cli-output.js"
 import type { DisplayEntry } from "../../src/display/entries.js"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
@@ -32,7 +33,10 @@ export const runCommand =
     const runnable = command.pipe(Command.withGlobalFlags([JsonOutput]))
     return Command.runWith(runnable, { version: "0.0.0" })(
       args[0] === command.name ? args.slice(1) : args,
-    ).pipe(Effect.provide(commandPlatformLayer))
+    ).pipe(
+      Effect.provideService(CliConfig.CliConfig, PixCliConfig),
+      Effect.provide(commandPlatformLayer),
+    )
   }
 
 export const expectLogEntry = (

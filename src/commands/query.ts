@@ -23,4 +23,20 @@ export const queryCommand = Command.make("query", queryCommandConfig, (input) =>
     },
     input.copy,
   ).pipe(Effect.catch(reportError)),
+).pipe(
+  Command.withAlias("q"),
+  Command.withDescription(
+    "Refresh the index when needed and search source code with hybrid lexical and semantic retrieval",
+  ),
+  Command.withShortDescription("Search the indexed project"),
+  Command.withExamples([
+    {
+      command: 'pix query "authentication middleware" --top 5',
+      description: "Find implementation chunks for a concept",
+    },
+    {
+      command: 'pix query --json --no-content "config validation"',
+      description: "Return compact machine-readable locations",
+    },
+  ]),
 )

@@ -6,4 +6,7 @@ export const mcpCommand = Command.make("mcp", {}, () =>
   Effect.promise(() => import("../layers/mcp-layer.js")).pipe(
     Effect.flatMap((module) => Layer.launch(module.default)),
   ),
+).pipe(
+  Command.withDescription("Run the host-managed Model Context Protocol server over standard I/O"),
+  Command.withShortDescription("Run the MCP server over stdio"),
 )

@@ -13,7 +13,10 @@ import { initCommand } from "./init.js"
 
 const run = runCommand(initCommand)
 
-const assertInitDisplayEntries = (ref: Ref.Ref<ReadonlyArray<DisplayEntry>>) =>
+const assertInitDisplayEntries = (
+  ref: Ref.Ref<ReadonlyArray<DisplayEntry>>,
+  expectedModel = "Xenova/all-MiniLM-L6-v2",
+) =>
   Effect.gen(function* () {
     const entries = yield* Ref.get(ref)
     expect(entries.some((entry) => entry._tag === "spinner")).toBe(true)
@@ -24,7 +27,7 @@ const assertInitDisplayEntries = (ref: Ref.Ref<ReadonlyArray<DisplayEntry>>) =>
     if (jsonEntry?._tag === "json") {
       const data = jsonEntry.data as { success: boolean; config: { embedder: { model: string } } }
       expect(data.success).toBe(true)
-      expect(data.config.embedder.model).toBe("Xenova/all-MiniLM-L6-v2")
+      expect(data.config.embedder.model).toBe(expectedModel)
     }
   })
 
@@ -41,6 +44,17 @@ it.effect("pix init without --json shows status via Display", () => {
   return Effect.gen(function* () {
     yield* run(["init"])
     yield* assertInitDisplayEntries(ref)
+  }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
+})
+
+it.effect("pix init --model selects a model without prompting", () => {
+  const { ref, layer } = silentDisplay()
+  return Effect.gen(function* () {
+    yield* run(["init", "--model", "Xenova/bge-small-en-v1.5"])
+    yield* assertInitDisplayEntries(ref, "Xenova/bge-small-en-v1.5")
+
+    const entries = yield* Ref.get(ref)
+    expect(entries.some((entry) => entry._tag === "select")).toBe(false)
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
 

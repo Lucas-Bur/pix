@@ -91,6 +91,9 @@ it.effect("pix query --json clamps --top below minimum to 1", () => {
     yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
     yield* expectJsonEntry(ref, (data) => {
       expect(resultsOf(data).length).toBeLessThanOrEqual(1)
+      expect(data).toMatchObject({
+        warnings: [{ _tag: "TopKClamped", requested: 0, applied: 1 }],
+      })
     })
   })
 })
@@ -110,9 +113,27 @@ it.effect("pix query --json clamps --top above maximum to 100", () => {
     yield* expectLogEntry(ref, { severity: "warn", messageIncludes: "clamped" })
     yield* expectJsonEntry(ref, (data) => {
       expect(resultsOf(data).length).toBeLessThanOrEqual(100)
+      expect(data).toMatchObject({
+        warnings: [{ _tag: "TopKClamped", requested: 200, applied: 100 }],
+      })
     })
   })
 })
+
+it.effect("pix query rejects invalid non-negative and positive integer flags", () =>
+  Effect.gen(function* () {
+    const invalidArgs = [
+      ["query", ""],
+      ["query", "--context-lines", "-1", "test"],
+      ["query", "--max-characters", "0", "test"],
+    ]
+
+    for (const args of invalidArgs) {
+      const exit = yield* Effect.exit(run(args))
+      expect(exit._tag).toBe("Failure")
+    }
+  }).pipe(Effect.provide(testLayer({}))),
+)
 
 it.effect("pix query --json with --context-lines includes context fields", () => {
   const { ref, effect } = runQuery(["--json", "--context-lines", "2", "test"])

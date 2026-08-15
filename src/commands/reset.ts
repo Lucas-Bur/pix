@@ -37,4 +37,9 @@ export const resetCommand = Command.make("reset", {}, () =>
       yield* d.log(`Time: ${elapsedMs}ms`, "info")
     }
   }).pipe(Effect.catch(reportError)),
+).pipe(
+  Command.withDescription(
+    "Delete active index rows while retaining configuration and historical embedding caches",
+  ),
+  Command.withShortDescription("Delete active index data while retaining cached embeddings"),
 )

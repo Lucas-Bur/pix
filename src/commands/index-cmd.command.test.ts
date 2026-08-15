@@ -1,10 +1,11 @@
 import { expect, it } from "@effect/vitest"
-import { Effect, Ref } from "effect"
+import { Effect, Layer, Ref } from "effect"
 
 import { expectJsonEntry, runCommand } from "../../tests/test-utils/command.js"
 import { TEST_CONFIG_JSON } from "../../tests/test-utils/fixtures.js"
 import { silentDisplay } from "../../tests/test-utils/silentDisplay.js"
 import { testLayer } from "../../tests/test-utils/testLayer.js"
+import { Scanner } from "../domain/ports.js"
 import { indexCommand } from "./index-cmd.js"
 
 const run = runCommand(indexCommand)
@@ -48,3 +49,41 @@ it.effect("pix index --json without config auto-initializes", () => {
     })
   }).pipe(Effect.provide(testLayer({ displayLayer: layer })))
 })
+
+it.effect("pix index rejects non-positive resource controls", () =>
+  Effect.gen(function* () {
+    const invalidArgs = [
+      ["index", "--batch-size", "0"],
+      ["index", "--chunk-tokens", "0"],
+      ["index", "--chunk-concurrency", "0"],
+    ]
+
+    for (const args of invalidArgs) {
+      const exit = yield* Effect.exit(run(args))
+      expect(exit._tag).toBe("Failure")
+    }
+  }).pipe(Effect.provide(testLayer({ contents: fixtures }))),
+)
+
+it.effect("pix index accepts repeated --ignore-path values", () =>
+  Effect.gen(function* () {
+    const captured = yield* Ref.make<readonly string[]>([])
+    const scannerLayer = Layer.succeed(Scanner, {
+      scanFiles: (ignoredPaths: readonly string[]) =>
+        Ref.set(captured, ignoredPaths).pipe(Effect.as({ files: [], skipped: [] })),
+    })
+
+    yield* run(["index", "--ignore-path", "generated/**", "--ignore-path", "temp/**"]).pipe(
+      Effect.provide(testLayer({ contents: fixtures, scannerLayer })),
+    )
+
+    const ignoredPaths = yield* Ref.get(captured)
+    expect(ignoredPaths).toEqual(expect.arrayContaining(["generated/**", "temp/**"]))
+  }),
+)
+
+it.effect("pix index accepts repeated --skip-extension values", () =>
+  run(["index", "--skip-extension", ".ts", "--skip-extension", ".md"]).pipe(
+    Effect.provide(testLayer({ contents: fixtures })),
+  ),
+)

@@ -33,4 +33,7 @@ export const statusCommand = Command.make("status", {}, () =>
       StoreError: reportError,
     }),
   ),
+).pipe(
+  Command.withDescription("Show index size, active model, refresh time, and diagnostics"),
+  Command.withShortDescription("Show index, model, and diagnostic status"),
 )

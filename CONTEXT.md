@@ -64,8 +64,8 @@ Port (`Context.Service` in `src/domain/ports.ts`) for detecting the best availab
 
 `pix bench` measures cold-start and warm throughput for Dense and learned Sparse embedding separately. Dense
 defaults to the detected working devices and batch sizes `1,4,8,16,32,64,96,128`; Sparse probes the same
-device priority with safer batch sizes `1,2,4,8`. `--devices dml` restricts both channels to DML; multiple
-devices are comma-separated. `--apply` writes both channel recommendations to `.pix/config.json`.
+device priority with safer batch sizes `1,2,4,8`. Repeat `--device DEVICE` to restrict both channels to
+specific devices. `--apply` writes both channel recommendations to `.pix/config.json`.
 
 ### Config Healing
 
@@ -142,7 +142,7 @@ CLI-only.
 
 ### Query Alias
 
-Named query-only preset stored in `.pix/aliases.json` as a flat map keyed by alias name. Each value contains `queryText` plus query options (`top`, `ignorePath`, `onlyPath`, `contextLines`, `maxCharacters`, `noContent`, and `profile`). Output modes such as JSON and Clipboard Copy are runtime choices, not part of the alias. `pix run <name>` is the short form for `pix alias run <name>`; both execute the same implementation.
+Named query-only preset stored in `.pix/aliases.json` as a flat map keyed by alias name. Each value contains `queryText` plus query options (`top`, `ignorePath`, `onlyPath`, `contextLines`, `maxCharacters`, `noContent`, and `profile`). Output modes such as JSON and Clipboard Copy are runtime choices, not part of the alias. `pix run <name>` executes a saved preset with optional request-scoped overrides.
 
 ### Clipboard Copy
 
@@ -473,18 +473,25 @@ Single entry point that wires all layers: infrastructure → chunker → applica
 
 ### CLI Commands
 
-- `pix init` — Create `.pix/config.json` and the self-ignoring `.pix/.gitignore`. Prompts for model selection (human mode); `--json` uses default model.
-- `pix index` — Incrementally refresh the index. Unchanged files reuse chunk metadata, vectors, BM25 terms, and identifier postings; changed chunks use the embedding cache before inference.
+- `pix init` — Create `.pix/config.json` and the self-ignoring `.pix/.gitignore`. Prompts for model selection unless `--model MODEL` selects a registered model explicitly.
+- `pix index` — Incrementally refresh the index. Unchanged files reuse chunk metadata, vectors, BM25 terms, and identifier postings; changed chunks use the embedding cache before inference. Repeat `--ignore-path PATTERN` and `--skip-extension EXTENSION` for one-shot exclusions.
 - `pix query "<text>" [--top N] [--json] [--context-lines N] [--ignore-path P] [--only-path P] [--max-characters N] [--no-content] [--profile compatibility|balanced|code-navigation|natural-language]` — Ensure the index is fresh, then run hybrid search. Missing indexes, source changes, and model/dtype changes are repaired automatically. Source text loads only after top-K selection; `compatibility` is the matrix-calibrated runtime configuration and the other named profiles currently reuse it.
 - `pix mcp` — Run the host-managed MCP stdio server exposing the shared read-only query API.
 - `pix status` — Show index statistics
 - `pix reset` — Delete the active SQLite index snapshot while retaining historical embeddings
 - `pix cache clear` — Delete the content-addressed embedding cache.
 - `pix config heal` — Validate and repair `.pix/config.json`. Structural heal (fill missing fields from defaults) + coupled validation (model registry check). Prompts for each conflict in human mode; `--json` mode auto-applies defaults for healed conflicts, fails with `ConfigHealError` for unhealed conflicts.
+- `pix bench` — Benchmark repeated `--device`, `--batch-size`, and `--sparse-batch-size` candidates. `--profile` selects the optimization objective and boolean `--apply` persists that profile's recommendation.
 
 All one-shot commands support the global `--json` setting before or after any subcommand for
 agent-ready structured output on stdout. `JsonOutput` in `src/cli-output.ts` is an Effect
 `GlobalFlag.setting`; its parsed value selects the `Display` adapter without raw argument inspection.
+A shared `PixCliConfig` retains Effect's help, version, wizard, and completion actions while omitting
+the unused log-level setting. Public commands and flags carry descriptions, unit-bearing metavariables,
+defaults, and examples for generated help and shell completions. Numeric CLI values reuse domain
+Schemas, profile/device choices come from domain vocabularies, and list-valued flags are repeatable.
+The `pix run` command executes aliases. Effect RC.108 completion generation still omits global flags, command aliases, and repetition
+cardinality; local flags avoid negative boolean names so it does not emit `--no-no-*` candidates.
 A single JSON object is emitted at the end of successful operations (e.g.
 `{ chunks, files, totalLines, byteSize, durationMs }`). Error output uses `reportError`, which calls
 both `d.log(..., "error")` (human) and `d.json(error)` (agent).

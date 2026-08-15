@@ -1,8 +1,15 @@
+import { Schema } from "effect"
+
 import type { Chunk } from "./chunk.js"
 import type { DeviceType } from "./device.js"
 
+/** Supported benchmark optimization profiles. */
+export const BENCH_PROFILES = ["throughput", "cold", "balanced"] as const
+
+const BenchProfileSchema = Schema.Literals(BENCH_PROFILES)
+
 /** Benchmark profile — determines what aspect of performance to optimize for. */
-export type BenchProfile = "throughput" | "cold" | "balanced"
+export type BenchProfile = typeof BenchProfileSchema.Type
 
 /** Status of a single benchmark measurement. */
 export type BenchStatus = "ok" | "failed" | "timeout"

@@ -3,12 +3,13 @@ import { Effect } from "effect"
 import { runQuery } from "../application/run-query.js"
 import { Clipboard, Display } from "../domain/ports.js"
 import type { SearchResponse } from "../domain/ports.js"
-import { normalizeQueryRequest, type QueryRequest } from "../domain/query.js"
+import { normalizeQueryRequest, type QueryRequest, type QueryResponse } from "../domain/query.js"
 import { formatResult, toJsonOutput } from "../lib/formatting/search-output.js"
 
 const renderResults = (
   d: typeof Display.Service,
   response: SearchResponse,
+  warnings: QueryResponse["warnings"],
   ctxLines: number,
   noContent: boolean,
   indexRefresh: {
@@ -26,6 +27,7 @@ const renderResults = (
       indexRefresh,
       results: toJsonOutput(results, ctxLines, noContent),
       ...(validationErrors.length > 0 && { validationErrors }),
+      ...(warnings.length > 0 && { warnings }),
     })
 
     if (results.length === 0) {
@@ -60,6 +62,7 @@ export const executeQuery = (request: QueryRequest, copy: boolean) =>
     yield* renderResults(
       d,
       response,
+      response.warnings,
       normalized.contextLines,
       normalized.noContent,
       response.indexRefresh,
