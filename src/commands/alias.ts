@@ -25,7 +25,7 @@ const aliasToRow = (alias: QueryAlias): readonly string[] => [
 ]
 
 /** CLI command: pix alias add <name> "<query>" [query flags...] */
-const aliasAddCommand = Command.make(
+export const aliasAddCommand = Command.make(
   "add",
   {
     name: Argument.string("name").pipe(
@@ -73,7 +73,7 @@ const aliasAddCommand = Command.make(
 )
 
 /** CLI command: pix alias list [--json] */
-const aliasListCommand = Command.make("list", {}, () =>
+export const aliasListCommand = Command.make("list", {}, () =>
   Effect.gen(function* () {
     const d = yield* Display
     const aliases = yield* listAliases
@@ -91,7 +91,7 @@ const aliasListCommand = Command.make("list", {}, () =>
 )
 
 /** CLI command: pix alias remove <name> */
-const aliasRemoveCommand = Command.make(
+export const aliasRemoveCommand = Command.make(
   "remove",
   {
     name: Argument.string("name").pipe(
@@ -143,13 +143,26 @@ export const runAliasShortcutCommand = Command.make("run", aliasRunConfig, runAl
   ]),
 )
 
-/** CLI command: pix alias <add|list|remove|run>. */
-export const aliasCommand = Command.make(
-  "alias",
-  {},
-  () => new CliError.ShowHelp({ commandPath: ["pix", "alias"], errors: [] }),
-).pipe(
-  Command.withSubcommands([aliasAddCommand, aliasListCommand, aliasRemoveCommand]),
-  Command.withDescription("Create, inspect, delete, and execute saved query presets"),
-  Command.withShortDescription("Manage saved query presets"),
-)
+/**
+ * Build the alias namespace. Subcommands are supplied by the caller so cli.ts can provide layers to
+ * the leaves while the unit tests pass raw leaves (whose services come from testLayer).
+ */
+export const makeAliasCommand = <const Subcommands extends readonly any[]>(
+  subcommands: Subcommands,
+) =>
+  Command.make(
+    "alias",
+    {},
+    () => new CliError.ShowHelp({ commandPath: ["pix", "alias"], errors: [] }),
+  ).pipe(
+    Command.withSubcommands(subcommands),
+    Command.withDescription("Create, inspect, delete, and execute saved query presets"),
+    Command.withShortDescription("Manage saved query presets"),
+  )
+
+/** Alias namespace with raw leaves, used by unit tests. */
+export const aliasCommand = makeAliasCommand([
+  aliasAddCommand,
+  aliasListCommand,
+  aliasRemoveCommand,
+])

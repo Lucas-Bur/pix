@@ -81,13 +81,22 @@ export const healCommand = Command.make("heal", {}, () =>
   Command.withShortDescription("Validate and repair .pix/config.json"),
 )
 
-/** CLI command: pix config — namespace for config management commands. */
-export const configCommand = Command.make(
-  "config",
-  {},
-  () => new CliError.ShowHelp({ commandPath: ["pix", "config"], errors: [] }),
-).pipe(
-  Command.withSubcommands([healCommand]),
-  Command.withDescription("Inspect and repair project-local pix configuration"),
-  Command.withShortDescription("Manage and repair pix configuration"),
-)
+/**
+ * Build the config namespace. Subcommands are supplied by the caller so cli.ts can provide layers
+ * to the leaves while the unit tests pass raw leaves (whose services come from testLayer).
+ */
+export const makeConfigCommand = <const Subcommands extends readonly any[]>(
+  subcommands: Subcommands,
+) =>
+  Command.make(
+    "config",
+    {},
+    () => new CliError.ShowHelp({ commandPath: ["pix", "config"], errors: [] }),
+  ).pipe(
+    Command.withSubcommands(subcommands),
+    Command.withDescription("Inspect and repair project-local pix configuration"),
+    Command.withShortDescription("Manage and repair pix configuration"),
+  )
+
+/** Config namespace with raw leaves, used by unit tests. */
+export const configCommand = makeConfigCommand([healCommand])
