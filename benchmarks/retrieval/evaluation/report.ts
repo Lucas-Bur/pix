@@ -75,20 +75,118 @@ const formatRouterWeightColumns = (result: {
 })
 
 const renderPromotionEvidence = (artifact: BenchmarkArtifact): readonly string[] => {
-  const summaries = artifact.promotionEvidence.map(
-    (evidence) =>
-      `| ${evidence.model} | ${evidence.fusion} | ${evidence.objective} | ${promotionLabel(evidence.promotionStatus)} | ${evidence.missingStrategies.join(", ") || "none"} | ${evidence.finalTest.strategy}:${evidence.finalTest.fold} (${evidence.finalTest.guardrailsMet ? "pass" : "fail"}) | ${evidence.stability.folds} | ${evidence.stability.distinctSelections} | ${percent(evidence.stability.selectionFrequency)} | ${evidence.stability.localPerturbations} | ${evidence.stability.plateauWidth.toFixed(3)} | ${percent(evidence.stability.epsilonNeighborFraction)} | ${percent(evidence.stability.medianHoldoutDrop)} | ${percent(evidence.stability.worstCaseHoldoutDrop)} |`,
+  const summaries = renderTable(
+    [
+      "Model",
+      "Fusion",
+      "Objective",
+      "Promotion",
+      "Missing strategies",
+      "Final test",
+      "Folds",
+      "Distinct selections",
+      "Selection frequency",
+      "Local perturbations",
+      "Plateau width",
+      "Epsilon neighbors",
+      "Median drop",
+      "Worst drop",
+    ],
+    [
+      "---",
+      "---",
+      "---",
+      "---",
+      "---",
+      "---",
+      "---:",
+      "---:",
+      "---:",
+      "---:",
+      "---:",
+      "---:",
+      "---:",
+      "---:",
+    ],
+    artifact.promotionEvidence.map((evidence) => [
+      evidence.model,
+      evidence.fusion,
+      evidence.objective,
+      promotionLabel(evidence.promotionStatus),
+      evidence.missingStrategies.join(", ") || "none",
+      `${evidence.finalTest.strategy}:${evidence.finalTest.fold} (${evidence.finalTest.guardrailsMet ? "pass" : "fail"})`,
+      String(evidence.stability.folds),
+      String(evidence.stability.distinctSelections),
+      percent(evidence.stability.selectionFrequency),
+      String(evidence.stability.localPerturbations),
+      evidence.stability.plateauWidth.toFixed(3),
+      percent(evidence.stability.epsilonNeighborFraction),
+      percent(evidence.stability.medianHoldoutDrop),
+      percent(evidence.stability.worstCaseHoldoutDrop),
+    ]),
   )
-  const blockers = artifact.promotionEvidence.flatMap((evidence) =>
-    evidence.blockers.map(
-      (blocker) =>
-        `| ${evidence.model} | ${evidence.fusion} | ${evidence.objective} | ${blocker.strategy} | ${blocker.fold} | ${blocker.partition}:${blocker.name} | ${blocker.metric} | ${percent(blocker.candidateValue)} | ${percent(blocker.baselineValue)} | ${percent(blocker.tolerance)} | ${percent(blocker.delta)} |`,
-    ),
+  const blockerRows =
+    artifact.promotionEvidence.length === 0
+      ? [Array.from({ length: 10 }, () => "-").concat("no blockers")]
+      : artifact.promotionEvidence.flatMap((evidence) =>
+          evidence.blockers.map((blocker) => [
+            evidence.model,
+            evidence.fusion,
+            evidence.objective,
+            blocker.strategy,
+            blocker.fold,
+            `${blocker.partition}:${blocker.name}`,
+            blocker.metric,
+            percent(blocker.candidateValue),
+            percent(blocker.baselineValue),
+            percent(blocker.tolerance),
+            percent(blocker.delta),
+          ]),
+        )
+  const blockers = renderTable(
+    [
+      "Model",
+      "Fusion",
+      "Objective",
+      "Strategy",
+      "Fold",
+      "Partition",
+      "Metric",
+      "Candidate",
+      "Baseline",
+      "Tolerance",
+      "Delta",
+    ],
+    ["---", "---", "---", "---", "---", "---", "---", "---:", "---:", "---:", "---:"],
+    blockerRows,
   )
-  const uncertainty = artifact.promotionEvidence.flatMap((evidence) =>
-    evidence.uncertainty.map(
-      (interval) =>
-        `| ${evidence.model} | ${evidence.fusion} | ${evidence.objective} | ${interval.strategy} | ${interval.partition}:${interval.name} | ${interval.metric} | ${percent(interval.meanDelta)} | ${percent(interval.lowerBound)} | ${percent(interval.upperBound)} | ${interval.bootstrapSamples} |`,
+  const uncertainty = renderTable(
+    [
+      "Model",
+      "Fusion",
+      "Objective",
+      "Strategy",
+      "Partition",
+      "Metric",
+      "Mean delta",
+      "95% lower",
+      "95% upper",
+      "Bootstrap samples",
+    ],
+    ["---", "---", "---", "---", "---", "---", "---:", "---:", "---:", "---:"],
+    artifact.promotionEvidence.flatMap((evidence) =>
+      evidence.uncertainty.map((interval) => [
+        evidence.model,
+        evidence.fusion,
+        evidence.objective,
+        interval.strategy,
+        `${interval.partition}:${interval.name}`,
+        interval.metric,
+        percent(interval.meanDelta),
+        percent(interval.lowerBound),
+        percent(interval.upperBound),
+        String(interval.bootstrapSamples),
+      ]),
     ),
   )
   return [
@@ -97,24 +195,16 @@ const renderPromotionEvidence = (artifact: BenchmarkArtifact): readonly string[]
     "",
     "Fit-all quality is diagnostic. Promotion status below is derived only from excluded grouped and repository holdouts; missing required strategies block promotion.",
     "",
-    "| Model | Fusion | Objective | Promotion | Missing strategies | Final test | Folds | Distinct selections | Selection frequency | Local perturbations | Plateau width | Epsilon neighbors | Median drop | Worst drop |",
-    "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ...summaries,
     "",
     "### Guardrail Blockers",
     "",
-    "| Model | Fusion | Objective | Strategy | Fold | Partition | Metric | Candidate | Baseline | Tolerance | Delta |",
-    "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
-    ...(blockers.length === 0
-      ? ["| - | - | - | - | - | - | - | - | - | - | no blockers |"]
-      : blockers),
+    ...blockers,
     "",
     "### Holdout Uncertainty",
     "",
     "Deterministic grouped bootstrap intervals resample excluded folds and report paired candidate-minus-baseline deltas.",
     "",
-    "| Model | Fusion | Objective | Strategy | Partition | Metric | Mean delta | 95% lower | 95% upper | Bootstrap samples |",
-    "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
     ...uncertainty,
   ]
 }
