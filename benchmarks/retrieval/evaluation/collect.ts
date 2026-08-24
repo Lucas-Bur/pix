@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect"
+﻿import { Effect, Stream } from "effect"
 import { SqlClient } from "effect/unstable/sql"
 
 import type { Embedding } from "../../../src/domain/chunk.js"
@@ -22,6 +22,7 @@ import type {
 import { contentHash } from "../../../src/lib/content-hash.js"
 import { buildQueryTermCoverage } from "../../../src/lib/retrieval/evidence-router.js"
 import { createAutoBoundEmbedder } from "../../../src/services/embedder.js"
+import type { CorpusManifest, QueryKind } from "../corpus/manifest.js"
 import { prepareCorpus, type PreparedCorpus } from "../corpus/prepare.js"
 import { prepareRepository } from "../corpus/repository.js"
 import {
@@ -44,7 +45,7 @@ import {
 } from "./metrics.js"
 import { reportBenchmarkProgress } from "./progress.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "./ranking.js"
-import type { BenchmarkArtifact, CorpusManifest, QueryKind, QueryMeasurement } from "./types.js"
+import type { BenchmarkArtifact, QueryMeasurement } from "./types.js"
 import type { WeightSearchSample } from "./weight-search.js"
 
 const CONTEXT_BUDGETS = [2_048, 4_096, 8_192, 16_384] as const

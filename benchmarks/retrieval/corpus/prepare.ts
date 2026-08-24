@@ -14,7 +14,7 @@ import { buildBm25Index } from "../../../src/lib/retrieval/bm25.js"
 import { buildIdentifierIndex } from "../../../src/lib/retrieval/identifier-index.js"
 import { chunkTextWithRegistry } from "../../../src/services/chunker.js"
 import type { ChunkIdentifiers } from "../evaluation/metrics.js"
-import type { CorpusManifest } from "../evaluation/types.js"
+import type { CorpusManifest } from "./manifest.js"
 import { listCorpusFiles } from "./repository.js"
 
 /** Query-independent indexes and source chunks prepared once per repository. */

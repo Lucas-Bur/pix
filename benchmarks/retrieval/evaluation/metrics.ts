@@ -1,7 +1,7 @@
 import type { Chunk } from "../../../src/domain/chunk.js"
 import type { RankedChunk } from "../../../src/domain/ports.js"
+import type { GoldLocation } from "../corpus/manifest.js"
 import { binaryNdcgAt } from "./metrics-core.mjs"
-import type { GoldLocation } from "./types.js"
 
 /** Indexed identifiers retained per chunk so gold symbols can be matched exactly. */
 export type ChunkIdentifiers = ReadonlyMap<number, ReadonlySet<string>>
