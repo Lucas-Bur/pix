@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises"
+﻿import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import { Effect } from "effect"
@@ -164,6 +164,20 @@ const selectBeamSchedule = (): Effect.Effect<"fixed" | "decaying", Error> =>
     catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
   })
 
+const selectGlobalScouts = (): Effect.Effect<number, Error> =>
+  Effect.try({
+    try: () => {
+      const requested = process.env.PIX_BENCH_GLOBAL_SCOUTS
+      if (requested === undefined) return DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.globalScouts
+      const parsed = Number.parseInt(requested, 10)
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        throw new Error(`PIX_BENCH_GLOBAL_SCOUTS must be an integer >= 1, got ${requested}`)
+      }
+      return parsed
+    },
+    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+  })
+
 const selectCoordinatePasses = (): Effect.Effect<number, Error> =>
   Effect.try({
     try: () => {
@@ -172,8 +186,8 @@ const selectCoordinatePasses = (): Effect.Effect<number, Error> =>
         return DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.coordinatePasses
       }
       const parsed = Number.parseInt(requested, 10)
-      if (!Number.isFinite(parsed) || parsed < 1) {
-        throw new Error(`PIX_BENCH_COORDINATE_PASSES must be an integer >= 1, got ${requested}`)
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error(`PIX_BENCH_COORDINATE_PASSES must be an integer >= 0, got ${requested}`)
       }
       return parsed
     },
@@ -221,6 +235,7 @@ export const runRetrievalBenchmark = (
     const seedHypotheses = selectSeedHypotheses()
     const beamSchedule = yield* selectBeamSchedule()
     const coordinatePasses = yield* selectCoordinatePasses()
+    const globalScouts = yield* selectGlobalScouts()
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
     const manifests = yield* selectManifests(yield* loadCorpusManifests(), profile)
@@ -269,12 +284,13 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 29,
+      schemaVersion: 30,
       benchmarkProfile: profile,
       scoutSequence,
       seedHypotheses,
       beamSchedule,
       coordinatePasses,
+      globalScouts,
       optimizationProfile,
       validationProtocol: {
         selection: "development-only",

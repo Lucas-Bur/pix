@@ -1,4 +1,4 @@
-import { expect, it } from "@effect/vitest"
+﻿import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
 import { assignGroupedFolds } from "../retrieval/evaluation/folds.js"
@@ -105,13 +105,18 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.evaluationCases.every(({ groundTruth }) => groundTruth.length > 0)).toBe(true)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(29)
+    expect(artifact.schemaVersion).toBe(30)
     expect(artifact.scoutSequence).toBe(resolveScoutSequence(process.env.PIX_BENCH_SCOUT_SEQUENCE))
     expect(artifact.seedHypotheses).toBe(
       process.env.PIX_BENCH_SEED_HYPOTHESES === "1" ||
         process.env.PIX_BENCH_SEED_HYPOTHESES === "true",
     )
     expect(artifact.beamSchedule).toBe(process.env.PIX_BENCH_BEAM_SCHEDULE ?? "fixed")
+    expect(artifact.globalScouts).toBe(
+      process.env.PIX_BENCH_GLOBAL_SCOUTS === undefined
+        ? 64
+        : Number.parseInt(process.env.PIX_BENCH_GLOBAL_SCOUTS, 10),
+    )
     expect(artifact.coordinatePasses).toBe(
       process.env.PIX_BENCH_COORDINATE_PASSES === undefined
         ? 2
