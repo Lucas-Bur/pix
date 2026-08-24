@@ -1,4 +1,4 @@
-﻿import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import { Effect } from "effect"
@@ -15,20 +15,18 @@ import {
 } from "./evaluation/optimization-profiles.js"
 import { reportBenchmarkProgress } from "./evaluation/progress.js"
 import { renderMarkdownReport } from "./evaluation/report.js"
-import { resolveScoutSequence, type ScoutSequenceName } from "./evaluation/scouts/index.js"
 import { runBenchmarkSearch, type BenchmarkSearchConfig } from "./evaluation/search.js"
 import {
-  DEFAULT_ROUTER_SEARCH_STRATEGY,
-  DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS,
-  ROUTER_SEARCH_STRATEGY_NAMES,
   routerSearchStrategyFor,
   type BenchmarkArtifact,
   type BenchmarkProfile,
   type CorpusManifest,
-  type RouterSearchStrategyName,
   type ValidationStrategy,
 } from "./evaluation/types.js"
 import { getDefaultWorkerCount, resolveWorkerCount } from "./execution/candidate-evaluation-pool.js"
+import { resolveSearchKnobs } from "./run-config.js"
+
+export { resolveRouterSearchStrategy } from "./run-config.js"
 
 const CONTEXT_BUDGETS = [2_048, 4_096, 8_192, 16_384] as const
 
@@ -120,80 +118,6 @@ const selectOptimizationProfile = (): Effect.Effect<OptimizationProfile, Error> 
     : Effect.succeed(selected)
 }
 
-const isRouterSearchStrategyName = (requested: string): requested is RouterSearchStrategyName =>
-  ROUTER_SEARCH_STRATEGY_NAMES.some((strategy) => strategy === requested)
-
-export const resolveRouterSearchStrategy = (
-  requested: string | undefined,
-): RouterSearchStrategyName => {
-  if (requested === undefined) return DEFAULT_ROUTER_SEARCH_STRATEGY
-  if (!isRouterSearchStrategyName(requested)) {
-    throw new Error(
-      `Unknown PIX_BENCH_ROUTER_STRATEGY value: ${requested}; expected one of ${ROUTER_SEARCH_STRATEGY_NAMES.join(", ")}`,
-    )
-  }
-  return requested
-}
-
-const selectRouterSearchStrategy = (): Effect.Effect<RouterSearchStrategyName, Error> =>
-  Effect.try({
-    try: () => resolveRouterSearchStrategy(process.env.PIX_BENCH_ROUTER_STRATEGY),
-    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-  })
-
-const selectScoutSequence = (): Effect.Effect<ScoutSequenceName, Error> =>
-  Effect.try({
-    try: () => resolveScoutSequence(process.env.PIX_BENCH_SCOUT_SEQUENCE),
-    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-  })
-
-const selectSeedHypotheses = (): boolean => {
-  const requested = process.env.PIX_BENCH_SEED_HYPOTHESES
-  return requested === "1" || requested === "true"
-}
-
-const resolveBeamSchedule = (requested: string | undefined): "fixed" | "decaying" => {
-  if (requested === undefined || requested === "fixed") return "fixed"
-  if (requested === "decaying") return "decaying"
-  throw new Error(`Unknown PIX_BENCH_BEAM_SCHEDULE value: ${requested}; expected fixed or decaying`)
-}
-
-const selectBeamSchedule = (): Effect.Effect<"fixed" | "decaying", Error> =>
-  Effect.try({
-    try: () => resolveBeamSchedule(process.env.PIX_BENCH_BEAM_SCHEDULE),
-    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-  })
-
-const selectGlobalScouts = (): Effect.Effect<number, Error> =>
-  Effect.try({
-    try: () => {
-      const requested = process.env.PIX_BENCH_GLOBAL_SCOUTS
-      if (requested === undefined) return DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.globalScouts
-      const parsed = Number.parseInt(requested, 10)
-      if (!Number.isFinite(parsed) || parsed < 1) {
-        throw new Error(`PIX_BENCH_GLOBAL_SCOUTS must be an integer >= 1, got ${requested}`)
-      }
-      return parsed
-    },
-    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-  })
-
-const selectCoordinatePasses = (): Effect.Effect<number, Error> =>
-  Effect.try({
-    try: () => {
-      const requested = process.env.PIX_BENCH_COORDINATE_PASSES
-      if (requested === undefined) {
-        return DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.coordinatePasses
-      }
-      const parsed = Number.parseInt(requested, 10)
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        throw new Error(`PIX_BENCH_COORDINATE_PASSES must be an integer >= 0, got ${requested}`)
-      }
-      return parsed
-    },
-    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-  })
-
 const writeArtifact = (artifact: BenchmarkArtifact): Effect.Effect<string, Error> =>
   Effect.gen(function* () {
     const outputDirectory = path.resolve("benchmarks/results")
@@ -230,12 +154,17 @@ export const runRetrievalBenchmark = (
           fallbackToSerial: false,
         }
     const optimizationProfile = yield* selectOptimizationProfile()
-    const routerSearchStrategy = yield* selectRouterSearchStrategy()
-    const scoutSequence = yield* selectScoutSequence()
-    const seedHypotheses = selectSeedHypotheses()
-    const beamSchedule = yield* selectBeamSchedule()
-    const coordinatePasses = yield* selectCoordinatePasses()
-    const globalScouts = yield* selectGlobalScouts()
+    const searchKnobs = yield* Effect.try({
+      try: () => resolveSearchKnobs(process.env),
+      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+    })
+
+    const routerSearchStrategy = searchKnobs.routerSearchStrategy
+    const scoutSequence = searchKnobs.scoutSequence
+    const seedHypotheses = searchKnobs.seedHypotheses
+    const beamSchedule = searchKnobs.beamSchedule
+    const coordinatePasses = searchKnobs.coordinatePasses
+    const globalScouts = searchKnobs.globalScouts
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
     const manifests = yield* selectManifests(yield* loadCorpusManifests(), profile)
