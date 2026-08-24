@@ -38,6 +38,14 @@ import { SEARCH_PRIORITY_PROFILE, type OptimizationProfile } from "./optimizatio
 import { prepareFusion, type PreparedFusionEvaluator } from "./prepared-fusion.js"
 import { buildGuardrailBlockers } from "./promotion-evidence.js"
 import {
+  DEFAULT_SCOUT_SEQUENCE,
+  MAX_SOBOL_DIMENSIONS,
+  radicalInverse,
+  scoutLevelIndex,
+  sobolUnitPoint,
+  type ScoutSequenceName,
+} from "./scout-sequence.js"
+import {
   ROUTER_OBJECTIVES,
   ROUTER_SEARCH_STRATEGY,
   ROUTER_SEARCH_STRATEGIES,
@@ -71,7 +79,8 @@ const SEARCH_PASSES = ROUTER_SEARCH_STRATEGY.coordinatePasses
 const SEARCH_GLOBAL_SCOUTS = ROUTER_SEARCH_STRATEGY.globalScouts
 const SEARCH_PROXY_SAMPLE_FRACTION = ROUTER_SEARCH_STRATEGY.proxySampleFraction
 const SEARCH_PROXY_MINIMUM_SAMPLES = ROUTER_SEARCH_STRATEGY.proxyMinimumSamples
-const SEARCH_PROXY_PROMOTION_FACTOR = ROUTER_SEARCH_STRATEGY.proxyPromotionFactor
+const SEARCH_PROXY_PROMOTION_FACTOR =
+  ROUTER_SEARCH_STRATEGIES["proxy-promotion"].proxyPromotionFactor
 const SEARCH_HALVING_KEEP_FACTOR = ROUTER_SEARCH_STRATEGIES["successive-halving"].halvingKeepFactor
 const HALTON_PRIMES = [
   2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
@@ -105,6 +114,8 @@ interface SearchOptions extends CandidateEvaluationPoolOptions {
   readonly evaluationQueue?: CandidateEvaluationQueue
   /** Benchmark-only router search algorithm; defaults to the current proxy promotion mode. */
   readonly routerSearchStrategy?: RouterSearchStrategyName
+  /** Benchmark-only global-scout sequence; defaults to Halton. */
+  readonly scoutSequence?: ScoutSequenceName
 }
 
 /** Options for benchmark search APIs without colliding with the product query options type. */
@@ -1001,40 +1012,41 @@ const buildSearchDiagnostics = (
   timings: { ...stats.timings },
 })
 
-const radicalInverse = (index: number, base: number): number => {
-  let remaining = index
-  let place = 1 / base
-  let result = 0
-  while (remaining > 0) {
-    result += (remaining % base) * place
-    remaining = Math.floor(remaining / base)
-    place /= base
-  }
-  return result
+/** Unit-interval coordinate for one scout point and coefficient parameter index. */
+const scoutUnitCoordinate = (
+  sequence: ScoutSequenceName,
+  pointIndex: number,
+  parameterIndex: number,
+): number => {
+  if (sequence === "sobol") return sobolUnitPoint(pointIndex + 1, parameterIndex)
+  const prime = HALTON_PRIMES[parameterIndex]
+  if (prime === undefined)
+    throw new Error(
+      `Halton sequence has no prime for ${HALTON_PRIMES.length} parameters, needed ${parameterIndex + 1}`,
+    )
+  return radicalInverse(pointIndex + 1, prime)
 }
 
 const buildGlobalRouterSeeds = (
   baseSeeds: readonly EvidenceRouterConfig[],
   parameters: readonly RouterParameter[],
+  sequence: ScoutSequenceName,
 ): readonly EvidenceRouterConfig[] => {
   if (baseSeeds.length === 0) return []
   const coefficientParameters = parameters.slice(CHANNELS.length)
-  if (coefficientParameters.length > HALTON_PRIMES.length)
+  if (sequence === "random") return buildRandomRouterSeeds(baseSeeds[0]!, parameters)
+  const dimensionLimit = sequence === "sobol" ? MAX_SOBOL_DIMENSIONS : HALTON_PRIMES.length
+  if (coefficientParameters.length > dimensionLimit) {
     throw new Error(
-      `Halton sequence needs ${coefficientParameters.length} primes, got ${HALTON_PRIMES.length}`,
+      `${sequence} scouts support at most ${dimensionLimit} parameters, got ${coefficientParameters.length}`,
     )
+  }
   return Array.from({ length: SEARCH_GLOBAL_SCOUTS }, (_, pointIndex) =>
     coefficientParameters.reduce(
       (config, parameter, parameterIndex) => {
         const values = parameter.values
-        const prime = HALTON_PRIMES[parameterIndex]
-        if (prime === undefined)
-          throw new Error(`Halton sequence has no prime for parameter ${parameterIndex}`)
-        const valueIndex = Math.min(
-          values.length - 1,
-          Math.floor(radicalInverse(pointIndex + 1, prime) * values.length),
-        )
-        return parameter.update(config, values[valueIndex]!)
+        const unit = scoutUnitCoordinate(sequence, pointIndex, parameterIndex)
+        return parameter.update(config, values[scoutLevelIndex(unit, values.length)]!)
       },
       baseSeeds[pointIndex % baseSeeds.length]!,
     ),
@@ -1050,7 +1062,7 @@ const nextRandom = (state: number): readonly [number, number] => {
   return [unsigned, unsigned / 4_294_967_296]
 }
 
-const RANDOM_SEARCH_SEED = ROUTER_SEARCH_STRATEGY.seed || 1
+const RANDOM_SEARCH_SEED = ROUTER_SEARCH_STRATEGIES["proxy-promotion"].seed || 1
 
 const buildRandomRouterSeeds = (
   baseSeed: EvidenceRouterConfig,
@@ -1061,11 +1073,10 @@ const buildRandomRouterSeeds = (
     parameters.reduce((config, parameter) => {
       const [next, unit] = nextRandom(state)
       state = next
-      const valueIndex = Math.min(
-        parameter.values.length - 1,
-        Math.floor(unit * parameter.values.length),
+      return parameter.update(
+        config,
+        parameter.values[scoutLevelIndex(unit, parameter.values.length)]!,
       )
-      return parameter.update(config, parameter.values[valueIndex]!)
     }, baseSeed),
   )
 }
@@ -1498,6 +1509,7 @@ const selectBestEvidenceRouter = async (
   fullPool: CandidateEvaluationPool,
   proxyPool: CandidateEvaluationPool,
   routerSearchStrategy: RouterSearchStrategyName,
+  scoutSequence: ScoutSequenceName,
 ): Promise<{
   readonly selections: readonly EvidenceRouterSelection[]
   readonly productionQuality: QualitySummary
@@ -1568,7 +1580,7 @@ const selectBestEvidenceRouter = async (
   const beamSearchStartedAt = performance.now()
   let beam = await rankRouterCandidates(
     searchContext,
-    [...baseSeeds, ...buildGlobalRouterSeeds(baseSeeds, parameters)],
+    [...baseSeeds, ...buildGlobalRouterSeeds(baseSeeds, parameters, scoutSequence)],
     SEARCH_BEAM_WIDTH,
     baseSeeds,
   )
@@ -1872,6 +1884,7 @@ const withEvidencePools = async <T>(
       fullPool,
       proxyPool,
       options.routerSearchStrategy ?? "proxy-promotion",
+      options.scoutSequence ?? DEFAULT_SCOUT_SEQUENCE,
     )
     return await operation(selection, fullPool)
   } finally {

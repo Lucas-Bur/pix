@@ -8,6 +8,7 @@ import {
   type CandidateEvaluationQueue,
 } from "../execution/candidate-evaluation-pool.js"
 import type { OptimizationProfile } from "./optimization-profiles.js"
+import { reportBenchmarkProgress } from "./progress.js"
 import { derivePromotionEvidence } from "./promotion-evidence.js"
 import type {
   BenchmarkArtifact,
@@ -65,9 +66,10 @@ type SampleGroup = {
   readonly samples: readonly WeightSearchSample[]
 }
 
-const reportProgress = (message: string): void => {
-  process.stderr.write(`[retrieval benchmark] ${message}\n`)
-}
+const describeRouterJob = (job: RouterSearchJob): string =>
+  job.kind === "holdout"
+    ? `${job.model}/${job.fusion} ${job.strategy} fold ${job.fold}`
+    : `${job.model}/${job.fusion} fit-all`
 
 const runParallelSearch = <A>(
   operation: (signal: AbortSignal) => Promise<A>,
@@ -313,7 +315,7 @@ const runStaticFusionSearchForModel = (
   Effect.gen(function* () {
     const results: BenchmarkArtifact["fusionSearch"][number][] = []
     for (const fusion of config.fusionMethods) {
-      reportProgress(`${model}: selecting static ${fusion} fusion weights`)
+      reportBenchmarkProgress(`${model}: selecting static ${fusion} fusion weights`)
       for (const split of planSearchSplits(samples, config, groupedStrategy))
         results.push(
           yield* runParallelSearch((signal) =>
@@ -438,8 +440,16 @@ const runRouterSearchJobs = (
   searchOptions: BenchmarkSearchOptions,
   candidateQueue: CandidateEvaluationQueue | undefined,
   canParallelize: boolean,
-): Effect.Effect<readonly RouterSearchJobResult[], Error> =>
-  canParallelize
+): Effect.Effect<readonly RouterSearchJobResult[], Error> => {
+  const trackCompletion = (job: RouterSearchJob, result: RouterSearchJobResult) => {
+    completed += 1
+    reportBenchmarkProgress(
+      `router job ${completed}/${allRouterJobs.length} done: ${describeRouterJob(job)}`,
+    )
+    return result
+  }
+  let completed = 0
+  return canParallelize
     ? runParallelSearch((signal) =>
         Promise.all(
           allRouterJobs.map((job) =>
@@ -448,22 +458,25 @@ const runRouterSearchJobs = (
               workerCount: 0,
               evaluationQueue: candidateQueue,
               signal,
-            }),
+            }).then((result) => trackCompletion(job, result)),
           ),
         ),
       )
     : Effect.forEach(
         allRouterJobs,
-        (job) =>
-          runParallelSearch((signal) =>
+        (job) => {
+          reportBenchmarkProgress(`router job starting: ${describeRouterJob(job)}`)
+          return runParallelSearch((signal) =>
             runRouterSearchJob(job, optimizationProfile, {
               ...searchOptions,
               workerCount: 0,
               signal,
-            }),
-          ),
+            }).then((result) => trackCompletion(job, result)),
+          )
+        },
         { concurrency: 1 },
       )
+}
 
 const runEvidenceRouterSearchStage = (
   config: BenchmarkSearchConfig,
@@ -508,8 +521,9 @@ const runEvidenceRouterSearchStage = (
       )
       candidateQueueStartupDurationMs = performance.now() - queueStartedAt
     }
-    reportProgress(
-      `running ${allRouterJobs.length} evidence-router jobs with ` +
+    reportBenchmarkProgress(
+      `running ${allRouterJobs.length} evidence-router jobs ` +
+        `(${routerJobs.length} holdout, ${recommendedJobs.length} fit-all) with ` +
         `${candidateQueue?.workerCount ?? 0} shared candidate workers`,
     )
     const routerResults = yield* Effect.ensuring(

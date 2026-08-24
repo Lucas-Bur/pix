@@ -42,6 +42,7 @@ import {
   resolveGoldTargets,
   successAt,
 } from "./metrics.js"
+import { reportBenchmarkProgress } from "./progress.js"
 import { fuseVariant, rankLexicalChannels, RETRIEVAL_VARIANTS } from "./ranking.js"
 import type { BenchmarkArtifact, CorpusManifest, QueryKind, QueryMeasurement } from "./types.js"
 import type { WeightSearchSample } from "./weight-search.js"
@@ -511,6 +512,9 @@ const collectRepositoryMeasurements = (
       countTokens: bound.embedder.countTokens,
       onDiagnostic: () => Effect.void,
     })
+    reportBenchmarkProgress(
+      `${manifest.id}: prepared ${corpus.chunks.length} chunks on device ${bound.device}; embedding now`,
+    )
     const targetsByQuestion: (readonly ReadonlySet<number>[])[] = []
     for (const question of manifest.questions) {
       const targets = resolveGoldTargets(
@@ -653,6 +657,10 @@ export const collectBenchmarkData = (
     let chunkTokens: number | undefined
 
     for (const manifest of manifests) {
+      reportBenchmarkProgress(
+        `preparing repository ${manifest.id} (${manifest.repository}@${manifest.revision}) ` +
+          `for ${models.length} model(s)`,
+      )
       const repositoryData = yield* collectRepositoryMeasurements(
         manifest,
         models,
@@ -666,6 +674,9 @@ export const collectBenchmarkData = (
         )
       }
       chunkTokens = repositoryData.chunkTokens
+      reportBenchmarkProgress(
+        `${manifest.id}: done (${repositoryData.measurements.length} measurements)`,
+      )
       repositories.push(repositoryData.repository)
       embeddingRuns.push(...repositoryData.embeddingRuns)
       sparseEmbeddingRuns.push(...repositoryData.sparseEmbeddingRuns)

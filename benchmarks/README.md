@@ -117,6 +117,7 @@ $env:PIX_BENCH_REPOS = "fd"
 $env:PIX_BENCH_MODELS = "Xenova/all-MiniLM-L6-v2"
 $env:PIX_BENCH_OPTIMIZATION_PROFILE = "search-priority"
 $env:PIX_BENCH_ROUTER_STRATEGY = "proxy-promotion"
+$env:PIX_BENCH_SCOUT_SEQUENCE = "halton"
 vp run bench:retrieval:validate
 ```
 
@@ -166,6 +167,10 @@ The router search defaults to `proxy-promotion`. Set `PIX_BENCH_ROUTER_STRATEGY`
 lexicographic `R@20`, `R@10`, `Context@4k`, and MRR comparator plus its `halvingKeepFactor`.
 Both strategies use the same candidate evaluator and native worker queue. Their final archive selection
 is objective-specific, so Direct and Reranker rows are real comparisons rather than repeated labels.
+
+The global scouts default to a deterministic Halton sequence. Set `PIX_BENCH_SCOUT_SEQUENCE` to
+`sobol` or `random` to seed the beam differently; comparisons must keep the strategy, scout count,
+seeds, folds, and objectives identical.
 
 The Jina code model cannot embed Effect's longest 7,103-token AST chunk on the tested DML GPU even as
 a single-item batch. Do not silently truncate, re-chunk only one model, or mix CPU and GPU vectors to
@@ -233,8 +238,11 @@ guardrails. Historical RRF remains an explicit diagnostic and rollback compariso
 
 Static weight search treats the four authored query forms as separate query-form-informed strata. Evidence-router
 search deliberately combines all forms: it does not receive `identifier`, `searchPhrase`,
-`naturalQuestion`, or `agentTask` labels. Search starts from 64 deterministic Halton scout points and a
-six-candidate beam. The current search uses one-stage proxy promotion: each candidate pool is first scored on a
+`naturalQuestion`, or `agentTask` labels. Search starts from 64 deterministic global scout points and a
+six-candidate beam. The scout sequence is selectable with `PIX_BENCH_SCOUT_SEQUENCE=halton|sobol|random`
+and defaults to `halton`; the selection is recorded in every artifact. Sobol uses a deterministic
+Gray-code construction with direction numbers derived from primitive polynomials over GF(2) and makes no
+global-optimality claim. The current search uses one-stage proxy promotion: each candidate pool is first scored on a
 deterministic 25% proxy sample, stratified by repository and query form with a 32-sample minimum, then
 up to eight beam widths are evaluated on the full development set. It is not called successive halving because
 there is only one proxy fidelity stage. Schema 16 keeps one shared search

@@ -2,9 +2,11 @@ import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
 import { assignGroupedFolds } from "../retrieval/evaluation/folds.js"
+import { resolveScoutSequence } from "../retrieval/evaluation/scout-sequence.js"
 import {
   ROUTER_OBJECTIVES,
   ROUTER_SEARCH_STRATEGIES,
+  routerSearchStrategyFor,
   type BenchmarkProfile,
 } from "../retrieval/evaluation/types.js"
 import { resolveRouterSearchStrategy, runRetrievalBenchmark } from "../retrieval/runner.js"
@@ -103,9 +105,13 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.evaluationCases.every(({ groundTruth }) => groundTruth.length > 0)).toBe(true)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(26)
+    expect(artifact.schemaVersion).toBe(27)
+    expect(artifact.scoutSequence).toBe(resolveScoutSequence(process.env.PIX_BENCH_SCOUT_SEQUENCE))
     expect(artifact.searchStrategy).toEqual(
-      ROUTER_SEARCH_STRATEGIES[resolveRouterSearchStrategy(process.env.PIX_BENCH_ROUTER_STRATEGY)],
+      routerSearchStrategyFor(
+        resolveScoutSequence(process.env.PIX_BENCH_SCOUT_SEQUENCE),
+        resolveRouterSearchStrategy(process.env.PIX_BENCH_ROUTER_STRATEGY),
+      ),
     )
     expect(artifact.timings.totalDurationMs).toBeGreaterThan(0)
     expect(Object.values(artifact.timings).every((duration) => duration >= 0)).toBe(true)
@@ -207,10 +213,13 @@ it("shuffles intent groups deterministically before assigning folds", () => {
 it("resolves the selectable router search strategies", () => {
   expect(resolveRouterSearchStrategy(undefined)).toBe("proxy-promotion")
   expect(resolveRouterSearchStrategy("successive-halving")).toBe("successive-halving")
-  expect(ROUTER_SEARCH_STRATEGIES["successive-halving"]).toMatchObject({
+  expect(routerSearchStrategyFor("halton", "successive-halving")).toMatchObject({
     algorithm: "halton-global-scout-elitist-beam-successive-halving",
     halvingKeepFactor: 8,
   })
+  expect(routerSearchStrategyFor("sobol", "proxy-promotion").algorithm).toBe(
+    "sobol-global-scout-elitist-beam-proxy-promotion",
+  )
   expect("proxyPromotionFactor" in ROUTER_SEARCH_STRATEGIES["successive-halving"]).toBe(false)
   expect(() => resolveRouterSearchStrategy("unknown")).toThrow(
     "Unknown PIX_BENCH_ROUTER_STRATEGY value: unknown",

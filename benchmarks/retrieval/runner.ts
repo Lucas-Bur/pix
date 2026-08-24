@@ -13,11 +13,14 @@ import {
   OPTIMIZATION_PROFILES,
   type OptimizationProfile,
 } from "./evaluation/optimization-profiles.js"
+import { reportBenchmarkProgress } from "./evaluation/progress.js"
 import { renderMarkdownReport } from "./evaluation/report.js"
+import { resolveScoutSequence, type ScoutSequenceName } from "./evaluation/scout-sequence.js"
 import { runBenchmarkSearch, type BenchmarkSearchConfig } from "./evaluation/search.js"
 import {
   DEFAULT_ROUTER_SEARCH_STRATEGY,
   ROUTER_SEARCH_STRATEGIES,
+  routerSearchStrategyFor,
   type BenchmarkArtifact,
   type BenchmarkProfile,
   type CorpusManifest,
@@ -137,6 +140,12 @@ const selectRouterSearchStrategy = (): Effect.Effect<RouterSearchStrategyName, E
     catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
   })
 
+const selectScoutSequence = (): Effect.Effect<ScoutSequenceName, Error> =>
+  Effect.try({
+    try: () => resolveScoutSequence(process.env.PIX_BENCH_SCOUT_SEQUENCE),
+    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+  })
+
 const writeArtifact = (artifact: BenchmarkArtifact): Effect.Effect<string, Error> =>
   Effect.gen(function* () {
     const outputDirectory = path.resolve("benchmarks/results")
@@ -174,6 +183,7 @@ export const runRetrievalBenchmark = (
         }
     const optimizationProfile = yield* selectOptimizationProfile()
     const routerSearchStrategy = yield* selectRouterSearchStrategy()
+    const scoutSequence = yield* selectScoutSequence()
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
     const manifests = yield* selectManifests(yield* loadCorpusManifests(), profile)
@@ -190,6 +200,10 @@ export const runRetrievalBenchmark = (
       samplesByModel,
       retrievalDurationMs,
     } = collected
+    reportBenchmarkProgress(
+      `collected ${measurements.length} measurements across ${repositories.length} repositories ` +
+        `(${models.join(", ")}); starting quality search`,
+    )
     const search = yield* runBenchmarkSearch(
       config,
       sampleGroups,
@@ -197,8 +211,9 @@ export const runRetrievalBenchmark = (
       groupedStrategy,
       optimizationProfile,
       serialSearch,
-      { ...searchOptions, routerSearchStrategy },
+      { ...searchOptions, routerSearchStrategy, scoutSequence },
     )
+    reportBenchmarkProgress("quality search finished; writing artifact")
 
     const embeddingDurationMs = embeddingRuns.reduce(
       (sum, run) => sum + run.chunkEmbeddingDurationMs + run.queryEmbeddingDurationMs,
@@ -210,8 +225,9 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 26,
+      schemaVersion: 27,
       benchmarkProfile: profile,
+      scoutSequence,
       optimizationProfile,
       validationProtocol: {
         selection: "development-only",
@@ -226,7 +242,7 @@ export const runRetrievalBenchmark = (
         },
       },
       generatedAt: new Date().toISOString(),
-      searchStrategy: ROUTER_SEARCH_STRATEGIES[routerSearchStrategy],
+      searchStrategy: routerSearchStrategyFor(scoutSequence, routerSearchStrategy),
       timings: {
         totalDurationMs: performance.now() - benchmarkStartedAt,
         corpusPreparationDurationMs,

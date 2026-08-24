@@ -5,6 +5,7 @@ import type {
   FusionMethod as ProductionFusionMethod,
 } from "../../../src/domain/retrieval.js"
 import type { OptimizationProfile } from "./optimization-profiles.js"
+import type { ScoutSequenceName } from "./scout-sequence.js"
 
 /** Benchmark repository size band used for report segmentation. */
 const RepositorySizeSchema = Schema.Literals(["small", "medium", "large"])
@@ -67,10 +68,9 @@ export const ROUTER_OBJECTIVES = [
 ] as const
 export type RouterObjective = (typeof ROUTER_OBJECTIVES)[number]
 
-/** Versioned evidence-router search strategies recorded in benchmark artifacts. */
+/** Versioned evidence-router search strategy parameters recorded in benchmark artifacts. */
 export const ROUTER_SEARCH_STRATEGIES = {
   "proxy-promotion": {
-    algorithm: "halton-global-scout-elitist-beam-proxy-promotion",
     globalScouts: 64,
     beamWidth: 6,
     coordinatePasses: 2,
@@ -85,7 +85,6 @@ export const ROUTER_SEARCH_STRATEGIES = {
     tieBreaking: "guardrails>objective>complexity>stable-key",
   },
   "successive-halving": {
-    algorithm: "halton-global-scout-elitist-beam-successive-halving",
     globalScouts: 64,
     beamWidth: 6,
     coordinatePasses: 2,
@@ -97,10 +96,27 @@ export const ROUTER_SEARCH_STRATEGIES = {
 } as const
 
 export type RouterSearchStrategyName = keyof typeof ROUTER_SEARCH_STRATEGIES
-export type RouterSearchStrategy = (typeof ROUTER_SEARCH_STRATEGIES)[RouterSearchStrategyName]
+
+/** Strategy parameters joined with the selected global-scout sequence name. */
+export type RouterSearchStrategy =
+  | ({ readonly algorithm: string } & (typeof ROUTER_SEARCH_STRATEGIES)["proxy-promotion"])
+  | ({ readonly algorithm: string } & (typeof ROUTER_SEARCH_STRATEGIES)["successive-halving"])
+
+/** Build the recorded search strategy for one scout sequence and strategy name. */
+export const routerSearchStrategyFor = (
+  scoutSequence: ScoutSequenceName,
+  name: RouterSearchStrategyName,
+): RouterSearchStrategy => ({
+  algorithm: `${scoutSequence}-global-scout-elitist-beam-${name}`,
+  ...ROUTER_SEARCH_STRATEGIES[name],
+})
 
 export const DEFAULT_ROUTER_SEARCH_STRATEGY: RouterSearchStrategyName = "proxy-promotion"
-export const ROUTER_SEARCH_STRATEGY = ROUTER_SEARCH_STRATEGIES[DEFAULT_ROUTER_SEARCH_STRATEGY]
+/** Default recorded strategy: Halton scouts with proxy promotion. */
+export const ROUTER_SEARCH_STRATEGY = routerSearchStrategyFor(
+  "halton",
+  DEFAULT_ROUTER_SEARCH_STRATEGY,
+)
 
 /** Runtime/coverage trade-off selected for one benchmark invocation. */
 export type BenchmarkProfile = "smoke" | "develop" | "validate" | "full"
@@ -437,9 +453,11 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 26
+  readonly schemaVersion: 27
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
+  /** Global-scout sequence used to seed the router beam search. */
+  readonly scoutSequence: ScoutSequenceName
   /** Versioned objective profile used for candidate selection and aggregate metrics. */
   readonly optimizationProfile: OptimizationProfile
   readonly validationProtocol: ValidationProtocol
