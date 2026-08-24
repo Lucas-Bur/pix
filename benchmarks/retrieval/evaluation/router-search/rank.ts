@@ -124,6 +124,37 @@ const buildRandomRouterSeeds = (
   )
 }
 
+/**
+ * Hand-authored corner hypotheses: every parameter at its lowest level except one at its highest
+ * (one per parameter), plus the all-minimum and all-maximum corners.
+ */
+export const buildHypothesisRouterSeeds = (
+  baseSeeds: readonly EvidenceRouterConfig[],
+  parameters: readonly RouterParameter[],
+): readonly EvidenceRouterConfig[] => {
+  if (baseSeeds.length === 0) return []
+  const baseSeed = baseSeeds[0]!
+  const corner = (except: number | undefined): EvidenceRouterConfig =>
+    parameters.reduce((config, parameter, index) => {
+      const values = parameter.values
+      return parameter.update(config, values[index === except ? values.length - 1 : 0]!)
+    }, baseSeed)
+  return [
+    ...parameters.map((_, index) => corner(index)),
+    corner(undefined),
+    ...baseSeeds.map((seed) =>
+      parameters.reduce(
+        (config, parameter) =>
+          parameter.update(config, parameter.values[parameter.values.length - 1]!),
+        seed,
+      ),
+    ),
+  ]
+}
+/** Beam width for one coordinate round: wide at first, halving towards the target width. */
+export const beamWidthForRound = (round: number, totalRounds: number, beamWidth: number): number =>
+  Math.max(beamWidth, beamWidth * 2 ** (totalRounds - 1 - round))
+
 export interface SearchEvaluationStats {
   rawCandidates: number
   uniqueCandidates: number

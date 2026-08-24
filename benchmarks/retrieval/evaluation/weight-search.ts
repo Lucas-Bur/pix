@@ -58,7 +58,9 @@ import {
 } from "./router-search/objectives.js"
 import {
   PROXY_PROMOTION_MODE,
+  beamWidthForRound,
   buildGlobalRouterSeeds,
+  buildHypothesisRouterSeeds,
   buildSearchDiagnostics,
   rankRouterCandidates,
   resolveRouterSearchMode,
@@ -117,6 +119,10 @@ interface SearchOptions extends CandidateEvaluationPoolOptions {
   readonly routerSearchStrategy?: RouterSearchStrategyName
   /** Benchmark-only global-scout sequence; defaults to Halton. */
   readonly scoutSequence?: ScoutSequenceName
+  /** Add hand-authored corner hypothesis seeds to the beam starting points. */
+  readonly seedHypotheses?: boolean
+  /** Start the coordinate rounds with a wider beam that halves towards the target width. */
+  readonly beamSchedule?: "fixed" | "decaying"
 }
 
 /** Options for benchmark search APIs without colliding with the product query options type. */
@@ -820,6 +826,8 @@ const selectBestEvidenceRouter = async (
   proxyPool: CandidateEvaluationPool,
   mode: RouterSearchMode,
   scoutSequence: ScoutSequenceName,
+  seedHypotheses: boolean = false,
+  beamSchedule: "fixed" | "decaying" = "fixed",
 ): Promise<{
   readonly selections: readonly EvidenceRouterSelection[]
   readonly productionQuality: QualitySummary
@@ -887,12 +895,17 @@ const selectBestEvidenceRouter = async (
       })()
     : undefined
   const beamSearchStartedAt = performance.now()
-  let beam = await rankRouterCandidates(
-    searchContext,
-    [...baseSeeds, ...buildGlobalRouterSeeds(baseSeeds, parameters, scoutSequence)],
-    SEARCH_BEAM_WIDTH,
-    baseSeeds,
-  )
+  const seedConfigs = [
+    ...baseSeeds,
+    ...buildGlobalRouterSeeds(baseSeeds, parameters, scoutSequence),
+    ...(seedHypotheses ? buildHypothesisRouterSeeds(baseSeeds, parameters) : []),
+  ]
+  const totalRounds = SEARCH_PASSES + 1
+  const roundWidth = (round: number): number =>
+    beamSchedule === "decaying"
+      ? beamWidthForRound(round, totalRounds, SEARCH_BEAM_WIDTH)
+      : SEARCH_BEAM_WIDTH
+  let beam = await rankRouterCandidates(searchContext, seedConfigs, roundWidth(0), baseSeeds)
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     const orderedParameters = pass % 2 === 0 ? parameters : [...parameters].reverse()
     for (const parameter of orderedParameters) {
@@ -905,7 +918,7 @@ const selectBestEvidenceRouter = async (
             parameter.values.map((value) => parameter.update(candidate.config, value)),
           ),
         ],
-        SEARCH_BEAM_WIDTH,
+        roundWidth(pass + 1),
         beam.map((candidate) => candidate.config),
       )
     }
@@ -1206,6 +1219,8 @@ const withEvidencePools = async <T>(
       proxyPool,
       resolveRouterSearchMode(options.routerSearchStrategy ?? "proxy-promotion"),
       options.scoutSequence ?? DEFAULT_SCOUT_SEQUENCE,
+      options.seedHypotheses ?? false,
+      options.beamSchedule ?? "fixed",
     )
     return await operation(selection, fullPool)
   } finally {
