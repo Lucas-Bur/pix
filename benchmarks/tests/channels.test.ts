@@ -23,9 +23,9 @@ import {
   rankLexicalChannels,
   RETRIEVAL_VARIANTS,
 } from "../retrieval/evaluation/ranking.js"
+import { compareObjectiveQuality } from "../retrieval/evaluation/router-search/objectives.js"
 import { ROUTER_OBJECTIVES, type QualitySummary } from "../retrieval/evaluation/types.js"
 import {
-  compareObjectiveQuality,
   optimizeEvidenceRouter,
   optimizeWeights,
   selectEligibleCandidate,
