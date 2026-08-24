@@ -19,6 +19,7 @@ import { resolveScoutSequence, type ScoutSequenceName } from "./evaluation/scout
 import { runBenchmarkSearch, type BenchmarkSearchConfig } from "./evaluation/search.js"
 import {
   DEFAULT_ROUTER_SEARCH_STRATEGY,
+  DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS,
   ROUTER_SEARCH_STRATEGY_NAMES,
   routerSearchStrategyFor,
   type BenchmarkArtifact,
@@ -163,6 +164,22 @@ const selectBeamSchedule = (): Effect.Effect<"fixed" | "decaying", Error> =>
     catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
   })
 
+const selectCoordinatePasses = (): Effect.Effect<number, Error> =>
+  Effect.try({
+    try: () => {
+      const requested = process.env.PIX_BENCH_COORDINATE_PASSES
+      if (requested === undefined) {
+        return DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.coordinatePasses
+      }
+      const parsed = Number.parseInt(requested, 10)
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        throw new Error(`PIX_BENCH_COORDINATE_PASSES must be an integer >= 1, got ${requested}`)
+      }
+      return parsed
+    },
+    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+  })
+
 const writeArtifact = (artifact: BenchmarkArtifact): Effect.Effect<string, Error> =>
   Effect.gen(function* () {
     const outputDirectory = path.resolve("benchmarks/results")
@@ -203,6 +220,7 @@ export const runRetrievalBenchmark = (
     const scoutSequence = yield* selectScoutSequence()
     const seedHypotheses = selectSeedHypotheses()
     const beamSchedule = yield* selectBeamSchedule()
+    const coordinatePasses = yield* selectCoordinatePasses()
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
     const manifests = yield* selectManifests(yield* loadCorpusManifests(), profile)
@@ -236,6 +254,7 @@ export const runRetrievalBenchmark = (
         scoutSequence,
         seedHypotheses,
         beamSchedule,
+        coordinatePasses,
       },
     )
     reportBenchmarkProgress("quality search finished; writing artifact")
@@ -250,11 +269,12 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 28,
+      schemaVersion: 29,
       benchmarkProfile: profile,
       scoutSequence,
       seedHypotheses,
       beamSchedule,
+      coordinatePasses,
       optimizationProfile,
       validationProtocol: {
         selection: "development-only",
