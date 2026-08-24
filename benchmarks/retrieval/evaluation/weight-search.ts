@@ -1,15 +1,10 @@
 import type { Chunk } from "../../../src/domain/chunk.js"
 import type { RankedChunk } from "../../../src/domain/ports.js"
 import {
-  decodeEvidenceRouterConfig,
   PRODUCTION_COMPATIBILITY_CONFIG,
-  type ChannelCoefficients,
   type ChannelWeights,
-  type EvidenceRouterConfig as DecodedEvidenceRouterConfig,
   type EvidenceRouterParameters as EvidenceRouterConfig,
   type FusionMethod,
-  ZERO_CHANNEL_COEFFICIENTS,
-  CHANNEL_NAMES,
   type ChannelName,
   type ChannelRankings,
 } from "../../../src/domain/retrieval.js"
@@ -38,6 +33,30 @@ import { SEARCH_PRIORITY_PROFILE, type OptimizationProfile } from "./optimizatio
 import { prepareFusion, type PreparedFusionEvaluator } from "./prepared-fusion.js"
 import { buildGuardrailBlockers } from "./promotion-evidence.js"
 import {
+  CHANNELS,
+  RANDOM_SEARCH_SEED,
+  SEARCH_BEAM_WIDTH,
+  SEARCH_CANDIDATE_DEPTH,
+  SEARCH_GLOBAL_SCOUTS,
+  SEARCH_HALVING_KEEP_FACTOR,
+  SEARCH_PASSES,
+  SEARCH_PROXY_MINIMUM_SAMPLES,
+  SEARCH_PROXY_PROMOTION_FACTOR,
+  SEARCH_PROXY_SAMPLE_FRACTION,
+  STATIC_FINE_WEIGHT_LEVELS,
+  WEIGHT_LEVELS,
+  benchmarkRouterConfig,
+  emptyRouterConfig,
+  normalizeWeights,
+  routerComplexity,
+  routerKey,
+  routerParameters,
+  weightsKey,
+  withWeight,
+  type RouterCandidate,
+  type RouterParameter,
+} from "./router-search/config-space.js"
+import {
   OBJECTIVE_GUARDRAILS,
   SEARCH_OBJECTIVES,
   compareObjectiveQuality,
@@ -52,9 +71,6 @@ import {
   type ScoutSequenceName,
 } from "./scouts/index.js"
 import {
-  DEFAULT_PROXY_PROMOTION_STRATEGY,
-  DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS,
-  DEFAULT_SUCCESSIVE_HALVING_STRATEGY,
   ROUTER_OBJECTIVES,
   type RouterSearchStrategyName,
   type EvidenceRouterSearchResult,
@@ -72,22 +88,6 @@ import {
   type SearchBaselineComparison,
   type WeightSearchResult,
 } from "./types.js"
-
-const CHANNELS: readonly ChannelName[] = CHANNEL_NAMES
-const WEIGHT_LEVELS = [0, 0.5, 1, 2] as const
-const STATIC_FINE_WEIGHT_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
-const DYNAMIC_BASE_LEVELS = Array.from({ length: 10 }, (_, index) => (index + 1) / 10)
-const INFLUENCE_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
-const SIGNED_FINE_LEVELS = Array.from({ length: 21 }, (_, index) => (index - 10) / 10)
-const SEARCH_CANDIDATE_DEPTH = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.candidateDepth
-const SEARCH_BEAM_WIDTH = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.beamWidth
-const SEARCH_PASSES = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.coordinatePasses
-const SEARCH_GLOBAL_SCOUTS = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.globalScouts
-const SEARCH_PROXY_SAMPLE_FRACTION = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.proxySampleFraction
-const SEARCH_PROXY_MINIMUM_SAMPLES = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.proxyMinimumSamples
-const SEARCH_PROXY_PROMOTION_FACTOR = DEFAULT_PROXY_PROMOTION_STRATEGY.proxyPromotionFactor
-const SEARCH_HALVING_KEEP_FACTOR = DEFAULT_SUCCESSIVE_HALVING_STRATEGY.halvingKeepFactor
-const RANDOM_SEARCH_SEED = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.seed || 1
 
 /** Precomputed query evidence used for cheap fusion and weight experiments. */
 export interface WeightSearchSample {
@@ -568,21 +568,6 @@ interface WeightCandidate {
   readonly quality: QualitySummary
 }
 
-const normalizeWeights = (weights: ChannelWeights): ChannelWeights => {
-  const max = Math.max(...CHANNELS.map((channel) => weights[channel]))
-  if (max === 0) return weights
-  return {
-    identity: weights.identity / max,
-    camelcase: weights.camelcase / max,
-    bm25: weights.bm25 / max,
-    dense: weights.dense / max,
-    sparse: weights.sparse / max,
-  }
-}
-
-const weightsKey = (weights: ChannelWeights): string =>
-  CHANNELS.map((channel) => weights[channel].toFixed(4)).join(":")
-
 const uniqueWeightCandidates = (
   candidates: readonly ChannelWeights[],
 ): readonly (readonly [string, ChannelWeights])[] => {
@@ -647,12 +632,6 @@ const rankWeightCandidates = async (
   )
   return sortWeightCandidates(unique, qualityCache, limit, objective, baseline, profile, mode)
 }
-
-const withWeight = (weights: ChannelWeights, channel: ChannelName, value: number): ChannelWeights =>
-  normalizeWeights({
-    ...weights,
-    [channel]: value,
-  })
 
 const coordinateWeightCandidates = (
   beam: readonly WeightCandidate[],
@@ -748,116 +727,6 @@ const selectStaticWeights = (
 ) => selectBestWeights(pool, mode, objective, productionQuality, profile)
 
 /** Config field containing one coefficient per retrieval channel. */
-type InfluenceName =
-  | "scoreInfluence"
-  | "geometryInfluence"
-  | "termCoverageInfluence"
-  | "pairwiseAgreementInfluence"
-  | "denseConfidenceInfluence"
-  | "identifierInfluence"
-  | "queryLengthInfluence"
-
-/** One coordinate and its discrete values in the fine-grained router search. */
-interface RouterParameter {
-  readonly name: string
-  readonly values: readonly number[]
-  readonly update: (config: EvidenceRouterConfig, value: number) => EvidenceRouterConfig
-}
-
-/** Evidence-router candidate and its development quality. */
-interface RouterCandidate {
-  readonly config: EvidenceRouterConfig
-  readonly quality: QualitySummary
-}
-
-const positiveBaseWeights = (weights: ChannelWeights): ChannelWeights =>
-  normalizeWeights({
-    identity: Math.max(DYNAMIC_BASE_LEVELS[0], weights.identity),
-    camelcase: Math.max(DYNAMIC_BASE_LEVELS[0], weights.camelcase),
-    bm25: Math.max(DYNAMIC_BASE_LEVELS[0], weights.bm25),
-    dense: Math.max(DYNAMIC_BASE_LEVELS[0], weights.dense),
-    sparse: Math.max(DYNAMIC_BASE_LEVELS[0], weights.sparse),
-  })
-
-const emptyRouterConfig = (baseWeights: ChannelWeights): EvidenceRouterConfig => ({
-  baseWeights: positiveBaseWeights(baseWeights),
-  scoreInfluence: ZERO_CHANNEL_COEFFICIENTS,
-  geometryInfluence: ZERO_CHANNEL_COEFFICIENTS,
-  termCoverageInfluence: ZERO_CHANNEL_COEFFICIENTS,
-  pairwiseAgreementInfluence: ZERO_CHANNEL_COEFFICIENTS,
-  denseConfidenceInfluence: ZERO_CHANNEL_COEFFICIENTS,
-  identifierInfluence: ZERO_CHANNEL_COEFFICIENTS,
-  queryLengthInfluence: ZERO_CHANNEL_COEFFICIENTS,
-})
-
-const benchmarkRouterConfig = (
-  fusion: FusionMethod,
-  config: EvidenceRouterConfig,
-): DecodedEvidenceRouterConfig =>
-  decodeEvidenceRouterConfig({
-    fusion,
-    candidateDepth: SEARCH_CANDIDATE_DEPTH,
-    ...config,
-  })
-
-const withInfluence = (
-  config: EvidenceRouterConfig,
-  influence: InfluenceName,
-  channel: ChannelName,
-  value: number,
-): EvidenceRouterConfig => {
-  const coefficients = { ...config[influence], [channel]: value }
-  switch (influence) {
-    case "scoreInfluence":
-      return { ...config, scoreInfluence: coefficients }
-    case "geometryInfluence":
-      return { ...config, geometryInfluence: coefficients }
-    case "termCoverageInfluence":
-      return { ...config, termCoverageInfluence: coefficients }
-    case "pairwiseAgreementInfluence":
-      return { ...config, pairwiseAgreementInfluence: coefficients }
-    case "denseConfidenceInfluence":
-      return { ...config, denseConfidenceInfluence: coefficients }
-    case "identifierInfluence":
-      return { ...config, identifierInfluence: coefficients }
-    case "queryLengthInfluence":
-      return { ...config, queryLengthInfluence: coefficients }
-  }
-}
-
-const routerParameters = (): readonly RouterParameter[] => {
-  const parameters: RouterParameter[] = CHANNELS.map((channel) => ({
-    name: `baseWeights.${channel}`,
-    values: DYNAMIC_BASE_LEVELS,
-    update: (config, value) => ({
-      ...config,
-      baseWeights: withWeight(config.baseWeights, channel, value),
-    }),
-  }))
-  const influences: readonly {
-    readonly name: InfluenceName
-    readonly values: readonly number[]
-  }[] = [
-    { name: "scoreInfluence", values: INFLUENCE_LEVELS },
-    { name: "geometryInfluence", values: INFLUENCE_LEVELS },
-    { name: "termCoverageInfluence", values: INFLUENCE_LEVELS },
-    { name: "pairwiseAgreementInfluence", values: INFLUENCE_LEVELS },
-    { name: "denseConfidenceInfluence", values: INFLUENCE_LEVELS },
-    { name: "identifierInfluence", values: SIGNED_FINE_LEVELS },
-    { name: "queryLengthInfluence", values: SIGNED_FINE_LEVELS },
-  ]
-  for (const { name, values } of influences) {
-    for (const channel of CHANNELS) {
-      parameters.push({
-        name: `${name}.${channel}`,
-        values,
-        update: (config, value) => withInfluence(config, name, channel, value),
-      })
-    }
-  }
-  return parameters
-}
-
 const buildSearchDiagnostics = (
   parameters: readonly RouterParameter[],
   stats: SearchEvaluationStats,
@@ -927,35 +796,6 @@ const buildRandomRouterSeeds = (
     ),
   )
 }
-
-const coefficientsKey = (coefficients: ChannelCoefficients): string =>
-  CHANNELS.map((channel) => (coefficients[channel] ?? 0).toFixed(2)).join(":")
-
-const routerKey = (config: EvidenceRouterConfig): string =>
-  [
-    weightsKey(config.baseWeights),
-    coefficientsKey(config.scoreInfluence),
-    coefficientsKey(config.geometryInfluence),
-    coefficientsKey(config.termCoverageInfluence),
-    coefficientsKey(config.pairwiseAgreementInfluence),
-    coefficientsKey(config.denseConfidenceInfluence),
-    coefficientsKey(config.identifierInfluence),
-    coefficientsKey(config.queryLengthInfluence),
-  ].join("|")
-
-const routerComplexity = (config: EvidenceRouterConfig): number =>
-  CHANNELS.reduce(
-    (sum, channel) =>
-      sum +
-      Math.abs(config.scoreInfluence[channel]) +
-      Math.abs(config.geometryInfluence[channel]) +
-      Math.abs(config.termCoverageInfluence[channel]) +
-      Math.abs(config.pairwiseAgreementInfluence[channel]) +
-      Math.abs(config.denseConfidenceInfluence[channel]) +
-      Math.abs(config.identifierInfluence[channel]) +
-      Math.abs(config.queryLengthInfluence[channel]),
-    0,
-  )
 
 interface SearchEvaluationStats {
   rawCandidates: number
