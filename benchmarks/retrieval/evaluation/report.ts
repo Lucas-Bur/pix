@@ -17,6 +17,17 @@ import type {
 
 const CHANNELS = CHANNEL_NAMES
 
+/** Render one Markdown table from headers, a separator spec, and one row per entry. */
+const renderTable = (
+  headers: readonly string[],
+  separators: readonly string[],
+  rows: readonly (readonly string[])[],
+): string[] => [
+  `| ${headers.join(" | ")} |`,
+  `| ${separators.join(" | ")} |`,
+  ...rows.map((row) => `| ${row.join(" | ")} |`),
+]
+
 const average = (rows: readonly QueryMeasurement[], select: (row: QueryMeasurement) => number) =>
   rows.reduce((sum, row) => sum + select(row), 0) / rows.length
 
@@ -155,19 +166,49 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     "Compute timings exclude JSON and Markdown artifact serialization.",
     "",
-    "| Total | Corpus preparation | Embedding | Retrieval | Weight search | Fusion search | Router search | Candidate queue startup | Candidate queue shutdown |",
-    "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-    `| ${duration(artifact.timings.totalDurationMs)} | ${duration(artifact.timings.corpusPreparationDurationMs)} | ${duration(artifact.timings.embeddingDurationMs)} | ${duration(artifact.timings.retrievalDurationMs)} | ${duration(artifact.timings.weightSearchDurationMs)} | ${duration(artifact.timings.fusionSearchDurationMs)} | ${duration(artifact.timings.evidenceRouterSearchDurationMs)} | ${duration(artifact.timings.candidateQueueStartupDurationMs)} | ${duration(artifact.timings.candidateQueueShutdownDurationMs)} |`,
+    ...renderTable(
+      [
+        "Total",
+        "Corpus preparation",
+        "Embedding",
+        "Retrieval",
+        "Weight search",
+        "Fusion search",
+        "Router search",
+        "Candidate queue startup",
+        "Candidate queue shutdown",
+      ],
+      Array.from({ length: 9 }, () => "---:"),
+      [
+        [
+          duration(artifact.timings.totalDurationMs),
+          duration(artifact.timings.corpusPreparationDurationMs),
+          duration(artifact.timings.embeddingDurationMs),
+          duration(artifact.timings.retrievalDurationMs),
+          duration(artifact.timings.weightSearchDurationMs),
+          duration(artifact.timings.fusionSearchDurationMs),
+          duration(artifact.timings.evidenceRouterSearchDurationMs),
+          duration(artifact.timings.candidateQueueStartupDurationMs),
+          duration(artifact.timings.candidateQueueShutdownDurationMs),
+        ],
+      ],
+    ),
     "",
     "## Sparse Encoder",
     "",
     "The production SparseEmbedder creates document vectors and tokenizes queries. The production SQLite IndexStore persists postings and IDF in the in-memory benchmark database, then computes exact query scores.",
     "",
-    "| Repository | Model | Tokenizer | Batch | Chunk embedding | Query tokenization |",
-    "| --- | --- | --- | ---: | ---: | ---: |",
-    ...artifact.sparseEmbeddingRuns.map(
-      (run) =>
-        `| ${run.repository} | ${run.model} | ${run.tokenizerModel} | ${run.batchSize} | ${duration(run.chunkEmbeddingDurationMs)} | ${duration(run.queryTokenizationDurationMs)} |`,
+    ...renderTable(
+      ["Repository", "Model", "Tokenizer", "Batch", "Chunk embedding", "Query tokenization"],
+      ["---", "---", "---", "---:", "---:", "---:"],
+      artifact.sparseEmbeddingRuns.map((run) => [
+        run.repository,
+        run.model,
+        run.tokenizerModel,
+        String(run.batchSize),
+        duration(run.chunkEmbeddingDurationMs),
+        duration(run.queryTokenizationDurationMs),
+      ]),
     ),
     "",
     "| Repository | Model | Query form | Variant | R@5 | R@10 | R@20 | R@50 | NDCG@5 | NDCG@10 | NDCG@20 | NDCG@50 | S@10 | S@20 | MRR | Ctx@2k | Ctx@4k |",
