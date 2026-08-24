@@ -1,10 +1,16 @@
 import { CliError, Command } from "effect/unstable/cli"
 
 import { CliDisplayLive, JsonOutput } from "./cli-output.js"
-import { aliasCommand, runAliasShortcutCommand } from "./commands/alias.js"
+import {
+  aliasAddCommand,
+  aliasListCommand,
+  aliasRemoveCommand,
+  makeAliasCommand,
+  runAliasShortcutCommand,
+} from "./commands/alias.js"
 import { benchCommand } from "./commands/bench.js"
-import { cacheCommand } from "./commands/cache.js"
-import { configCommand } from "./commands/config.js"
+import { clearCacheCommand, makeCacheCommand } from "./commands/cache.js"
+import { healCommand, makeConfigCommand } from "./commands/config.js"
 import { indexCommand } from "./commands/index-cmd.js"
 import { initCommand } from "./commands/init.js"
 import { mcpCommand } from "./commands/mcp.js"
@@ -13,6 +19,12 @@ import { resetCommand } from "./commands/reset.js"
 import { statusCommand } from "./commands/status.js"
 import { loadLayer } from "./layers/load-layer.js"
 import { VERSION } from "./version.js"
+
+const aliasLayer = loadLayer(() => import("./layers/alias-layer.js").then((m) => m.AliasLayer))
+const configHealLayer = loadLayer(() =>
+  import("./layers/config-heal-layer.js").then((m) => m.ConfigHealLayer),
+)
+const cacheLayer = loadLayer(() => import("./layers/cache-layer.js").then((m) => m.CacheLayer))
 
 const rootCommand = Command.make(
   "pix",
@@ -43,20 +55,14 @@ export const pixCommand = rootCommand.pipe(
     benchCommand.pipe(
       Command.provide(loadLayer(() => import("./layers/bench-layer.js").then((m) => m.BenchLayer))),
     ),
-    configCommand.pipe(
-      Command.provide(
-        loadLayer(() => import("./layers/config-heal-layer.js").then((m) => m.ConfigHealLayer)),
-      ),
-    ),
-    aliasCommand.pipe(
-      Command.provide(loadLayer(() => import("./layers/alias-layer.js").then((m) => m.AliasLayer))),
-    ),
-    runAliasShortcutCommand.pipe(
-      Command.provide(loadLayer(() => import("./layers/alias-layer.js").then((m) => m.AliasLayer))),
-    ),
-    cacheCommand.pipe(
-      Command.provide(loadLayer(() => import("./layers/cache-layer.js").then((m) => m.CacheLayer))),
-    ),
+    makeConfigCommand([healCommand.pipe(Command.provide(configHealLayer))]),
+    makeAliasCommand([
+      aliasAddCommand.pipe(Command.provide(aliasLayer)),
+      aliasListCommand.pipe(Command.provide(aliasLayer)),
+      aliasRemoveCommand.pipe(Command.provide(aliasLayer)),
+    ]),
+    runAliasShortcutCommand.pipe(Command.provide(aliasLayer)),
+    makeCacheCommand([clearCacheCommand.pipe(Command.provide(cacheLayer))]),
     mcpCommand,
   ]),
   Command.provide(CliDisplayLive),
