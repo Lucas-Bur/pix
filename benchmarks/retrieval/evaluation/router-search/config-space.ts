@@ -49,6 +49,9 @@ export const normalizeWeights = (weights: ChannelWeights): ChannelWeights => {
 export const weightsKey = (weights: ChannelWeights): string =>
   CHANNELS.map((channel) => weights[channel].toFixed(4)).join(":")
 
+export const activeChannelsKey = (weights: ChannelWeights): string =>
+  CHANNELS.filter((channel) => weights[channel] > 0).join("+")
+
 export const withWeight = (
   weights: ChannelWeights,
   channel: ChannelName,
