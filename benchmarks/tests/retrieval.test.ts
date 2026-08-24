@@ -2,10 +2,10 @@ import { expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 
 import { assignGroupedFolds } from "../retrieval/evaluation/folds.js"
-import { resolveScoutSequence } from "../retrieval/evaluation/scout-sequence.js"
+import { resolveScoutSequence } from "../retrieval/evaluation/scouts/index.js"
 import {
+  DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS,
   ROUTER_OBJECTIVES,
-  ROUTER_SEARCH_STRATEGIES,
   routerSearchStrategyFor,
   type BenchmarkProfile,
 } from "../retrieval/evaluation/types.js"
@@ -214,13 +214,15 @@ it("resolves the selectable router search strategies", () => {
   expect(resolveRouterSearchStrategy(undefined)).toBe("proxy-promotion")
   expect(resolveRouterSearchStrategy("successive-halving")).toBe("successive-halving")
   expect(routerSearchStrategyFor("halton", "successive-halving")).toMatchObject({
+    kind: "successive-halving",
     algorithm: "halton-global-scout-elitist-beam-successive-halving",
     halvingKeepFactor: 8,
   })
-  expect(routerSearchStrategyFor("sobol", "proxy-promotion").algorithm).toBe(
-    "sobol-global-scout-elitist-beam-proxy-promotion",
-  )
-  expect("proxyPromotionFactor" in ROUTER_SEARCH_STRATEGIES["successive-halving"]).toBe(false)
+  const sobolStrategy = routerSearchStrategyFor("sobol", "proxy-promotion")
+  expect(sobolStrategy.algorithm).toBe("sobol-global-scout-elitist-beam-proxy-promotion")
+  expect(sobolStrategy.kind === "proxy-promotion" && sobolStrategy.proxyPromotionFactor).toBe(8)
+  expect(DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.kind).toBe("proxy-promotion")
+  expect(DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS).not.toHaveProperty("halvingKeepFactor")
   expect(() => resolveRouterSearchStrategy("unknown")).toThrow(
     "Unknown PIX_BENCH_ROUTER_STRATEGY value: unknown",
   )

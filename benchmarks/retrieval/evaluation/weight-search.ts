@@ -39,16 +39,15 @@ import { prepareFusion, type PreparedFusionEvaluator } from "./prepared-fusion.j
 import { buildGuardrailBlockers } from "./promotion-evidence.js"
 import {
   DEFAULT_SCOUT_SEQUENCE,
-  MAX_SOBOL_DIMENSIONS,
-  radicalInverse,
+  SCOUT_SEQUENCES,
   scoutLevelIndex,
-  sobolUnitPoint,
   type ScoutSequenceName,
-} from "./scout-sequence.js"
+} from "./scouts/index.js"
 import {
+  DEFAULT_PROXY_PROMOTION_STRATEGY,
+  DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS,
+  DEFAULT_SUCCESSIVE_HALVING_STRATEGY,
   ROUTER_OBJECTIVES,
-  ROUTER_SEARCH_STRATEGY,
-  ROUTER_SEARCH_STRATEGIES,
   type RouterSearchStrategyName,
   type EvidenceRouterSearchResult,
   type FusionSearchResult,
@@ -73,19 +72,15 @@ const STATIC_FINE_WEIGHT_LEVELS = Array.from({ length: 11 }, (_, index) => index
 const DYNAMIC_BASE_LEVELS = Array.from({ length: 10 }, (_, index) => (index + 1) / 10)
 const INFLUENCE_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
 const SIGNED_FINE_LEVELS = Array.from({ length: 21 }, (_, index) => (index - 10) / 10)
-const SEARCH_CANDIDATE_DEPTH = ROUTER_SEARCH_STRATEGY.candidateDepth
-const SEARCH_BEAM_WIDTH = ROUTER_SEARCH_STRATEGY.beamWidth
-const SEARCH_PASSES = ROUTER_SEARCH_STRATEGY.coordinatePasses
-const SEARCH_GLOBAL_SCOUTS = ROUTER_SEARCH_STRATEGY.globalScouts
-const SEARCH_PROXY_SAMPLE_FRACTION = ROUTER_SEARCH_STRATEGY.proxySampleFraction
-const SEARCH_PROXY_MINIMUM_SAMPLES = ROUTER_SEARCH_STRATEGY.proxyMinimumSamples
-const SEARCH_PROXY_PROMOTION_FACTOR =
-  ROUTER_SEARCH_STRATEGIES["proxy-promotion"].proxyPromotionFactor
-const SEARCH_HALVING_KEEP_FACTOR = ROUTER_SEARCH_STRATEGIES["successive-halving"].halvingKeepFactor
-const HALTON_PRIMES = [
-  2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
-  101, 103, 107, 109, 113, 127, 131, 137, 139, 149,
-] as const
+const SEARCH_CANDIDATE_DEPTH = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.candidateDepth
+const SEARCH_BEAM_WIDTH = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.beamWidth
+const SEARCH_PASSES = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.coordinatePasses
+const SEARCH_GLOBAL_SCOUTS = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.globalScouts
+const SEARCH_PROXY_SAMPLE_FRACTION = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.proxySampleFraction
+const SEARCH_PROXY_MINIMUM_SAMPLES = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.proxyMinimumSamples
+const SEARCH_PROXY_PROMOTION_FACTOR = DEFAULT_PROXY_PROMOTION_STRATEGY.proxyPromotionFactor
+const SEARCH_HALVING_KEEP_FACTOR = DEFAULT_SUCCESSIVE_HALVING_STRATEGY.halvingKeepFactor
+const RANDOM_SEARCH_SEED = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.seed || 1
 
 /** Precomputed query evidence used for cheap fusion and weight experiments. */
 export interface WeightSearchSample {
@@ -1012,72 +1007,50 @@ const buildSearchDiagnostics = (
   timings: { ...stats.timings },
 })
 
-/** Unit-interval coordinate for one scout point and coefficient parameter index. */
-const scoutUnitCoordinate = (
-  sequence: ScoutSequenceName,
-  pointIndex: number,
-  parameterIndex: number,
-): number => {
-  if (sequence === "sobol") return sobolUnitPoint(pointIndex + 1, parameterIndex)
-  const prime = HALTON_PRIMES[parameterIndex]
-  if (prime === undefined)
-    throw new Error(
-      `Halton sequence has no prime for ${HALTON_PRIMES.length} parameters, needed ${parameterIndex + 1}`,
-    )
-  return radicalInverse(pointIndex + 1, prime)
-}
-
 const buildGlobalRouterSeeds = (
   baseSeeds: readonly EvidenceRouterConfig[],
   parameters: readonly RouterParameter[],
-  sequence: ScoutSequenceName,
+  sequenceName: ScoutSequenceName,
 ): readonly EvidenceRouterConfig[] => {
   if (baseSeeds.length === 0) return []
   const coefficientParameters = parameters.slice(CHANNELS.length)
-  if (sequence === "random") return buildRandomRouterSeeds(baseSeeds[0]!, parameters)
-  const dimensionLimit = sequence === "sobol" ? MAX_SOBOL_DIMENSIONS : HALTON_PRIMES.length
-  if (coefficientParameters.length > dimensionLimit) {
+  const sequence = SCOUT_SEQUENCES[sequenceName]
+  if (coefficientParameters.length > sequence.maxParameters) {
     throw new Error(
-      `${sequence} scouts support at most ${dimensionLimit} parameters, got ${coefficientParameters.length}`,
+      `${sequence.name} scouts support at most ${sequence.maxParameters} parameters, got ${coefficientParameters.length}`,
     )
   }
+  const points = sequence.points(SEARCH_GLOBAL_SCOUTS, coefficientParameters.length)
   return Array.from({ length: SEARCH_GLOBAL_SCOUTS }, (_, pointIndex) =>
     coefficientParameters.reduce(
-      (config, parameter, parameterIndex) => {
-        const values = parameter.values
-        const unit = scoutUnitCoordinate(sequence, pointIndex, parameterIndex)
-        return parameter.update(config, values[scoutLevelIndex(unit, values.length)]!)
-      },
+      (config, parameter, parameterIndex) =>
+        parameter.update(
+          config,
+          parameter.values[
+            scoutLevelIndex(points[pointIndex]![parameterIndex]!, parameter.values.length)
+          ]!,
+        ),
       baseSeeds[pointIndex % baseSeeds.length]!,
     ),
   )
 }
 
-const nextRandom = (state: number): readonly [number, number] => {
-  let next = state | 0
-  next ^= next << 13
-  next ^= next >>> 17
-  next ^= next << 5
-  const unsigned = next >>> 0
-  return [unsigned, unsigned / 4_294_967_296]
-}
-
-const RANDOM_SEARCH_SEED = ROUTER_SEARCH_STRATEGIES["proxy-promotion"].seed || 1
-
 const buildRandomRouterSeeds = (
   baseSeed: EvidenceRouterConfig,
   parameters: readonly RouterParameter[],
 ): readonly EvidenceRouterConfig[] => {
-  let state: number = RANDOM_SEARCH_SEED
-  return Array.from({ length: SEARCH_GLOBAL_SCOUTS }, () =>
-    parameters.reduce((config, parameter) => {
-      const [next, unit] = nextRandom(state)
-      state = next
-      return parameter.update(
-        config,
-        parameter.values[scoutLevelIndex(unit, parameter.values.length)]!,
-      )
-    }, baseSeed),
+  const points = SCOUT_SEQUENCES.random.points(SEARCH_GLOBAL_SCOUTS, parameters.length)
+  return Array.from({ length: SEARCH_GLOBAL_SCOUTS }, (_, pointIndex) =>
+    parameters.reduce(
+      (config, parameter, parameterIndex) =>
+        parameter.update(
+          config,
+          parameter.values[
+            scoutLevelIndex(points[pointIndex]![parameterIndex]!, parameter.values.length)
+          ]!,
+        ),
+      baseSeed,
+    ),
   )
 }
 

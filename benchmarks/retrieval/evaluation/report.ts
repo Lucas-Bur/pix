@@ -4,7 +4,7 @@ import {
   type ChannelWeights,
   type EvidenceRouterConfig,
 } from "../../../src/domain/retrieval.js"
-import { describeScoutSequence } from "./scout-sequence.js"
+import { describeScoutSequence } from "./scouts/index.js"
 import type {
   BenchmarkArtifact,
   EvidenceRouterSearchResult,
@@ -117,11 +117,10 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     group.push(row)
     groups.set(key, group)
   }
-  const strategyFactorLabel = artifact.searchStrategy.algorithm.includes("successive-halving")
-    ? "keep"
-    : "promotion"
+  const strategyFactorLabel =
+    artifact.searchStrategy.kind === "successive-halving" ? "keep" : "promotion"
   const strategyFactor =
-    "halvingKeepFactor" in artifact.searchStrategy
+    artifact.searchStrategy.kind === "successive-halving"
       ? artifact.searchStrategy.halvingKeepFactor
       : artifact.searchStrategy.proxyPromotionFactor
 

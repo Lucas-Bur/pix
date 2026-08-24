@@ -1,66 +1,14 @@
-/**
- * Benchmark-only deterministic global-scout sequences seeding the router beam search.
- *
- * The scouts spread starting configurations across the router coefficient space before coordinate
- * refinement begins. All sequences are pure functions so an artifact can be reproduced from the
- * selected sequence name alone.
- */
-
-export const SCOUT_SEQUENCE_NAMES = ["halton", "sobol", "random"] as const
-
-/** Deterministic low-discrepancy sequence used for global router scouts. */
-export type ScoutSequenceName = (typeof SCOUT_SEQUENCE_NAMES)[number]
-
-/** One-line construction summary rendered into benchmark reports. */
-const SCOUT_SEQUENCE_DESCRIPTIONS: Readonly<Record<ScoutSequenceName, string>> = {
-  halton: "digit-reversal points, one prime base per parameter",
-  sobol: "Gray-code low-discrepancy points from primitive polynomials",
-  random: "fixed-seed xorshift draws",
-}
-
-/** Human-readable construction of one scout sequence for reports and artifacts. */
-export const describeScoutSequence = (name: ScoutSequenceName): string =>
-  SCOUT_SEQUENCE_DESCRIPTIONS[name]
-
-/** Sequence used unless `PIX_BENCH_SCOUT_SEQUENCE` requests another one. */
-export const DEFAULT_SCOUT_SEQUENCE: ScoutSequenceName = "halton"
-
-const isScoutSequenceName = (requested: string): requested is ScoutSequenceName =>
-  SCOUT_SEQUENCE_NAMES.some((name) => name === requested)
-
-/** Resolve the `PIX_BENCH_SCOUT_SEQUENCE` benchmark knob, defaulting to Halton. */
-export const resolveScoutSequence = (requested: string | undefined): ScoutSequenceName => {
-  if (requested === undefined) return DEFAULT_SCOUT_SEQUENCE
-  if (!isScoutSequenceName(requested)) {
-    throw new Error(
-      `Unknown PIX_BENCH_SCOUT_SEQUENCE value: ${requested}; expected one of ${SCOUT_SEQUENCE_NAMES.join(", ")}`,
-    )
-  }
-  return requested
-}
-
-/** Van der Corput-style digit reversal of `index` in base `base`. */
-export const radicalInverse = (index: number, base: number): number => {
-  let remaining = index
-  let place = 1 / base
-  let result = 0
-  while (remaining > 0) {
-    result += (remaining % base) * place
-    remaining = Math.floor(remaining / base)
-    place /= base
-  }
-  return result
-}
+import type { ScoutSequence } from "./types.js"
 
 /** Fixed working precision of the Sobol direction integers (31 usable bits). */
 const SOBOL_BITS = 31
 
 /** Supported Sobol dimensions: dimension 0 plus 39 primitive-polynomial dimensions. */
-export const MAX_SOBOL_DIMENSIONS = 40
+const MAX_SOBOL_DIMENSIONS = 40
 
 /**
  * Prime factorizations of `2^degree - 1` for degrees 2..8, used by the primitivity test. Mersenne
- * numbers up to 2^8 - 1 factor over tiny primes only.
+ * numbers up to `2^8 - 1` factor over tiny primes only.
  */
 const MERSENNE_PRIME_FACTORS: Readonly<Record<number, readonly number[]>> = {
   3: [3],
@@ -156,9 +104,8 @@ const buildDirectionTable = (): readonly (readonly number[])[] => {
         initialValues.push(2 * index - 1)
         continue
       }
-      const previous = initialValues[index - 1]!
       let next = initialValues[index - degree - 1]!
-      next ^= previous << degree
+      next ^= initialValues[index - 1]! << degree
       for (let tap = 1; tap <= degree - 1; tap++) {
         if ((polynomial >>> (degree - tap)) & 1) {
           next ^= initialValues[index - tap - 1]! << tap
@@ -189,15 +136,15 @@ export const sobolUnitPoint = (index: number, dimension: number): number => {
   return value / 2 ** SOBOL_BITS
 }
 
-/** First `count` Sobol points across `dimensions` coordinates. */
-export const sobolUnitPoints = (
-  count: number,
-  dimensions: number,
-): readonly (readonly number[])[] =>
-  Array.from({ length: count }, (_, index) =>
-    Array.from({ length: dimensions }, (_, dimension) => sobolUnitPoint(index, dimension)),
-  )
-
-/** Quantize a unit-interval coordinate onto one of `length` discrete levels. */
-export const scoutLevelIndex = (unit: number, length: number): number =>
-  Math.min(length - 1, Math.floor(unit * length))
+/** Sobol starting points; point `i` uses Gray-code accumulation over `i + 1`, skipping the origin. */
+export const sobolScoutSequence: ScoutSequence = {
+  name: "sobol",
+  description: "Gray-code low-discrepancy points from primitive polynomials",
+  maxParameters: MAX_SOBOL_DIMENSIONS,
+  points: (count, parameterCount) =>
+    Array.from({ length: count }, (_, pointIndex) =>
+      Array.from({ length: parameterCount }, (_, parameterIndex) =>
+        sobolUnitPoint(pointIndex + 1, parameterIndex),
+      ),
+    ),
+}

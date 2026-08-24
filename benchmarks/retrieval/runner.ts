@@ -15,11 +15,11 @@ import {
 } from "./evaluation/optimization-profiles.js"
 import { reportBenchmarkProgress } from "./evaluation/progress.js"
 import { renderMarkdownReport } from "./evaluation/report.js"
-import { resolveScoutSequence, type ScoutSequenceName } from "./evaluation/scout-sequence.js"
+import { resolveScoutSequence, type ScoutSequenceName } from "./evaluation/scouts/index.js"
 import { runBenchmarkSearch, type BenchmarkSearchConfig } from "./evaluation/search.js"
 import {
   DEFAULT_ROUTER_SEARCH_STRATEGY,
-  ROUTER_SEARCH_STRATEGIES,
+  ROUTER_SEARCH_STRATEGY_NAMES,
   routerSearchStrategyFor,
   type BenchmarkArtifact,
   type BenchmarkProfile,
@@ -120,7 +120,7 @@ const selectOptimizationProfile = (): Effect.Effect<OptimizationProfile, Error> 
 }
 
 const isRouterSearchStrategyName = (requested: string): requested is RouterSearchStrategyName =>
-  Object.keys(ROUTER_SEARCH_STRATEGIES).some((strategy) => strategy === requested)
+  ROUTER_SEARCH_STRATEGY_NAMES.some((strategy) => strategy === requested)
 
 export const resolveRouterSearchStrategy = (
   requested: string | undefined,
@@ -128,7 +128,7 @@ export const resolveRouterSearchStrategy = (
   if (requested === undefined) return DEFAULT_ROUTER_SEARCH_STRATEGY
   if (!isRouterSearchStrategyName(requested)) {
     throw new Error(
-      `Unknown PIX_BENCH_ROUTER_STRATEGY value: ${requested}; expected one of ${Object.keys(ROUTER_SEARCH_STRATEGIES).join(", ")}`,
+      `Unknown PIX_BENCH_ROUTER_STRATEGY value: ${requested}; expected one of ${ROUTER_SEARCH_STRATEGY_NAMES.join(", ")}`,
     )
   }
   return requested

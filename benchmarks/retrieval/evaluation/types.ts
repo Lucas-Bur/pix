@@ -5,7 +5,7 @@ import type {
   FusionMethod as ProductionFusionMethod,
 } from "../../../src/domain/retrieval.js"
 import type { OptimizationProfile } from "./optimization-profiles.js"
-import type { ScoutSequenceName } from "./scout-sequence.js"
+import type { ScoutSequenceName } from "./scouts/index.js"
 
 /** Benchmark repository size band used for report segmentation. */
 const RepositorySizeSchema = Schema.Literals(["small", "medium", "large"])
@@ -68,55 +68,90 @@ export const ROUTER_OBJECTIVES = [
 ] as const
 export type RouterObjective = (typeof ROUTER_OBJECTIVES)[number]
 
-/** Versioned evidence-router search strategy parameters recorded in benchmark artifacts. */
-export const ROUTER_SEARCH_STRATEGIES = {
-  "proxy-promotion": {
-    globalScouts: 64,
-    beamWidth: 6,
-    coordinatePasses: 2,
-    candidateDepth: 200,
-    proxySampleFraction: 0.25,
-    proxyMinimumSamples: 32,
-    proxyPromotionFactor: 8,
-    objectives: ROUTER_OBJECTIVES,
-    guardrailTolerance: 0.01,
-    seed: 0,
-    normalization: "per-channel-max-weight",
-    tieBreaking: "guardrails>objective>complexity>stable-key",
-  },
-  "successive-halving": {
-    globalScouts: 64,
-    beamWidth: 6,
-    coordinatePasses: 2,
-    candidateDepth: 200,
-    proxySampleFraction: 0.25,
-    proxyMinimumSamples: 32,
-    halvingKeepFactor: 8,
-  },
-} as const
+/** Compute budget shared by both router search strategies. */
+interface RouterSearchBudget {
+  globalScouts: 64
+  beamWidth: 6
+  coordinatePasses: 2
+  candidateDepth: 200
+  proxySampleFraction: 0.25
+  proxyMinimumSamples: 32
+}
 
-export type RouterSearchStrategyName = keyof typeof ROUTER_SEARCH_STRATEGIES
+const ROUTER_SEARCH_BUDGET: RouterSearchBudget = {
+  globalScouts: 64,
+  beamWidth: 6,
+  coordinatePasses: 2,
+  candidateDepth: 200,
+  proxySampleFraction: 0.25,
+  proxyMinimumSamples: 32,
+}
 
-/** Strategy parameters joined with the selected global-scout sequence name. */
-export type RouterSearchStrategy =
-  | ({ readonly algorithm: string } & (typeof ROUTER_SEARCH_STRATEGIES)["proxy-promotion"])
-  | ({ readonly algorithm: string } & (typeof ROUTER_SEARCH_STRATEGIES)["successive-halving"])
+/** Proxy promotion strategy: cheap pre-scoring, then full-quality promotion of survivors. */
+export interface ProxyPromotionStrategy extends RouterSearchBudget {
+  readonly kind: "proxy-promotion"
+  readonly algorithm: string
+  readonly proxyPromotionFactor: 8
+  readonly objectives: typeof ROUTER_OBJECTIVES
+  readonly guardrailTolerance: 0.01
+  readonly seed: 0
+  readonly normalization: "per-channel-max-weight"
+  readonly tieBreaking: "guardrails>objective>complexity>stable-key"
+}
+
+/** Successive halving strategy: historical lexicographic comparator with keep factor. */
+export interface SuccessiveHalvingStrategy extends RouterSearchBudget {
+  readonly kind: "successive-halving"
+  readonly algorithm: string
+  readonly halvingKeepFactor: 8
+}
+
+/** Versioned evidence-router search strategy recorded in benchmark artifacts. */
+export type RouterSearchStrategy = ProxyPromotionStrategy | SuccessiveHalvingStrategy
+
+export const ROUTER_SEARCH_STRATEGY_NAMES = ["proxy-promotion", "successive-halving"] as const
+
+export type RouterSearchStrategyName = (typeof ROUTER_SEARCH_STRATEGY_NAMES)[number]
+
+const STRATEGY_ALGORITHM_PREFIX = "global-scout-elitist-beam"
+
+export const DEFAULT_ROUTER_SEARCH_STRATEGY: RouterSearchStrategyName = "proxy-promotion"
+
+/** Default proxy promotion parameters, recorded with Halton scouts unless overridden. */
+export const DEFAULT_PROXY_PROMOTION_STRATEGY: ProxyPromotionStrategy = {
+  kind: "proxy-promotion",
+  algorithm: `halton-${STRATEGY_ALGORITHM_PREFIX}-proxy-promotion`,
+  ...ROUTER_SEARCH_BUDGET,
+  proxyPromotionFactor: 8,
+  objectives: ROUTER_OBJECTIVES,
+  guardrailTolerance: 0.01,
+  seed: 0,
+  normalization: "per-channel-max-weight",
+  tieBreaking: "guardrails>objective>complexity>stable-key",
+}
+
+/** Default successive halving parameters, recorded with Halton scouts unless overridden. */
+export const DEFAULT_SUCCESSIVE_HALVING_STRATEGY: SuccessiveHalvingStrategy = {
+  kind: "successive-halving",
+  algorithm: `halton-${STRATEGY_ALGORITHM_PREFIX}-successive-halving`,
+  ...ROUTER_SEARCH_BUDGET,
+  halvingKeepFactor: 8,
+}
 
 /** Build the recorded search strategy for one scout sequence and strategy name. */
 export const routerSearchStrategyFor = (
   scoutSequence: ScoutSequenceName,
   name: RouterSearchStrategyName,
-): RouterSearchStrategy => ({
-  algorithm: `${scoutSequence}-global-scout-elitist-beam-${name}`,
-  ...ROUTER_SEARCH_STRATEGIES[name],
-})
+): RouterSearchStrategy => {
+  const base =
+    name === "successive-halving"
+      ? DEFAULT_SUCCESSIVE_HALVING_STRATEGY
+      : DEFAULT_PROXY_PROMOTION_STRATEGY
+  return { ...base, algorithm: `${scoutSequence}-${STRATEGY_ALGORITHM_PREFIX}-${name}` }
+}
 
-export const DEFAULT_ROUTER_SEARCH_STRATEGY: RouterSearchStrategyName = "proxy-promotion"
 /** Default recorded strategy: Halton scouts with proxy promotion. */
-export const ROUTER_SEARCH_STRATEGY = routerSearchStrategyFor(
-  "halton",
-  DEFAULT_ROUTER_SEARCH_STRATEGY,
-)
+export const DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS = DEFAULT_PROXY_PROMOTION_STRATEGY
 
 /** Runtime/coverage trade-off selected for one benchmark invocation. */
 export type BenchmarkProfile = "smoke" | "develop" | "validate" | "full"
