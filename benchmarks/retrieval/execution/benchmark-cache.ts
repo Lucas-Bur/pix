@@ -6,7 +6,7 @@ import { SqlClient, SqlSchema } from "effect/unstable/sql"
 import { DEFAULT_CONFIG } from "../../../src/domain/config.js"
 import type { ChannelRankings } from "../../../src/domain/retrieval.js"
 import { contentHash } from "../../../src/lib/content-hash.js"
-import type { CorpusManifest, QueryKind } from "../evaluation/types.js"
+import type { CorpusManifest, QueryKind } from "../corpus/manifest.js"
 
 const CACHE_ROOT = path.resolve("benchmarks/.cache/retrieval/v1")
 const CACHE_VERSION = 1

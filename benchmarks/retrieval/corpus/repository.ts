@@ -1,11 +1,11 @@
-import { execFile } from "node:child_process"
+﻿import { execFile } from "node:child_process"
 import { mkdir, readdir, readFile } from "node:fs/promises"
 import path from "node:path"
 import { promisify } from "node:util"
 
 import { Effect, Schema } from "effect"
 
-import { CorpusManifestSchema, type CorpusManifest } from "../evaluation/types.js"
+import { CorpusManifestSchema, type CorpusManifest } from "./manifest.js"
 
 const execFilePromise = promisify(execFile)
 const CACHE_ROOT = path.resolve("benchmarks/.cache/repos")

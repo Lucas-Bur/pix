@@ -2,10 +2,10 @@ import { expect, it } from "@effect/vitest"
 import { Effect, Schema } from "effect"
 
 import type { ChunkingOptions } from "../../src/domain/ports.js"
+import { CorpusManifestSchema } from "../retrieval/corpus/manifest.js"
 import { prepareCorpus } from "../retrieval/corpus/prepare.js"
 import { loadCorpusManifests, prepareRepository } from "../retrieval/corpus/repository.js"
 import { resolveGoldTargets } from "../retrieval/evaluation/metrics.js"
-import { CorpusManifestSchema } from "../retrieval/evaluation/types.js"
 
 const validationChunkingOptions: ChunkingOptions = {
   maxTokens: Number.MAX_SAFE_INTEGER,

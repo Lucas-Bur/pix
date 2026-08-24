@@ -1,4 +1,4 @@
-import type { CorpusManifest } from "./types.js"
+import type { CorpusManifest } from "../corpus/manifest.js"
 
 const GROUPED_FOLD_SEED = "pix-retrieval-grouped-folds-v1"
 const FNV_OFFSET_BASIS = 2_166_136_261

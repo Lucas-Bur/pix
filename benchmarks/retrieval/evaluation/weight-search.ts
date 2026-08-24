@@ -1,4 +1,4 @@
-import type { Chunk } from "../../../src/domain/chunk.js"
+﻿import type { Chunk } from "../../../src/domain/chunk.js"
 import type { RankedChunk } from "../../../src/domain/ports.js"
 import {
   PRODUCTION_COMPATIBILITY_CONFIG,
@@ -14,6 +14,7 @@ import {
   type QueryTermCoverage,
   type RoutingEvidence,
 } from "../../../src/lib/retrieval/evidence-router.js"
+import type { QueryKind } from "../corpus/manifest.js"
 import {
   createCandidateEvaluationPool,
   createCandidateEvaluationPoolOnQueue,
@@ -74,19 +75,18 @@ import { DEFAULT_SCOUT_SEQUENCE, type ScoutSequenceName } from "./scouts/index.j
 import {
   DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS,
   ROUTER_OBJECTIVES,
-  type RouterSearchStrategyName,
   type EvidenceRouterSearchResult,
   type FusionSearchResult,
   type HoldoutQuality,
   type ProductionRouterSearchResult,
   type PromotionStatus,
   type QualitySummary,
-  type QueryKind,
   type RecommendedEvidenceRouter,
   type RecommendedFusionWeights,
   type RecommendedWeights,
   type RouterSearchDiagnostics,
   type RouterObjective,
+  type RouterSearchStrategyName,
   type SearchBaselineComparison,
   type WeightSearchResult,
 } from "./types.js"

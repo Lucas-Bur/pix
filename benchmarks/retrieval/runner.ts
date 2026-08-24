@@ -6,6 +6,7 @@ import { Effect } from "effect"
 import { DEFAULT_CONFIG } from "../../src/domain/config.js"
 import { MODEL_REGISTRY } from "../../src/domain/models.js"
 import { FUSION_METHODS } from "../../src/domain/retrieval.js"
+import type { CorpusManifest } from "./corpus/manifest.js"
 import { loadCorpusManifests } from "./corpus/repository.js"
 import { collectBenchmarkData } from "./evaluation/collect.js"
 import { assignGroupedFolds } from "./evaluation/folds.js"
@@ -20,7 +21,6 @@ import {
   routerSearchStrategyFor,
   type BenchmarkArtifact,
   type BenchmarkProfile,
-  type CorpusManifest,
   type ValidationStrategy,
 } from "./evaluation/types.js"
 import { getDefaultWorkerCount, resolveWorkerCount } from "./execution/candidate-evaluation-pool.js"
