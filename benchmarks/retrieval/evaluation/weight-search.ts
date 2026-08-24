@@ -126,6 +126,8 @@ interface SearchOptions extends CandidateEvaluationPoolOptions {
   readonly beamSchedule?: "fixed" | "decaying"
   /** Override the number of coordinate refinement rounds (default: strategy setting). */
   readonly coordinatePasses?: number
+  /** Override the global scout count (default: strategy setting). */
+  readonly globalScouts?: number
 }
 
 /** Options for benchmark search APIs without colliding with the product query options type. */
@@ -832,6 +834,7 @@ const selectBestEvidenceRouter = async (
   seedHypotheses: boolean = false,
   beamSchedule: "fixed" | "decaying" = "fixed",
   coordinatePasses: number = SEARCH_PASSES,
+  globalScouts: number = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.globalScouts,
 ): Promise<{
   readonly selections: readonly EvidenceRouterSelection[]
   readonly productionQuality: QualitySummary
@@ -893,6 +896,7 @@ const selectBestEvidenceRouter = async (
           productionQuality,
           profile,
           stats,
+          globalScouts,
         )
         stats.timings.randomSearchMs += performance.now() - randomSearchStartedAt
         return result
@@ -901,7 +905,7 @@ const selectBestEvidenceRouter = async (
   const beamSearchStartedAt = performance.now()
   const seedConfigs = [
     ...baseSeeds,
-    ...buildGlobalRouterSeeds(baseSeeds, parameters, scoutSequence),
+    ...buildGlobalRouterSeeds(baseSeeds, parameters, scoutSequence, globalScouts),
     ...(seedHypotheses ? buildHypothesisRouterSeeds(baseSeeds, parameters) : []),
   ]
   const totalRounds = coordinatePasses + 1
@@ -1226,6 +1230,7 @@ const withEvidencePools = async <T>(
       options.seedHypotheses ?? false,
       options.beamSchedule ?? "fixed",
       options.coordinatePasses ?? DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.coordinatePasses,
+      options.globalScouts ?? DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.globalScouts,
     )
     return await operation(selection, fullPool)
   } finally {

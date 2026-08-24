@@ -710,20 +710,20 @@ the search-priority profile, DBSF fusion, proxy promotion, and identical folds a
 Scout sequence comparison on the full develop corpus (fd, fastapi, effect-v4) landed inside
 measurement noise everywhere:
 
-| Scouts | R@5 | R@20 | NDCG@5 | Ctx@4k |
-| --- | ---: | ---: | ---: | ---: |
-| halton | 54.7% | 78.8% | 40.6% | 68.9% |
-| sobol | 53.8% | 78.2% | 40.7% | 68.6% |
-| random | 53.8% | 79.6% | 41.3% | 66.8% |
+| Scouts |   R@5 |  R@20 | NDCG@5 | Ctx@4k |
+| ------ | ----: | ----: | -----: | -----: |
+| halton | 54.7% | 78.8% |  40.6% |  68.9% |
+| sobol  | 53.8% | 78.2% |  40.7% |  68.6% |
+| random | 53.8% | 79.6% |  41.3% |  66.8% |
 
 Search-shape comparison answers the wide-versus-deep question: one coordinate pass over widened
 starting points (corner hypotheses plus decaying beam) matches two narrow passes at 45% fewer
 candidate evaluations.
 
-| Search shape | R@5 | NDCG@5 | Ctx@4k | Full evals |
-| --- | ---: | ---: | ---: | ---: |
-| deep: 2 passes, no hypotheses | 54.7% | 40.6% | 68.9% | 3365 |
-| wide-shallow: 1 pass, hypotheses, decaying | 54.8% | 40.5% | 69.8% | 1839 |
+| Search shape                               |   R@5 | NDCG@5 | Ctx@4k | Full evals |
+| ------------------------------------------ | ----: | -----: | -----: | ---------: |
+| deep: 2 passes, no hypotheses              | 54.7% |  40.6% |  68.9% |       3365 |
+| wide-shallow: 1 pass, hypotheses, decaying | 54.8% |  40.5% |  69.8% |       1839 |
 
 Takeaway: scout quality is not the lever; starting breadth is. The production router can likely drop
 to one coordinate pass at equal retrieval quality (tracked in #173).

@@ -19,7 +19,6 @@ import type { EvidenceSearchSample, WeightCandidate } from "../weight-search.js"
 import {
   CHANNELS,
   SEARCH_BEAM_WIDTH,
-  SEARCH_GLOBAL_SCOUTS,
   SEARCH_HALVING_KEEP_FACTOR,
   SEARCH_PROXY_PROMOTION_FACTOR,
   activeChannelsKey,
@@ -81,6 +80,7 @@ export const buildGlobalRouterSeeds = (
   baseSeeds: readonly EvidenceRouterConfig[],
   parameters: readonly RouterParameter[],
   sequenceName: ScoutSequenceName,
+  scoutCount: number,
 ): readonly EvidenceRouterConfig[] => {
   if (baseSeeds.length === 0) return []
   const coefficientParameters = parameters.slice(CHANNELS.length)
@@ -90,8 +90,8 @@ export const buildGlobalRouterSeeds = (
       `${sequence.name} scouts support at most ${sequence.maxParameters} parameters, got ${coefficientParameters.length}`,
     )
   }
-  const points = sequence.points(SEARCH_GLOBAL_SCOUTS, coefficientParameters.length)
-  return Array.from({ length: SEARCH_GLOBAL_SCOUTS }, (_, pointIndex) =>
+  const points = sequence.points(scoutCount, coefficientParameters.length)
+  return Array.from({ length: scoutCount }, (_, pointIndex) =>
     coefficientParameters.reduce(
       (config, parameter, parameterIndex) =>
         parameter.update(
@@ -108,9 +108,10 @@ export const buildGlobalRouterSeeds = (
 const buildRandomRouterSeeds = (
   baseSeed: EvidenceRouterConfig,
   parameters: readonly RouterParameter[],
+  scoutCount: number,
 ): readonly EvidenceRouterConfig[] => {
-  const points = SCOUT_SEQUENCES.random.points(SEARCH_GLOBAL_SCOUTS, parameters.length)
-  return Array.from({ length: SEARCH_GLOBAL_SCOUTS }, (_, pointIndex) =>
+  const points = SCOUT_SEQUENCES.random.points(scoutCount, parameters.length)
+  return Array.from({ length: scoutCount }, (_, pointIndex) =>
     parameters.reduce(
       (config, parameter, parameterIndex) =>
         parameter.update(
@@ -321,8 +322,9 @@ export const selectRandomRouter = async (
   baseline: QualitySummary,
   profile: OptimizationProfile,
   stats: SearchEvaluationStats,
+  scoutCount: number,
 ): Promise<{ readonly candidate: RouterCandidate; readonly candidates: number }> => {
-  const configs = buildRandomRouterSeeds(baseSeed, parameters)
+  const configs = buildRandomRouterSeeds(baseSeed, parameters, scoutCount)
   const candidatePreparationStartedAt = performance.now()
   const evaluationCandidates = configs.map((config) => routerEvaluationCandidate(samples, config))
   stats.timings.candidatePreparationMs += performance.now() - candidatePreparationStartedAt

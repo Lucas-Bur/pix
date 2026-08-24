@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+﻿import { Schema } from "effect"
 
 import type {
   EvidenceRouterConfig,
@@ -488,7 +488,7 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 29
+  readonly schemaVersion: 30
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   /** Global-scout sequence used to seed the router beam search. */
@@ -499,6 +499,8 @@ export interface BenchmarkArtifact {
   readonly beamSchedule: "fixed" | "decaying"
   /** Coordinate refinement rounds executed by this run's router search. */
   readonly coordinatePasses: number
+  /** Global scout count used to seed the beam. */
+  readonly globalScouts: number
   /** Versioned objective profile used for candidate selection and aggregate metrics. */
   readonly optimizationProfile: OptimizationProfile
   readonly validationProtocol: ValidationProtocol
