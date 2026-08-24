@@ -105,13 +105,18 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.evaluationCases.every(({ groundTruth }) => groundTruth.length > 0)).toBe(true)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(28)
+    expect(artifact.schemaVersion).toBe(29)
     expect(artifact.scoutSequence).toBe(resolveScoutSequence(process.env.PIX_BENCH_SCOUT_SEQUENCE))
     expect(artifact.seedHypotheses).toBe(
       process.env.PIX_BENCH_SEED_HYPOTHESES === "1" ||
         process.env.PIX_BENCH_SEED_HYPOTHESES === "true",
     )
     expect(artifact.beamSchedule).toBe(process.env.PIX_BENCH_BEAM_SCHEDULE ?? "fixed")
+    expect(artifact.coordinatePasses).toBe(
+      process.env.PIX_BENCH_COORDINATE_PASSES === undefined
+        ? 2
+        : Number.parseInt(process.env.PIX_BENCH_COORDINATE_PASSES, 10),
+    )
     expect(artifact.searchStrategy).toEqual(
       routerSearchStrategyFor(
         resolveScoutSequence(process.env.PIX_BENCH_SCOUT_SEQUENCE),

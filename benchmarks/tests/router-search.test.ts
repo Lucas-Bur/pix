@@ -53,13 +53,12 @@ it("builds one one-hot corner per parameter plus both extremes", () => {
     for (let other = 0; other < parameters.length; other++) {
       if (other === index) continue
       const neighbour = parameters[other]!
-      const expected =
-        neighbour.name.startsWith("baseWeights.")
-          ? expectedBaseWeight(
-              neighbour.name.split(".")[1] as (typeof CHANNEL_NAMES)[number],
-              hotChannel,
-            )
-          : neighbour.values[0]
+      const expected = neighbour.name.startsWith("baseWeights.")
+        ? expectedBaseWeight(
+            neighbour.name.split(".")[1] as (typeof CHANNEL_NAMES)[number],
+            hotChannel,
+          )
+        : neighbour.values[0]
       expect(readParameter(corner, neighbour.name)).toBe(expected)
     }
   }
@@ -67,7 +66,6 @@ it("builds one one-hot corner per parameter plus both extremes", () => {
   for (let index = 0; index < parameters.length; index++) {
     const parameter = parameters[index]!
     if (!parameter.name.startsWith("baseWeights.")) continue
-    const channel = parameter.name.split(".")[1] as (typeof CHANNEL_NAMES)[number]
     expect(readParameter(seeds[parameters.length]!, parameter.name)).toBe(1)
     const allMax = seeds[parameters.length + 1]!
     expect(readParameter(allMax, parameter.name)).toBe(1)

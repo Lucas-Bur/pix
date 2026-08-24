@@ -72,6 +72,7 @@ import {
 } from "./router-search/rank.js"
 import { DEFAULT_SCOUT_SEQUENCE, type ScoutSequenceName } from "./scouts/index.js"
 import {
+  DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS,
   ROUTER_OBJECTIVES,
   type RouterSearchStrategyName,
   type EvidenceRouterSearchResult,
@@ -123,6 +124,8 @@ interface SearchOptions extends CandidateEvaluationPoolOptions {
   readonly seedHypotheses?: boolean
   /** Start the coordinate rounds with a wider beam that halves towards the target width. */
   readonly beamSchedule?: "fixed" | "decaying"
+  /** Override the number of coordinate refinement rounds (default: strategy setting). */
+  readonly coordinatePasses?: number
 }
 
 /** Options for benchmark search APIs without colliding with the product query options type. */
@@ -828,6 +831,7 @@ const selectBestEvidenceRouter = async (
   scoutSequence: ScoutSequenceName,
   seedHypotheses: boolean = false,
   beamSchedule: "fixed" | "decaying" = "fixed",
+  coordinatePasses: number = SEARCH_PASSES,
 ): Promise<{
   readonly selections: readonly EvidenceRouterSelection[]
   readonly productionQuality: QualitySummary
@@ -900,13 +904,13 @@ const selectBestEvidenceRouter = async (
     ...buildGlobalRouterSeeds(baseSeeds, parameters, scoutSequence),
     ...(seedHypotheses ? buildHypothesisRouterSeeds(baseSeeds, parameters) : []),
   ]
-  const totalRounds = SEARCH_PASSES + 1
+  const totalRounds = coordinatePasses + 1
   const roundWidth = (round: number): number =>
     beamSchedule === "decaying"
       ? beamWidthForRound(round, totalRounds, SEARCH_BEAM_WIDTH)
       : SEARCH_BEAM_WIDTH
   let beam = await rankRouterCandidates(searchContext, seedConfigs, roundWidth(0), baseSeeds)
-  for (let pass = 0; pass < SEARCH_PASSES; pass++) {
+  for (let pass = 0; pass < coordinatePasses; pass++) {
     const orderedParameters = pass % 2 === 0 ? parameters : [...parameters].reverse()
     for (const parameter of orderedParameters) {
       beam = await rankRouterCandidates(
@@ -1221,6 +1225,7 @@ const withEvidencePools = async <T>(
       options.scoutSequence ?? DEFAULT_SCOUT_SEQUENCE,
       options.seedHypotheses ?? false,
       options.beamSchedule ?? "fixed",
+      options.coordinatePasses ?? DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.coordinatePasses,
     )
     return await operation(selection, fullPool)
   } finally {
