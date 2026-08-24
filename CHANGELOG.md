@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.27.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.26.0...pix-v0.27.0) (2026-08-24)
+
+
+### Features
+
+* improve CLI usability and validation ([dc98365](https://github.com/Lucas-Bur/pix/commit/dc98365d055a35b24fa9786e2a97b44b378bab71))
+* respect hierarchical gitignore rules ([98621de](https://github.com/Lucas-Bur/pix/commit/98621de1524758ff9ff8cf7adfaea0200f76b990))
+
+
+### Bug Fixes
+
+* provide command layers on leaves, not namespaces ([cb43f5d](https://github.com/Lucas-Bur/pix/commit/cb43f5d74819549b57eab8c79dad11cbc96698d3))
+
 ## [0.26.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.25.0...pix-v0.26.0) (2026-08-06)
 
 
