@@ -488,11 +488,15 @@ export interface BenchmarkTimings {
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 27
+  readonly schemaVersion: 28
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   /** Global-scout sequence used to seed the router beam search. */
   readonly scoutSequence: ScoutSequenceName
+  /** Whether hand-authored corner hypothesis seeds joined the beam starting points. */
+  readonly seedHypotheses: boolean
+  /** Beam width schedule across coordinate rounds. */
+  readonly beamSchedule: "fixed" | "decaying"
   /** Versioned objective profile used for candidate selection and aggregate metrics. */
   readonly optimizationProfile: OptimizationProfile
   readonly validationProtocol: ValidationProtocol

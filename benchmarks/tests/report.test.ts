@@ -5,9 +5,11 @@ import { renderMarkdownReport } from "../retrieval/evaluation/report.js"
 import { routerSearchStrategyFor, type BenchmarkArtifact } from "../retrieval/evaluation/types.js"
 
 const artifact = {
-  schemaVersion: 27,
+  schemaVersion: 28,
   benchmarkProfile: "smoke",
   scoutSequence: "halton",
+  seedHypotheses: false,
+  beamSchedule: "fixed",
   optimizationProfile: SEARCH_PRIORITY_PROFILE,
   validationProtocol: {
     selection: "development-only",

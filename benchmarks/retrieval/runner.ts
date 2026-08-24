@@ -146,6 +146,23 @@ const selectScoutSequence = (): Effect.Effect<ScoutSequenceName, Error> =>
     catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
   })
 
+const selectSeedHypotheses = (): boolean => {
+  const requested = process.env.PIX_BENCH_SEED_HYPOTHESES
+  return requested === "1" || requested === "true"
+}
+
+const resolveBeamSchedule = (requested: string | undefined): "fixed" | "decaying" => {
+  if (requested === undefined || requested === "fixed") return "fixed"
+  if (requested === "decaying") return "decaying"
+  throw new Error(`Unknown PIX_BENCH_BEAM_SCHEDULE value: ${requested}; expected fixed or decaying`)
+}
+
+const selectBeamSchedule = (): Effect.Effect<"fixed" | "decaying", Error> =>
+  Effect.try({
+    try: () => resolveBeamSchedule(process.env.PIX_BENCH_BEAM_SCHEDULE),
+    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+  })
+
 const writeArtifact = (artifact: BenchmarkArtifact): Effect.Effect<string, Error> =>
   Effect.gen(function* () {
     const outputDirectory = path.resolve("benchmarks/results")
@@ -184,6 +201,8 @@ export const runRetrievalBenchmark = (
     const optimizationProfile = yield* selectOptimizationProfile()
     const routerSearchStrategy = yield* selectRouterSearchStrategy()
     const scoutSequence = yield* selectScoutSequence()
+    const seedHypotheses = selectSeedHypotheses()
+    const beamSchedule = yield* selectBeamSchedule()
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
     const manifests = yield* selectManifests(yield* loadCorpusManifests(), profile)
@@ -211,7 +230,13 @@ export const runRetrievalBenchmark = (
       groupedStrategy,
       optimizationProfile,
       serialSearch,
-      { ...searchOptions, routerSearchStrategy, scoutSequence },
+      {
+        ...searchOptions,
+        routerSearchStrategy,
+        scoutSequence,
+        seedHypotheses,
+        beamSchedule,
+      },
     )
     reportBenchmarkProgress("quality search finished; writing artifact")
 
@@ -225,9 +250,11 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 27,
+      schemaVersion: 28,
       benchmarkProfile: profile,
       scoutSequence,
+      seedHypotheses,
+      beamSchedule,
       optimizationProfile,
       validationProtocol: {
         selection: "development-only",
