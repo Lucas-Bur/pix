@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+﻿import { Effect } from "effect"
 
 import type { FusionMethod } from "../../../src/domain/retrieval.js"
 import {
@@ -107,72 +107,6 @@ interface EvidenceRouterFitAllJob {
   readonly samples: readonly WeightSearchSample[]
 }
 
-const planEvidenceRouterJobs = (
-  samplesByModel: ReadonlyMap<string, readonly WeightSearchSample[]>,
-  config: BenchmarkSearchConfig,
-  groupedStrategy: ValidationStrategy,
-): readonly EvidenceRouterHoldoutJob[] => {
-  const jobs: EvidenceRouterHoldoutJob[] = []
-  for (const [model, samples] of samplesByModel) {
-    const repositories = [...new Set(samples.map((sample) => sample.repository))]
-    for (const fusion of config.routerFusionMethods) {
-      for (let fold = 0; fold < config.groupedFolds; fold++) {
-        const split = splitSamples(samples, (sample) => sample.groupedFold === fold)
-        jobs.push({
-          kind: "holdout",
-          model,
-          fusion,
-          strategy: groupedStrategy,
-          fold: String(fold + 1),
-          development: split.development,
-          validation: split.validation,
-        })
-      }
-      if (config.repositoryHoldouts && repositories.length > 1) {
-        for (const repository of repositories) {
-          const split = splitSamples(samples, (sample) => sample.repository === repository)
-          jobs.push({
-            kind: "holdout",
-            model,
-            fusion,
-            strategy: "leave-one-repository-out",
-            fold: repository,
-            development: split.development,
-            validation: split.validation,
-          })
-        }
-      }
-    }
-  }
-  return jobs
-}
-
-type RouterSearchJob = EvidenceRouterHoldoutJob | EvidenceRouterFitAllJob
-type RouterSearchJobResult =
-  | { readonly kind: "holdout"; readonly results: readonly EvidenceRouterSearchResult[] }
-  | { readonly kind: "fit-all"; readonly results: readonly RecommendedEvidenceRouter[] }
-
-const runRouterSearchJob = (
-  job: RouterSearchJob,
-  profile: OptimizationProfile,
-  options: BenchmarkSearchOptions,
-): Promise<RouterSearchJobResult> => {
-  if (job.kind === "holdout")
-    return optimizeEvidenceRouter(
-      job.model,
-      job.fusion,
-      job.strategy,
-      job.fold,
-      job.development,
-      job.validation,
-      profile,
-      options,
-    ).then((results) => ({ kind: "holdout", results }))
-  return fitRecommendedEvidenceRouter(job.model, job.fusion, job.samples, profile, options).then(
-    (results) => ({ kind: "fit-all", results }),
-  )
-}
-
 interface SearchSplit {
   readonly strategy: ValidationStrategy
   readonly fold: string
@@ -212,6 +146,56 @@ const planSearchSplits = (
 interface WeightSearchGroupResult {
   readonly weightSearch: readonly BenchmarkArtifact["weightSearch"][number][]
   readonly recommendedWeights: readonly BenchmarkArtifact["recommendedWeights"][number][]
+}
+
+const planEvidenceRouterJobs = (
+  samplesByModel: ReadonlyMap<string, readonly WeightSearchSample[]>,
+  config: BenchmarkSearchConfig,
+  groupedStrategy: ValidationStrategy,
+): readonly EvidenceRouterHoldoutJob[] => {
+  const jobs: EvidenceRouterHoldoutJob[] = []
+  for (const [model, samples] of samplesByModel) {
+    for (const fusion of config.routerFusionMethods) {
+      for (const split of planSearchSplits(samples, config, groupedStrategy)) {
+        jobs.push({
+          kind: "holdout",
+          model,
+          fusion,
+          strategy: split.strategy,
+          fold: split.fold,
+          development: split.development,
+          validation: split.validation,
+        })
+      }
+    }
+  }
+  return jobs
+}
+
+type RouterSearchJob = EvidenceRouterHoldoutJob | EvidenceRouterFitAllJob
+type RouterSearchJobResult =
+  | { readonly kind: "holdout"; readonly results: readonly EvidenceRouterSearchResult[] }
+  | { readonly kind: "fit-all"; readonly results: readonly RecommendedEvidenceRouter[] }
+
+const runRouterSearchJob = (
+  job: RouterSearchJob,
+  profile: OptimizationProfile,
+  options: BenchmarkSearchOptions,
+): Promise<RouterSearchJobResult> => {
+  if (job.kind === "holdout")
+    return optimizeEvidenceRouter(
+      job.model,
+      job.fusion,
+      job.strategy,
+      job.fold,
+      job.development,
+      job.validation,
+      profile,
+      options,
+    ).then((results) => ({ kind: "holdout", results }))
+  return fitRecommendedEvidenceRouter(job.model, job.fusion, job.samples, profile, options).then(
+    (results) => ({ kind: "fit-all", results }),
+  )
 }
 
 const runWeightSearchForGroup = (
