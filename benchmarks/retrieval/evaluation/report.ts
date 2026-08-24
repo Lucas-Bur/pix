@@ -4,6 +4,7 @@ import {
   type ChannelWeights,
   type EvidenceRouterConfig,
 } from "../../../src/domain/retrieval.js"
+import { describeScoutSequence } from "./scout-sequence.js"
 import type {
   BenchmarkArtifact,
   EvidenceRouterSearchResult,
@@ -141,7 +142,13 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     "",
     `Validation protocol: candidates use ${artifact.validationProtocol.selection}; holdouts are ${artifact.validationProtocol.holdouts.join(" and ")}; final promotion requires untouched ${artifact.validationProtocol.finalTest.strategy} fold ${artifact.validationProtocol.finalTest.fold}.`,
     "",
-    `Search strategy: \`${artifact.searchStrategy.algorithm}\` (${artifact.searchStrategy.globalScouts} global scouts, beam ${artifact.searchStrategy.beamWidth}, ${artifact.searchStrategy.coordinatePasses} coordinate passes, ${artifact.searchStrategy.proxySampleFraction * 100}% proxy with minimum ${artifact.searchStrategy.proxyMinimumSamples}, ${strategyFactorLabel} factor ${strategyFactor}x).`,
+    `Search algorithm: \`${artifact.searchStrategy.algorithm}\`.`,
+    "",
+    `Beam starting points: ${artifact.searchStrategy.globalScouts} ${artifact.scoutSequence} scouts (${describeScoutSequence(artifact.scoutSequence)}).`,
+    "",
+    `Beam refinement: beam width ${artifact.searchStrategy.beamWidth}, ${artifact.searchStrategy.coordinatePasses} alternating coordinate passes.`,
+    "",
+    `Cheap pre-scoring: candidates first score on a deterministic ${artifact.searchStrategy.proxySampleFraction * 100}% proxy sample with a minimum of ${artifact.searchStrategy.proxyMinimumSamples}; the ${strategyFactorLabel} factor is ${strategyFactor}x.`,
     "",
     `Context budgets use the documented \`${artifact.contextTokenEstimator}\` estimator.`,
     "",

@@ -2,11 +2,12 @@ import { expect, it } from "@effect/vitest"
 
 import { SEARCH_PRIORITY_PROFILE } from "../retrieval/evaluation/optimization-profiles.js"
 import { renderMarkdownReport } from "../retrieval/evaluation/report.js"
-import { ROUTER_SEARCH_STRATEGIES, type BenchmarkArtifact } from "../retrieval/evaluation/types.js"
+import { routerSearchStrategyFor, type BenchmarkArtifact } from "../retrieval/evaluation/types.js"
 
 const artifact = {
-  schemaVersion: 26,
+  schemaVersion: 27,
   benchmarkProfile: "smoke",
+  scoutSequence: "halton",
   optimizationProfile: SEARCH_PRIORITY_PROFILE,
   validationProtocol: {
     selection: "development-only",
@@ -14,7 +15,7 @@ const artifact = {
     finalTest: { kind: "untouched-grouped-fold", strategy: "grouped-5-fold", fold: "5" },
   },
   generatedAt: "2026-08-06T00:00:00.000Z",
-  searchStrategy: ROUTER_SEARCH_STRATEGIES["proxy-promotion"],
+  searchStrategy: routerSearchStrategyFor("halton", "proxy-promotion"),
   timings: {
     totalDurationMs: 0,
     corpusPreparationDurationMs: 0,
