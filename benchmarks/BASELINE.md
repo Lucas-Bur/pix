@@ -742,3 +742,18 @@ plus leave-one-repository-out holdouts) confirms the develop-profile picture at 
 The dynamic router beats the production guardrail on R@5 (+3.7pp) and NDCG@5 (+3.3pp); proxy/full
 agreement stayed at 100%. Guardrail passes remain strict (5/32 rows), consistent with earlier
 validate runs. The one-pass variant on this profile is still unmeasured.
+
+## Correction: Global-Scout Override Was Not Forwarded
+
+The first pure-sampling and hybrid fd-develop runs below Schema 30 recorded `globalScouts: 256` in
+their artifacts while the search actually executed the 64-scout default (the runner omitted the
+override; fixed after CodeRabbit review). Corrected re-runs with the override active:
+
+| Strategy | R@5 | R@20 | NDCG@5 | Ctx@4k | Full evals |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pure sampling, 256 random scouts, 0 passes | 62.0% | 84.8% | 47.6% | 77.7% | 72 |
+| hybrid, 256 random scouts, 1 pass | 66.0% | 87.3% | 49.2% | 80.2% | 1770 |
+
+The corrected numbers strengthen the earlier reading: the hybrid stays the strongest configuration
+(R@5 66.0% vs 63.7% deep baseline at ~54% of the evaluations), and scout count remains
+noise-level on this corpus.
