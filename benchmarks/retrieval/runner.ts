@@ -199,6 +199,7 @@ export const runRetrievalBenchmark = (
         seedHypotheses,
         beamSchedule,
         coordinatePasses,
+        globalScouts,
       },
     )
     reportBenchmarkProgress("quality search finished; writing artifact")

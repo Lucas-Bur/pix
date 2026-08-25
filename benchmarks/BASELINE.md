@@ -1,7 +1,7 @@
 # Preliminary Retrieval Baseline
 
 The schema-17 entries below are historical artifacts from the benchmark-owned Sparse implementation.
-Current schema-27 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
+Current schema-30 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
 
 ## Schema 27: Selectable Global Scout Sequence
 
@@ -10,8 +10,8 @@ records the selection as `scoutSequence` plus the `algorithm` prefix of every ar
 deterministic Gray-code construction whose direction numbers derive from primitive polynomials over
 GF(2) (odd initialization, no optimality claim). Halton, Sobol, and random share the same scout count,
 coordinate levels, base seeds, development-only selection, and holdout protocol; the deterministic
-random-scout baseline still runs alongside every structured search. No Halton-vs-Sobol-vs-random
-comparison run has been recorded yet.
+random-scout baseline still runs alongside every structured search. The Halton-vs-Sobol-vs-random
+comparison landed in the Schema 29 section below: all differences fall inside measurement noise.
 
 ## Schema 26: Binary NDCG Direct-Objective Smoke
 
