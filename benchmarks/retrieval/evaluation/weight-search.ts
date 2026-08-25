@@ -665,7 +665,9 @@ const selectBestWeights = async (
       )
     }
   }
-  return beam[0]
+  const best = beam[0]
+  if (best === undefined) throw new Error("Static weight search produced no candidate")
+  return best
 }
 
 const selectWeightSubsetCandidates = (

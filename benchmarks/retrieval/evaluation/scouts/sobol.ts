@@ -105,7 +105,7 @@ const buildDirectionTable = (): readonly (readonly number[])[] => {
         continue
       }
       let next = initialValues[index - degree - 1]!
-      next ^= initialValues[index - 1]! << degree
+      next ^= initialValues[index - degree - 1]! << degree
       for (let tap = 1; tap <= degree - 1; tap++) {
         if ((polynomial >>> (degree - tap)) & 1) {
           next ^= initialValues[index - tap - 1]! << tap

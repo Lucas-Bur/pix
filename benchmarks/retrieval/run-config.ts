@@ -34,11 +34,10 @@ export const resolveRouterSearchStrategy = (
 
 const parsePositiveInt = (envValue: string | undefined, name: string, fallback: number): number => {
   if (envValue === undefined) return fallback
-  const parsed = Number.parseInt(envValue, 10)
-  if (!Number.isFinite(parsed) || parsed < 0) {
+  if (!/^\d+$/.test(envValue)) {
     throw new Error(`${name} must be an integer >= 0, got ${envValue}`)
   }
-  return parsed
+  return Number.parseInt(envValue, 10)
 }
 
 /** Resolve all search knobs from one environment; throws with the knob name on bad input. */
