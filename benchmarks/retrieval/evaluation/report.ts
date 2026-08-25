@@ -209,48 +209,15 @@ const renderPromotionEvidence = (artifact: BenchmarkArtifact): readonly string[]
   ]
 }
 
-/** Render quality and marginal channel contribution grouped by query representation. */
-export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
-  const groups = new Map<string, QueryMeasurement[]>()
-  for (const row of artifact.measurements) {
-    const key = [row.repository, row.model, row.queryKind, row.variant].join("\0")
-    const group = groups.get(key) ?? []
-    group.push(row)
-    groups.set(key, group)
-  }
+/** Render the report header with run metadata and the recorded search configuration. */
+const renderOverview = (artifact: BenchmarkArtifact): readonly string[] => {
   const strategyFactorLabel =
     artifact.searchStrategy.kind === "successive-halving" ? "keep" : "promotion"
   const strategyFactor =
     artifact.searchStrategy.kind === "successive-halving"
       ? artifact.searchStrategy.halvingKeepFactor
       : artifact.searchStrategy.proxyPromotionFactor
-
-  const qualityRows = [...groups]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, rows]) => {
-      const [repository, model, queryKind, variant] = key.split("\0")
-      return [
-        repository,
-        model,
-        queryKind,
-        variant,
-        percent(average(rows, (row) => row.recallAt5)),
-        percent(average(rows, (row) => row.recallAt10)),
-        percent(average(rows, (row) => row.recallAt20)),
-        percent(average(rows, (row) => row.recallAt50)),
-        percent(average(rows, (row) => row.ndcgAt5)),
-        percent(average(rows, (row) => row.ndcgAt10)),
-        percent(average(rows, (row) => row.ndcgAt20)),
-        percent(average(rows, (row) => row.ndcgAt50)),
-        percent(average(rows, (row) => Number(row.successAt10))),
-        percent(average(rows, (row) => Number(row.successAt20))),
-        average(rows, (row) => row.reciprocalRank).toFixed(3),
-        percent(average(rows, (row) => row.contextRecall["2048"] ?? 0)),
-        percent(average(rows, (row) => row.contextRecall["4096"] ?? 0)),
-      ]
-    })
-
-  const lines = [
+  return [
     "# Retrieval Quality Benchmark",
     "",
     `Generated: ${artifact.generatedAt}`,
@@ -276,56 +243,123 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     `Cheap pre-scoring: candidates first score on a deterministic ${artifact.searchStrategy.proxySampleFraction * 100}% proxy sample with a minimum of ${artifact.searchStrategy.proxyMinimumSamples}; the ${strategyFactorLabel} factor is ${strategyFactor}x.`,
     "",
     `Context budgets use the documented \`${artifact.contextTokenEstimator}\` estimator.`,
-    "",
-    "## Run Timings",
-    "",
-    "Compute timings exclude JSON and Markdown artifact serialization.",
-    "",
-    ...renderTable(
+  ]
+}
+
+/** Render compute-time and sparse-encoder sections. */
+const renderComputeSections = (artifact: BenchmarkArtifact): readonly string[] => [
+  "",
+  "## Run Timings",
+  "",
+  "Compute timings exclude JSON and Markdown artifact serialization.",
+  "",
+  ...renderTable(
+    [
+      "Total",
+      "Corpus preparation",
+      "Embedding",
+      "Retrieval",
+      "Weight search",
+      "Fusion search",
+      "Router search",
+      "Candidate queue startup",
+      "Candidate queue shutdown",
+    ],
+    Array.from({ length: 9 }, () => "---:"),
+    [
       [
-        "Total",
-        "Corpus preparation",
-        "Embedding",
-        "Retrieval",
-        "Weight search",
-        "Fusion search",
-        "Router search",
-        "Candidate queue startup",
-        "Candidate queue shutdown",
+        duration(artifact.timings.totalDurationMs),
+        duration(artifact.timings.corpusPreparationDurationMs),
+        duration(artifact.timings.embeddingDurationMs),
+        duration(artifact.timings.retrievalDurationMs),
+        duration(artifact.timings.weightSearchDurationMs),
+        duration(artifact.timings.fusionSearchDurationMs),
+        duration(artifact.timings.evidenceRouterSearchDurationMs),
+        duration(artifact.timings.candidateQueueStartupDurationMs),
+        duration(artifact.timings.candidateQueueShutdownDurationMs),
       ],
-      Array.from({ length: 9 }, () => "---:"),
-      [
-        [
-          duration(artifact.timings.totalDurationMs),
-          duration(artifact.timings.corpusPreparationDurationMs),
-          duration(artifact.timings.embeddingDurationMs),
-          duration(artifact.timings.retrievalDurationMs),
-          duration(artifact.timings.weightSearchDurationMs),
-          duration(artifact.timings.fusionSearchDurationMs),
-          duration(artifact.timings.evidenceRouterSearchDurationMs),
-          duration(artifact.timings.candidateQueueStartupDurationMs),
-          duration(artifact.timings.candidateQueueShutdownDurationMs),
-        ],
-      ],
-    ),
-    "",
-    "## Sparse Encoder",
-    "",
-    "The production SparseEmbedder creates document vectors and tokenizes queries. The production SQLite IndexStore persists postings and IDF in the in-memory benchmark database, then computes exact query scores.",
-    "",
-    ...renderTable(
-      ["Repository", "Model", "Tokenizer", "Batch", "Chunk embedding", "Query tokenization"],
-      ["---", "---", "---", "---:", "---:", "---:"],
-      artifact.sparseEmbeddingRuns.map((run) => [
-        run.repository,
-        run.model,
-        run.tokenizerModel,
-        String(run.batchSize),
-        duration(run.chunkEmbeddingDurationMs),
-        duration(run.queryTokenizationDurationMs),
-      ]),
-    ),
-    "",
+    ],
+  ),
+  "",
+  "## Sparse Encoder",
+  "",
+  "The production SparseEmbedder creates document vectors and tokenizes queries. The production SQLite IndexStore persists postings and IDF in the in-memory benchmark database, then computes exact query scores.",
+  "",
+  ...renderTable(
+    ["Repository", "Model", "Tokenizer", "Batch", "Chunk embedding", "Query tokenization"],
+    ["---", "---", "---", "---:", "---:", "---:"],
+    artifact.sparseEmbeddingRuns.map((run) => [
+      run.repository,
+      run.model,
+      run.tokenizerModel,
+      String(run.batchSize),
+      duration(run.chunkEmbeddingDurationMs),
+      duration(run.queryTokenizationDurationMs),
+    ]),
+  ),
+]
+
+/** Render quality and marginal channel contribution grouped by query representation. */
+const renderQualitySections = (artifact: BenchmarkArtifact): readonly string[] => {
+  const groups = new Map<string, QueryMeasurement[]>()
+  for (const row of artifact.measurements) {
+    const key = [row.repository, row.model, row.queryKind, row.variant].join("\0")
+    const group = groups.get(key) ?? []
+    group.push(row)
+    groups.set(key, group)
+  }
+  const qualityRows = [...groups]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, rows]) => {
+      const [repository, model, queryKind, variant] = key.split("\0")
+      return [
+        repository,
+        model,
+        queryKind,
+        variant,
+        percent(average(rows, (row) => row.recallAt5)),
+        percent(average(rows, (row) => row.recallAt10)),
+        percent(average(rows, (row) => row.recallAt20)),
+        percent(average(rows, (row) => row.recallAt50)),
+        percent(average(rows, (row) => row.ndcgAt5)),
+        percent(average(rows, (row) => row.ndcgAt10)),
+        percent(average(rows, (row) => row.ndcgAt20)),
+        percent(average(rows, (row) => row.ndcgAt50)),
+        percent(average(rows, (row) => Number(row.successAt10))),
+        percent(average(rows, (row) => Number(row.successAt20))),
+        average(rows, (row) => row.reciprocalRank).toFixed(3),
+        percent(average(rows, (row) => row.contextRecall["2048"] ?? 0)),
+        percent(average(rows, (row) => row.contextRecall["4096"] ?? 0)),
+      ]
+    })
+
+  const contributionGroups = new Map<string, QueryMeasurement[]>()
+  for (const row of artifact.measurements) {
+    const key = [row.repository, row.model, row.queryKind].join("\0")
+    contributionGroups.set(key, [...(contributionGroups.get(key) ?? []), row])
+  }
+  const contributionRows = [...contributionGroups]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, rows]) => {
+      const [repository, model, queryKind] = key.split("\0")
+      const recall = (variant: QueryMeasurement["variant"]): number => {
+        const selected = rows.filter((row) => row.variant === variant)
+        return selected.length === 0 ? 0 : average(selected, (row) => row.recallAt20)
+      }
+      const full = recall("rrf-equal")
+      return [
+        repository,
+        model,
+        queryKind,
+        percent(full - recall("rrf-no-identity")),
+        percent(full - recall("rrf-no-camelcase")),
+        percent(full - recall("rrf-no-bm25")),
+        percent(full - recall("rrf-no-dense")),
+        percent(full - recall("rrf-no-sparse")),
+      ]
+    })
+
+  return [
     ...renderTable(
       [
         "Repository",
@@ -367,34 +401,6 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
       ],
       qualityRows,
     ),
-  ]
-
-  const contributionGroups = new Map<string, QueryMeasurement[]>()
-  for (const row of artifact.measurements) {
-    const key = [row.repository, row.model, row.queryKind].join("\0")
-    contributionGroups.set(key, [...(contributionGroups.get(key) ?? []), row])
-  }
-  const contributionRows = [...contributionGroups]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, rows]) => {
-      const [repository, model, queryKind] = key.split("\0")
-      const recall = (variant: QueryMeasurement["variant"]): number => {
-        const selected = rows.filter((row) => row.variant === variant)
-        return selected.length === 0 ? 0 : average(selected, (row) => row.recallAt20)
-      }
-      const full = recall("rrf-equal")
-      return [
-        repository,
-        model,
-        queryKind,
-        percent(full - recall("rrf-no-identity")),
-        percent(full - recall("rrf-no-camelcase")),
-        percent(full - recall("rrf-no-bm25")),
-        percent(full - recall("rrf-no-dense")),
-        percent(full - recall("rrf-no-sparse")),
-      ]
-    })
-  lines.push(
     "",
     "## Marginal RRF Contribution at 20",
     "",
@@ -405,7 +411,12 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
       ["---", "---", "---", "---:", "---:", "---:", "---:", "---:"],
       contributionRows,
     ),
-  )
+  ]
+}
+
+/** Render production, fusion, and evidence-router holdout sections. */
+const renderRouterSections = (artifact: BenchmarkArtifact): readonly string[] => {
+  const lines: string[] = []
 
   const productionGroups = new Map<string, ProductionRouterSearchResult[]>()
   for (const result of artifact.productionRouterSearch) {
@@ -1026,5 +1037,14 @@ export const renderMarkdownReport = (artifact: BenchmarkArtifact): string => {
     ),
   )
 
-  return `${lines.join("\n")}\n`
+  return lines
 }
+
+/** Render the full Markdown benchmark report. */
+export const renderMarkdownReport = (artifact: BenchmarkArtifact): string =>
+  [
+    ...renderOverview(artifact),
+    ...renderComputeSections(artifact),
+    ...renderQualitySections(artifact),
+    ...renderRouterSections(artifact),
+  ].join("\n") + "\n"
