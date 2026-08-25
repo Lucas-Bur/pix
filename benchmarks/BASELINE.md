@@ -734,10 +734,10 @@ The first validate-profile run with the new knobs (halton scouts, corner hypothe
 default two passes; artifact of 2026-08-25, MiniLM, search-priority, all three repositories, grouped-5-fold
 plus leave-one-repository-out holdouts) confirms the develop-profile picture at holdout level:
 
-| Router | R@5 | R@20 | NDCG@5 | Ctx@4k |
-| --- | ---: | ---: | ---: | ---: |
-| Dynamic (wide + hypotheses) | 53.2% | 79.2% | 40.2% | 65.5% |
-| Production compatibility | 49.5% | 80.0% | 36.9% | 66.9% |
+| Router                      |   R@5 |  R@20 | NDCG@5 | Ctx@4k |
+| --------------------------- | ----: | ----: | -----: | -----: |
+| Dynamic (wide + hypotheses) | 53.2% | 79.2% |  40.2% |  65.5% |
+| Production compatibility    | 49.5% | 80.0% |  36.9% |  66.9% |
 
 The dynamic router beats the production guardrail on R@5 (+3.7pp) and NDCG@5 (+3.3pp); proxy/full
 agreement stayed at 100%. Guardrail passes remain strict (5/32 rows), consistent with earlier
