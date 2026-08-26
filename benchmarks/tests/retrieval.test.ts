@@ -105,7 +105,7 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.evaluationCases.every(({ groundTruth }) => groundTruth.length > 0)).toBe(true)
     expect(artifact.models.length).toBeGreaterThan(0)
     expect(artifact.measurements.length).toBeGreaterThan(0)
-    expect(artifact.schemaVersion).toBe(30)
+    expect(artifact.schemaVersion).toBe(31)
     expect(artifact.scoutSequence).toBe(resolveScoutSequence(process.env.PIX_BENCH_SCOUT_SEQUENCE))
     expect(artifact.seedHypotheses).toBe(
       process.env.PIX_BENCH_SEED_HYPOTHESES === "1" ||
@@ -226,12 +226,19 @@ it("shuffles intent groups deterministically before assigning folds", () => {
 })
 
 it("resolves the selectable router search strategies", () => {
-  expect(resolveRouterSearchStrategy(undefined)).toBe("proxy-promotion")
+  expect(resolveRouterSearchStrategy(undefined)).toBe("halving-funnel")
   expect(resolveRouterSearchStrategy("successive-halving")).toBe("successive-halving")
   expect(routerSearchStrategyFor("halton", "successive-halving")).toMatchObject({
     kind: "successive-halving",
     algorithm: "halton-global-scout-elitist-beam-successive-halving",
     halvingKeepFactor: 8,
+  })
+  expect(resolveRouterSearchStrategy("halving-funnel")).toBe("halving-funnel")
+  expect(routerSearchStrategyFor("sobol", "halving-funnel")).toMatchObject({
+    kind: "halving-funnel",
+    algorithm: "sobol-global-scout-funnel",
+    spreadSurvivors: 32,
+    finalists: 256,
   })
   const sobolStrategy = routerSearchStrategyFor("sobol", "proxy-promotion")
   expect(sobolStrategy.algorithm).toBe("sobol-global-scout-elitist-beam-proxy-promotion")

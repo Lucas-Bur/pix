@@ -12,7 +12,8 @@ import type {
 } from "./types.js"
 
 const BOOTSTRAP_SAMPLES = 1_000
-const STABILITY_EPSILON = 0.005
+/** Maximum objective-metric delta between two configs that still counts as one plateau. */
+export const STABILITY_EPSILON = 0.005
 const QUALITY_METRICS: readonly QualityMetric[] = [
   "ndcgAt5",
   "ndcgAt10",
@@ -144,6 +145,7 @@ const configValues = (config: EvidenceRouterConfig): readonly number[] => [
   ...Object.values(config.queryLengthInfluence),
 ]
 
+/** Number of coordinates two configs differ in and the widest single-coordinate gap. */
 const differingCoordinates = (
   left: EvidenceRouterConfig,
   right: EvidenceRouterConfig,

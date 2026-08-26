@@ -23,6 +23,7 @@ import {
   rankLexicalChannels,
   RETRIEVAL_VARIANTS,
 } from "../retrieval/evaluation/ranking.js"
+import { emptyRouterConfig } from "../retrieval/evaluation/router-search/config-space.js"
 import { compareObjectiveQuality } from "../retrieval/evaluation/router-search/objectives.js"
 import { ROUTER_OBJECTIVES, type QualitySummary } from "../retrieval/evaluation/types.js"
 import {
@@ -580,6 +581,20 @@ describe("retrieval benchmark fixture", () => {
     })
     const ndcgFirst = quality(0.9, 0.7)
     const recallFirst = quality(0.8, 0.8)
+    const ndcgConfig = emptyRouterConfig({
+      identity: 1,
+      camelcase: 0,
+      bm25: 1,
+      dense: 1,
+      sparse: 1,
+    })
+    const recallConfig = emptyRouterConfig({
+      identity: 0.5,
+      camelcase: 0,
+      bm25: 1,
+      dense: 1,
+      sparse: 1,
+    })
 
     expect(compareObjectiveQuality(ndcgFirst, recallFirst, "direct", recallFirst)).toBeLessThan(0)
     expect(compareObjectiveQuality(ndcgFirst, recallFirst, "direct-recall-first")).toBeGreaterThan(
@@ -591,17 +606,21 @@ describe("retrieval benchmark fixture", () => {
     expect(compareObjectiveQuality(quality(0.9, 0.8), quality(0.1, 0.8), "reranker-top20")).toBe(0)
     const selections = selectObjectiveArchiveCandidates(
       [
-        { id: "ndcg", quality: ndcgFirst },
-        { id: "recall", quality: recallFirst },
+        { config: ndcgConfig, quality: ndcgFirst },
+        { config: recallConfig, quality: recallFirst },
       ],
-      ({ quality }) => quality,
       () => true,
       recallFirst,
     )
-    expect(selections.find(({ objective }) => objective === "direct")?.candidate?.id).toBe("ndcg")
+    expect(selections.find(({ objective }) => objective === "direct")?.candidate?.config).toBe(
+      ndcgConfig,
+    )
     expect(
-      selections.find(({ objective }) => objective === "direct-recall-first")?.candidate?.id,
-    ).toBe("recall")
+      selections.find(({ objective }) => objective === "direct-recall-first")?.candidate?.config,
+    ).toBe(recallConfig)
+    expect(
+      selections.every(({ selectionStability }) => selectionStability.metric !== undefined),
+    ).toBe(true)
   })
 
   it("selects one evidence router across queries with different reliable channels", async () => {
@@ -683,6 +702,36 @@ describe("retrieval benchmark fixture", () => {
     )
 
     expect(withoutSearchTimings(parallel)).toEqual(withoutSearchTimings(serial))
+  })
+
+  it("funnels broad proxy waves into a small full-quality finalist set", async () => {
+    const samples = makeEvidenceRouterSamples()
+    const result = selectTop20Router(
+      await optimizeEvidenceRouter(
+        "fixture",
+        "dbsf",
+        "grouped-5-fold",
+        "1",
+        samples,
+        samples,
+        undefined,
+        {
+          workerCount: 0,
+          routerSearchStrategy: "halving-funnel",
+          globalScouts: 16,
+          seedHypotheses: true,
+          localCloudPoints: 2,
+          localCloudRadiusLevels: 1,
+        },
+      ),
+    )
+
+    expect(result.searchDiagnostics.proxyEvaluations).toBeGreaterThan(
+      result.searchDiagnostics.fullEvaluations,
+    )
+    expect(result.searchDiagnostics.fullEvaluations).toBeLessThan(384)
+    expect(result.searchDiagnostics.localCloudCandidates).toBeGreaterThan(0)
+    expect(result.searchBaseline.algorithm).toBe("not-run")
   })
 
   it("does not treat a guardrail-failing fallback as promotable", () => {

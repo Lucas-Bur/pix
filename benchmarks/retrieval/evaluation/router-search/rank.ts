@@ -73,6 +73,7 @@ export const buildSearchDiagnostics = (
       ? 1
       : stats.proxyAgreementMatches / stats.proxyAgreementComparisons,
   protectedEliteCount: stats.protectedEliteCount,
+  localCloudCandidates: stats.localCloudCandidates,
   timings: { ...stats.timings },
 })
 
@@ -167,6 +168,7 @@ export interface SearchEvaluationStats {
   proxyAgreementMatches: number
   proxyAgreementComparisons: number
   protectedEliteCount: number
+  localCloudCandidates: number
   timings: MutableRouterSearchTimings
 }
 
@@ -306,9 +308,15 @@ const SUCCESSIVE_HALVING_MODE: RouterSearchMode = {
   selectBeam: (_context, candidates, limit) => candidates.slice(0, limit),
 }
 
+const HALVING_FUNNEL_MODE: RouterSearchMode = {
+  ...SUCCESSIVE_HALVING_MODE,
+  name: "halving-funnel",
+}
+
 const ROUTER_SEARCH_MODES: Readonly<Record<RouterSearchStrategyName, RouterSearchMode>> = {
   "proxy-promotion": PROXY_PROMOTION_MODE,
   "successive-halving": SUCCESSIVE_HALVING_MODE,
+  "halving-funnel": HALVING_FUNNEL_MODE,
 }
 
 export const resolveRouterSearchMode = (name: RouterSearchStrategyName): RouterSearchMode =>
@@ -347,7 +355,7 @@ export const selectRandomRouter = async (
   return { candidate, candidates: candidates.length }
 }
 
-const selectObjectiveCandidates = (
+export const selectObjectiveCandidates = (
   candidates: readonly RouterCandidate[],
   limit: number,
   baseline: QualitySummary,
@@ -373,7 +381,7 @@ const selectObjectiveCandidates = (
   return [...selected.values()].slice(0, limit)
 }
 
-interface RouterEvaluationResult {
+export interface RouterEvaluationResult {
   readonly candidates: readonly RouterCandidate[]
   readonly cacheHits: number
   readonly evaluations: number
@@ -410,7 +418,7 @@ const finalizeRouterCandidates = (
   return context.mode.selectBeam(context, ordered, limit)
 }
 
-const evaluateRouterConfigs = async (
+export const evaluateRouterConfigs = async (
   entries: readonly (readonly [string, EvidenceRouterConfig])[],
   samples: readonly EvidenceSearchSample[],
   pool: CandidateEvaluationPool,
