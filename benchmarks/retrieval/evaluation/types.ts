@@ -474,7 +474,7 @@ export interface RecommendedEvidenceRouter {
   readonly searchDiagnostics: RouterSearchDiagnostics
 }
 
-/** Compute-time breakdown for one benchmark invocation, excluding artifact file serialization. */
+/** Compute-time breakdown for one benchmark invocation; totalDurationMs excludes serialization. */
 export interface BenchmarkTimings {
   readonly totalDurationMs: number
   readonly corpusPreparationDurationMs: number
@@ -487,11 +487,13 @@ export interface BenchmarkTimings {
   readonly candidateQueueStartupDurationMs: number
   /** Time spent shutting down the shared native candidate queue. */
   readonly candidateQueueShutdownDurationMs: number
+  /** Time spent on the first JSON serialization pass used to write the artifact. */
+  readonly artifactSerializationDurationMs: number
 }
 
 /** Reproducible machine-readable output of one complete benchmark run. */
 export interface BenchmarkArtifact {
-  readonly schemaVersion: 31
+  readonly schemaVersion: 32
   /** Profile controlling benchmark coverage without changing retrieval behavior. */
   readonly benchmarkProfile: BenchmarkProfile
   /** Global-scout sequence used to seed the router beam search. */

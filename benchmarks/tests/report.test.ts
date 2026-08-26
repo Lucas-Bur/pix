@@ -5,7 +5,7 @@ import { renderMarkdownReport } from "../retrieval/evaluation/report.js"
 import { routerSearchStrategyFor, type BenchmarkArtifact } from "../retrieval/evaluation/types.js"
 
 const artifact = {
-  schemaVersion: 31,
+  schemaVersion: 32,
   benchmarkProfile: "smoke",
   scoutSequence: "halton",
   seedHypotheses: false,
@@ -32,6 +32,7 @@ const artifact = {
     evidenceRouterSearchDurationMs: 0,
     candidateQueueStartupDurationMs: 0,
     candidateQueueShutdownDurationMs: 0,
+    artifactSerializationDurationMs: 0,
   },
   chunkConfig: { chunkTokens: 512, overlapLines: 0 },
   contextTokenEstimator: "utf8-bytes-divided-by-four",

@@ -62,8 +62,10 @@ rejects authored targets that do not resolve to a chunk.
 | Corpus    | Revision                                   | Language   | Size band | Indexed scope                                      |
 | --------- | ------------------------------------------ | ---------- | --------- | -------------------------------------------------- |
 | FastAPI   | `95f8322ee1dcda7ceace7b1c4f6c9915b36d748f` | Python     | medium    | `fastapi/**/*.py`                                  |
+| beets     | `b7952299941543d4507ac7931edb223acd684b3d` | Python     | medium    | importer, library, autotag, database, and UI code  |
 | Effect v4 | `9263ba30c4535b655cf69a14f44a43cb9a93921e` | TypeScript | large     | `packages/effect/src/**/*.ts`                      |
 | fd        | `41532d114e2ba565fb5367d606c111b29b96450c` | Rust       | small     | `src/**/*.rs`                                      |
+| Alacritty | `94e7c8874e526b1e67b349d9ba30ddf81669119e` | Rust       | medium    | application and terminal source files              |
 | T3 Code   | `badae6a5cc8325dcd5a145bea6f7b8ac692818a1` | TypeScript | medium    | server, web state/browser, and shared source files |
 
 Effect's vendored Scalar and Swagger browser bundles are excluded explicitly. They are minified
@@ -93,16 +95,25 @@ vp run bench:retrieval:validate
 vp run bench:retrieval:full
 ```
 
+Run every profile, model, and optimization-profile invocation from the matrix manifest, then merge
+the artifacts:
+
+```bash
+vp run bench:retrieval:matrix
+```
+
+This command runs 30 model-backed benchmarks. Use it for release evidence, not the development loop.
+
 | Profile    | Repositories | Models   | Validation                    | Static fusion | Router fusion | Diagnostics            |
 | ---------- | ------------ | -------- | ----------------------------- | ------------- | ------------- | ---------------------- |
 | `smoke`    | fd           | MiniLM   | grouped 5-fold                | DBSF          | DBSF          | current router         |
-| `develop`  | all four     | MiniLM   | grouped 3-fold                | DBSF          | DBSF          | current router         |
-| `validate` | all four     | MiniLM   | grouped 5-fold and repository | DBSF          | DBSF          | current router         |
-| `full`     | all four     | selected | grouped 5-fold and repository | all three     | all three     | all active diagnostics |
+| `develop`  | all six      | MiniLM   | grouped 3-fold                | DBSF          | DBSF          | current router         |
+| `validate` | all six      | MiniLM   | grouped 5-fold and repository | DBSF          | DBSF          | current router         |
+| `full`     | all six      | selected | grouped 5-fold and repository | all three     | all three     | all active diagnostics |
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
-diagnostics. The selected profile is recorded in schema-26 artifacts without changing retrieval
+diagnostics. The selected profile is recorded in schema-32 artifacts without changing retrieval
 semantics. The full profile includes all three fusion methods; short profiles intentionally omit RRF
 to keep development runs fast.
 
@@ -154,14 +165,26 @@ $env:PIX_BENCH_MODELS = "Xenova/bge-small-en-v1.5"
 vp run bench:retrieval:full
 ```
 
-The built-in repository IDs are `fastapi`, `effect-v4`, `fd`, and `t3code`; additional IDs come from
-added manifests. Every profile runs exactly one model,
+The built-in repository IDs are `alacritty`, `beets`, `effect-v4`, `fastapi`, `fd`, and `t3code`;
+additional IDs come from added manifests. Every profile runs exactly one model,
 defaulting to MiniLM. Select another with `PIX_BENCH_MODELS`. Supported values are the three models in
 `MODEL_REGISTRY`:
 
 - `Xenova/all-MiniLM-L6-v2`
 - `Xenova/bge-small-en-v1.5`
 - `jinaai/jina-embeddings-v2-base-code`
+
+### Matrix manifest
+
+`benchmarks/matrix/full.json` defines the complete benchmark matrix as explicit run axes. It expands
+to 12,960 coordinates across all models, repositories, fusion methods, optimization profiles, router
+objectives, grouped folds, and repository holdouts.
+
+`expandBenchmarkMatrixManifest` expands the manifest in a stable order. Pass the resulting plan and
+schema-32 artifacts to `mergeBenchmarkMatrix`. The merge rejects duplicate, missing, and unexpected
+coordinates. Each merged coordinate retains the complete router result, search diagnostics, source
+timestamp, and source timing record. `artifactSerializationDurationMs` records the preflight JSON
+serialization time for each source artifact.
 
 The router search defaults to `halving-funnel`. It proxy-scores 512 broad scouts, keeps 32 survivors,
 proxy-scores 16 radius-2 Sobol points per survivor, and fully evaluates 256 finalists plus the static
