@@ -5,13 +5,15 @@ import { renderMarkdownReport } from "../retrieval/evaluation/report.js"
 import { routerSearchStrategyFor, type BenchmarkArtifact } from "../retrieval/evaluation/types.js"
 
 const artifact = {
-  schemaVersion: 30,
+  schemaVersion: 31,
   benchmarkProfile: "smoke",
   scoutSequence: "halton",
   seedHypotheses: false,
   beamSchedule: "fixed",
   coordinatePasses: 2,
   globalScouts: 64,
+  localCloudPoints: 0,
+  localCloudRadiusLevels: 1,
   optimizationProfile: SEARCH_PRIORITY_PROFILE,
   validationProtocol: {
     selection: "development-only",
@@ -88,4 +90,19 @@ it("renders the complete NDCG and direct-objective contract", () => {
   expect(report).toContain("Recall-first direct-ablation")
   expect(report).toContain("reranker-top20")
   expect(report).toContain("reranker-top50")
+})
+
+it("renders the halving funnel as two cheap waves and one full evaluation", () => {
+  const report = renderMarkdownReport({
+    ...artifact,
+    globalScouts: 512,
+    seedHypotheses: true,
+    localCloudPoints: 16,
+    localCloudRadiusLevels: 2,
+    searchStrategy: routerSearchStrategyFor("halton", "halving-funnel"),
+  })
+
+  expect(report).toContain("keep 32 proxy-scored spread survivors")
+  expect(report).toContain("16 Sobol points per survivor")
+  expect(report).toContain("fully evaluate 256 finalists plus base seeds once")
 })

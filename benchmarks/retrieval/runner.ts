@@ -165,6 +165,8 @@ export const runRetrievalBenchmark = (
     const beamSchedule = searchKnobs.beamSchedule
     const coordinatePasses = searchKnobs.coordinatePasses
     const globalScouts = searchKnobs.globalScouts
+    const localCloudPoints = searchKnobs.localCloudPoints
+    const localCloudRadiusLevels = searchKnobs.localCloudRadiusLevels
     const groupedStrategy: ValidationStrategy =
       config.groupedFolds === 3 ? "grouped-3-fold" : "grouped-5-fold"
     const manifests = yield* selectManifests(yield* loadCorpusManifests(), profile)
@@ -200,6 +202,8 @@ export const runRetrievalBenchmark = (
         beamSchedule,
         coordinatePasses,
         globalScouts,
+        localCloudPoints,
+        localCloudRadiusLevels,
       },
     )
     reportBenchmarkProgress("quality search finished; writing artifact")
@@ -214,13 +218,15 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 30,
+      schemaVersion: 31,
       benchmarkProfile: profile,
       scoutSequence,
       seedHypotheses,
       beamSchedule,
       coordinatePasses,
       globalScouts,
+      localCloudPoints,
+      localCloudRadiusLevels,
       optimizationProfile,
       validationProtocol: {
         selection: "development-only",

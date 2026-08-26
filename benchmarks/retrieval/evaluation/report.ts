@@ -211,12 +211,20 @@ const renderPromotionEvidence = (artifact: BenchmarkArtifact): readonly string[]
 
 /** Render the report header with run metadata and the recorded search configuration. */
 const renderOverview = (artifact: BenchmarkArtifact): readonly string[] => {
-  const strategyFactorLabel =
-    artifact.searchStrategy.kind === "successive-halving" ? "keep" : "promotion"
-  const strategyFactor =
-    artifact.searchStrategy.kind === "successive-halving"
-      ? artifact.searchStrategy.halvingKeepFactor
-      : artifact.searchStrategy.proxyPromotionFactor
+  const refinement =
+    artifact.searchStrategy.kind === "halving-funnel"
+      ? [
+          `Funnel refinement: keep ${artifact.searchStrategy.spreadSurvivors} proxy-scored spread survivors, expand ${artifact.localCloudPoints} Sobol points per survivor within +/- ${artifact.localCloudRadiusLevels} level(s), then fully evaluate ${artifact.searchStrategy.finalists} finalists plus base seeds once.`,
+        ]
+      : [
+          `Beam refinement: beam width ${artifact.searchStrategy.beamWidth}, ${artifact.searchStrategy.coordinatePasses} alternating coordinate passes.`,
+          ...(artifact.localCloudPoints > 0
+            ? [
+                `Local refinement: ${artifact.localCloudPoints} deterministic Sobol cloud points per elite within +/- ${artifact.localCloudRadiusLevels} level(s) around the final beam.`,
+              ]
+            : []),
+          `Cheap pre-scoring: candidates first score on a deterministic ${artifact.searchStrategy.proxySampleFraction * 100}% proxy sample with a minimum of ${artifact.searchStrategy.proxyMinimumSamples}; the ${artifact.searchStrategy.kind === "successive-halving" ? "keep" : "promotion"} factor is ${artifact.searchStrategy.kind === "successive-halving" ? artifact.searchStrategy.halvingKeepFactor : artifact.searchStrategy.proxyPromotionFactor}x.`,
+        ]
   return [
     "# Retrieval Quality Benchmark",
     "",
@@ -236,11 +244,9 @@ const renderOverview = (artifact: BenchmarkArtifact): readonly string[] => {
     "",
     `Search algorithm: \`${artifact.searchStrategy.algorithm}\`.`,
     "",
-    `Beam starting points: ${artifact.searchStrategy.globalScouts} ${artifact.scoutSequence} scouts (${describeScoutSequence(artifact.scoutSequence)}).`,
+    `Search starting points: ${artifact.searchStrategy.globalScouts} ${artifact.scoutSequence} scouts (${describeScoutSequence(artifact.scoutSequence)}).`,
     "",
-    `Beam refinement: beam width ${artifact.searchStrategy.beamWidth}, ${artifact.searchStrategy.coordinatePasses} alternating coordinate passes.`,
-    "",
-    `Cheap pre-scoring: candidates first score on a deterministic ${artifact.searchStrategy.proxySampleFraction * 100}% proxy sample with a minimum of ${artifact.searchStrategy.proxyMinimumSamples}; the ${strategyFactorLabel} factor is ${strategyFactor}x.`,
+    ...refinement.flatMap((line) => [line, ""]),
     "",
     `Context budgets use the documented \`${artifact.contextTokenEstimator}\` estimator.`,
   ]

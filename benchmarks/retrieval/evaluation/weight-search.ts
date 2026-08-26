@@ -51,6 +51,8 @@ import {
   withWeight,
   type RouterCandidate,
 } from "./router-search/config-space.js"
+import { runHalvingFunnel } from "./router-search/funnel.js"
+import { buildLocalCloudConfigs } from "./router-search/local-cloud.js"
 import {
   OBJECTIVE_GUARDRAILS,
   compareObjectiveQuality,
@@ -71,6 +73,11 @@ import {
   type RouterSearchMode,
   type SearchEvaluationStats,
 } from "./router-search/rank.js"
+import {
+  primaryObjectiveMetric,
+  reorderWithStabilityTieBreak,
+  scoreArchiveStability,
+} from "./router-search/stability.js"
 import { DEFAULT_SCOUT_SEQUENCE, type ScoutSequenceName } from "./scouts/index.js"
 import {
   DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS,
@@ -88,6 +95,7 @@ import {
   type RouterObjective,
   type RouterSearchStrategyName,
   type SearchBaselineComparison,
+  type SelectionStability,
   type WeightSearchResult,
 } from "./types.js"
 
@@ -128,6 +136,10 @@ interface SearchOptions extends CandidateEvaluationPoolOptions {
   readonly coordinatePasses?: number
   /** Override the global scout count (default: strategy setting). */
   readonly globalScouts?: number
+  /** Sobol points sampled per elite in a local cloud around the final beam (0 disables). */
+  readonly localCloudPoints?: number
+  /** Discrete level radius of the local Sobol cloud around each elite. */
+  readonly localCloudRadiusLevels?: number
 }
 
 /** Options for benchmark search APIs without colliding with the product query options type. */
@@ -720,6 +732,7 @@ interface EvidenceRouterSelection {
   readonly quality: QualitySummary
   readonly guardrailsMet: boolean
   readonly promotionStatus: PromotionStatus
+  readonly selectionStability: SelectionStability
 }
 
 /** Keep a failed guardrail decision explicit instead of treating a fallback as promotable. */
@@ -734,29 +747,50 @@ export const selectEligibleCandidate = <T>(
   }
 }
 
-/** Select one eligible archive candidate per objective using that objective's own comparator. */
-export const selectObjectiveArchiveCandidates = <T>(
-  candidates: readonly T[],
-  quality: (candidate: T) => QualitySummary,
-  isEligible: (candidate: T, objective: RouterObjective) => boolean,
+/**
+ * Select one eligible archive candidate per objective using that objective's own comparator.
+ * Candidates within measurement noise of the leader are reordered by local stability first (highest
+ * epsilon-neighbour fraction, then widest plateau); the selected candidate's tie-break metrics are
+ * recorded either way.
+ */
+export const selectObjectiveArchiveCandidates = (
+  candidates: readonly RouterCandidate[],
+  isEligible: (candidate: RouterCandidate, objective: RouterObjective) => boolean,
   baseline: QualitySummary,
   profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
 ): ReadonlyArray<{
   readonly objective: RouterObjective
-  readonly candidate: T | undefined
+  readonly candidate: RouterCandidate
   readonly promotionStatus: PromotionStatus
+  readonly selectionStability: SelectionStability
 }> =>
   ROUTER_OBJECTIVES.map((objective) => {
-    const ranked = [...candidates].sort((left, right) =>
-      compareObjectiveQuality(quality(left), quality(right), objective, baseline, profile),
+    const metric = primaryObjectiveMetric(objective, profile)
+    const ranked = [...scoreArchiveStability(candidates, metric)].sort((left, right) =>
+      compareObjectiveQuality(
+        left.candidate.quality,
+        right.candidate.quality,
+        objective,
+        baseline,
+        profile,
+      ),
     )
-    const selected = selectEligibleCandidate(ranked, (candidate) =>
+    const ordered = reorderWithStabilityTieBreak(
+      ranked,
+      profile.metricObjective.guardrailTolerance,
+      ({ candidate }) => candidate.quality[metric],
+    )
+    const selected = selectEligibleCandidate(ordered, ({ candidate }) =>
       isEligible(candidate, objective),
     )
+    const chosen = selected.candidate ?? ordered[0]
+    if (chosen === undefined)
+      throw new Error("Objective archive selection ran without archive candidates")
     return {
       objective,
-      candidate: selected.candidate ?? ranked[0],
+      candidate: chosen.candidate,
       promotionStatus: selected.promotionStatus,
+      selectionStability: chosen.stability,
     }
   })
 
@@ -800,6 +834,7 @@ const prepareRouterSearch = (
       proxyAgreementMatches: 0,
       proxyAgreementComparisons: 0,
       protectedEliteCount: 0,
+      localCloudCandidates: 0,
       timings: {
         preparationMs: performance.now() - preparationStartedAt,
         candidatePoolInitializationMs: 0,
@@ -837,6 +872,8 @@ const selectBestEvidenceRouter = async (
   beamSchedule: "fixed" | "decaying" = "fixed",
   coordinatePasses: number = SEARCH_PASSES,
   globalScouts: number = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.globalScouts,
+  localCloudPoints: number = 0,
+  localCloudRadiusLevels: number = 1,
 ): Promise<{
   readonly selections: readonly EvidenceRouterSelection[]
   readonly productionQuality: QualitySummary
@@ -905,30 +942,60 @@ const selectBestEvidenceRouter = async (
       })()
     : undefined
   const beamSearchStartedAt = performance.now()
-  const seedConfigs = [
-    ...baseSeeds,
-    ...buildGlobalRouterSeeds(baseSeeds, parameters, scoutSequence, globalScouts),
-    ...(seedHypotheses ? buildHypothesisRouterSeeds(baseSeeds, parameters) : []),
-  ]
-  const totalRounds = coordinatePasses + 1
-  const roundWidth = (round: number): number =>
-    beamSchedule === "decaying"
-      ? beamWidthForRound(round, totalRounds, SEARCH_BEAM_WIDTH)
-      : SEARCH_BEAM_WIDTH
-  let beam = await rankRouterCandidates(searchContext, seedConfigs, roundWidth(0), baseSeeds)
-  for (let pass = 0; pass < coordinatePasses; pass++) {
-    const orderedParameters = pass % 2 === 0 ? parameters : [...parameters].reverse()
-    for (const parameter of orderedParameters) {
+  let beam: readonly RouterCandidate[]
+  if (mode.name === "halving-funnel") {
+    beam = await runHalvingFunnel(
+      searchContext,
+      baseSeeds,
+      parameters,
+      scoutSequence,
+      globalScouts,
+      seedHypotheses,
+      localCloudPoints,
+      localCloudRadiusLevels,
+    )
+  } else {
+    const seedConfigs = [
+      ...baseSeeds,
+      ...buildGlobalRouterSeeds(baseSeeds, parameters, scoutSequence, globalScouts),
+      ...(seedHypotheses ? buildHypothesisRouterSeeds(baseSeeds, parameters) : []),
+    ]
+    const totalRounds = coordinatePasses + 1
+    const roundWidth = (round: number): number =>
+      beamSchedule === "decaying"
+        ? beamWidthForRound(round, totalRounds, SEARCH_BEAM_WIDTH)
+        : SEARCH_BEAM_WIDTH
+    beam = await rankRouterCandidates(searchContext, seedConfigs, roundWidth(0), baseSeeds)
+    for (let pass = 0; pass < coordinatePasses; pass++) {
+      const orderedParameters = pass % 2 === 0 ? parameters : [...parameters].reverse()
+      for (const parameter of orderedParameters) {
+        beam = await rankRouterCandidates(
+          searchContext,
+          [
+            // Retain the current beam; the search context also protects full-quality elites.
+            ...beam.map((candidate) => candidate.config),
+            ...beam.flatMap((candidate) =>
+              parameter.values.map((value) => parameter.update(candidate.config, value)),
+            ),
+          ],
+          roundWidth(pass + 1),
+          beam.map((candidate) => candidate.config),
+        )
+      }
+    }
+    if (localCloudPoints > 0 && localCloudRadiusLevels > 0) {
+      const cloudConfigs = buildLocalCloudConfigs(
+        beam.map((candidate) => candidate.config),
+        parameters,
+        localCloudPoints,
+        localCloudRadiusLevels,
+      )
+      stats.localCloudCandidates += cloudConfigs.length
       beam = await rankRouterCandidates(
         searchContext,
-        [
-          // Retain the current beam; the search context also protects full-quality elites.
-          ...beam.map((candidate) => candidate.config),
-          ...beam.flatMap((candidate) =>
-            parameter.values.map((value) => parameter.update(candidate.config, value)),
-          ),
-        ],
-        roundWidth(pass + 1),
+        cloudConfigs,
+        roundWidth(coordinatePasses),
+        // Retain the pre-cloud elites; the context also protects full-quality elites.
         beam.map((candidate) => candidate.config),
       )
     }
@@ -939,7 +1006,6 @@ const selectBestEvidenceRouter = async (
   const candidates = [...searchContext.archive.values()]
   const selections = selectObjectiveArchiveCandidates(
     candidates,
-    ({ quality }) => quality,
     (entry, objective) =>
       evidenceRouterGuardrailsMet(
         samples,
@@ -951,16 +1017,14 @@ const selectBestEvidenceRouter = async (
       ),
     productionQuality,
     profile,
-  ).map(({ objective, candidate: selectedCandidate, promotionStatus }) => {
-    const candidate = selectedCandidate ?? fallback
-    return {
-      objective,
-      config: candidate.config,
-      quality: candidate.quality,
-      guardrailsMet: promotionStatus === "eligible",
-      promotionStatus,
-    }
-  })
+  ).map(({ objective, candidate, promotionStatus, selectionStability }) => ({
+    objective,
+    config: candidate.config,
+    quality: candidate.quality,
+    guardrailsMet: promotionStatus === "eligible",
+    promotionStatus,
+    selectionStability,
+  }))
   const randomCandidate = randomSearch?.candidate ?? fallback
   return {
     selections,
@@ -1233,6 +1297,8 @@ const withEvidencePools = async <T>(
       options.beamSchedule ?? "fixed",
       options.coordinatePasses ?? DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.coordinatePasses,
       options.globalScouts ?? DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.globalScouts,
+      options.localCloudPoints ?? 0,
+      options.localCloudRadiusLevels ?? 1,
     )
     return await operation(selection, fullPool)
   } finally {
@@ -1256,7 +1322,7 @@ const selectStaticWeightsForSelections = async (
   profile: OptimizationProfile,
   mode: RouterSearchMode,
 ): Promise<readonly StaticRouterSelection[]> => {
-  if (mode.name === "successive-halving") {
+  if (mode.name !== "proxy-promotion") {
     const staticSelection = await selectBestWeights(
       fullPool,
       mode,
@@ -1382,6 +1448,7 @@ export const optimizeEvidenceRouter = async (
           productionValidation,
           guardrailsMet,
           promotionStatus: guardrailsMet ? "eligible" : "no-eligible-candidate",
+          selectionStability: selection.selectionStability,
           proxyEvaluations: dynamicSelection.proxyEvaluations,
           fullEvaluations: dynamicSelection.fullEvaluations,
           searchDiagnostics: dynamicSelection.searchDiagnostics,
@@ -1522,6 +1589,7 @@ const fitRecommendedEvidenceRouterWithOptions = (
         productionQuality: dynamicSelection.productionQuality,
         guardrailsMet: selection.guardrailsMet,
         promotionStatus: selection.promotionStatus,
+        selectionStability: selection.selectionStability,
         proxyEvaluations: dynamicSelection.proxyEvaluations,
         fullEvaluations: dynamicSelection.fullEvaluations,
         searchDiagnostics: dynamicSelection.searchDiagnostics,

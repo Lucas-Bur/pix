@@ -1,7 +1,59 @@
 # Preliminary Retrieval Baseline
 
 The schema-17 entries below are historical artifacts from the benchmark-owned Sparse implementation.
-Current schema-30 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
+Current schema-31 runs use the production SparseEmbedder and IndexStore without benchmark vector caches.
+
+## Schema 31: Local Sobol Clouds And Stability-Aware Selection
+
+Schema 31 adds the router-search v2 knobs from #188 without changing the default shape:
+`PIX_BENCH_LOCAL_CLOUD_POINTS` (default 0, disabled) samples deterministic Sobol cloud points per
+elite within +/- `PIX_BENCH_LOCAL_CLOUD_RADIUS` (default 1) discrete levels around the final beam,
+and every selected archive candidate now records its local-stability tie-break
+(`selectionStability`: single-coordinate neighbour count, epsilon-neighbour fraction, plateau width)
+while candidates within measurement noise of the objective leader are reordered towards locally
+stabler picks first.
+
+Both fd-develop runs below share the pinned corpus, MiniLM model, Halton scouts (64), beam schedule,
+and 11 native worker threads; run A is the unchanged default, run B enables the v2 shape
+(`successive-halving`, corner hypotheses, 64-point radius-1 cloud). Means across the three grouped
+3-fold holdouts, `reranker-top20`:
+
+| Run                                                    |   R@5 |  R@20 | NDCG@5 | Ctx@4k | Full evals | Router time | Total time |
+| ------------------------------------------------------ | ----: | ----: | -----: | -----: | ---------: | ----------: | ---------: |
+| A default (`retrieval-2026-08-25T12-38-44.008Z.json`)  | 55.8% | 80.1% |  42.6% |  70.3% |       3373 |    2326.7 s |   2415.2 s |
+| B v2 shape (`retrieval-2026-08-25T13-46-00.085Z.json`) | 53.3% | 79.6% |  40.5% |  64.9% |       3395 |    2357.3 s |   2447.1 s |
+
+The v2 shape does not reach default quality within noise: Context@4k drops in every fold
+(-9.3/-6.3/-0.7 points), R@5 and NDCG@5 trend below on average while fold spread overlaps. Wall time
+is equal (+1.3%): under the shared proxy pre-stage and expansion factor both strategies converge to
+nearly identical full-evaluation budgets, so the historical successive-halving speed advantage no
+longer exists in this architecture. The stability wiring itself works as intended — the cloud-dense
+archive gives the fit-all winner a much richer neighbourhood (20 neighbours, plateau width 2.0 versus
+4/1.3 on the default run). This result kept `proxy-promotion` as the default at that point. The funnel
+follow-up below supersedes that runtime decision.
+
+### Halving Funnel Follow-Up (#189)
+
+The first-principles funnel removes full-quality evaluation from every coordinate step. It
+proxy-scores 512 broad scouts plus corner hypotheses, keeps 32 objective-diverse survivors, samples
+16 radius-2 Sobol points around each survivor, then fully evaluates 256 finalists plus static base
+seeds exactly once. The selected fd-develop artifact is
+`retrieval-2026-08-26T20-03-00.144Z.json`; means again cover the three grouped 3-fold
+`reranker-top20` holdouts:
+
+| Run                                                   |   R@5 |  R@20 | NDCG@5 | Ctx@4k | Full evals | Router time | Total time |
+| ----------------------------------------------------- | ----: | ----: | -----: | -----: | ---------: | ----------: | ---------: |
+| A default (`retrieval-2026-08-25T12-38-44.008Z.json`) | 55.8% | 80.1% |  42.6% |  70.3% |       3373 |    2326.7 s |   2415.2 s |
+| C funnel (`retrieval-2026-08-26T20-03-00.144Z.json`)  | 56.2% | 79.7% |  43.3% |  69.2% |        287 |     203.3 s |    296.5 s |
+
+The funnel cuts router time by 91.3% and total time by 87.7%. R@5 (+0.4 points), R@20 (-0.4), and
+NDCG@5 (+0.7) are inside the one-point noise budget; Context@4k is 1.11 points lower, narrowly outside
+it. The experiments bracketed the last-stage budget at 24, 64, 256, and 384 finalists. Quality
+improved through 256; 384 produced identical metrics with 65 s more router time. Doubling the cloud
+to 32 points per survivor and widening radius from 2 to 3 also added proxy work without improving
+quality. The 512/32/16-r2/256 schedule is therefore the measured Pareto point. Runtime is the deciding
+constraint for repository growth, so `halving-funnel` is the benchmark default despite the 1.11-point
+Context@4k delta. Use `PIX_BENCH_ROUTER_STRATEGY=proxy-promotion` for the slower control.
 
 ## Schema 27: Selectable Global Scout Sequence
 
@@ -749,10 +801,10 @@ The first pure-sampling and hybrid fd-develop runs below Schema 30 recorded `glo
 their artifacts while the search actually executed the 64-scout default (the runner omitted the
 override; fixed after CodeRabbit review). Corrected re-runs with the override active:
 
-| Strategy | R@5 | R@20 | NDCG@5 | Ctx@4k | Full evals |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| pure sampling, 256 random scouts, 0 passes | 62.0% | 84.8% | 47.6% | 77.7% | 72 |
-| hybrid, 256 random scouts, 1 pass | 66.0% | 87.3% | 49.2% | 80.2% | 1770 |
+| Strategy                                   |   R@5 |  R@20 | NDCG@5 | Ctx@4k | Full evals |
+| ------------------------------------------ | ----: | ----: | -----: | -----: | ---------: |
+| pure sampling, 256 random scouts, 0 passes | 62.0% | 84.8% |  47.6% |  77.7% |         72 |
+| hybrid, 256 random scouts, 1 pass          | 66.0% | 87.3% |  49.2% |  80.2% |       1770 |
 
 The corrected numbers strengthen the earlier reading: the hybrid stays the strongest configuration
 (R@5 66.0% vs 63.7% deep baseline at ~54% of the evaluations), and scout count remains

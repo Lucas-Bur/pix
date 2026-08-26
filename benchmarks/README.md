@@ -162,11 +162,12 @@ defaulting to MiniLM. Select another with `PIX_BENCH_MODELS`. Supported values a
 - `Xenova/bge-small-en-v1.5`
 - `jinaai/jina-embeddings-v2-base-code`
 
-The router search defaults to `proxy-promotion`. Set `PIX_BENCH_ROUTER_STRATEGY` to
-`successive-halving` to select the historical Successive-Halving variant. It uses the original
-lexicographic `R@20`, `R@10`, `Context@4k`, and MRR comparator plus its `halvingKeepFactor`.
-Both strategies use the same candidate evaluator and native worker queue. Their final archive selection
-is objective-specific, so Direct and Reranker rows are real comparisons rather than repeated labels.
+The router search defaults to `halving-funnel`. It proxy-scores 512 broad scouts, keeps 32 survivors,
+proxy-scores 16 radius-2 Sobol points per survivor, and fully evaluates 256 finalists plus the static
+base seeds once. Set `PIX_BENCH_ROUTER_STRATEGY=proxy-promotion` to run the slower coordinate-beam
+search. Set it to `successive-halving` to run the historical lexicographic variant. All strategies use
+the same candidate evaluator and native worker queue. Their final archive selection is
+objective-specific, so Direct and Reranker rows are real comparisons rather than repeated labels.
 
 The global scouts default to a deterministic Halton sequence. Set `PIX_BENCH_SCOUT_SEQUENCE` to
 `sobol` or `random` to seed the beam differently; comparisons must keep the strategy, scout count,
