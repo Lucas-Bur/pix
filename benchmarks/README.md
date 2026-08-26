@@ -59,11 +59,12 @@ targets and a duplicate occurrence of the same chunk each contribute at most onc
 no gold target resolves. Manifest decoding rejects empty ground-truth arrays, and corpus preparation
 rejects authored targets that do not resolve to a chunk.
 
-| Corpus    | Revision                                   | Language   | Size band | Indexed scope                 |
-| --------- | ------------------------------------------ | ---------- | --------- | ----------------------------- |
-| FastAPI   | `95f8322ee1dcda7ceace7b1c4f6c9915b36d748f` | Python     | medium    | `fastapi/**/*.py`             |
-| Effect v4 | `9263ba30c4535b655cf69a14f44a43cb9a93921e` | TypeScript | large     | `packages/effect/src/**/*.ts` |
-| fd        | `41532d114e2ba565fb5367d606c111b29b96450c` | Rust       | small     | `src/**/*.rs`                 |
+| Corpus    | Revision                                   | Language   | Size band | Indexed scope                                      |
+| --------- | ------------------------------------------ | ---------- | --------- | -------------------------------------------------- |
+| FastAPI   | `95f8322ee1dcda7ceace7b1c4f6c9915b36d748f` | Python     | medium    | `fastapi/**/*.py`                                  |
+| Effect v4 | `9263ba30c4535b655cf69a14f44a43cb9a93921e` | TypeScript | large     | `packages/effect/src/**/*.ts`                      |
+| fd        | `41532d114e2ba565fb5367d606c111b29b96450c` | Rust       | small     | `src/**/*.rs`                                      |
+| T3 Code   | `badae6a5cc8325dcd5a145bea6f7b8ac692818a1` | TypeScript | medium    | server, web state/browser, and shared source files |
 
 Effect's vendored Scalar and Swagger browser bundles are excluded explicitly. They are minified
 JavaScript stored in giant TypeScript string literals, exceed Tree-sitter's input limit, and are not
@@ -95,9 +96,9 @@ vp run bench:retrieval:full
 | Profile    | Repositories | Models   | Validation                    | Static fusion | Router fusion | Diagnostics            |
 | ---------- | ------------ | -------- | ----------------------------- | ------------- | ------------- | ---------------------- |
 | `smoke`    | fd           | MiniLM   | grouped 5-fold                | DBSF          | DBSF          | current router         |
-| `develop`  | all three    | MiniLM   | grouped 3-fold                | DBSF          | DBSF          | current router         |
-| `validate` | all three    | MiniLM   | grouped 5-fold and repository | DBSF          | DBSF          | current router         |
-| `full`     | all three    | selected | grouped 5-fold and repository | all three     | all three     | all active diagnostics |
+| `develop`  | all four     | MiniLM   | grouped 3-fold                | DBSF          | DBSF          | current router         |
+| `validate` | all four     | MiniLM   | grouped 5-fold and repository | DBSF          | DBSF          | current router         |
+| `full`     | all four     | selected | grouped 5-fold and repository | all three     | all three     | all active diagnostics |
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
@@ -153,8 +154,8 @@ $env:PIX_BENCH_MODELS = "Xenova/bge-small-en-v1.5"
 vp run bench:retrieval:full
 ```
 
-The built-in repository IDs are `fastapi`, `effect-v4`, and `fd`; additional IDs come from added
-manifests. Every profile runs exactly one model,
+The built-in repository IDs are `fastapi`, `effect-v4`, `fd`, and `t3code`; additional IDs come from
+added manifests. Every profile runs exactly one model,
 defaulting to MiniLM. Select another with `PIX_BENCH_MODELS`. Supported values are the three models in
 `MODEL_REGISTRY`:
 

@@ -48,7 +48,7 @@ it("rejects benchmark questions without exact ground truth", () => {
 it.effect("resolves every authored gold symbol in each pinned corpus", () =>
   Effect.gen(function* () {
     const manifests = yield* loadCorpusManifests()
-    expect(manifests).toHaveLength(3)
+    expect(manifests).toHaveLength(4)
     expect(manifests.every((manifest) => manifest.questions.length === 15)).toBe(true)
 
     for (const manifest of manifests) {
