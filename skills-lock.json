@@ -103,6 +103,12 @@
       "skillPath": "skills/productivity/teach/SKILL.md",
       "computedHash": "0c06821a21052b8a054f04c74223db2f1fb5868bbe0da76674d0892a872b3c56"
     },
+    "technical-writing": {
+      "source": "cursor/plugins",
+      "sourceType": "github",
+      "skillPath": "pstack/skills/technical-writing/SKILL.md",
+      "computedHash": "4ba98b56a3d8c9a248279f1dcd275038f60995787aa564f88312c65f620f6e0f"
+    },
     "to-questionnaire": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -126,6 +132,18 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/triage/SKILL.md",
       "computedHash": "f844266a4d3b742b42045a162acb8eda26b8e9359a3b7a3526665c453148473a"
+    },
+    "typescript-best-practices": {
+      "source": "cursor/plugins",
+      "sourceType": "github",
+      "skillPath": "pstack/skills/typescript-best-practices/SKILL.md",
+      "computedHash": "3b96f039114d5befa11334009bff19ed223cbcc143ef382415d88eda3566943a"
+    },
+    "unslop": {
+      "source": "cursor/plugins",
+      "sourceType": "github",
+      "skillPath": "pstack/skills/unslop/SKILL.md",
+      "computedHash": "d8593c3deff559acd5933ebb3023dab22c939b9adcac5deda75beeb0277342a0"
     },
     "wait-what": {
       "source": "mattpocock/skills",
