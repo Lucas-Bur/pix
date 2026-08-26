@@ -1,0 +1,201 @@
+{
+  "schemaVersion": 2,
+  "id": "beets",
+  "repository": "https://github.com/beetbox/beets.git",
+  "revision": "b7952299941543d4507ac7931edb223acd684b3d",
+  "language": "python",
+  "size": "medium",
+  "includeRoots": [
+    "beets/importer/",
+    "beets/library/",
+    "beets/autotag/",
+    "beets/dbcore/",
+    "beets/ui/",
+    "beets/plugins.py",
+    "beets/metadata_plugins.py"
+  ],
+  "excludePaths": [],
+  "extensions": [".py"],
+  "questions": [
+    {
+      "id": "beets-001",
+      "queries": {
+        "identifier": "ImportSession",
+        "searchPhrase": "music import session configuration pipeline",
+        "naturalQuestion": "Which object coordinates configuration and pipeline stages for a music import?",
+        "agentTask": "Find the session object that owns one beets import run."
+      },
+      "category": "import-workflow",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "beets/importer/session.py", "symbol": "ImportSession" }]
+    },
+    {
+      "id": "beets-002",
+      "queries": {
+        "identifier": "ImportTask",
+        "searchPhrase": "album import task files metadata candidates choice",
+        "naturalQuestion": "Where is the state for importing one album and its candidate choice stored?",
+        "agentTask": "Find the task model for an album import."
+      },
+      "category": "import-workflow",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "beets/importer/tasks.py", "symbol": "ImportTask" }]
+    },
+    {
+      "id": "beets-003",
+      "queries": {
+        "identifier": "ImportTaskFactory",
+        "searchPhrase": "scan paths create album singleton import tasks",
+        "naturalQuestion": "Which component turns paths into album or singleton import tasks?",
+        "agentTask": "Find the factory that discovers files and creates import tasks."
+      },
+      "category": "filesystem",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "beets/importer/tasks.py", "symbol": "ImportTaskFactory" }]
+    },
+    {
+      "id": "beets-004",
+      "queries": {
+        "identifier": "read_tasks",
+        "searchPhrase": "read import paths produce tasks pipeline stage",
+        "naturalQuestion": "Where does the importer read configured paths and start producing tasks?",
+        "agentTask": "Find the first importer stage that yields tasks from input paths."
+      },
+      "category": "pipeline",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "beets/importer/stages.py", "symbol": "read_tasks" }]
+    },
+    {
+      "id": "beets-005",
+      "queries": {
+        "identifier": "lookup_candidates",
+        "searchPhrase": "lookup metadata candidates imported album",
+        "naturalQuestion": "Which importer stage looks up metadata matches for an album?",
+        "agentTask": "Find the stage that attaches autotag candidates to an import task."
+      },
+      "category": "metadata-matching",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "beets/importer/stages.py", "symbol": "lookup_candidates" }]
+    },
+    {
+      "id": "beets-006",
+      "queries": {
+        "identifier": "manipulate_files",
+        "searchPhrase": "move copy link imported music files",
+        "naturalQuestion": "Where does the importer apply copy, move, link, and write operations to accepted files?",
+        "agentTask": "Find the importer stage that changes files after a choice is accepted."
+      },
+      "category": "filesystem",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "beets/importer/stages.py", "symbol": "manipulate_files" }]
+    },
+    {
+      "id": "beets-007",
+      "queries": {
+        "identifier": "Library",
+        "searchPhrase": "music library database albums items paths",
+        "naturalQuestion": "Which object provides the main database API for albums and items?",
+        "agentTask": "Find the central beets library abstraction."
+      },
+      "category": "library",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "beets/library/library.py", "symbol": "Library" }]
+    },
+    {
+      "id": "beets-008",
+      "queries": {
+        "identifier": "Item",
+        "searchPhrase": "single music file metadata database model",
+        "naturalQuestion": "Where is one track and its file metadata represented?",
+        "agentTask": "Find the database model for a single music item."
+      },
+      "category": "data-model",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "beets/library/models.py", "symbol": "Item" }]
+    },
+    {
+      "id": "beets-009",
+      "queries": {
+        "identifier": "Album",
+        "searchPhrase": "album metadata items art database model",
+        "naturalQuestion": "Which model groups tracks and album-level metadata?",
+        "agentTask": "Find the database model for an album."
+      },
+      "category": "data-model",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "beets/library/models.py", "symbol": "Album" }]
+    },
+    {
+      "id": "beets-010",
+      "queries": {
+        "identifier": "tag_album",
+        "searchPhrase": "rank metadata candidates complete album",
+        "naturalQuestion": "How does beets find and rank metadata candidates for an album?",
+        "agentTask": "Find the autotagger entry point for matching a complete album."
+      },
+      "category": "metadata-matching",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "beets/autotag/match.py", "symbol": "tag_album" }]
+    },
+    {
+      "id": "beets-011",
+      "queries": {
+        "identifier": "tag_item",
+        "searchPhrase": "rank metadata candidates single track",
+        "naturalQuestion": "Where does beets match a single track against metadata candidates?",
+        "agentTask": "Find the autotagger entry point for matching one item."
+      },
+      "category": "metadata-matching",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "beets/autotag/match.py", "symbol": "tag_item" }]
+    },
+    {
+      "id": "beets-012",
+      "queries": {
+        "identifier": "parse_query_string",
+        "searchPhrase": "parse user library query text sort fields",
+        "naturalQuestion": "Which function turns command-line query text into database queries and sorting?",
+        "agentTask": "Find the parser for user-facing library query strings."
+      },
+      "category": "query-parsing",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "beets/library/queries.py", "symbol": "parse_query_string" }]
+    },
+    {
+      "id": "beets-013",
+      "queries": {
+        "identifier": "Database",
+        "searchPhrase": "SQLite model transactions queries migrations",
+        "naturalQuestion": "Where are SQLite access, model queries, and transactions coordinated?",
+        "agentTask": "Find the base database implementation used by the music library."
+      },
+      "category": "persistence",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "beets/dbcore/db.py", "symbol": "Database" }]
+    },
+    {
+      "id": "beets-014",
+      "queries": {
+        "identifier": "BeetsPlugin",
+        "searchPhrase": "plugin commands listeners template fields lifecycle",
+        "naturalQuestion": "Which base class lets extensions register commands, listeners, and template fields?",
+        "agentTask": "Find the base class for beets plugins."
+      },
+      "category": "plugins",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "beets/plugins.py", "symbol": "BeetsPlugin" }]
+    },
+    {
+      "id": "beets-015",
+      "queries": {
+        "identifier": "candidates",
+        "searchPhrase": "aggregate album metadata candidates plugins",
+        "naturalQuestion": "Where are album candidates collected from all configured metadata plugins?",
+        "agentTask": "Find the function that yields album candidates from metadata sources."
+      },
+      "category": "plugins",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "beets/metadata_plugins.py", "symbol": "candidates" }]
+    }
+  ]
+}
