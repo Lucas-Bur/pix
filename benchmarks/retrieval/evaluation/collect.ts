@@ -1,4 +1,4 @@
-﻿import { Effect, Stream } from "effect"
+import { Effect, Stream } from "effect"
 import { SqlClient } from "effect/unstable/sql"
 
 import type { Embedding } from "../../../src/domain/chunk.js"
@@ -68,7 +68,6 @@ interface ModelMeasurements {
   readonly sparseEmbeddingRun: BenchmarkArtifact["sparseEmbeddingRuns"][number]
   readonly measurements: readonly QueryMeasurement[]
   readonly samples: readonly WeightSearchSample[]
-  readonly samplesByQueryKind: ReadonlyMap<QueryKind, readonly WeightSearchSample[]>
   readonly rankings: readonly ChannelRankings[]
   readonly retrievalDurationMs: number
 }
@@ -80,14 +79,6 @@ interface RepositoryMeasurements {
   readonly sparseEmbeddingRuns: readonly BenchmarkArtifact["sparseEmbeddingRuns"][number][]
   readonly measurements: readonly QueryMeasurement[]
   readonly samplesByModel: ReadonlyMap<string, readonly WeightSearchSample[]>
-  readonly sampleGroups: ReadonlyMap<
-    string,
-    {
-      readonly model: string
-      readonly queryKind: QueryKind
-      readonly samples: readonly WeightSearchSample[]
-    }
-  >
   readonly retrievalDurationMs: number
 }
 
@@ -98,14 +89,6 @@ export interface CollectedBenchmarkData {
   readonly embeddingRuns: readonly BenchmarkArtifact["embeddingRuns"][number][]
   readonly sparseEmbeddingRuns: readonly BenchmarkArtifact["sparseEmbeddingRuns"][number][]
   readonly measurements: readonly QueryMeasurement[]
-  readonly sampleGroups: ReadonlyMap<
-    string,
-    {
-      readonly model: string
-      readonly queryKind: QueryKind
-      readonly samples: readonly WeightSearchSample[]
-    }
-  >
   readonly samplesByModel: ReadonlyMap<string, readonly WeightSearchSample[]>
   readonly retrievalDurationMs: number
 }
@@ -192,7 +175,6 @@ export const persistBenchmarkCorpus = (
 interface BuiltModelSamples {
   readonly measurements: readonly QueryMeasurement[]
   readonly samples: readonly WeightSearchSample[]
-  readonly samplesByQueryKind: ReadonlyMap<QueryKind, readonly WeightSearchSample[]>
 }
 
 const buildModelSamples = (
@@ -208,7 +190,6 @@ const buildModelSamples = (
   Effect.gen(function* () {
     const modelMeasurements: QueryMeasurement[] = []
     const modelSamples: WeightSearchSample[] = []
-    const samplesByQueryKind = new Map<QueryKind, WeightSearchSample[]>()
 
     for (let queryIndex = 0; queryIndex < queries.length; queryIndex++) {
       const entry = queries[queryIndex]
@@ -234,10 +215,6 @@ const buildModelSamples = (
         termCoverage: buildQueryTermCoverage(entry.query, corpus.bm25Index, corpus.identifierIndex),
       }
       modelSamples.push(sample)
-      samplesByQueryKind.set(entry.queryKind, [
-        ...(samplesByQueryKind.get(entry.queryKind) ?? []),
-        sample,
-      ])
       for (const variant of RETRIEVAL_VARIANTS) {
         const variantStartedAt = performance.now()
         const ranked = fuseVariant(variant, entry.query, rankings)
@@ -279,7 +256,7 @@ const buildModelSamples = (
       }
     }
 
-    return { measurements: modelMeasurements, samples: modelSamples, samplesByQueryKind }
+    return { measurements: modelMeasurements, samples: modelSamples }
   })
 
 const collectModelSamples = (
@@ -437,7 +414,6 @@ const collectModelMeasurements = (
       sparseEmbeddingRun: modelRun.sparseEmbeddingRun,
       measurements: modelRun.measurements,
       samples: modelRun.samples,
-      samplesByQueryKind: modelRun.samplesByQueryKind,
       rankings: modelRun.rankings,
       retrievalDurationMs: performance.now() - retrievalStartedAt,
     }
@@ -567,14 +543,6 @@ const collectRepositoryMeasurements = (
     const sparseEmbeddingRuns: BenchmarkArtifact["sparseEmbeddingRuns"][number][] = []
     const measurements: QueryMeasurement[] = []
     const samplesByModel = new Map<string, readonly WeightSearchSample[]>()
-    const sampleGroups = new Map<
-      string,
-      {
-        readonly model: string
-        readonly queryKind: QueryKind
-        readonly samples: readonly WeightSearchSample[]
-      }
-    >()
     let retrievalDurationMs = 0
 
     const cachePaths = benchmarkCachePaths(manifest, model, info.dims, info.defaultDtype, maxTokens)
@@ -636,9 +604,6 @@ const collectRepositoryMeasurements = (
     measurements.push(...modelData.measurements)
     retrievalDurationMs += modelData.retrievalDurationMs
     samplesByModel.set(model, modelData.samples)
-    for (const [queryKind, samples] of modelData.samplesByQueryKind) {
-      sampleGroups.set(`${model}\0${queryKind}`, { model, queryKind, samples })
-    }
     return {
       repository: {
         id: manifest.id,
@@ -652,7 +617,6 @@ const collectRepositoryMeasurements = (
       sparseEmbeddingRuns,
       measurements,
       samplesByModel,
-      sampleGroups,
       retrievalDurationMs,
     }
   })
@@ -668,14 +632,6 @@ export const collectBenchmarkData = (
     const embeddingRuns: BenchmarkArtifact["embeddingRuns"][number][] = []
     const sparseEmbeddingRuns: BenchmarkArtifact["sparseEmbeddingRuns"][number][] = []
     const measurements: QueryMeasurement[] = []
-    const sampleGroups = new Map<
-      string,
-      {
-        readonly model: string
-        readonly queryKind: QueryKind
-        readonly samples: readonly WeightSearchSample[]
-      }
-    >()
     const samplesByModel = new Map<string, readonly WeightSearchSample[]>()
     let retrievalDurationMs = 0
     let chunkTokens: number | undefined
@@ -709,14 +665,6 @@ export const collectBenchmarkData = (
       for (const [model, samples] of repositoryData.samplesByModel) {
         samplesByModel.set(model, [...(samplesByModel.get(model) ?? []), ...samples])
       }
-      for (const [key, group] of repositoryData.sampleGroups) {
-        const current = sampleGroups.get(key)
-        sampleGroups.set(key, {
-          model: group.model,
-          queryKind: group.queryKind,
-          samples: [...(current?.samples ?? []), ...group.samples],
-        })
-      }
     }
 
     if (chunkTokens === undefined) {
@@ -729,7 +677,6 @@ export const collectBenchmarkData = (
       embeddingRuns,
       sparseEmbeddingRuns,
       measurements,
-      sampleGroups,
       samplesByModel,
       retrievalDurationMs,
     }

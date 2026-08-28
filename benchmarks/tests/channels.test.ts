@@ -28,7 +28,6 @@ import { compareObjectiveQuality } from "../retrieval/evaluation/router-search/o
 import { ROUTER_OBJECTIVES, type QualitySummary } from "../retrieval/evaluation/types.js"
 import {
   optimizeEvidenceRouter,
-  optimizeWeights,
   selectEligibleCandidate,
   selectObjectiveArchiveCandidates,
 } from "../retrieval/evaluation/weight-search.js"
@@ -531,39 +530,6 @@ describe("retrieval benchmark fixture", () => {
     )
 
     expect(ranked).toEqual([{ chunkIndex: 0, score: 0.5 }])
-  })
-
-  it("learns weights on development and attributes holdout value with Shapley", async () => {
-    const sample = {
-      repository: "fixture",
-      intentId: "fixture-001",
-      queryKind: "identifier" as const,
-      groupedFold: 0,
-      query: "loadProjectConfiguration",
-      rankings: {
-        identity: [{ chunkIndex: 0, score: 1 }],
-        camelcase: [{ chunkIndex: 1, score: 1 }],
-        bm25: [{ chunkIndex: 2, score: 1 }],
-        dense: [{ chunkIndex: 3, score: 1 }],
-        sparse: [],
-      },
-      targets: [new Set([0])],
-      chunks,
-    }
-    const result = await optimizeWeights(
-      "fixture",
-      "identifier",
-      "grouped-5-fold",
-      "1",
-      [sample],
-      [sample],
-    )
-    expect(result.weights.identity).toBeGreaterThan(0)
-    expect(result.weights.camelcase).toBe(0)
-    expect(result.weights.bm25).toBe(0)
-    expect(result.weights.dense).toBe(0)
-    expect(result.validation.recallAt20).toBe(1)
-    expect(result.shapleyRecallAt20.identity).toBe(1)
   })
 
   it("compares NDCG-first direct selection with the matched Recall-first ablation", () => {

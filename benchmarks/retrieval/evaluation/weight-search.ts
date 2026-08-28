@@ -1,4 +1,4 @@
-﻿import type { Chunk } from "../../../src/domain/chunk.js"
+import type { Chunk } from "../../../src/domain/chunk.js"
 import type { RankedChunk } from "../../../src/domain/ports.js"
 import {
   PRODUCTION_COMPATIBILITY_CONFIG,
@@ -90,13 +90,11 @@ import {
   type QualitySummary,
   type RecommendedEvidenceRouter,
   type RecommendedFusionWeights,
-  type RecommendedWeights,
   type RouterSearchDiagnostics,
   type RouterObjective,
   type RouterSearchStrategyName,
   type SearchBaselineComparison,
   type SelectionStability,
-  type WeightSearchResult,
 } from "./types.js"
 
 /** Precomputed query evidence used for cheap fusion and weight experiments. */
@@ -530,51 +528,6 @@ const weightCandidates = (): readonly ChannelWeights[] => {
       ]),
     ).values(),
   ]
-}
-
-const factorial = (value: number): number => {
-  let result = 1
-  for (let factor = 2; factor <= value; factor++) result *= factor
-  return result
-}
-
-const shapleyValues = (
-  samples: readonly WeightSearchSample[],
-  weights: ChannelWeights,
-  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-): ChannelWeights => {
-  const values: Record<ChannelName, number> = {
-    identity: 0,
-    camelcase: 0,
-    bm25: 0,
-    dense: 0,
-    sparse: 0,
-  }
-  const channelCount = CHANNELS.length
-  const utility = (mask: number): number => {
-    if (mask === 0) return 0
-    const coalition: ChannelWeights = {
-      identity: mask & 1 ? weights.identity : 0,
-      camelcase: mask & 2 ? weights.camelcase : 0,
-      bm25: mask & 4 ? weights.bm25 : 0,
-      dense: mask & 8 ? weights.dense : 0,
-      sparse: mask & 16 ? weights.sparse : 0,
-    }
-    return summarize(samples, coalition, "rrf", profile).recallAt20
-  }
-
-  for (let channelIndex = 0; channelIndex < channelCount; channelIndex++) {
-    const channelMask = 1 << channelIndex
-    for (let mask = 0; mask < 1 << channelCount; mask++) {
-      if (mask & channelMask) continue
-      const coalitionSize = CHANNELS.filter((_, index) => mask & (1 << index)).length
-      const coefficient =
-        (factorial(coalitionSize) * factorial(channelCount - coalitionSize - 1)) /
-        factorial(channelCount)
-      values[CHANNELS[channelIndex]] += coefficient * (utility(mask | channelMask) - utility(mask))
-    }
-  }
-  return values
 }
 
 /** Static weight candidate and its development quality. */
@@ -1058,82 +1011,6 @@ const withCandidatePool = async <T>(
   }
 }
 
-/** Select weights on development samples, then evaluate unchanged on one validation fold. */
-const optimizeWeightsWithPool = async (
-  model: string,
-  queryKind: QueryKind,
-  strategy: WeightSearchResult["strategy"],
-  fold: string,
-  development: readonly WeightSearchSample[],
-  validation: readonly WeightSearchSample[],
-  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-  pool: CandidateEvaluationPool,
-): Promise<WeightSearchResult> => {
-  const selected = await selectBestWeights(
-    pool,
-    PROXY_PROMOTION_MODE,
-    "reranker-top20",
-    undefined,
-    profile,
-  )
-  return {
-    model,
-    queryKind,
-    strategy,
-    fold,
-    developmentQueries: development.length,
-    validationQueries: validation.length,
-    weights: selected.weights,
-    development: selected.quality,
-    validation: summarize(validation, selected.weights, "rrf", profile),
-    shapleyRecallAt20: shapleyValues(validation, selected.weights, profile),
-  }
-}
-
-const optimizeWeightsWithOptions = (
-  model: string,
-  queryKind: QueryKind,
-  strategy: WeightSearchResult["strategy"],
-  fold: string,
-  development: readonly WeightSearchSample[],
-  validation: readonly WeightSearchSample[],
-  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-  options: SearchOptions,
-): Promise<WeightSearchResult> =>
-  withCandidatePool(development, "rrf", profile, options, (pool) =>
-    optimizeWeightsWithPool(
-      model,
-      queryKind,
-      strategy,
-      fold,
-      development,
-      validation,
-      profile,
-      pool,
-    ),
-  )
-
-export const optimizeWeights = (
-  model: string,
-  queryKind: QueryKind,
-  strategy: WeightSearchResult["strategy"],
-  fold: string,
-  development: readonly WeightSearchSample[],
-  validation: readonly WeightSearchSample[],
-  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-  options: SearchOptions = { workerCount: 0 },
-): Promise<WeightSearchResult> =>
-  optimizeWeightsWithOptions(
-    model,
-    queryKind,
-    strategy,
-    fold,
-    development,
-    validation,
-    profile,
-    options,
-  )
-
 /** Select static weights for one fusion method, then evaluate them unchanged on a holdout. */
 const optimizeFusionWeightsWithPool = async (
   model: string,
@@ -1459,50 +1336,6 @@ export const optimizeEvidenceRouter = async (
     )
     return results
   })
-
-/** Fit one deployment candidate on all samples after cross-validation has measured generalization. */
-const fitRecommendedWeightsWithPool = async (
-  model: string,
-  queryKind: QueryKind,
-  samples: readonly WeightSearchSample[],
-  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-  pool: CandidateEvaluationPool,
-): Promise<RecommendedWeights> => {
-  const selected = await selectBestWeights(
-    pool,
-    PROXY_PROMOTION_MODE,
-    "reranker-top20",
-    undefined,
-    profile,
-  )
-  return {
-    model,
-    queryKind,
-    samples: samples.length,
-    weights: selected.weights,
-    fitQuality: selected.quality,
-  }
-}
-
-const fitRecommendedWeightsWithOptions = (
-  model: string,
-  queryKind: QueryKind,
-  samples: readonly WeightSearchSample[],
-  profile: OptimizationProfile,
-  options: SearchOptions,
-): Promise<RecommendedWeights> =>
-  withCandidatePool(samples, "rrf", profile, options, (pool) =>
-    fitRecommendedWeightsWithPool(model, queryKind, samples, profile, pool),
-  )
-
-export const fitRecommendedWeights = (
-  model: string,
-  queryKind: QueryKind,
-  samples: readonly WeightSearchSample[],
-  profile: OptimizationProfile = SEARCH_PRIORITY_PROFILE,
-  options: SearchOptions = { workerCount: 0 },
-): Promise<RecommendedWeights> =>
-  fitRecommendedWeightsWithOptions(model, queryKind, samples, profile, options)
 
 /** Fit one static candidate for a fusion method across all query forms. */
 const fitRecommendedFusionWeightsWithPool = async (

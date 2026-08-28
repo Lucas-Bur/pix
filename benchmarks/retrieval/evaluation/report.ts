@@ -223,7 +223,7 @@ const renderOverview = (artifact: BenchmarkArtifact): readonly string[] => {
                 `Local refinement: ${artifact.localCloudPoints} deterministic Sobol cloud points per elite within +/- ${artifact.localCloudRadiusLevels} level(s) around the final beam.`,
               ]
             : []),
-          `Cheap pre-scoring: candidates first score on a deterministic ${artifact.searchStrategy.proxySampleFraction * 100}% proxy sample with a minimum of ${artifact.searchStrategy.proxyMinimumSamples}; the ${artifact.searchStrategy.kind === "successive-halving" ? "keep" : "promotion"} factor is ${artifact.searchStrategy.kind === "successive-halving" ? artifact.searchStrategy.halvingKeepFactor : artifact.searchStrategy.proxyPromotionFactor}x.`,
+          `Cheap pre-scoring: candidates first score on a deterministic ${artifact.searchStrategy.proxySampleFraction * 100}% proxy sample with a minimum of ${artifact.searchStrategy.proxyMinimumSamples}; the promotion factor is ${artifact.searchStrategy.proxyPromotionFactor}x.`,
         ]
   return [
     "# Retrieval Quality Benchmark",
@@ -265,20 +265,18 @@ const renderComputeSections = (artifact: BenchmarkArtifact): readonly string[] =
       "Corpus preparation",
       "Embedding",
       "Retrieval",
-      "Weight search",
       "Fusion search",
       "Router search",
       "Candidate queue startup",
       "Candidate queue shutdown",
     ],
-    Array.from({ length: 9 }, () => "---:"),
+    Array.from({ length: 8 }, () => "---:"),
     [
       [
         duration(artifact.timings.totalDurationMs),
         duration(artifact.timings.corpusPreparationDurationMs),
         duration(artifact.timings.embeddingDurationMs),
         duration(artifact.timings.retrievalDurationMs),
-        duration(artifact.timings.weightSearchDurationMs),
         duration(artifact.timings.fusionSearchDurationMs),
         duration(artifact.timings.evidenceRouterSearchDurationMs),
         duration(artifact.timings.candidateQueueStartupDurationMs),
@@ -461,63 +459,6 @@ const renderRouterSections = (artifact: BenchmarkArtifact): readonly string[] =>
       ],
       ["---", "---", "---:", "---:", "---:", "---:", "---:"],
       productionRows,
-    ),
-  )
-
-  lines.push(
-    "",
-    "## Cross-Validated Weights",
-    "",
-    "Each row selects weights without its validation fold. Validation quality and Shapley contributions use only the excluded fold.",
-    "",
-    ...renderTable(
-      [
-        "Model",
-        "Query form",
-        "Strategy",
-        "Fold",
-        "Weights I/C/B/D/S",
-        "Dev R@20",
-        "Validation R@5",
-        "Validation R@10",
-        "Validation R@20",
-        "Validation Ctx@4k",
-        "Shapley I/C/B/D/S",
-      ],
-      ["---", "---", "---", "---", "---", "---:", "---:", "---:", "---:", "---:", "---"],
-      artifact.weightSearch.map((result) => [
-        result.model,
-        result.queryKind,
-        result.strategy,
-        result.fold,
-        formatWeights(result.weights),
-        percent(result.development.recallAt20),
-        percent(result.validation.recallAt5),
-        percent(result.validation.recallAt10),
-        percent(result.validation.recallAt20),
-        percent(result.validation.contextRecallAt4096),
-        CHANNELS.map((channel) => percent(result.shapleyRecallAt20[channel])).join("/"),
-      ]),
-    ),
-  )
-
-  lines.push(
-    "",
-    "## Recommended Weights",
-    "",
-    "These deployment candidates are fitted on all available samples only after cross-validation.",
-    "",
-    ...renderTable(
-      ["Model", "Query form", "Samples", "Weights I/C/B/D/S", "Fit R@5", "Fit R@20"],
-      ["---", "---", "---:", "---", "---:", "---:"],
-      artifact.recommendedWeights.map((result) => [
-        result.model,
-        result.queryKind,
-        String(result.samples),
-        formatWeights(result.weights),
-        percent(result.fitQuality.recallAt5),
-        percent(result.fitQuality.recallAt20),
-      ]),
     ),
   )
 

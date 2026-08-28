@@ -36,7 +36,6 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkSearchConfig => {
       return {
         groupedFolds: 5,
         repositoryHoldouts: false,
-        legacyDiagnostics: false,
         fusionMethods: ["dbsf"],
         routerFusionMethods: ["dbsf"],
       }
@@ -44,7 +43,6 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkSearchConfig => {
       return {
         groupedFolds: 3,
         repositoryHoldouts: false,
-        legacyDiagnostics: false,
         fusionMethods: ["dbsf"],
         routerFusionMethods: ["dbsf"],
       }
@@ -52,7 +50,6 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkSearchConfig => {
       return {
         groupedFolds: 5,
         repositoryHoldouts: true,
-        legacyDiagnostics: false,
         fusionMethods: ["dbsf"],
         routerFusionMethods: ["dbsf"],
       }
@@ -60,7 +57,6 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkSearchConfig => {
       return {
         groupedFolds: 5,
         repositoryHoldouts: true,
-        legacyDiagnostics: false,
         fusionMethods: FUSION_METHODS,
         routerFusionMethods: FUSION_METHODS,
       }
@@ -196,7 +192,6 @@ export const runRetrievalBenchmark = (
       embeddingRuns,
       sparseEmbeddingRuns,
       measurements,
-      sampleGroups,
       samplesByModel,
       retrievalDurationMs,
     } = collected
@@ -206,7 +201,6 @@ export const runRetrievalBenchmark = (
     )
     const search = yield* runBenchmarkSearch(
       config,
-      sampleGroups,
       samplesByModel,
       groupedStrategy,
       optimizationProfile,
@@ -264,7 +258,6 @@ export const runRetrievalBenchmark = (
         corpusPreparationDurationMs,
         embeddingDurationMs,
         retrievalDurationMs,
-        weightSearchDurationMs: search.weightSearchDurationMs,
         fusionSearchDurationMs: search.fusionSearchDurationMs,
         evidenceRouterSearchDurationMs: search.evidenceRouterSearchDurationMs,
         candidateQueueStartupDurationMs: search.candidateQueueStartupDurationMs,
@@ -290,8 +283,6 @@ export const runRetrievalBenchmark = (
       embeddingRuns,
       sparseEmbeddingRuns,
       measurements,
-      weightSearch: search.weightSearch,
-      recommendedWeights: search.recommendedWeights,
       productionRouterSearch: search.productionRouterSearch,
       fusionSearch: search.fusionSearch,
       recommendedFusionWeights: search.recommendedFusionWeights,

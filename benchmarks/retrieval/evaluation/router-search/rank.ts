@@ -291,8 +291,8 @@ export const PROXY_PROMOTION_MODE: RouterSearchMode = {
     selectObjectiveCandidates(candidates, limit, context.baseline, context.profile),
 }
 
-const SUCCESSIVE_HALVING_MODE: RouterSearchMode = {
-  name: "successive-halving",
+const HALVING_FUNNEL_MODE: RouterSearchMode = {
+  name: "halving-funnel",
   expansionFactor: SEARCH_HALVING_KEEP_FACTOR,
   recordsProxyAgreement: false,
   runsRandomBaseline: false,
@@ -308,14 +308,8 @@ const SUCCESSIVE_HALVING_MODE: RouterSearchMode = {
   selectBeam: (_context, candidates, limit) => candidates.slice(0, limit),
 }
 
-const HALVING_FUNNEL_MODE: RouterSearchMode = {
-  ...SUCCESSIVE_HALVING_MODE,
-  name: "halving-funnel",
-}
-
 const ROUTER_SEARCH_MODES: Readonly<Record<RouterSearchStrategyName, RouterSearchMode>> = {
   "proxy-promotion": PROXY_PROMOTION_MODE,
-  "successive-halving": SUCCESSIVE_HALVING_MODE,
   "halving-funnel": HALVING_FUNNEL_MODE,
 }
 

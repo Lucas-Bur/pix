@@ -19,7 +19,7 @@ it("resolves search knobs with strategy defaults", () => {
 it("parses overrides and rejects invalid values by knob name", () => {
   expect(
     resolveSearchKnobs({
-      PIX_BENCH_ROUTER_STRATEGY: "successive-halving",
+      PIX_BENCH_ROUTER_STRATEGY: "proxy-promotion",
       PIX_BENCH_SCOUT_SEQUENCE: "sobol",
       PIX_BENCH_SEED_HYPOTHESES: "1",
       PIX_BENCH_BEAM_SCHEDULE: "decaying",
@@ -29,7 +29,7 @@ it("parses overrides and rejects invalid values by knob name", () => {
       PIX_BENCH_LOCAL_CLOUD_RADIUS: "2",
     }),
   ).toEqual({
-    routerSearchStrategy: "successive-halving",
+    routerSearchStrategy: "proxy-promotion",
     scoutSequence: "sobol",
     seedHypotheses: true,
     beamSchedule: "decaying",

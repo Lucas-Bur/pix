@@ -20,10 +20,8 @@ import type {
 import {
   fitRecommendedEvidenceRouter,
   fitRecommendedFusionWeights,
-  fitRecommendedWeights,
   optimizeEvidenceRouter,
   optimizeFusionWeights,
-  optimizeWeights,
   evaluateProductionRouter,
   type BenchmarkSearchOptions,
   type WeightSearchSample,
@@ -35,8 +33,6 @@ export interface BenchmarkSearchConfig {
   readonly groupedFolds: number
   /** Whether each selected repository is evaluated as an excluded holdout. */
   readonly repositoryHoldouts: boolean
-  /** Whether historical query-kind RRF grids and Shapley diagnostics run. */
-  readonly legacyDiagnostics: boolean
   /** Static fusion formulas evaluated by this profile. */
   readonly fusionMethods: readonly FusionMethod[]
   /** Fusion formulas used when evaluating the evidence router. */
@@ -45,25 +41,16 @@ export interface BenchmarkSearchConfig {
 
 /** Quality search outputs and timing fields assembled for one benchmark artifact. */
 export interface BenchmarkSearchResults {
-  readonly weightSearch: readonly BenchmarkArtifact["weightSearch"][number][]
-  readonly recommendedWeights: readonly BenchmarkArtifact["recommendedWeights"][number][]
   readonly productionRouterSearch: readonly BenchmarkArtifact["productionRouterSearch"][number][]
   readonly fusionSearch: readonly BenchmarkArtifact["fusionSearch"][number][]
   readonly recommendedFusionWeights: readonly BenchmarkArtifact["recommendedFusionWeights"][number][]
   readonly evidenceRouterSearch: readonly BenchmarkArtifact["evidenceRouterSearch"][number][]
   readonly recommendedEvidenceRouters: readonly BenchmarkArtifact["recommendedEvidenceRouters"][number][]
   readonly promotionEvidence: readonly BenchmarkArtifact["promotionEvidence"][number][]
-  readonly weightSearchDurationMs: number
   readonly fusionSearchDurationMs: number
   readonly evidenceRouterSearchDurationMs: number
   readonly candidateQueueStartupDurationMs: number
   readonly candidateQueueShutdownDurationMs: number
-}
-
-type SampleGroup = {
-  readonly model: string
-  readonly queryKind: WeightSearchSample["queryKind"]
-  readonly samples: readonly WeightSearchSample[]
 }
 
 const describeRouterJob = (job: RouterSearchJob): string =>
@@ -143,11 +130,6 @@ const planSearchSplits = (
   return splits
 }
 
-interface WeightSearchGroupResult {
-  readonly weightSearch: readonly BenchmarkArtifact["weightSearch"][number][]
-  readonly recommendedWeights: readonly BenchmarkArtifact["recommendedWeights"][number][]
-}
-
 const planEvidenceRouterJobs = (
   samplesByModel: ReadonlyMap<string, readonly WeightSearchSample[]>,
   config: BenchmarkSearchConfig,
@@ -197,74 +179,6 @@ const runRouterSearchJob = (
     (results) => ({ kind: "fit-all", results }),
   )
 }
-
-const runWeightSearchForGroup = (
-  group: SampleGroup,
-  config: BenchmarkSearchConfig,
-  groupedStrategy: ValidationStrategy,
-  optimizationProfile: OptimizationProfile,
-  searchOptions: BenchmarkSearchOptions,
-): Effect.Effect<WeightSearchGroupResult, Error> =>
-  Effect.gen(function* () {
-    const weightSearch: BenchmarkArtifact["weightSearch"][number][] = []
-    for (const split of planSearchSplits(group.samples, config, groupedStrategy))
-      weightSearch.push(
-        yield* runParallelSearch((signal) =>
-          optimizeWeights(
-            group.model,
-            group.queryKind,
-            split.strategy,
-            split.fold,
-            split.development,
-            split.validation,
-            optimizationProfile,
-            { ...searchOptions, signal },
-          ),
-        ),
-      )
-    const recommendedWeights = [
-      yield* runParallelSearch((signal) =>
-        fitRecommendedWeights(group.model, group.queryKind, group.samples, optimizationProfile, {
-          ...searchOptions,
-          signal,
-        }),
-      ),
-    ]
-    return { weightSearch, recommendedWeights }
-  })
-
-const runWeightSearchStage = (
-  config: BenchmarkSearchConfig,
-  sampleGroups: ReadonlyMap<string, SampleGroup>,
-  groupedStrategy: ValidationStrategy,
-  optimizationProfile: OptimizationProfile,
-  searchOptions: BenchmarkSearchOptions,
-): Effect.Effect<
-  Pick<BenchmarkSearchResults, "weightSearch" | "recommendedWeights" | "weightSearchDurationMs">,
-  Error
-> =>
-  Effect.gen(function* () {
-    const startedAt = performance.now()
-    const weightSearch: BenchmarkArtifact["weightSearch"][number][] = []
-    const recommendedWeights: BenchmarkArtifact["recommendedWeights"][number][] = []
-    if (config.legacyDiagnostics)
-      for (const group of sampleGroups.values()) {
-        const result = yield* runWeightSearchForGroup(
-          group,
-          config,
-          groupedStrategy,
-          optimizationProfile,
-          searchOptions,
-        )
-        weightSearch.push(...result.weightSearch)
-        recommendedWeights.push(...result.recommendedWeights)
-      }
-    return {
-      weightSearch,
-      recommendedWeights,
-      weightSearchDurationMs: performance.now() - startedAt,
-    }
-  })
 
 const runProductionRouterSearch = (
   config: BenchmarkSearchConfig,
@@ -572,7 +486,6 @@ const runEvidenceRouterSearchStage = (
 /** Run all static and evidence-router quality searches over prepared samples. */
 export const runBenchmarkSearch = (
   config: BenchmarkSearchConfig,
-  sampleGroups: ReadonlyMap<string, SampleGroup>,
   samplesByModel: ReadonlyMap<string, readonly WeightSearchSample[]>,
   groupedStrategy: ValidationStrategy,
   optimizationProfile: OptimizationProfile,
@@ -580,13 +493,6 @@ export const runBenchmarkSearch = (
   searchOptions: BenchmarkSearchOptions,
 ): Effect.Effect<BenchmarkSearchResults, Error> =>
   Effect.gen(function* () {
-    const weight = yield* runWeightSearchStage(
-      config,
-      sampleGroups,
-      groupedStrategy,
-      optimizationProfile,
-      searchOptions,
-    )
     const fusion = yield* runFusionSearchStage(
       config,
       samplesByModel,
@@ -602,5 +508,5 @@ export const runBenchmarkSearch = (
       serialSearch,
       searchOptions,
     )
-    return { ...weight, ...fusion, ...evidenceRouter }
+    return { ...fusion, ...evidenceRouter }
   })

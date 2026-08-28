@@ -49,13 +49,6 @@ export interface ProxyPromotionStrategy extends RouterSearchBudget {
   readonly tieBreaking: "guardrails>objective>complexity>stable-key"
 }
 
-/** Successive halving strategy: historical lexicographic comparator with keep factor. */
-export interface SuccessiveHalvingStrategy extends RouterSearchBudget {
-  readonly kind: "successive-halving"
-  readonly algorithm: string
-  readonly halvingKeepFactor: 8
-}
-
 /**
  * Halving funnel strategy: broad cheap waves with late full-fidelity evaluation. Wave 1 spreads
  * `globalScouts` scouts scored on the proxy sample only, wave 2 samples Sobol clouds around the
@@ -69,16 +62,9 @@ export interface HalvingFunnelStrategy extends RouterSearchBudget {
 }
 
 /** Versioned evidence-router search strategy recorded in benchmark artifacts. */
-export type RouterSearchStrategy =
-  | ProxyPromotionStrategy
-  | SuccessiveHalvingStrategy
-  | HalvingFunnelStrategy
+export type RouterSearchStrategy = ProxyPromotionStrategy | HalvingFunnelStrategy
 
-export const ROUTER_SEARCH_STRATEGY_NAMES = [
-  "proxy-promotion",
-  "successive-halving",
-  "halving-funnel",
-] as const
+export const ROUTER_SEARCH_STRATEGY_NAMES = ["proxy-promotion", "halving-funnel"] as const
 
 export type RouterSearchStrategyName = (typeof ROUTER_SEARCH_STRATEGY_NAMES)[number]
 
@@ -100,14 +86,6 @@ export const DEFAULT_PROXY_PROMOTION_STRATEGY: ProxyPromotionStrategy = {
   tieBreaking: "guardrails>objective>complexity>stable-key",
 }
 
-/** Default successive halving parameters, recorded with Halton scouts unless overridden. */
-export const DEFAULT_SUCCESSIVE_HALVING_STRATEGY: SuccessiveHalvingStrategy = {
-  kind: "successive-halving",
-  algorithm: `halton-${BEAM_ALGORITHM_PREFIX}-successive-halving`,
-  ...ROUTER_SEARCH_BUDGET,
-  halvingKeepFactor: 8,
-}
-
 /** Default fidelity funnel: broad proxy wave, local proxy cloud, then 256 diverse finalists. */
 export const DEFAULT_HALVING_FUNNEL_STRATEGY: HalvingFunnelStrategy = {
   kind: "halving-funnel",
@@ -123,11 +101,7 @@ export const routerSearchStrategyFor = (
   name: RouterSearchStrategyName,
 ): RouterSearchStrategy => {
   const base =
-    name === "proxy-promotion"
-      ? DEFAULT_PROXY_PROMOTION_STRATEGY
-      : name === "successive-halving"
-        ? DEFAULT_SUCCESSIVE_HALVING_STRATEGY
-        : DEFAULT_HALVING_FUNNEL_STRATEGY
+    name === "proxy-promotion" ? DEFAULT_PROXY_PROMOTION_STRATEGY : DEFAULT_HALVING_FUNNEL_STRATEGY
   const algorithm =
     name === "halving-funnel"
       ? `${scoutSequence}-${FUNNEL_ALGORITHM_PREFIX}`
@@ -307,29 +281,6 @@ export interface PromotionEvidence {
   readonly stability: CandidateStability
 }
 
-/** One cross-validation fold with weights selected without its validation samples. */
-export interface WeightSearchResult {
-  readonly model: string
-  readonly queryKind: QueryKind
-  readonly strategy: ValidationStrategy
-  readonly fold: string
-  readonly developmentQueries: number
-  readonly validationQueries: number
-  readonly weights: ChannelWeights
-  readonly development: QualitySummary
-  readonly validation: QualitySummary
-  readonly shapleyRecallAt20: ChannelWeights
-}
-
-/** Deployment candidate fitted on all available samples after cross-validation. */
-export interface RecommendedWeights {
-  readonly model: string
-  readonly queryKind: QueryKind
-  readonly samples: number
-  readonly weights: ChannelWeights
-  readonly fitQuality: QualitySummary
-}
-
 /** Static fusion weights selected without one validation fold. */
 export interface FusionSearchResult {
   readonly model: string
@@ -480,7 +431,6 @@ export interface BenchmarkTimings {
   readonly corpusPreparationDurationMs: number
   readonly embeddingDurationMs: number
   readonly retrievalDurationMs: number
-  readonly weightSearchDurationMs: number
   readonly fusionSearchDurationMs: number
   readonly evidenceRouterSearchDurationMs: number
   /** Time spent starting the shared native candidate queue. */
@@ -554,8 +504,6 @@ export interface BenchmarkArtifact {
     readonly queryTokenizationDurationMs: number
   }>
   readonly measurements: readonly QueryMeasurement[]
-  readonly weightSearch: readonly WeightSearchResult[]
-  readonly recommendedWeights: readonly RecommendedWeights[]
   readonly productionRouterSearch: readonly ProductionRouterSearchResult[]
   readonly fusionSearch: readonly FusionSearchResult[]
   readonly recommendedFusionWeights: readonly RecommendedFusionWeights[]

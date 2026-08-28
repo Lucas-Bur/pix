@@ -164,8 +164,6 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
     expect(artifact.evidenceRouterSearch.every((row) => row.fullEvaluations > 0)).toBe(true)
     expect(artifact.recommendedEvidenceRouters.every((row) => row.proxyEvaluations >= 0)).toBe(true)
     expect(artifact.recommendedEvidenceRouters.every((row) => row.fullEvaluations > 0)).toBe(true)
-    expect(artifact.weightSearch.length).toBe(0)
-    expect(artifact.recommendedWeights.length).toBe(0)
     expect(artifact.measurements.every((row) => row.recallAt20 >= row.recallAt10)).toBe(true)
     expect(artifact.measurements.every((row) => row.recallAt10 >= row.recallAt5)).toBe(true)
     expect(artifact.measurements.every((row) => row.recallAt50 >= row.recallAt20)).toBe(true)
@@ -227,11 +225,11 @@ it("shuffles intent groups deterministically before assigning folds", () => {
 
 it("resolves the selectable router search strategies", () => {
   expect(resolveRouterSearchStrategy(undefined)).toBe("halving-funnel")
-  expect(resolveRouterSearchStrategy("successive-halving")).toBe("successive-halving")
-  expect(routerSearchStrategyFor("halton", "successive-halving")).toMatchObject({
-    kind: "successive-halving",
-    algorithm: "halton-global-scout-elitist-beam-successive-halving",
-    halvingKeepFactor: 8,
+  expect(resolveRouterSearchStrategy("proxy-promotion")).toBe("proxy-promotion")
+  expect(routerSearchStrategyFor("halton", "proxy-promotion")).toMatchObject({
+    kind: "proxy-promotion",
+    algorithm: "halton-global-scout-elitist-beam-proxy-promotion",
+    proxyPromotionFactor: 8,
   })
   expect(resolveRouterSearchStrategy("halving-funnel")).toBe("halving-funnel")
   expect(routerSearchStrategyFor("sobol", "halving-funnel")).toMatchObject({
@@ -245,6 +243,9 @@ it("resolves the selectable router search strategies", () => {
   expect(sobolStrategy.kind === "proxy-promotion" && sobolStrategy.proxyPromotionFactor).toBe(8)
   expect(DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.kind).toBe("proxy-promotion")
   expect(DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS).not.toHaveProperty("halvingKeepFactor")
+  expect(() => resolveRouterSearchStrategy("successive-halving")).toThrow(
+    "Unknown PIX_BENCH_ROUTER_STRATEGY value: successive-halving",
+  )
   expect(() => resolveRouterSearchStrategy("unknown")).toThrow(
     "Unknown PIX_BENCH_ROUTER_STRATEGY value: unknown",
   )

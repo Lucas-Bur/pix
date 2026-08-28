@@ -58,7 +58,7 @@ const QUERY_FORMS: readonly QueryKind[] = [
 ]
 
 /** Prepared model, device, and full-size corpus for one repository sweep. */
-export interface SubSampleContext {
+interface SubSampleContext {
   readonly manifest: CorpusManifest
   readonly model: string
   readonly dims: number
@@ -240,33 +240,6 @@ export interface RealCorpusSizeSweepResult {
   readonly perSizeSamples: readonly { readonly corpusSize: number; readonly samples: number }[]
 }
 
-const buildSearchInputs = (
-  model: string,
-  samples: readonly WeightSearchSample[],
-): {
-  sampleGroups: Map<
-    string,
-    { model: string; queryKind: QueryKind; samples: readonly WeightSearchSample[] }
-  >
-  samplesByModel: Map<string, readonly WeightSearchSample[]>
-} => {
-  const sampleGroups = new Map<
-    string,
-    { model: string; queryKind: QueryKind; samples: readonly WeightSearchSample[] }
-  >()
-  const samplesByModel = new Map<string, readonly WeightSearchSample[]>()
-  samplesByModel.set(model, samples)
-  for (const sample of samples) {
-    const key = `${model}\0${sample.queryKind}`
-    sampleGroups.set(key, {
-      model,
-      queryKind: sample.queryKind,
-      samples: [...(sampleGroups.get(key)?.samples ?? []), sample],
-    })
-  }
-  return { sampleGroups, samplesByModel }
-}
-
 const goldTargetsByQuestion = (
   manifest: CorpusManifest,
   corpus: PreparedCorpus,
@@ -310,17 +283,17 @@ export const runRealCorpusSizeSweep = (
         async (plan) => {
           const samples = await Effect.runPromise(buildSubSampleSamples(context, plan))
           perSizeSamples.push({ corpusSize: plan.targetSize, samples: samples.length })
-          const { sampleGroups, samplesByModel } = buildSearchInputs(context.model, samples)
+          const samplesByModel = new Map<string, readonly WeightSearchSample[]>([
+            [context.model, samples],
+          ])
           const search = await Effect.runPromise(
             runBenchmarkSearch(
               {
                 groupedFolds: 3,
                 repositoryHoldouts: false,
-                legacyDiagnostics: false,
                 fusionMethods: ["dbsf"],
                 routerFusionMethods: ["dbsf"],
               },
-              sampleGroups,
               samplesByModel,
               "grouped-3-fold",
               OPTIMIZATION_PROFILES["search-priority"],

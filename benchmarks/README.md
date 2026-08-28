@@ -225,7 +225,7 @@ serialization time for each source artifact.
 The router search defaults to `halving-funnel`. It proxy-scores 512 broad scouts, keeps 32 survivors,
 proxy-scores 16 radius-2 Sobol points per survivor, and fully evaluates 256 finalists plus the static
 base seeds once. Set `PIX_BENCH_ROUTER_STRATEGY=proxy-promotion` to run the slower coordinate-beam
-search. Set it to `successive-halving` to run the historical lexicographic variant. All strategies use
+control. All strategies use
 the same candidate evaluator and native worker queue. Their final archive selection is
 objective-specific, so Direct and Reranker rows are real comparisons rather than repeated labels.
 

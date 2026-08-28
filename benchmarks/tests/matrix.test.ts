@@ -21,7 +21,6 @@ const timings: BenchmarkTimings = {
   corpusPreparationDurationMs: 10,
   embeddingDurationMs: 20,
   retrievalDurationMs: 30,
-  weightSearchDurationMs: 5,
   fusionSearchDurationMs: 5,
   evidenceRouterSearchDurationMs: 25,
   candidateQueueStartupDurationMs: 2,
