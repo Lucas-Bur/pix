@@ -34,7 +34,6 @@ import { prepareFusion, type PreparedFusionEvaluator } from "./prepared-fusion.j
 import { buildGuardrailBlockers } from "./promotion-evidence.js"
 import {
   CHANNELS,
-  RANDOM_SEARCH_SEED,
   SEARCH_BEAM_WIDTH,
   SEARCH_CANDIDATE_DEPTH,
   SEARCH_PASSES,
@@ -52,7 +51,6 @@ import {
   type RouterCandidate,
 } from "./router-search/config-space.js"
 import { runHalvingFunnel } from "./router-search/funnel.js"
-import { buildLocalCloudConfigs } from "./router-search/local-cloud.js"
 import {
   OBJECTIVE_GUARDRAILS,
   compareObjectiveQuality,
@@ -60,14 +58,8 @@ import {
   unweightedProfile,
 } from "./router-search/objectives.js"
 import {
-  PROXY_PROMOTION_MODE,
-  beamWidthForRound,
-  buildGlobalRouterSeeds,
-  buildHypothesisRouterSeeds,
   buildSearchDiagnostics,
-  rankRouterCandidates,
-  resolveRouterSearchMode,
-  selectRandomRouter,
+  HALVING_FUNNEL_MODE,
   storeQualityResults,
   type RouterSearchContext,
   type RouterSearchMode,
@@ -92,8 +84,6 @@ import {
   type RecommendedFusionWeights,
   type RouterSearchDiagnostics,
   type RouterObjective,
-  type RouterSearchStrategyName,
-  type SearchBaselineComparison,
   type SelectionStability,
 } from "./types.js"
 
@@ -122,16 +112,10 @@ interface SearchOptions extends CandidateEvaluationPoolOptions {
   readonly signal?: AbortSignal
   /** Shared candidate scheduler used to interleave multiple router searches. */
   readonly evaluationQueue?: CandidateEvaluationQueue
-  /** Benchmark-only router search algorithm; defaults to the current proxy promotion mode. */
-  readonly routerSearchStrategy?: RouterSearchStrategyName
-  /** Benchmark-only global-scout sequence; defaults to Halton. */
+  /** Benchmark-only global-scout sequence; defaults to Sobol. */
   readonly scoutSequence?: ScoutSequenceName
   /** Add hand-authored corner hypothesis seeds to the beam starting points. */
   readonly seedHypotheses?: boolean
-  /** Start the coordinate rounds with a wider beam that halves towards the target width. */
-  readonly beamSchedule?: "fixed" | "decaying"
-  /** Override the number of coordinate refinement rounds (default: strategy setting). */
-  readonly coordinatePasses?: number
   /** Override the global scout count (default: strategy setting). */
   readonly globalScouts?: number
   /** Sobol points sampled per elite in a local cloud around the final beam (0 disables). */
@@ -792,8 +776,7 @@ const prepareRouterSearch = (
         preparationMs: performance.now() - preparationStartedAt,
         candidatePoolInitializationMs: 0,
         baseWeightSearchMs: 0,
-        randomSearchMs: 0,
-        beamSearchMs: 0,
+        funnelSearchMs: 0,
         candidatePreparationMs: 0,
         candidateEvaluationMs: 0,
         candidateSelectionMs: 0,
@@ -822,8 +805,6 @@ const selectBestEvidenceRouter = async (
   mode: RouterSearchMode,
   scoutSequence: ScoutSequenceName,
   seedHypotheses: boolean = false,
-  beamSchedule: "fixed" | "decaying" = "fixed",
-  coordinatePasses: number = SEARCH_PASSES,
   globalScouts: number = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.globalScouts,
   localCloudPoints: number = 0,
   localCloudRadiusLevels: number = 1,
@@ -833,8 +814,6 @@ const selectBestEvidenceRouter = async (
   readonly proxyEvaluations: number
   readonly fullEvaluations: number
   readonly searchDiagnostics: RouterSearchDiagnostics
-  readonly randomCandidate: RouterCandidate
-  readonly randomCandidates: number
 }> => {
   const {
     samples,
@@ -875,85 +854,18 @@ const selectBestEvidenceRouter = async (
   if (mode.includesProfileSeed) baseSeeds.unshift(profileSeed)
   stats.timings.baseWeightSearchMs += performance.now() - baseSearchStartedAt
   const parameters = routerParameters()
-  const randomBaseSeed = baseSeeds[0]
-  if (randomBaseSeed === undefined) throw new Error("Evidence router search has no base seed")
-  const randomSearch = mode.runsRandomBaseline
-    ? await (async () => {
-        const randomSearchStartedAt = performance.now()
-        const result = await selectRandomRouter(
-          evidenceSamples,
-          randomBaseSeed,
-          parameters,
-          fullPool,
-          productionQuality,
-          profile,
-          stats,
-          globalScouts,
-        )
-        stats.timings.randomSearchMs += performance.now() - randomSearchStartedAt
-        return result
-      })()
-    : undefined
   const beamSearchStartedAt = performance.now()
-  let beam: readonly RouterCandidate[]
-  if (mode.name === "halving-funnel") {
-    beam = await runHalvingFunnel(
-      searchContext,
-      baseSeeds,
-      parameters,
-      scoutSequence,
-      globalScouts,
-      seedHypotheses,
-      localCloudPoints,
-      localCloudRadiusLevels,
-    )
-  } else {
-    const seedConfigs = [
-      ...baseSeeds,
-      ...buildGlobalRouterSeeds(baseSeeds, parameters, scoutSequence, globalScouts),
-      ...(seedHypotheses ? buildHypothesisRouterSeeds(baseSeeds, parameters) : []),
-    ]
-    const totalRounds = coordinatePasses + 1
-    const roundWidth = (round: number): number =>
-      beamSchedule === "decaying"
-        ? beamWidthForRound(round, totalRounds, SEARCH_BEAM_WIDTH)
-        : SEARCH_BEAM_WIDTH
-    beam = await rankRouterCandidates(searchContext, seedConfigs, roundWidth(0), baseSeeds)
-    for (let pass = 0; pass < coordinatePasses; pass++) {
-      const orderedParameters = pass % 2 === 0 ? parameters : [...parameters].reverse()
-      for (const parameter of orderedParameters) {
-        beam = await rankRouterCandidates(
-          searchContext,
-          [
-            // Retain the current beam; the search context also protects full-quality elites.
-            ...beam.map((candidate) => candidate.config),
-            ...beam.flatMap((candidate) =>
-              parameter.values.map((value) => parameter.update(candidate.config, value)),
-            ),
-          ],
-          roundWidth(pass + 1),
-          beam.map((candidate) => candidate.config),
-        )
-      }
-    }
-    if (localCloudPoints > 0 && localCloudRadiusLevels > 0) {
-      const cloudConfigs = buildLocalCloudConfigs(
-        beam.map((candidate) => candidate.config),
-        parameters,
-        localCloudPoints,
-        localCloudRadiusLevels,
-      )
-      stats.localCloudCandidates += cloudConfigs.length
-      beam = await rankRouterCandidates(
-        searchContext,
-        cloudConfigs,
-        roundWidth(coordinatePasses),
-        // Retain the pre-cloud elites; the context also protects full-quality elites.
-        beam.map((candidate) => candidate.config),
-      )
-    }
-  }
-  stats.timings.beamSearchMs += performance.now() - beamSearchStartedAt
+  const beam = await runHalvingFunnel(
+    searchContext,
+    baseSeeds,
+    parameters,
+    scoutSequence,
+    globalScouts,
+    seedHypotheses,
+    localCloudPoints,
+    localCloudRadiusLevels,
+  )
+  stats.timings.funnelSearchMs += performance.now() - beamSearchStartedAt
   const fallback = beam[0]
   if (fallback === undefined) throw new Error("Evidence router search produced no candidate")
   const candidates = [...searchContext.archive.values()]
@@ -978,13 +890,10 @@ const selectBestEvidenceRouter = async (
     promotionStatus,
     selectionStability,
   }))
-  const randomCandidate = randomSearch?.candidate ?? fallback
   return {
     selections,
     productionQuality,
     searchDiagnostics: buildSearchDiagnostics(parameters, stats),
-    randomCandidate,
-    randomCandidates: randomSearch?.candidates ?? 0,
     proxyEvaluations: stats.proxyEvaluations,
     fullEvaluations: stats.fullEvaluations,
   }
@@ -1024,7 +933,7 @@ const optimizeFusionWeightsWithPool = async (
 ): Promise<FusionSearchResult> => {
   const selected = await selectBestWeights(
     pool,
-    PROXY_PROMOTION_MODE,
+    HALVING_FUNNEL_MODE,
     "reranker-top20",
     undefined,
     profile,
@@ -1168,11 +1077,9 @@ const withEvidencePools = async <T>(
       profile,
       fullPool,
       proxyPool,
-      resolveRouterSearchMode(options.routerSearchStrategy ?? "proxy-promotion"),
+      HALVING_FUNNEL_MODE,
       options.scoutSequence ?? DEFAULT_SCOUT_SEQUENCE,
       options.seedHypotheses ?? false,
-      options.beamSchedule ?? "fixed",
-      options.coordinatePasses ?? DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.coordinatePasses,
       options.globalScouts ?? DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.globalScouts,
       options.localCloudPoints ?? 0,
       options.localCloudRadiusLevels ?? 1,
@@ -1192,51 +1099,33 @@ interface StaticRouterSelection {
   readonly staticSelection: Awaited<ReturnType<typeof selectStaticWeights>>
 }
 
-const selectStaticWeightsForSelections = async (
+const selectStaticWeightsForSelections = (
   selections: readonly EvidenceRouterSelection[],
   fullPool: CandidateEvaluationPool,
   productionQuality: QualitySummary,
   profile: OptimizationProfile,
   mode: RouterSearchMode,
 ): Promise<readonly StaticRouterSelection[]> => {
-  if (mode.name !== "proxy-promotion") {
-    const staticSelection = await selectBestWeights(
-      fullPool,
-      mode,
-      "reranker-top20",
-      undefined,
-      profile,
-    )
-    return selections.map((selection) => ({ selection, staticSelection }))
-  }
-  const selected: StaticRouterSelection[] = []
-  for (const selection of selections) {
-    selected.push({
+  const staticSelection = selectBestWeights(fullPool, mode, "reranker-top20", undefined, profile)
+  return Promise.all(
+    selections.map(async (selection) => ({
       selection,
-      staticSelection: await selectStaticWeights(
-        fullPool,
-        mode,
-        selection.objective,
-        productionQuality,
-        profile,
-      ),
-    })
-  }
-  return selected
+      staticSelection: await staticSelection,
+    })),
+  )
 }
 
 const selectStaticWeightsForSearch = (
   dynamicSelection: Awaited<ReturnType<typeof selectBestEvidenceRouter>>,
   fullPool: CandidateEvaluationPool,
   profile: OptimizationProfile,
-  options: SearchOptions,
 ): Promise<readonly StaticRouterSelection[]> =>
   selectStaticWeightsForSelections(
     dynamicSelection.selections,
     fullPool,
     dynamicSelection.productionQuality,
     profile,
-    resolveRouterSearchMode(options.routerSearchStrategy ?? "proxy-promotion"),
+    HALVING_FUNNEL_MODE,
   )
 
 export const optimizeEvidenceRouter = async (
@@ -1251,42 +1140,7 @@ export const optimizeEvidenceRouter = async (
 ): Promise<readonly EvidenceRouterSearchResult[]> =>
   withEvidencePools(development, fusion, profile, options, async (dynamicSelection, fullPool) => {
     const productionValidation = summarizeProductionRouter(validation, profile)
-    const validationEvidence = prepareEvidenceSamples(validation)
-    const randomBaseline: SearchBaselineComparison =
-      dynamicSelection.randomCandidates === 0
-        ? {
-            algorithm: "not-run",
-            seed: RANDOM_SEARCH_SEED,
-            candidates: 0,
-            development: summarizeEvidenceRouter(
-              [],
-              dynamicSelection.randomCandidate.config,
-              fusion,
-            ),
-            validation: summarizeEvidenceRouter(
-              [],
-              dynamicSelection.randomCandidate.config,
-              fusion,
-            ),
-          }
-        : {
-            algorithm: "random-scout",
-            seed: RANDOM_SEARCH_SEED,
-            candidates: dynamicSelection.randomCandidates,
-            development: dynamicSelection.randomCandidate.quality,
-            validation: summarizeEvidenceRouter(
-              validationEvidence,
-              dynamicSelection.randomCandidate.config,
-              fusion,
-              profile,
-            ),
-          }
-    const staticSelections = await selectStaticWeightsForSearch(
-      dynamicSelection,
-      fullPool,
-      profile,
-      options,
-    )
+    const staticSelections = await selectStaticWeightsForSearch(dynamicSelection, fullPool, profile)
     const results: EvidenceRouterSearchResult[] = staticSelections.map(
       ({ selection, staticSelection }) => {
         const holdoutBreakdown = buildHoldoutBreakdown(
@@ -1316,7 +1170,7 @@ export const optimizeEvidenceRouter = async (
           staticValidation: summarize(validation, staticSelection.weights, fusion, profile),
           development: selection.quality,
           validation: summarizeEvidenceRouter(
-            validationEvidence,
+            prepareEvidenceSamples(validation),
             selection.config,
             fusion,
             profile,
@@ -1329,7 +1183,6 @@ export const optimizeEvidenceRouter = async (
           proxyEvaluations: dynamicSelection.proxyEvaluations,
           fullEvaluations: dynamicSelection.fullEvaluations,
           searchDiagnostics: dynamicSelection.searchDiagnostics,
-          searchBaseline: randomBaseline,
           holdoutBreakdown,
         }
       },
@@ -1347,7 +1200,7 @@ const fitRecommendedFusionWeightsWithPool = async (
 ): Promise<RecommendedFusionWeights> => {
   const selected = await selectBestWeights(
     pool,
-    PROXY_PROMOTION_MODE,
+    HALVING_FUNNEL_MODE,
     "reranker-top20",
     undefined,
     profile,
@@ -1403,12 +1256,7 @@ const fitRecommendedEvidenceRouterWithOptions = (
   options: SearchOptions,
 ): Promise<readonly RecommendedEvidenceRouter[]> =>
   withEvidencePools(samples, fusion, profile, options, async (dynamicSelection, fullPool) => {
-    const staticSelections = await selectStaticWeightsForSearch(
-      dynamicSelection,
-      fullPool,
-      profile,
-      options,
-    )
+    const staticSelections = await selectStaticWeightsForSearch(dynamicSelection, fullPool, profile)
     const results: RecommendedEvidenceRouter[] = staticSelections.map(
       ({ selection, staticSelection }) => ({
         model,

@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   EvidenceRouterConfig,
   FusionMethod as ProductionFusionMethod,
 } from "../../../src/domain/retrieval.js"
@@ -18,11 +18,9 @@ export const ROUTER_OBJECTIVES = [
 ] as const
 export type RouterObjective = (typeof ROUTER_OBJECTIVES)[number]
 
-/** Compute budget shared by both router search strategies. */
+/** Compute budget shared by the router search funnel. */
 interface RouterSearchBudget {
   globalScouts: 64
-  beamWidth: 6
-  coordinatePasses: 2
   candidateDepth: 200
   proxySampleFraction: 0.25
   proxyMinimumSamples: 32
@@ -30,23 +28,9 @@ interface RouterSearchBudget {
 
 const ROUTER_SEARCH_BUDGET: RouterSearchBudget = {
   globalScouts: 64,
-  beamWidth: 6,
-  coordinatePasses: 2,
   candidateDepth: 200,
   proxySampleFraction: 0.25,
   proxyMinimumSamples: 32,
-}
-
-/** Proxy promotion strategy: cheap pre-scoring, then full-quality promotion of survivors. */
-export interface ProxyPromotionStrategy extends RouterSearchBudget {
-  readonly kind: "proxy-promotion"
-  readonly algorithm: string
-  readonly proxyPromotionFactor: 8
-  readonly objectives: typeof ROUTER_OBJECTIVES
-  readonly guardrailTolerance: 0.01
-  readonly seed: 0
-  readonly normalization: "per-channel-max-weight"
-  readonly tieBreaking: "guardrails>objective>complexity>stable-key"
 }
 
 /**
@@ -59,32 +43,19 @@ export interface HalvingFunnelStrategy extends RouterSearchBudget {
   readonly algorithm: string
   readonly spreadSurvivors: 32
   readonly finalists: 256
+  readonly objectives: typeof ROUTER_OBJECTIVES
+  readonly guardrailTolerance: 0.01
+  readonly seed: 0
+  readonly normalization: "per-channel-max-weight"
+  readonly tieBreaking: "guardrails>objective>complexity>stable-key"
 }
 
 /** Versioned evidence-router search strategy recorded in benchmark artifacts. */
-export type RouterSearchStrategy = ProxyPromotionStrategy | HalvingFunnelStrategy
+export type RouterSearchStrategy = HalvingFunnelStrategy
 
-export const ROUTER_SEARCH_STRATEGY_NAMES = ["proxy-promotion", "halving-funnel"] as const
-
-export type RouterSearchStrategyName = (typeof ROUTER_SEARCH_STRATEGY_NAMES)[number]
-
-const BEAM_ALGORITHM_PREFIX = "global-scout-elitist-beam"
 const FUNNEL_ALGORITHM_PREFIX = "global-scout-funnel"
 
-export const DEFAULT_ROUTER_SEARCH_STRATEGY: RouterSearchStrategyName = "halving-funnel"
-
-/** Default proxy promotion parameters, recorded with Halton scouts unless overridden. */
-export const DEFAULT_PROXY_PROMOTION_STRATEGY: ProxyPromotionStrategy = {
-  kind: "proxy-promotion",
-  algorithm: `halton-${BEAM_ALGORITHM_PREFIX}-proxy-promotion`,
-  ...ROUTER_SEARCH_BUDGET,
-  proxyPromotionFactor: 8,
-  objectives: ROUTER_OBJECTIVES,
-  guardrailTolerance: 0.01,
-  seed: 0,
-  normalization: "per-channel-max-weight",
-  tieBreaking: "guardrails>objective>complexity>stable-key",
-}
+export const DEFAULT_ROUTER_SEARCH_STRATEGY = "halving-funnel" as const
 
 /** Default fidelity funnel: broad proxy wave, local proxy cloud, then 256 diverse finalists. */
 export const DEFAULT_HALVING_FUNNEL_STRATEGY: HalvingFunnelStrategy = {
@@ -93,24 +64,23 @@ export const DEFAULT_HALVING_FUNNEL_STRATEGY: HalvingFunnelStrategy = {
   ...ROUTER_SEARCH_BUDGET,
   spreadSurvivors: 32,
   finalists: 256,
+  objectives: ROUTER_OBJECTIVES,
+  guardrailTolerance: 0.01,
+  seed: 0,
+  normalization: "per-channel-max-weight",
+  tieBreaking: "guardrails>objective>complexity>stable-key",
 }
 
-/** Build the recorded search strategy for one scout sequence and strategy name. */
+/** Build the recorded search strategy for one scout sequence. */
 export const routerSearchStrategyFor = (
   scoutSequence: ScoutSequenceName,
-  name: RouterSearchStrategyName,
-): RouterSearchStrategy => {
-  const base =
-    name === "proxy-promotion" ? DEFAULT_PROXY_PROMOTION_STRATEGY : DEFAULT_HALVING_FUNNEL_STRATEGY
-  const algorithm =
-    name === "halving-funnel"
-      ? `${scoutSequence}-${FUNNEL_ALGORITHM_PREFIX}`
-      : `${scoutSequence}-${BEAM_ALGORITHM_PREFIX}-${name}`
-  return { ...base, algorithm }
-}
+): RouterSearchStrategy => ({
+  ...DEFAULT_HALVING_FUNNEL_STRATEGY,
+  algorithm: `${scoutSequence}-${FUNNEL_ALGORITHM_PREFIX}`,
+})
 
-/** Shared search-space and legacy random-baseline parameters. */
-export const DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS = DEFAULT_PROXY_PROMOTION_STRATEGY
+/** Shared search-space parameters. */
+export const DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS = DEFAULT_HALVING_FUNNEL_STRATEGY
 
 /** Runtime/coverage trade-off selected for one benchmark invocation. */
 export type BenchmarkProfile = "smoke" | "develop" | "validate" | "full"
@@ -327,10 +297,8 @@ export interface RouterSearchTimings {
   readonly candidatePoolInitializationMs: number
   /** Time spent selecting the initial static/base weight seeds. */
   readonly baseWeightSearchMs: number
-  /** Time spent evaluating the random scout baseline. */
-  readonly randomSearchMs: number
-  /** Time spent in initial and coordinate beam rounds. */
-  readonly beamSearchMs: number
+  /** Time spent in the halving funnel waves. */
+  readonly funnelSearchMs: number
   /** Time spent converting router configs into evaluator candidates. */
   readonly candidatePreparationMs: number
   /** Wall time waiting for candidate evaluation results. */
@@ -355,15 +323,6 @@ export interface RouterSearchDiagnostics {
   /** Candidates generated by the local Sobol cloud around the final beam (0 when disabled). */
   readonly localCloudCandidates: number
   readonly timings: RouterSearchTimings
-}
-
-/** Holdout comparison against a deterministic random-search baseline. */
-export interface SearchBaselineComparison {
-  readonly algorithm: "random-scout" | "not-run"
-  readonly seed: number
-  readonly candidates: number
-  readonly development: QualitySummary
-  readonly validation: QualitySummary
 }
 
 /** Explicit separation between candidate selection, holdouts, and final promotion evidence. */
@@ -401,7 +360,6 @@ export interface EvidenceRouterSearchResult {
   readonly proxyEvaluations: number
   readonly fullEvaluations: number
   readonly searchDiagnostics: RouterSearchDiagnostics
-  readonly searchBaseline: SearchBaselineComparison
   readonly holdoutBreakdown: readonly HoldoutQuality[]
 }
 
@@ -450,10 +408,6 @@ export interface BenchmarkArtifact {
   readonly scoutSequence: ScoutSequenceName
   /** Whether hand-authored corner hypothesis seeds joined the beam starting points. */
   readonly seedHypotheses: boolean
-  /** Beam width schedule across coordinate rounds. */
-  readonly beamSchedule: "fixed" | "decaying"
-  /** Coordinate refinement rounds executed by this run's router search. */
-  readonly coordinatePasses: number
   /** Global scout count used to seed the beam. */
   readonly globalScouts: number
   /** Sobol points sampled per elite in the local cloud around the final beam (0 disables). */

@@ -9,7 +9,7 @@ import {
   routerSearchStrategyFor,
   type BenchmarkProfile,
 } from "../retrieval/evaluation/types.js"
-import { resolveRouterSearchStrategy, runRetrievalBenchmark } from "../retrieval/runner.js"
+import { runRetrievalBenchmark } from "../retrieval/runner.js"
 
 const foldQuestions = (prefix: string) =>
   Array.from({ length: 12 }, (_, index) => ({
@@ -111,22 +111,13 @@ const runProfile = (profile: BenchmarkProfile, groupedFolds: number, fusionMetho
       process.env.PIX_BENCH_SEED_HYPOTHESES === "1" ||
         process.env.PIX_BENCH_SEED_HYPOTHESES === "true",
     )
-    expect(artifact.beamSchedule).toBe(process.env.PIX_BENCH_BEAM_SCHEDULE ?? "fixed")
     expect(artifact.globalScouts).toBe(
       process.env.PIX_BENCH_GLOBAL_SCOUTS === undefined
         ? 64
         : Number.parseInt(process.env.PIX_BENCH_GLOBAL_SCOUTS, 10),
     )
-    expect(artifact.coordinatePasses).toBe(
-      process.env.PIX_BENCH_COORDINATE_PASSES === undefined
-        ? 2
-        : Number.parseInt(process.env.PIX_BENCH_COORDINATE_PASSES, 10),
-    )
     expect(artifact.searchStrategy).toEqual(
-      routerSearchStrategyFor(
-        resolveScoutSequence(process.env.PIX_BENCH_SCOUT_SEQUENCE),
-        resolveRouterSearchStrategy(process.env.PIX_BENCH_ROUTER_STRATEGY),
-      ),
+      routerSearchStrategyFor(resolveScoutSequence(process.env.PIX_BENCH_SCOUT_SEQUENCE)),
     )
     expect(artifact.timings.totalDurationMs).toBeGreaterThan(0)
     expect(Object.values(artifact.timings).every((duration) => duration >= 0)).toBe(true)
@@ -223,30 +214,13 @@ it("shuffles intent groups deterministically before assigning folds", () => {
   expectStratifiedClasses(manifests, assignments)
 })
 
-it("resolves the selectable router search strategies", () => {
-  expect(resolveRouterSearchStrategy(undefined)).toBe("halving-funnel")
-  expect(resolveRouterSearchStrategy("proxy-promotion")).toBe("proxy-promotion")
-  expect(routerSearchStrategyFor("halton", "proxy-promotion")).toMatchObject({
-    kind: "proxy-promotion",
-    algorithm: "halton-global-scout-elitist-beam-proxy-promotion",
-    proxyPromotionFactor: 8,
-  })
-  expect(resolveRouterSearchStrategy("halving-funnel")).toBe("halving-funnel")
-  expect(routerSearchStrategyFor("sobol", "halving-funnel")).toMatchObject({
+it("resolves the recorded search strategy", () => {
+  expect(routerSearchStrategyFor("sobol")).toMatchObject({
     kind: "halving-funnel",
     algorithm: "sobol-global-scout-funnel",
     spreadSurvivors: 32,
     finalists: 256,
   })
-  const sobolStrategy = routerSearchStrategyFor("sobol", "proxy-promotion")
-  expect(sobolStrategy.algorithm).toBe("sobol-global-scout-elitist-beam-proxy-promotion")
-  expect(sobolStrategy.kind === "proxy-promotion" && sobolStrategy.proxyPromotionFactor).toBe(8)
-  expect(DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.kind).toBe("proxy-promotion")
-  expect(DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS).not.toHaveProperty("halvingKeepFactor")
-  expect(() => resolveRouterSearchStrategy("successive-halving")).toThrow(
-    "Unknown PIX_BENCH_ROUTER_STRATEGY value: successive-halving",
-  )
-  expect(() => resolveRouterSearchStrategy("unknown")).toThrow(
-    "Unknown PIX_BENCH_ROUTER_STRATEGY value: unknown",
-  )
+  expect(DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.kind).toBe("halving-funnel")
+  expect(() => resolveScoutSequence("unknown")).toThrow(/PIX_BENCH_SCOUT_SEQUENCE/)
 })

@@ -9,8 +9,6 @@ const artifact = {
   benchmarkProfile: "smoke",
   scoutSequence: "halton",
   seedHypotheses: false,
-  beamSchedule: "fixed",
-  coordinatePasses: 2,
   globalScouts: 64,
   localCloudPoints: 0,
   localCloudRadiusLevels: 1,
@@ -21,7 +19,7 @@ const artifact = {
     finalTest: { kind: "untouched-grouped-fold", strategy: "grouped-5-fold", fold: "5" },
   },
   generatedAt: "2026-08-06T00:00:00.000Z",
-  searchStrategy: routerSearchStrategyFor("halton", "proxy-promotion"),
+  searchStrategy: routerSearchStrategyFor("halton"),
   timings: {
     totalDurationMs: 0,
     corpusPreparationDurationMs: 0,
@@ -97,7 +95,7 @@ it("renders the halving funnel as two cheap waves and one full evaluation", () =
     seedHypotheses: true,
     localCloudPoints: 16,
     localCloudRadiusLevels: 2,
-    searchStrategy: routerSearchStrategyFor("halton", "halving-funnel"),
+    searchStrategy: routerSearchStrategyFor("halton"),
   })
 
   expect(report).toContain("keep 32 proxy-scored spread survivors")

@@ -72,6 +72,7 @@ interface SubSampleContext {
 const prepareSubSampleContext = (
   repositoryId: string,
   model: string,
+  maxTokensOverride?: number,
 ): Effect.Effect<SubSampleContext, Error> =>
   Effect.gen(function* () {
     const manifests = yield* loadCorpusManifests()
@@ -81,7 +82,7 @@ const prepareSubSampleContext = (
     const resolved = yield* resolveModelContext(model)
     const repositoryPath = yield* prepareRepository(manifest)
     const corpus = yield* prepareCorpus(repositoryPath, manifest, {
-      maxTokens: resolved.maxTokens,
+      maxTokens: maxTokensOverride ?? resolved.maxTokens,
       overlapLines: DEFAULT_CONFIG.overlapLines,
       countTokens: resolved.embedder.countTokens,
       onDiagnostic: () => Effect.void,
@@ -92,7 +93,7 @@ const prepareSubSampleContext = (
       dims: resolved.info.dims,
       dtype: resolved.info.defaultDtype,
       embedder: resolved.embedder,
-      maxTokens: resolved.maxTokens,
+      maxTokens: maxTokensOverride ?? resolved.maxTokens,
       corpus,
     }
   })
@@ -387,4 +388,81 @@ export const runRealRouterModelComparison = (
       developmentSamples: development.length,
       validationSamples: validation.length,
     }
+  })
+
+/** Per-chunk-token-size sweep result row. */
+export interface ChunkingSweepRow {
+  readonly chunkTokens: number
+  readonly chunks: number
+  readonly ndcgAt20: number
+  readonly standardError: number
+  readonly proxyEvaluations: number
+  readonly fullEvaluations: number
+}
+
+/** Parse a comma-separated chunk-token list for the sweep. */
+export const resolveChunkingSizes = (requested: string | undefined): readonly number[] => {
+  if (requested === undefined) return [256, 384, 512]
+  return requested
+    .split(",")
+    .map((entry) => Number(entry.trim()))
+    .filter((size) => Number.isFinite(size) && size > 0)
+}
+
+/**
+ * Run the real search protocol over the same pinned corpus re-chunked at several token budgets.
+ * Smaller chunks produce more, finer-grained candidates; larger chunks pack more context per hit.
+ */
+export const runChunkingSweep = (
+  repositoryId: string,
+  model: string,
+  sizes: readonly number[] = resolveChunkingSizes(process.env.PIX_BENCH_CHUNK_TOKENS),
+): Effect.Effect<readonly ChunkingSweepRow[], Error> =>
+  Effect.gen(function* () {
+    const rows: ChunkingSweepRow[] = []
+    for (const chunkTokens of [...sizes].sort((left, right) => left - right)) {
+      const context = yield* prepareSubSampleContext(repositoryId, model, chunkTokens)
+      const goldByQuestion = goldTargetsByQuestion(context.manifest, context.corpus)
+      const fullPlan = planCorpusSizeSubSamples(goldByQuestion, context.corpus.chunks.length, [
+        Number.POSITIVE_INFINITY,
+      ])[0]!
+      const samples = yield* buildSubSampleSamples(context, fullPlan)
+      const samplesByModel = new Map<string, readonly WeightSearchSample[]>([
+        [context.model, samples],
+      ])
+      const search = yield* runBenchmarkSearch(
+        {
+          groupedFolds: 3,
+          repositoryHoldouts: false,
+          fusionMethods: ["dbsf"],
+          routerFusionMethods: ["dbsf"],
+        },
+        samplesByModel,
+        "grouped-3-fold",
+        OPTIMIZATION_PROFILES["search-priority"],
+        false,
+        {
+          workerCount: Math.min(resolveWorkerCount(), getDefaultWorkerCount()),
+          fallbackToSerial: false,
+        },
+      )
+      const router = search.recommendedEvidenceRouters.find(
+        (row) => row.fusion === "dbsf" && row.objective === "direct",
+      )
+      if (router === undefined)
+        throw new Error(`No dbsf/direct router recommendation at ${chunkTokens} tokens`)
+      const scored = evaluateRouterConfigOnSamples(samples, router.config)
+      rows.push({
+        chunkTokens,
+        chunks: context.corpus.chunks.length,
+        ndcgAt20: scored.mean,
+        standardError: scored.standardError,
+        proxyEvaluations: router.proxyEvaluations,
+        fullEvaluations: router.fullEvaluations,
+      })
+      reportBenchmarkProgress(
+        `chunkTokens ${chunkTokens}: ${context.corpus.chunks.length} chunks, ndcg@20 ${scored.mean.toFixed(4)} ± ${scored.standardError.toFixed(4)}`,
+      )
+    }
+    return rows
   })

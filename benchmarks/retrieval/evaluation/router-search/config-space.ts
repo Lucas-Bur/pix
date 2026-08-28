@@ -11,7 +11,6 @@ import {
 } from "../../../../src/domain/retrieval.js"
 import {
   DEFAULT_HALVING_FUNNEL_STRATEGY,
-  DEFAULT_PROXY_PROMOTION_STRATEGY,
   DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS,
   type QualitySummary,
 } from "../types.js"
@@ -23,19 +22,19 @@ export const DYNAMIC_BASE_LEVELS = Array.from({ length: 10 }, (_, index) => (ind
 export const INFLUENCE_LEVELS = Array.from({ length: 11 }, (_, index) => index / 10)
 export const SIGNED_FINE_LEVELS = Array.from({ length: 21 }, (_, index) => (index - 10) / 10)
 export const SEARCH_CANDIDATE_DEPTH = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.candidateDepth
-export const SEARCH_BEAM_WIDTH = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.beamWidth
-export const SEARCH_PASSES = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.coordinatePasses
+/** Static weight-search beam width used inside the funnel's base weight search. */
+export const SEARCH_BEAM_WIDTH = 6
+/** Static weight-search coordinate passes used inside the funnel's base weight search. */
+export const SEARCH_PASSES = 2
 export const SEARCH_GLOBAL_SCOUTS = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.globalScouts
 export const SEARCH_PROXY_SAMPLE_FRACTION =
   DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.proxySampleFraction
 export const SEARCH_PROXY_MINIMUM_SAMPLES =
   DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.proxyMinimumSamples
-export const SEARCH_PROXY_PROMOTION_FACTOR = DEFAULT_PROXY_PROMOTION_STRATEGY.proxyPromotionFactor
 /** Funnel halving keep factor inherited from the historical successive-halving control. */
 export const SEARCH_HALVING_KEEP_FACTOR = 8
 export const SEARCH_FUNNEL_SPREAD_SURVIVORS = DEFAULT_HALVING_FUNNEL_STRATEGY.spreadSurvivors
 export const SEARCH_FUNNEL_FINALISTS = DEFAULT_HALVING_FUNNEL_STRATEGY.finalists
-export const RANDOM_SEARCH_SEED = DEFAULT_ROUTER_SEARCH_STRATEGY_PARAMETERS.seed || 1
 
 export const normalizeWeights = (weights: ChannelWeights): ChannelWeights => {
   const max = Math.max(...CHANNELS.map((channel) => weights[channel]))

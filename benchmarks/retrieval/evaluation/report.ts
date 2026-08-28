@@ -211,20 +211,9 @@ const renderPromotionEvidence = (artifact: BenchmarkArtifact): readonly string[]
 
 /** Render the report header with run metadata and the recorded search configuration. */
 const renderOverview = (artifact: BenchmarkArtifact): readonly string[] => {
-  const refinement =
-    artifact.searchStrategy.kind === "halving-funnel"
-      ? [
-          `Funnel refinement: keep ${artifact.searchStrategy.spreadSurvivors} proxy-scored spread survivors, expand ${artifact.localCloudPoints} Sobol points per survivor within +/- ${artifact.localCloudRadiusLevels} level(s), then fully evaluate ${artifact.searchStrategy.finalists} finalists plus base seeds once.`,
-        ]
-      : [
-          `Beam refinement: beam width ${artifact.searchStrategy.beamWidth}, ${artifact.searchStrategy.coordinatePasses} alternating coordinate passes.`,
-          ...(artifact.localCloudPoints > 0
-            ? [
-                `Local refinement: ${artifact.localCloudPoints} deterministic Sobol cloud points per elite within +/- ${artifact.localCloudRadiusLevels} level(s) around the final beam.`,
-              ]
-            : []),
-          `Cheap pre-scoring: candidates first score on a deterministic ${artifact.searchStrategy.proxySampleFraction * 100}% proxy sample with a minimum of ${artifact.searchStrategy.proxyMinimumSamples}; the promotion factor is ${artifact.searchStrategy.proxyPromotionFactor}x.`,
-        ]
+  const refinement = [
+    `Funnel refinement: keep ${artifact.searchStrategy.spreadSurvivors} proxy-scored spread survivors, expand ${artifact.localCloudPoints} Sobol points per survivor within +/- ${artifact.localCloudRadiusLevels} level(s), then fully evaluate ${artifact.searchStrategy.finalists} finalists plus base seeds once.`,
+  ]
   return [
     "# Retrieval Quality Benchmark",
     "",
@@ -643,7 +632,6 @@ const renderRouterSections = (artifact: BenchmarkArtifact): readonly string[] =>
           ? "eligible"
           : "no-eligible-candidate",
       ),
-      rows[0]?.searchBaseline.algorithm ?? "unknown",
       percent(weightedAverage(rows, (row) => row.productionValidation.recallAt5)),
       percent(weightedAverage(rows, (row) => row.validation.recallAt5)),
       percent(weightedAverage(rows, (row) => row.productionValidation.recallAt10)),
@@ -654,8 +642,6 @@ const renderRouterSections = (artifact: BenchmarkArtifact): readonly string[] =>
       percent(weightedAverage(rows, (row) => row.validation.recallAt50)),
       percent(weightedAverage(rows, (row) => row.productionValidation.contextRecallAt4096)),
       percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096)),
-      percent(weightedAverage(rows, (row) => row.searchBaseline.validation.recallAt20)),
-      percent(weightedAverage(rows, (row) => row.searchBaseline.validation.contextRecallAt4096)),
     ]
   })
   lines.push(
@@ -671,7 +657,6 @@ const renderRouterSections = (artifact: BenchmarkArtifact): readonly string[] =>
         "Objective",
         "Strategy",
         "Promotion",
-        "Search baseline",
         "Production R@5",
         "Dynamic R@5",
         "Production R@10",
@@ -682,8 +667,6 @@ const renderRouterSections = (artifact: BenchmarkArtifact): readonly string[] =>
         "Dynamic R@50",
         "Production Ctx@4k",
         "Dynamic Ctx@4k",
-        "Random R@20",
-        "Random Ctx@4k",
       ],
       [
         "---",

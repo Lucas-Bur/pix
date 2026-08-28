@@ -609,10 +609,6 @@ describe("retrieval benchmark fixture", () => {
     expect(Object.keys(result.searchDiagnostics.parameterLevels)).toHaveLength(40)
     expect(result.searchDiagnostics.proxyFullAgreement).toBeGreaterThanOrEqual(0)
     expect(result.searchDiagnostics.proxyFullAgreement).toBeLessThanOrEqual(1)
-    expect(result.searchBaseline.algorithm).toBe("random-scout")
-    expect(result.searchBaseline.seed).toBe(1)
-    expect(result.searchBaseline.candidates).toBeGreaterThan(0)
-    expect(result.searchBaseline.validation.recallAt20).toBeGreaterThanOrEqual(0)
     expect(
       result.holdoutBreakdown.map(({ dimension, name }) => `${dimension}:${name}`).sort(),
     ).toEqual([
@@ -683,7 +679,6 @@ describe("retrieval benchmark fixture", () => {
         undefined,
         {
           workerCount: 0,
-          routerSearchStrategy: "halving-funnel",
           globalScouts: 16,
           seedHypotheses: true,
           localCloudPoints: 2,
@@ -697,7 +692,6 @@ describe("retrieval benchmark fixture", () => {
     )
     expect(result.searchDiagnostics.fullEvaluations).toBeLessThan(384)
     expect(result.searchDiagnostics.localCloudCandidates).toBeGreaterThan(0)
-    expect(result.searchBaseline.algorithm).toBe("not-run")
   })
 
   it("does not treat a guardrail-failing fallback as promotable", () => {

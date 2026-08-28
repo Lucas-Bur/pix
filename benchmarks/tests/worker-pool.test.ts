@@ -123,13 +123,11 @@ describe("benchmark candidate evaluation pool", () => {
           {
             workerCount: 0,
             evaluationQueue: candidateQueue,
-            routerSearchStrategy: "halving-funnel",
           },
         ),
         fitRecommendedEvidenceRouter("fixture", "dbsf", [searchSample], SEARCH_PRIORITY_PROFILE, {
           workerCount: 0,
           evaluationQueue: candidateQueue,
-          routerSearchStrategy: "halving-funnel",
         }),
       ])
       const serialHoldout = await optimizeEvidenceRouter(
@@ -140,14 +138,14 @@ describe("benchmark candidate evaluation pool", () => {
         [searchSample],
         [searchSample],
         SEARCH_PRIORITY_PROFILE,
-        { workerCount: 0, routerSearchStrategy: "halving-funnel" },
+        { workerCount: 0 },
       )
       const serialFitAll = await fitRecommendedEvidenceRouter(
         "fixture",
         "dbsf",
         [searchSample],
         SEARCH_PRIORITY_PROFILE,
-        { workerCount: 0, routerSearchStrategy: "halving-funnel" },
+        { workerCount: 0 },
       )
 
       expect(parallelHoldout.map(withoutSearchTimings)).toEqual(
@@ -173,7 +171,6 @@ describe("benchmark candidate evaluation pool", () => {
         {
           workerCount: 0,
           evaluationQueue: candidateQueue,
-          routerSearchStrategy: "halving-funnel",
         },
       )
       const serial = await fitRecommendedEvidenceRouter(
@@ -181,14 +178,13 @@ describe("benchmark candidate evaluation pool", () => {
         "dbsf",
         halvingSamples,
         SEARCH_PRIORITY_PROFILE,
-        { workerCount: 0, routerSearchStrategy: "halving-funnel" },
+        { workerCount: 0 },
       )
       expect(parallel.map(withoutSearchTimings)).toEqual(serial.map(withoutSearchTimings))
       const result = parallel[0]
       if (result === undefined) throw new Error("Missing halving router result")
       expect(result.searchDiagnostics.proxyEvaluations).toBeGreaterThan(0)
       expect(result.searchDiagnostics.proxyPromotions).toBeGreaterThan(0)
-      expect(result.searchDiagnostics.timings.randomSearchMs).toBe(0)
     } finally {
       await candidateQueue.close()
     }

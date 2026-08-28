@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   EvidenceRouterParameters as EvidenceRouterConfig,
   FusionMethod,
 } from "../../../../src/domain/retrieval.js"
@@ -9,19 +9,12 @@ import type {
 } from "../../execution/candidate-evaluation-pool.js"
 import type { OptimizationProfile } from "../optimization-profiles.js"
 import { SCOUT_SEQUENCES, scoutLevelIndex, type ScoutSequenceName } from "../scouts/index.js"
-import type {
-  QualitySummary,
-  RouterObjective,
-  RouterSearchDiagnostics,
-  RouterSearchStrategyName,
-} from "../types.js"
+import type { QualitySummary, RouterObjective, RouterSearchDiagnostics } from "../types.js"
 import type { EvidenceSearchSample, WeightCandidate } from "../weight-search.js"
 import {
   CHANNELS,
   SEARCH_BEAM_WIDTH,
   SEARCH_HALVING_KEEP_FACTOR,
-  SEARCH_PROXY_PROMOTION_FACTOR,
-  activeChannelsKey,
   routerComplexity,
   routerKey,
   type RouterCandidate,
@@ -106,26 +99,6 @@ export const buildGlobalRouterSeeds = (
   )
 }
 
-const buildRandomRouterSeeds = (
-  baseSeed: EvidenceRouterConfig,
-  parameters: readonly RouterParameter[],
-  scoutCount: number,
-): readonly EvidenceRouterConfig[] => {
-  const points = SCOUT_SEQUENCES.random.points(scoutCount, parameters.length)
-  return Array.from({ length: scoutCount }, (_, pointIndex) =>
-    parameters.reduce(
-      (config, parameter, parameterIndex) =>
-        parameter.update(
-          config,
-          parameter.values[
-            scoutLevelIndex(points[pointIndex]![parameterIndex]!, parameter.values.length)
-          ]!,
-        ),
-      baseSeed,
-    ),
-  )
-}
-
 /**
  * Hand-authored corner hypotheses: every parameter at its lowest level except one at its highest
  * (one per parameter), plus the all-minimum and all-maximum corners.
@@ -176,8 +149,7 @@ export interface MutableRouterSearchTimings {
   preparationMs: number
   candidatePoolInitializationMs: number
   baseWeightSearchMs: number
-  randomSearchMs: number
-  beamSearchMs: number
+  funnelSearchMs: number
   candidatePreparationMs: number
   candidateEvaluationMs: number
   candidateSelectionMs: number
@@ -223,15 +195,12 @@ const selectSuccessiveHalvingCandidates = (
 ): readonly RouterCandidate[] =>
   [...candidates].sort(compareSuccessiveHalvingCandidates).slice(0, limit)
 
-/** Behavioral contract separating the router search strategies. */
+/** Behavioral contract of the funnel search over the shared candidate evaluator. */
 export interface RouterSearchMode {
-  readonly name: RouterSearchStrategyName
   /** Cheap-score survivors promoted per final beam slot. */
   readonly expansionFactor: number
   /** Whether proxy-vs-full rank agreement diagnostics are recorded. */
   readonly recordsProxyAgreement: boolean
-  /** Whether the deterministic random-scout baseline comparison runs. */
-  readonly runsRandomBaseline: boolean
   /** Whether the beam starts from the optimization-profile configuration too. */
   readonly includesProfileSeed: boolean
   /** Deterministic ordering over scored static weight candidates. */
@@ -263,39 +232,9 @@ export interface RouterSearchMode {
   ): readonly RouterCandidate[]
 }
 
-export const PROXY_PROMOTION_MODE: RouterSearchMode = {
-  name: "proxy-promotion",
-  expansionFactor: SEARCH_PROXY_PROMOTION_FACTOR,
-  recordsProxyAgreement: true,
-  runsRandomBaseline: true,
-  includesProfileSeed: true,
-  compareStatic: (left, right, objective, baseline, profile) =>
-    compareObjectiveQuality(left.quality, right.quality, objective, baseline, profile) ||
-    activeChannelsKey(left.weights).localeCompare(activeChannelsKey(right.weights)),
-  promoteProxy: (context, candidates, limit) => {
-    const promoted = selectObjectiveCandidates(
-      candidates,
-      limit * SEARCH_PROXY_PROMOTION_FACTOR,
-      context.proxyBaseline,
-      context.profile,
-    )
-    return {
-      promoted,
-      agreementKeys: promoted.map((candidate) => routerKey(candidate.config)),
-    }
-  },
-  orderRanked: (candidates) => candidates,
-  selectElites: (context, candidates) =>
-    selectObjectiveCandidates(candidates, SEARCH_BEAM_WIDTH, context.baseline, context.profile),
-  selectBeam: (context, candidates, limit) =>
-    selectObjectiveCandidates(candidates, limit, context.baseline, context.profile),
-}
-
-const HALVING_FUNNEL_MODE: RouterSearchMode = {
-  name: "halving-funnel",
+export const HALVING_FUNNEL_MODE: RouterSearchMode = {
   expansionFactor: SEARCH_HALVING_KEEP_FACTOR,
   recordsProxyAgreement: false,
-  runsRandomBaseline: false,
   includesProfileSeed: false,
   compareStatic: (left, right) => compareSuccessiveHalvingQuality(left.quality, right.quality),
   promoteProxy: (_context, candidates, limit) => ({
@@ -306,47 +245,6 @@ const HALVING_FUNNEL_MODE: RouterSearchMode = {
   selectElites: (_context, candidates) =>
     selectSuccessiveHalvingCandidates(candidates, SEARCH_BEAM_WIDTH),
   selectBeam: (_context, candidates, limit) => candidates.slice(0, limit),
-}
-
-const ROUTER_SEARCH_MODES: Readonly<Record<RouterSearchStrategyName, RouterSearchMode>> = {
-  "proxy-promotion": PROXY_PROMOTION_MODE,
-  "halving-funnel": HALVING_FUNNEL_MODE,
-}
-
-export const resolveRouterSearchMode = (name: RouterSearchStrategyName): RouterSearchMode =>
-  ROUTER_SEARCH_MODES[name]
-
-export const selectRandomRouter = async (
-  samples: readonly EvidenceSearchSample[],
-  baseSeed: EvidenceRouterConfig,
-  parameters: readonly RouterParameter[],
-  pool: CandidateEvaluationPool,
-  baseline: QualitySummary,
-  profile: OptimizationProfile,
-  stats: SearchEvaluationStats,
-  scoutCount: number,
-): Promise<{ readonly candidate: RouterCandidate; readonly candidates: number }> => {
-  const configs = buildRandomRouterSeeds(baseSeed, parameters, scoutCount)
-  const candidatePreparationStartedAt = performance.now()
-  const evaluationCandidates = configs.map((config) => routerEvaluationCandidate(samples, config))
-  stats.timings.candidatePreparationMs += performance.now() - candidatePreparationStartedAt
-  const candidateEvaluationStartedAt = performance.now()
-  const qualities = await pool.evaluate(evaluationCandidates)
-  stats.timings.candidateEvaluationMs += performance.now() - candidateEvaluationStartedAt
-  const candidates: RouterCandidate[] = []
-  for (let index = 0; index < configs.length; index++) {
-    const config = configs[index]
-    const quality = qualities[index]
-    if (config === undefined || quality === undefined)
-      throw new Error("Candidate evaluation returned an incomplete random router result")
-    candidates.push({ config, quality })
-  }
-  const candidate = [...candidates].sort((left, right) =>
-    compareRouterCandidates(left, right, "reranker-top20", baseline, profile),
-  )[0]
-  if (candidate === undefined)
-    throw new Error("Candidate evaluation produced no random router candidate")
-  return { candidate, candidates: candidates.length }
 }
 
 export const selectObjectiveCandidates = (

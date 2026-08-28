@@ -134,18 +134,17 @@ deferred until the promotion bar is met. The real multiplicative-vs-log-linear c
 
 Every search knob has a recorded status so work stops re-litigating settled ones:
 
-| Knob                                        | Status                                                                            | Evidence                     |
-| ------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------- |
-| Router model (multiplicative vs log-linear) | Settled: keep multiplicative; switch at the next mandatory promoted-config re-fit | ADR 0021                     |
-| Router search strategy                      | Settled: `halving-funnel` default; `proxy-promotion` is the slow control          | BASELINE (#189)              |
-| Finalist budget                             | Settled: 256 (384 measured identical, +65 s)                                      | BASELINE (#189)              |
-| Local Sobol cloud (points/radius)           | Settled: 16 points, radius 2 (32/r3 added no quality)                             | BASELINE (#189)              |
-| Scout sequence (halton/sobol/random)        | Settled: all inside noise; halton default                                         | BASELINE (schema 29)         |
-| Wide-vs-deep passes                         | Settled: 1 wide pass matches 2 narrow passes at 45% fewer evals                   | BASELINE (schema 29)         |
-| Corpus-size factor                          | Deferred with promotion bar; sweep stays as standing measurement                  | ADR 0022                     |
-| Fitting methods, selection rules            | Diagnostics only, recorded per comparison run                                     | ADR 0021                     |
-| One-pass variant on validate profile        | Open                                                                              | BASELINE (validate addendum) |
-| Chunking (chunkTokens/overlapLines)         | Open: never swept by this suite                                                   | —                            |
+| Knob                                        | Status                                                                            | Evidence             |
+| ------------------------------------------- | --------------------------------------------------------------------------------- | -------------------- |
+| Router model (multiplicative vs log-linear) | Settled: keep multiplicative; switch at the next mandatory promoted-config re-fit | ADR 0021             |
+| Router search strategy                      | Settled and deleted: only `halving-funnel` remains (beam control removed)         | BASELINE (#189)      |
+| Finalist budget                             | Settled: 256 (384 measured identical, +65 s)                                      | BASELINE (#189)      |
+| Local Sobol cloud (points/radius)           | Settled: 16 points, radius 2 (32/r3 added no quality)                             | BASELINE (#189)      |
+| Scout sequence (sobol/halton/random)        | Settled: all inside noise; sobol default                                          | BASELINE (schema 29) |
+| Wide-vs-deep passes                         | Settled: 1 wide pass matches 2 narrow passes at 45% fewer evals                   | BASELINE (schema 29) |
+| Corpus-size factor                          | Deferred with promotion bar; sweep stays as standing measurement                  | ADR 0022             |
+| Fitting methods, selection rules            | Diagnostics only, recorded per comparison run                                     | ADR 0021             |
+| Chunking (chunkTokens)                      | Open: sweep via `vp run bench:retrieval:chunking`                                 | —                    |
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
@@ -164,8 +163,7 @@ Limit an exploratory run with comma-separated environment variables:
 $env:PIX_BENCH_REPOS = "fd"
 $env:PIX_BENCH_MODELS = "Xenova/all-MiniLM-L6-v2"
 $env:PIX_BENCH_OPTIMIZATION_PROFILE = "search-priority"
-$env:PIX_BENCH_ROUTER_STRATEGY = "proxy-promotion"
-$env:PIX_BENCH_SCOUT_SEQUENCE = "halton"
+$env:PIX_BENCH_SCOUT_SEQUENCE = "sobol"
 vp run bench:retrieval:validate
 ```
 
@@ -222,15 +220,14 @@ coordinates. Each merged coordinate retains the complete router result, search d
 timestamp, and source timing record. `artifactSerializationDurationMs` records the preflight JSON
 serialization time for each source artifact.
 
-The router search defaults to `halving-funnel`. It proxy-scores 512 broad scouts, keeps 32 survivors,
+The router search is the `halving-funnel`: it proxy-scores 512 broad scouts, keeps 32 survivors,
 proxy-scores 16 radius-2 Sobol points per survivor, and fully evaluates 256 finalists plus the static
-base seeds once. Set `PIX_BENCH_ROUTER_STRATEGY=proxy-promotion` to run the slower coordinate-beam
-control. All strategies use
-the same candidate evaluator and native worker queue. Their final archive selection is
+base seeds once. The funnel and the static weight searches share the same candidate evaluator and
+native worker queue. The final archive selection is
 objective-specific, so Direct and Reranker rows are real comparisons rather than repeated labels.
 
-The global scouts default to a deterministic Halton sequence. Set `PIX_BENCH_SCOUT_SEQUENCE` to
-`sobol` or `random` to seed the beam differently; comparisons must keep the strategy, scout count,
+The global scouts default to the deterministic Sobol sequence. Set `PIX_BENCH_SCOUT_SEQUENCE` to
+`halton` or `random` to seed the funnel differently; comparisons must keep the scout count,
 seeds, folds, and objectives identical.
 
 The Jina code model cannot embed Effect's longest 7,103-token AST chunk on the tested DML GPU even as

@@ -26,8 +26,6 @@ import {
 import { getDefaultWorkerCount, resolveWorkerCount } from "./execution/candidate-evaluation-pool.js"
 import { resolveSearchKnobs } from "./run-config.js"
 
-export { resolveRouterSearchStrategy } from "./run-config.js"
-
 const CONTEXT_BUDGETS = [2_048, 4_096, 8_192, 16_384] as const
 
 const profileConfig = (profile: BenchmarkProfile): BenchmarkSearchConfig => {
@@ -172,11 +170,8 @@ export const runRetrievalBenchmark = (
       catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
     })
 
-    const routerSearchStrategy = searchKnobs.routerSearchStrategy
     const scoutSequence = searchKnobs.scoutSequence
     const seedHypotheses = searchKnobs.seedHypotheses
-    const beamSchedule = searchKnobs.beamSchedule
-    const coordinatePasses = searchKnobs.coordinatePasses
     const globalScouts = searchKnobs.globalScouts
     const localCloudPoints = searchKnobs.localCloudPoints
     const localCloudRadiusLevels = searchKnobs.localCloudRadiusLevels
@@ -207,11 +202,8 @@ export const runRetrievalBenchmark = (
       serialSearch,
       {
         ...searchOptions,
-        routerSearchStrategy,
         scoutSequence,
         seedHypotheses,
-        beamSchedule,
-        coordinatePasses,
         globalScouts,
         localCloudPoints,
         localCloudRadiusLevels,
@@ -233,8 +225,6 @@ export const runRetrievalBenchmark = (
       benchmarkProfile: profile,
       scoutSequence,
       seedHypotheses,
-      beamSchedule,
-      coordinatePasses,
       globalScouts,
       localCloudPoints,
       localCloudRadiusLevels,
@@ -252,7 +242,7 @@ export const runRetrievalBenchmark = (
         },
       },
       generatedAt: new Date().toISOString(),
-      searchStrategy: routerSearchStrategyFor(scoutSequence, routerSearchStrategy),
+      searchStrategy: routerSearchStrategyFor(scoutSequence),
       timings: {
         totalDurationMs: performance.now() - benchmarkStartedAt,
         corpusPreparationDurationMs,
