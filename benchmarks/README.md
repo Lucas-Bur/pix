@@ -104,6 +104,18 @@ vp run bench:retrieval:matrix
 
 This command runs 30 model-backed benchmarks. Use it for release evidence, not the development loop.
 
+### Corpus-size influence
+
+`vp run bench:retrieval:corpus-size` plans deterministic sub-samples of a pinned corpus at 200, 500,
+1000, 2500, 5000, and full chunk counts. Every sub-sample keeps the gold chunks of its evaluated
+questions resolvable; questions whose gold no longer fits the size budget are dropped and recorded.
+
+The sweep module (`benchmarks/retrieval/evaluation/corpus-size.ts`) runs the same search protocol per
+size, records the optimum series with exact `(corpus size, fusion, profile, objective, strategy,
+fold)` coordinates, and fits a per-channel log-linear model over `log(chunkCount)`. A sensitivity
+check compares weight shifts between adjacent sizes against the combined one-standard-error noise
+band and recommends promoting a corpus-size factor only when a shift leaves that band.
+
 | Profile    | Repositories | Models   | Validation                    | Static fusion | Router fusion | Diagnostics            |
 | ---------- | ------------ | -------- | ----------------------------- | ------------- | ------------- | ---------------------- |
 | `smoke`    | fd           | MiniLM   | grouped 5-fold                | DBSF          | DBSF          | current router         |

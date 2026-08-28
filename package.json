@@ -36,6 +36,7 @@
   "scripts": {
     "bench:retrieval": "vp run bench:retrieval:validate",
     "bench:retrieval:corpus": "vp test --config benchmarks/vite.config.ts --run benchmarks/tests/corpus.test.ts",
+    "bench:retrieval:corpus-size": "vp test --config benchmarks/vite.config.ts --run benchmarks/tests/corpus-size-execution.test.ts",
     "bench:retrieval:develop": "vp test --config benchmarks/vite.config.ts --run benchmarks/tests/retrieval.test.ts -t \"runs the develop retrieval profile\"",
     "bench:retrieval:fixture": "vp test --config benchmarks/vite.config.ts --run benchmarks/tests/channels.test.ts",
     "bench:retrieval:full": "vp test --config benchmarks/vite.config.ts --run benchmarks/tests/retrieval.test.ts -t \"runs the full retrieval profile\"",
