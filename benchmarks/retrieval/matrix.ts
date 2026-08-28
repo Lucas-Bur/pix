@@ -183,6 +183,25 @@ export const benchmarkMatrixInvocations = (
     ),
   )
 
+/** Restrict a plan to the coordinates covered by successful invocations. */
+export const restrictBenchmarkMatrixPlan = (
+  plan: BenchmarkMatrixPlan,
+  covered: ReadonlySet<string>,
+): BenchmarkMatrixPlan => {
+  const coordinates = plan.coordinates.filter((coordinate) =>
+    covered.has(
+      `${coordinate.benchmarkProfile}\0${coordinate.optimizationProfile}\0${coordinate.model}`,
+    ),
+  )
+  if (coordinates.length === 0)
+    throw new Error("Benchmark matrix plan restriction removed every coordinate")
+  return { schemaVersion: 1, coordinates } as unknown as BenchmarkMatrixPlan
+}
+
+/** Stable identity of one matrix invocation. */
+export const benchmarkMatrixInvocationKey = (invocation: BenchmarkMatrixInvocation): string =>
+  `${invocation.benchmarkProfile}\0${invocation.optimizationProfile}\0${invocation.model}`
+
 const coordinateFor = <Result extends MatrixSearchResult>(
   artifact: MatrixSourceArtifact<Result>,
   result: Result,
