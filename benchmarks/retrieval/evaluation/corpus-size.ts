@@ -237,7 +237,7 @@ export const fitCorpusSizeModel = (optima: readonly CorpusSizeOptimum[]): Corpus
       const delta = Math.abs(to.weights[channel] - from.weights[channel])
       const noise = Math.hypot(from.noise, to.noise)
       pairs.push({ fromSize: from.corpusSize, toSize: to.corpusSize, channel, delta, noise })
-      const base = Math.max(from.weights[channel], Number.EPSILON)
+      const base = Math.max(from.weights[channel], to.weights[channel], 0.1)
       const relativeShift = delta / base
       if (largest === null || relativeShift > largest.relativeShift)
         largest = { corpusSize: to.corpusSize, channel, relativeShift }

@@ -113,7 +113,7 @@ export interface CollectedBenchmarkData {
 const isLongInput = (text: string): boolean =>
   Buffer.byteLength(text, "utf8") / 4 > SINGLE_ITEM_ESTIMATED_TOKENS
 
-const embedTexts = (
+export const embedTexts = (
   texts: readonly string[],
   model: string,
   embedder: BoundEmbedder,
@@ -134,7 +134,7 @@ const embedTexts = (
     return vectors
   }).pipe(Effect.mapError((cause) => new Error(`Embedding failed for ${model}`, { cause })))
 
-const embedSparseTexts = (
+export const embedSparseTexts = (
   texts: readonly string[],
   embedder: typeof SparseEmbedder.Service,
 ): Effect.Effect<readonly SparseVector[], Error> =>
@@ -154,9 +154,9 @@ const toStoredChunk = (chunk: PreparedCorpus["chunks"][number]): StoredChunk => 
   return { ...location, contentHash: contentHash(text) }
 }
 
-const persistBenchmarkCorpus = (
+export const persistBenchmarkCorpus = (
   store: typeof IndexStore.Service,
-  corpus: PreparedCorpus,
+  corpus: Pick<PreparedCorpus, "chunks" | "identifierIndex" | "bm25Index">,
   vectors: readonly Float32Array[],
   sparseVectors: readonly SparseVector[],
   dims: number,
@@ -473,19 +473,18 @@ const inspectBenchmarkCache = (
     cachePaths.databasePath,
   )
 
-const collectRepositoryMeasurements = (
-  manifest: CorpusManifest,
-  models: readonly string[],
-  groupedFoldAssignments: ReadonlyMap<string, number>,
-): Effect.Effect<RepositoryMeasurements, Error> =>
+/** Resolved model registry entry, loaded device embedder, and the effective chunk token budget. */
+export interface ResolvedModelContext {
+  readonly model: string
+  readonly info: (typeof MODEL_REGISTRY)[string] & object
+  readonly embedder: BoundEmbedder
+  readonly device: string
+  readonly maxTokens: number
+}
+
+/** Resolve one embedding model against the registry and load it on the first working device. */
+export const resolveModelContext = (model: string): Effect.Effect<ResolvedModelContext, Error> =>
   Effect.gen(function* () {
-    const repositoryPath = yield* prepareRepository(manifest)
-    if (models.length !== 1) {
-      return yield* Effect.fail(
-        new Error(`Retrieval benchmark requires exactly one model, received ${models.length}`),
-      )
-    }
-    const model = models[0]!
     const info = MODEL_REGISTRY[model]
     if (info === undefined) return yield* Effect.fail(new Error(`Unknown embedding model ${model}`))
     const sparseInfo = SPARSE_MODEL_REGISTRY[DEFAULT_CONFIG.sparseEmbedder.model]
@@ -507,6 +506,30 @@ const collectRepositoryMeasurements = (
       bound.embedder.limits,
       { model: sparseInfo.id, ...sparseInfo },
     ])
+    return {
+      model,
+      info,
+      embedder: bound.embedder,
+      device: bound.device,
+      maxTokens,
+    }
+  })
+
+const collectRepositoryMeasurements = (
+  manifest: CorpusManifest,
+  models: readonly string[],
+  groupedFoldAssignments: ReadonlyMap<string, number>,
+): Effect.Effect<RepositoryMeasurements, Error> =>
+  Effect.gen(function* () {
+    const repositoryPath = yield* prepareRepository(manifest)
+    if (models.length !== 1) {
+      return yield* Effect.fail(
+        new Error(`Retrieval benchmark requires exactly one model, received ${models.length}`),
+      )
+    }
+    const context = yield* resolveModelContext(models[0]!)
+    const { model, info, embedder: boundEmbedder, maxTokens } = context
+    const bound = { device: context.device, embedder: boundEmbedder }
     const corpus = yield* prepareCorpus(repositoryPath, manifest, {
       maxTokens,
       overlapLines: DEFAULT_CONFIG.overlapLines,
