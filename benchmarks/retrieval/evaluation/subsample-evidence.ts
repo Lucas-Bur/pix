@@ -48,7 +48,8 @@ import {
 } from "./router-search/comparisons.js"
 import { SEARCH_CANDIDATE_DEPTH, routerParameters } from "./router-search/config-space.js"
 import { runBenchmarkSearch } from "./search.js"
-import type { WeightSearchSample } from "./weight-search.js"
+import type { RecommendedEvidenceRouter } from "./types.js"
+import type { BenchmarkSearchOptions, WeightSearchSample } from "./weight-search.js"
 
 const QUERY_FORMS: readonly QueryKind[] = [
   "identifier",
@@ -241,6 +242,44 @@ export interface RealCorpusSizeSweepResult {
   readonly perSizeSamples: readonly { readonly corpusSize: number; readonly samples: number }[]
 }
 
+const defaultSearchOptions = (): BenchmarkSearchOptions => ({
+  workerCount: Math.min(resolveWorkerCount(), getDefaultWorkerCount()),
+  fallbackToSerial: false,
+})
+
+/** Run the full dbsf/direct search over one sample set and score the recommended router. */
+const runDirectRouterSearch = async (
+  model: string,
+  samples: readonly WeightSearchSample[],
+): Promise<{
+  readonly router: RecommendedEvidenceRouter
+  readonly mean: number
+  readonly standardError: number
+}> => {
+  const samplesByModel = new Map<string, readonly WeightSearchSample[]>([[model, samples]])
+  const search = await Effect.runPromise(
+    runBenchmarkSearch(
+      {
+        groupedFolds: 3,
+        repositoryHoldouts: false,
+        fusionMethods: ["dbsf"],
+        routerFusionMethods: ["dbsf"],
+      },
+      samplesByModel,
+      "grouped-3-fold",
+      OPTIMIZATION_PROFILES["search-priority"],
+      false,
+      defaultSearchOptions(),
+    ),
+  )
+  const router = search.recommendedEvidenceRouters.find(
+    (row) => row.fusion === "dbsf" && row.objective === "direct",
+  )
+  if (router === undefined) throw new Error("No dbsf/direct router recommendation")
+  const scored = evaluateRouterConfigOnSamples(samples, router.config)
+  return { router, mean: scored.mean, standardError: scored.standardError }
+}
+
 const goldTargetsByQuestion = (
   manifest: CorpusManifest,
   corpus: PreparedCorpus,
@@ -273,10 +312,6 @@ export const runRealCorpusSizeSweep = (
           : context.corpus.chunks.length,
       }),
     )
-    const searchOptions = {
-      workerCount: Math.min(resolveWorkerCount(), getDefaultWorkerCount()),
-      fallbackToSerial: false as const,
-    }
     const perSizeSamples: { corpusSize: number; samples: number }[] = []
     const sweep = yield* Effect.promise(() =>
       runCorpusSizeSweep(
@@ -284,32 +319,12 @@ export const runRealCorpusSizeSweep = (
         async (plan) => {
           const samples = await Effect.runPromise(buildSubSampleSamples(context, plan))
           perSizeSamples.push({ corpusSize: plan.targetSize, samples: samples.length })
-          const samplesByModel = new Map<string, readonly WeightSearchSample[]>([
-            [context.model, samples],
-          ])
-          const search = await Effect.runPromise(
-            runBenchmarkSearch(
-              {
-                groupedFolds: 3,
-                repositoryHoldouts: false,
-                fusionMethods: ["dbsf"],
-                routerFusionMethods: ["dbsf"],
-              },
-              samplesByModel,
-              "grouped-3-fold",
-              OPTIMIZATION_PROFILES["search-priority"],
-              false,
-              searchOptions,
-            ),
+          const { router, mean, standardError } = await runDirectRouterSearch(
+            context.model,
+            samples,
           )
-          const router = search.recommendedEvidenceRouters.find(
-            (row) => row.fusion === "dbsf" && row.objective === "direct",
-          )
-          if (router === undefined)
-            throw new Error(`No dbsf/direct router recommendation at size ${plan.targetSize}`)
-          const scored = evaluateRouterConfigOnSamples(samples, router.config)
           reportBenchmarkProgress(
-            `size ${plan.targetSize}: ndcg@20 ${scored.mean.toFixed(4)} ± ${scored.standardError.toFixed(4)}`,
+            `size ${plan.targetSize}: ndcg@20 ${mean.toFixed(4)} ± ${standardError.toFixed(4)}`,
           )
           return [
             {
@@ -322,8 +337,8 @@ export const runRealCorpusSizeSweep = (
                 fold: "fit-all",
               },
               weights: router.staticWeights,
-              score: scored.mean,
-              noise: scored.standardError,
+              score: mean,
+              noise: standardError,
             },
           ]
         },
@@ -401,7 +416,7 @@ export interface ChunkingSweepRow {
 }
 
 /** Parse a comma-separated chunk-token list for the sweep. */
-export const resolveChunkingSizes = (requested: string | undefined): readonly number[] => {
+const resolveChunkingSizes = (requested: string | undefined): readonly number[] => {
   if (requested === undefined) return [256, 384, 512]
   return requested
     .split(",")
@@ -427,41 +442,19 @@ export const runChunkingSweep = (
         Number.POSITIVE_INFINITY,
       ])[0]!
       const samples = yield* buildSubSampleSamples(context, fullPlan)
-      const samplesByModel = new Map<string, readonly WeightSearchSample[]>([
-        [context.model, samples],
-      ])
-      const search = yield* runBenchmarkSearch(
-        {
-          groupedFolds: 3,
-          repositoryHoldouts: false,
-          fusionMethods: ["dbsf"],
-          routerFusionMethods: ["dbsf"],
-        },
-        samplesByModel,
-        "grouped-3-fold",
-        OPTIMIZATION_PROFILES["search-priority"],
-        false,
-        {
-          workerCount: Math.min(resolveWorkerCount(), getDefaultWorkerCount()),
-          fallbackToSerial: false,
-        },
+      const { router, mean, standardError } = yield* Effect.promise(() =>
+        runDirectRouterSearch(context.model, samples),
       )
-      const router = search.recommendedEvidenceRouters.find(
-        (row) => row.fusion === "dbsf" && row.objective === "direct",
-      )
-      if (router === undefined)
-        throw new Error(`No dbsf/direct router recommendation at ${chunkTokens} tokens`)
-      const scored = evaluateRouterConfigOnSamples(samples, router.config)
       rows.push({
         chunkTokens,
         chunks: context.corpus.chunks.length,
-        ndcgAt20: scored.mean,
-        standardError: scored.standardError,
+        ndcgAt20: mean,
+        standardError,
         proxyEvaluations: router.proxyEvaluations,
         fullEvaluations: router.fullEvaluations,
       })
       reportBenchmarkProgress(
-        `chunkTokens ${chunkTokens}: ${context.corpus.chunks.length} chunks, ndcg@20 ${scored.mean.toFixed(4)} ± ${scored.standardError.toFixed(4)}`,
+        `chunkTokens ${chunkTokens}: ${context.corpus.chunks.length} chunks, ndcg@20 ${mean.toFixed(4)} ± ${standardError.toFixed(4)}`,
       )
     }
     return rows

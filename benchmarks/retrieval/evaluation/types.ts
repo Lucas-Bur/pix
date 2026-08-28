@@ -55,8 +55,6 @@ export type RouterSearchStrategy = HalvingFunnelStrategy
 
 const FUNNEL_ALGORITHM_PREFIX = "global-scout-funnel"
 
-export const DEFAULT_ROUTER_SEARCH_STRATEGY = "halving-funnel" as const
-
 /** Default fidelity funnel: broad proxy wave, local proxy cloud, then 256 diverse finalists. */
 export const DEFAULT_HALVING_FUNNEL_STRATEGY: HalvingFunnelStrategy = {
   kind: "halving-funnel",

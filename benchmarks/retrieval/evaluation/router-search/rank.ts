@@ -281,35 +281,6 @@ export interface RouterEvaluationResult {
   readonly candidateEvaluationMs: number
 }
 
-const finalizeRouterCandidates = (
-  context: RouterSearchContext,
-  rankedFull: readonly RouterCandidate[],
-  proxyKeys: readonly string[],
-  limit: number,
-): readonly RouterCandidate[] => {
-  if (context.mode.recordsProxyAgreement && proxyKeys.length > 0) {
-    const fullRanks = new Map(
-      rankedFull.map((candidate, rank) => [routerKey(candidate.config), rank]),
-    )
-    for (let left = 0; left < proxyKeys.length; left++) {
-      const leftRank = fullRanks.get(proxyKeys[left])
-      if (leftRank === undefined) continue
-      for (let right = left + 1; right < proxyKeys.length; right++) {
-        const rightRank = fullRanks.get(proxyKeys[right])
-        if (rightRank === undefined) continue
-        context.stats.proxyAgreementComparisons++
-        if (leftRank < rightRank) context.stats.proxyAgreementMatches++
-      }
-    }
-  }
-  const ordered = context.mode.orderRanked(rankedFull)
-  for (const candidate of ordered) context.archive.set(routerKey(candidate.config), candidate)
-  const elites = context.mode.selectElites(context, [...context.elites.values(), ...ordered])
-  context.elites.clear()
-  for (const candidate of elites) context.elites.set(routerKey(candidate.config), candidate)
-  return context.mode.selectBeam(context, ordered, limit)
-}
-
 export const evaluateRouterConfigs = async (
   entries: readonly (readonly [string, EvidenceRouterConfig])[],
   samples: readonly EvidenceSearchSample[],
@@ -342,63 +313,4 @@ export const evaluateRouterConfigs = async (
     candidatePreparationMs,
     candidateEvaluationMs,
   }
-}
-
-export const rankRouterCandidates = async (
-  context: RouterSearchContext,
-  configs: readonly EvidenceRouterConfig[],
-  limit: number,
-  protectedConfigs: readonly EvidenceRouterConfig[] = [],
-  useProxy = true,
-): Promise<readonly RouterCandidate[]> => {
-  const unique = new Map<string, EvidenceRouterConfig>()
-  for (const config of configs) unique.set(routerKey(config), config)
-  context.stats.rawCandidates += configs.length
-  context.stats.uniqueCandidates += unique.size
-  context.stats.protectedEliteCount += protectedConfigs.length + context.elites.size
-  let fullCandidates = [...unique]
-  let proxyKeys: readonly string[] = []
-  if (useProxy && context.proxySamples.length < context.samples.length) {
-    const rankedProxy = await evaluateRouterConfigs(
-      fullCandidates,
-      context.proxySamples,
-      context.proxyPool,
-      context.proxyQualityCache,
-    )
-    context.stats.proxyCacheHits += rankedProxy.cacheHits
-    context.stats.proxyEvaluations += rankedProxy.evaluations
-    context.stats.timings.candidatePreparationMs += rankedProxy.candidatePreparationMs
-    context.stats.timings.candidateEvaluationMs += rankedProxy.candidateEvaluationMs
-    const proxySelectionStartedAt = performance.now()
-    const { promoted, agreementKeys } = context.mode.promoteProxy(
-      context,
-      rankedProxy.candidates,
-      limit,
-    )
-    const selected = new Map(
-      promoted.map((candidate) => [routerKey(candidate.config), candidate.config]),
-    )
-    context.stats.proxyPromotions += promoted.length
-    const protectedKeys = new Set([...protectedConfigs.map(routerKey), ...context.elites.keys()])
-    for (const [key, config] of fullCandidates) {
-      if (protectedKeys.has(key)) selected.set(key, config)
-    }
-    fullCandidates = [...selected]
-    proxyKeys = agreementKeys
-    context.stats.timings.candidateSelectionMs += performance.now() - proxySelectionStartedAt
-  }
-  const rankedFull = await evaluateRouterConfigs(
-    fullCandidates,
-    context.samples,
-    context.fullPool,
-    context.qualityCache,
-  )
-  context.stats.fullCacheHits += rankedFull.cacheHits
-  context.stats.fullEvaluations += rankedFull.evaluations
-  context.stats.timings.candidatePreparationMs += rankedFull.candidatePreparationMs
-  context.stats.timings.candidateEvaluationMs += rankedFull.candidateEvaluationMs
-  const fullSelectionStartedAt = performance.now()
-  const selected = finalizeRouterCandidates(context, rankedFull.candidates, proxyKeys, limit)
-  context.stats.timings.candidateSelectionMs += performance.now() - fullSelectionStartedAt
-  return selected
 }
