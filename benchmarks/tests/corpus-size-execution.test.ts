@@ -71,21 +71,28 @@ it.effect("plans, validates, and sweeps corpus-size sub-samples on a pinned corp
     }
 
     const { rows, fit } = yield* Effect.promise(() =>
-      runCorpusSizeSweep(plans, async (plan) => [
-        {
-          coordinate: {
-            corpusSize: plan.targetSize,
-            fusion: "dbsf",
-            profile: "search-priority",
-            objective: "direct",
-            strategy: "grouped-3-fold",
-            fold: "1",
+      runCorpusSizeSweep(
+        plans,
+        async (plan) => [
+          {
+            coordinate: {
+              corpusSize: plan.targetSize,
+              fusion: "dbsf",
+              profile: "search-priority",
+              objective: "direct",
+              strategy: "grouped-3-fold",
+              fold: "1",
+            },
+            weights: {
+              ...ZERO_CHANNEL_COEFFICIENTS,
+              bm25: 1 + Math.log10(plan.targetSize) / 10,
+            },
+            score: 0.8,
+            noise: 0.01,
           },
-          weights: { ...ZERO_CHANNEL_COEFFICIENTS, bm25: 1 + Math.log10(plan.targetSize) / 10 },
-          score: 0.8,
-          noise: 0.01,
-        },
-      ]),
+        ],
+        questions,
+      ),
     )
 
     const outputDirectory = path.resolve("benchmarks/results")

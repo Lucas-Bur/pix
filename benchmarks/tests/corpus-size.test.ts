@@ -118,27 +118,56 @@ describe("corpus-size influence", () => {
 
   it("runs the identical sweep protocol per size and derives the fit", async () => {
     const plans = planCorpusSizeSubSamples(questions, 100, [10, 100])
-    const { rows, fit } = await runCorpusSizeSweep(plans, async (plan) => [
-      {
-        coordinate: {
-          corpusSize: plan.targetSize,
-          fusion: "dbsf",
-          profile: "search-priority",
-          objective: "direct",
-          strategy: "grouped-3-fold",
-          fold: "1",
+    const { rows, fit } = await runCorpusSizeSweep(
+      plans,
+      async (plan) => [
+        {
+          coordinate: {
+            corpusSize: plan.targetSize,
+            fusion: "dbsf",
+            profile: "search-priority",
+            objective: "direct",
+            strategy: "grouped-3-fold",
+            fold: "1",
+          },
+          weights: {
+            ...ZERO_CHANNEL_COEFFICIENTS,
+            bm25: plan.targetSize >= 100 ? 1.5 : 1,
+          },
+          score: 0.8,
+          noise: 0.01,
         },
-        weights: {
-          ...ZERO_CHANNEL_COEFFICIENTS,
-          bm25: plan.targetSize >= 100 ? 1.5 : 1,
-        },
-        score: 0.8,
-        noise: 0.01,
-      },
-    ])
+      ],
+      questions,
+    )
 
     expect(rows).toHaveLength(2)
     expect(new Set(rows.map((row) => row.coordinate.corpusSize))).toEqual(new Set([10, 100]))
     expect(fit.recommendation).toBe("promote-corpus-size-factor")
+  })
+
+  it("fails the sweep loudly when a kept question's gold falls outside the sub-sample", async () => {
+    const invalidPlan = {
+      targetSize: 5,
+      chunkIndices: [0, 1, 2],
+      keptQuestionIds: ["q1"],
+      droppedQuestions: [],
+    }
+    await expect(runCorpusSizeSweep([invalidPlan], async () => [], questions)).rejects.toThrow(
+      "lost gold chunks for q1",
+    )
+  })
+
+  it("counts duplicate gold indices once against the size budget", () => {
+    const [plan] = planCorpusSizeSubSamples(
+      [{ questionId: "dup", goldChunkIndices: [3, 3, 7] }],
+      100,
+      [10],
+    )
+
+    expect(plan!.keptQuestionIds).toEqual(["dup"])
+    expect(plan!.chunkIndices).toHaveLength(10)
+    expect(plan!.chunkIndices.filter((index) => index === 3)).toHaveLength(1)
+    expect(plan!.droppedQuestions).toEqual([])
   })
 })

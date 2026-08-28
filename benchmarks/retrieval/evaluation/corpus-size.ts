@@ -41,28 +41,34 @@ export interface CorpusSizeSubSample {
 
 /**
  * Plan deterministic sub-samples that keep every evaluated question's gold chunks resolvable.
- * Questions whose gold no longer fits a size budget are dropped and recorded.
+ * Questions whose gold no longer fits a size budget are dropped and recorded. Gold indices are
+ * deduplicated per question, and a post-condition throws if a kept question's gold ever falls
+ * outside the selected chunks.
  */
 export const planCorpusSizeSubSamples = (
   questions: readonly CorpusSizeQuestionGold[],
   chunkCount: number,
   sizes: readonly number[] = CORPUS_SIZE_STEPS,
-): readonly CorpusSizeSubSample[] =>
-  [...sizes]
+): readonly CorpusSizeSubSample[] => {
+  const deduped = questions.map((question) => ({
+    ...question,
+    goldChunkIndices: [...new Set(question.goldChunkIndices)],
+  }))
+  return [...sizes]
     .sort((left, right) => left - right)
     .map((targetSize) => {
       if (!Number.isFinite(targetSize) || targetSize >= chunkCount)
         return {
           targetSize,
           chunkIndices: Array.from({ length: chunkCount }, (_, index) => index),
-          keptQuestionIds: questions.map((question) => question.questionId),
+          keptQuestionIds: deduped.map((question) => question.questionId),
           droppedQuestions: [],
         }
 
       const keptQuestionIds: string[] = []
       const droppedQuestions: CorpusSizeDroppedQuestion[] = []
       const mustKeep = new Set<number>()
-      for (const question of questions) {
+      for (const question of deduped) {
         const missing = question.goldChunkIndices.filter((index) => !mustKeep.has(index))
         if (mustKeep.size + missing.length <= targetSize) {
           keptQuestionIds.push(question.questionId)
@@ -83,8 +89,28 @@ export const planCorpusSizeSubSamples = (
       for (let slot = 0; slot < remaining; slot++)
         picked.add(candidates[Math.floor((slot * candidates.length) / remaining)]!)
       const chunkIndices = [...mustKeep, ...picked].sort((left, right) => left - right)
-      return { targetSize, chunkIndices, keptQuestionIds, droppedQuestions }
+      const plan = { targetSize, chunkIndices, keptQuestionIds, droppedQuestions }
+      validateSubSampleGoldCoverage(deduped, plan)
+      return plan
     })
+}
+
+/** Fail fast when a kept question's gold chunks are not fully contained in the sub-sample. */
+export const validateSubSampleGoldCoverage = (
+  questions: readonly CorpusSizeQuestionGold[],
+  plan: CorpusSizeSubSample,
+): void => {
+  const selected = new Set(plan.chunkIndices)
+  const kept = new Set(plan.keptQuestionIds)
+  for (const question of questions) {
+    if (!kept.has(question.questionId)) continue
+    const missing = question.goldChunkIndices.filter((index) => !selected.has(index))
+    if (missing.length > 0)
+      throw new Error(
+        `Corpus-size sub-sample ${plan.targetSize} lost gold chunks for ${question.questionId}: ${missing.join(", ")}`,
+      )
+  }
+}
 
 /** Rebuilt indexes and remapped gold targets for one sub-sample. */
 export interface SubSampleCorpus {
@@ -249,13 +275,20 @@ export interface CorpusSizeSweepRow {
 /** Search protocol executed identically for every corpus size. */
 export type CorpusSizeSearch = (plan: CorpusSizeSubSample) => Promise<readonly CorpusSizeSweepRow[]>
 
-/** Orchestrate the per-size sweep and derive the fitted model from its optima. */
+/**
+ * Orchestrate the per-size sweep and derive the fitted model from its optima. When the question
+ * gold is supplied, every plan is validated to still resolve all kept questions' gold chunks.
+ */
 export const runCorpusSizeSweep = async (
   plans: readonly CorpusSizeSubSample[],
   searchAtSize: CorpusSizeSearch,
+  questions?: readonly CorpusSizeQuestionGold[],
 ): Promise<{ readonly rows: readonly CorpusSizeSweepRow[]; readonly fit: CorpusSizeFit }> => {
   const rows: CorpusSizeSweepRow[] = []
-  for (const plan of plans) rows.push(...(await searchAtSize(plan)))
+  for (const plan of plans) {
+    if (questions !== undefined) validateSubSampleGoldCoverage(questions, plan)
+    rows.push(...(await searchAtSize(plan)))
+  }
   const optima = plans.map((plan) => {
     const planRows = rows.filter((row) => row.coordinate.corpusSize === plan.targetSize)
     const best = [...planRows].sort((left, right) => right.score - left.score)[0]
