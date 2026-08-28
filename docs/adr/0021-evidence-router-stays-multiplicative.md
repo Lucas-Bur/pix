@@ -43,6 +43,15 @@ model would add a production migration (`EvidenceRouterParameters` semantics, pr
 re-fit) for a gain that the data cannot distinguish from zero. The multiplicative model is also the
 only formulation with a promoted, validated configuration in production.
 
+The formulations are equivalent within measurement error, so the choice is a convention with a
+migration cost, not a quality verdict. Log-linear has a conditioning argument on its side: additive
+log-space contributions keep every parameter independently effective for coordinate-wise
+derivative-free search, and the exp clamp bounds the weight floor near 13.5% of the base weight
+instead of multiplying down to zero. Therefore the cheap re-open point is the next mandatory re-fit
+of the promoted configuration (after a corpus or model change): the migration cost is already sunk
+there, so switch to the log-linear gate at that point unless it underperforms the multiplicative
+holdout on the same run.
+
 Re-run `vp run bench:retrieval:router-models` after major corpus or model changes. Promote the
-log-linear gate only if it beats the multiplicative holdout by more than the combined standard
-error on at least two corpora.
+log-linear gate before that mandatory re-fit only if it beats the multiplicative holdout by more
+than the combined standard error on at least two corpora.

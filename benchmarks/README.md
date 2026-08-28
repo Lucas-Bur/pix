@@ -95,6 +95,13 @@ vp run bench:retrieval:validate
 vp run bench:retrieval:full
 ```
 
+| Profile    | Repositories | Models   | Validation                    | Static fusion | Router fusion | Diagnostics            |
+| ---------- | ------------ | -------- | ----------------------------- | ------------- | ------------- | ---------------------- |
+| `smoke`    | fd           | MiniLM   | grouped 5-fold                | DBSF          | DBSF          | current router         |
+| `develop`  | all six      | MiniLM   | grouped 3-fold                | DBSF          | DBSF          | current router         |
+| `validate` | all six      | MiniLM   | grouped 5-fold and repository | DBSF          | DBSF          | current router         |
+| `full`     | all six      | selected | grouped 5-fold and repository | all three     | all three     | all active diagnostics |
+
 Run every profile, model, and optimization-profile invocation from the matrix manifest, then merge
 the artifacts:
 
@@ -116,12 +123,29 @@ fold)` coordinates, and fits a per-channel log-linear model over `log(chunkCount
 check compares weight shifts between adjacent sizes against the combined one-standard-error noise
 band and recommends promoting a corpus-size factor only when a shift leaves that band.
 
-| Profile    | Repositories | Models   | Validation                    | Static fusion | Router fusion | Diagnostics            |
-| ---------- | ------------ | -------- | ----------------------------- | ------------- | ------------- | ---------------------- |
-| `smoke`    | fd           | MiniLM   | grouped 5-fold                | DBSF          | DBSF          | current router         |
-| `develop`  | all six      | MiniLM   | grouped 3-fold                | DBSF          | DBSF          | current router         |
-| `validate` | all six      | MiniLM   | grouped 5-fold and repository | DBSF          | DBSF          | current router         |
-| `full`     | all six      | selected | grouped 5-fold and repository | all three     | all three     | all active diagnostics |
+The model-backed sweep (`vp run bench:retrieval:corpus-size:model`) runs the real per-size search on
+one corpus; select it with `PIX_BENCH_CORPUS_SIZE_REPO` and `PIX_BENCH_CORPUS_SIZES`. The first real
+measurements and the resulting decision live in ADR 0022: the learned-sparse channel deserves less
+weight as corpora grow, all other channels flip signs between corpora, and the production factor is
+deferred until the promotion bar is met. The real multiplicative-vs-log-linear comparison runs with
+`vp run bench:retrieval:router-models` and feeds ADR 0021.
+
+### Knob decisions
+
+Every search knob has a recorded status so work stops re-litigating settled ones:
+
+| Knob                                        | Status                                                                            | Evidence                     |
+| ------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------- |
+| Router model (multiplicative vs log-linear) | Settled: keep multiplicative; switch at the next mandatory promoted-config re-fit | ADR 0021                     |
+| Router search strategy                      | Settled: `halving-funnel` default; `proxy-promotion` is the slow control          | BASELINE (#189)              |
+| Finalist budget                             | Settled: 256 (384 measured identical, +65 s)                                      | BASELINE (#189)              |
+| Local Sobol cloud (points/radius)           | Settled: 16 points, radius 2 (32/r3 added no quality)                             | BASELINE (#189)              |
+| Scout sequence (halton/sobol/random)        | Settled: all inside noise; halton default                                         | BASELINE (schema 29)         |
+| Wide-vs-deep passes                         | Settled: 1 wide pass matches 2 narrow passes at 45% fewer evals                   | BASELINE (schema 29)         |
+| Corpus-size factor                          | Deferred with promotion bar; sweep stays as standing measurement                  | ADR 0022                     |
+| Fitting methods, selection rules            | Diagnostics only, recorded per comparison run                                     | ADR 0021                     |
+| One-pass variant on validate profile        | Open                                                                              | BASELINE (validate addendum) |
+| Chunking (chunkTokens/overlapLines)         | Open: never swept by this suite                                                   | —                            |
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
