@@ -59,11 +59,14 @@ targets and a duplicate occurrence of the same chunk each contribute at most onc
 no gold target resolves. Manifest decoding rejects empty ground-truth arrays, and corpus preparation
 rejects authored targets that do not resolve to a chunk.
 
-| Corpus    | Revision                                   | Language   | Size band | Indexed scope                 |
-| --------- | ------------------------------------------ | ---------- | --------- | ----------------------------- |
-| FastAPI   | `95f8322ee1dcda7ceace7b1c4f6c9915b36d748f` | Python     | medium    | `fastapi/**/*.py`             |
-| Effect v4 | `9263ba30c4535b655cf69a14f44a43cb9a93921e` | TypeScript | large     | `packages/effect/src/**/*.ts` |
-| fd        | `41532d114e2ba565fb5367d606c111b29b96450c` | Rust       | small     | `src/**/*.rs`                 |
+| Corpus    | Revision                                   | Language   | Size band | Indexed scope                                      |
+| --------- | ------------------------------------------ | ---------- | --------- | -------------------------------------------------- |
+| FastAPI   | `95f8322ee1dcda7ceace7b1c4f6c9915b36d748f` | Python     | medium    | `fastapi/**/*.py`                                  |
+| beets     | `b7952299941543d4507ac7931edb223acd684b3d` | Python     | medium    | importer, library, autotag, database, and UI code  |
+| Effect v4 | `9263ba30c4535b655cf69a14f44a43cb9a93921e` | TypeScript | large     | `packages/effect/src/**/*.ts`                      |
+| fd        | `41532d114e2ba565fb5367d606c111b29b96450c` | Rust       | small     | `src/**/*.rs`                                      |
+| Alacritty | `94e7c8874e526b1e67b349d9ba30ddf81669119e` | Rust       | medium    | application and terminal source files              |
+| T3 Code   | `badae6a5cc8325dcd5a145bea6f7b8ac692818a1` | TypeScript | medium    | server, web state/browser, and shared source files |
 
 Effect's vendored Scalar and Swagger browser bundles are excluded explicitly. They are minified
 JavaScript stored in giant TypeScript string literals, exceed Tree-sitter's input limit, and are not
@@ -95,13 +98,57 @@ vp run bench:retrieval:full
 | Profile    | Repositories | Models   | Validation                    | Static fusion | Router fusion | Diagnostics            |
 | ---------- | ------------ | -------- | ----------------------------- | ------------- | ------------- | ---------------------- |
 | `smoke`    | fd           | MiniLM   | grouped 5-fold                | DBSF          | DBSF          | current router         |
-| `develop`  | all three    | MiniLM   | grouped 3-fold                | DBSF          | DBSF          | current router         |
-| `validate` | all three    | MiniLM   | grouped 5-fold and repository | DBSF          | DBSF          | current router         |
-| `full`     | all three    | selected | grouped 5-fold and repository | all three     | all three     | all active diagnostics |
+| `develop`  | all six      | MiniLM   | grouped 3-fold                | DBSF          | DBSF          | current router         |
+| `validate` | all six      | MiniLM   | grouped 5-fold and repository | DBSF          | DBSF          | current router         |
+| `full`     | all six      | selected | grouped 5-fold and repository | all three     | all three     | all active diagnostics |
+
+Run every profile, model, and optimization-profile invocation from the matrix manifest, then merge
+the artifacts:
+
+```bash
+vp run bench:retrieval:matrix
+```
+
+This command runs 30 model-backed benchmarks. Use it for release evidence, not the development loop.
+
+### Corpus-size influence
+
+`vp run bench:retrieval:corpus-size` plans deterministic sub-samples of a pinned corpus at 200, 500,
+1000, 2500, 5000, and full chunk counts. Every sub-sample keeps the gold chunks of its evaluated
+questions resolvable; questions whose gold no longer fits the size budget are dropped and recorded.
+
+The sweep module (`benchmarks/retrieval/evaluation/corpus-size.ts`) runs the same search protocol per
+size, records the optimum series with exact `(corpus size, fusion, profile, objective, strategy,
+fold)` coordinates, and fits a per-channel log-linear model over `log(chunkCount)`. A sensitivity
+check compares weight shifts between adjacent sizes against the combined one-standard-error noise
+band and recommends promoting a corpus-size factor only when a shift leaves that band.
+
+The model-backed sweep (`vp run bench:retrieval:corpus-size:model`) runs the real per-size search on
+one corpus; select it with `PIX_BENCH_CORPUS_SIZE_REPO` and `PIX_BENCH_CORPUS_SIZES`. The first real
+measurements and the resulting decision live in ADR 0022: the learned-sparse channel deserves less
+weight as corpora grow, all other channels flip signs between corpora, and the production factor is
+deferred until the promotion bar is met. The real multiplicative-vs-log-linear comparison runs with
+`vp run bench:retrieval:router-models` and feeds ADR 0021.
+
+### Knob decisions
+
+Every search knob has a recorded status so work stops re-litigating settled ones:
+
+| Knob                                        | Status                                                                                                                                                      | Evidence                    |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| Router model (multiplicative vs log-linear) | Settled: keep multiplicative; switch at the next mandatory promoted-config re-fit                                                                           | ADR 0021                    |
+| Router search strategy                      | Settled and deleted: only `halving-funnel` remains (beam control removed)                                                                                   | BASELINE (#189)             |
+| Finalist budget                             | Settled: 256 (384 measured identical, +65 s)                                                                                                                | BASELINE (#189)             |
+| Local Sobol cloud (points/radius)           | Settled: 16 points, radius 2 (32/r3 added no quality)                                                                                                       | BASELINE (#189)             |
+| Scout sequence (sobol/halton/random)        | Settled: all inside noise; sobol default                                                                                                                    | BASELINE (schema 29)        |
+| Wide-vs-deep passes                         | Settled: 1 wide pass matches 2 narrow passes at 45% fewer evals                                                                                             | BASELINE (schema 29)        |
+| Corpus-size factor                          | Deferred with promotion bar; sweep stays as standing measurement                                                                                            | ADR 0022                    |
+| Fitting methods, selection rules            | Diagnostics only, recorded per comparison run                                                                                                               | ADR 0021                    |
+| Chunking (chunkTokens)                      | Settled for flat chunking: 512 default; 384/256 degrade NDCG@20 monotonically (0.66/0.64/0.53 on t3code). Revisit only together with parent-chunk retrieval | `retrieval-chunking-*.json` |
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
-diagnostics. The selected profile is recorded in schema-26 artifacts without changing retrieval
+diagnostics. The selected profile is recorded in schema-32 artifacts without changing retrieval
 semantics. The full profile includes all three fusion methods; short profiles intentionally omit RRF
 to keep development runs fast.
 
@@ -116,8 +163,7 @@ Limit an exploratory run with comma-separated environment variables:
 $env:PIX_BENCH_REPOS = "fd"
 $env:PIX_BENCH_MODELS = "Xenova/all-MiniLM-L6-v2"
 $env:PIX_BENCH_OPTIMIZATION_PROFILE = "search-priority"
-$env:PIX_BENCH_ROUTER_STRATEGY = "proxy-promotion"
-$env:PIX_BENCH_SCOUT_SEQUENCE = "halton"
+$env:PIX_BENCH_SCOUT_SEQUENCE = "sobol"
 vp run bench:retrieval:validate
 ```
 
@@ -153,8 +199,8 @@ $env:PIX_BENCH_MODELS = "Xenova/bge-small-en-v1.5"
 vp run bench:retrieval:full
 ```
 
-The built-in repository IDs are `fastapi`, `effect-v4`, and `fd`; additional IDs come from added
-manifests. Every profile runs exactly one model,
+The built-in repository IDs are `alacritty`, `beets`, `effect-v4`, `fastapi`, `fd`, and `t3code`;
+additional IDs come from added manifests. Every profile runs exactly one model,
 defaulting to MiniLM. Select another with `PIX_BENCH_MODELS`. Supported values are the three models in
 `MODEL_REGISTRY`:
 
@@ -162,15 +208,26 @@ defaulting to MiniLM. Select another with `PIX_BENCH_MODELS`. Supported values a
 - `Xenova/bge-small-en-v1.5`
 - `jinaai/jina-embeddings-v2-base-code`
 
-The router search defaults to `halving-funnel`. It proxy-scores 512 broad scouts, keeps 32 survivors,
+### Matrix manifest
+
+`benchmarks/matrix/full.json` defines the complete benchmark matrix as explicit run axes. It expands
+to 12,960 coordinates across all models, repositories, fusion methods, optimization profiles, router
+objectives, grouped folds, and repository holdouts.
+
+`expandBenchmarkMatrixManifest` expands the manifest in a stable order. Pass the resulting plan and
+schema-32 artifacts to `mergeBenchmarkMatrix`. The merge rejects duplicate, missing, and unexpected
+coordinates. Each merged coordinate retains the complete router result, search diagnostics, source
+timestamp, and source timing record. `artifactSerializationDurationMs` records the preflight JSON
+serialization time for each source artifact.
+
+The router search is the `halving-funnel`: it proxy-scores 512 broad scouts, keeps 32 survivors,
 proxy-scores 16 radius-2 Sobol points per survivor, and fully evaluates 256 finalists plus the static
-base seeds once. Set `PIX_BENCH_ROUTER_STRATEGY=proxy-promotion` to run the slower coordinate-beam
-search. Set it to `successive-halving` to run the historical lexicographic variant. All strategies use
-the same candidate evaluator and native worker queue. Their final archive selection is
+base seeds once. The funnel and the static weight searches share the same candidate evaluator and
+native worker queue. The final archive selection is
 objective-specific, so Direct and Reranker rows are real comparisons rather than repeated labels.
 
-The global scouts default to a deterministic Halton sequence. Set `PIX_BENCH_SCOUT_SEQUENCE` to
-`sobol` or `random` to seed the beam differently; comparisons must keep the strategy, scout count,
+The global scouts default to the deterministic Sobol sequence. Set `PIX_BENCH_SCOUT_SEQUENCE` to
+`halton` or `random` to seed the funnel differently; comparisons must keep the scout count,
 seeds, folds, and objectives identical.
 
 The Jina code model cannot embed Effect's longest 7,103-token AST chunk on the tested DML GPU even as

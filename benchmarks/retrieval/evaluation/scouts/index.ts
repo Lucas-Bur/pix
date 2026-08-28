@@ -16,7 +16,7 @@ export const SCOUT_SEQUENCES: Readonly<Record<ScoutSequenceName, ScoutSequence>>
 }
 
 /** Sequence used unless `PIX_BENCH_SCOUT_SEQUENCE` requests another one. */
-export const DEFAULT_SCOUT_SEQUENCE: ScoutSequenceName = "halton"
+export const DEFAULT_SCOUT_SEQUENCE: ScoutSequenceName = "sobol"
 
 /** Human-readable construction of one scout sequence for reports and artifacts. */
 export const describeScoutSequence = (name: ScoutSequenceName): string =>

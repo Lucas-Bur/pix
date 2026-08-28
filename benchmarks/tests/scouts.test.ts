@@ -12,9 +12,9 @@ import {
 } from "../retrieval/evaluation/scouts/index.js"
 import type { ScoutSequence } from "../retrieval/evaluation/scouts/index.js"
 
-it("resolves the scout sequence knob with halton as the default", () => {
-  expect(DEFAULT_SCOUT_SEQUENCE).toBe("halton")
-  expect(resolveScoutSequence(undefined)).toBe("halton")
+it("resolves the scout sequence knob with sobol as the default", () => {
+  expect(DEFAULT_SCOUT_SEQUENCE).toBe("sobol")
+  expect(resolveScoutSequence(undefined)).toBe("sobol")
   for (const name of SCOUT_SEQUENCE_NAMES) {
     expect(resolveScoutSequence(name)).toBe(name)
   }

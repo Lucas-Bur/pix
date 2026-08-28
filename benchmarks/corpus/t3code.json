@@ -1,0 +1,275 @@
+{
+  "schemaVersion": 2,
+  "id": "t3code",
+  "repository": "https://github.com/pingdotgg/t3code.git",
+  "revision": "badae6a5cc8325dcd5a145bea6f7b8ac692818a1",
+  "language": "typescript",
+  "size": "medium",
+  "includeRoots": [
+    "apps/server/src/vcs/",
+    "apps/server/src/workspace/",
+    "apps/server/src/textGeneration/",
+    "apps/web/src/state/",
+    "apps/web/src/browser/",
+    "packages/shared/src/"
+  ],
+  "excludePaths": ["apps/server/src/vcs/testing/"],
+  "extensions": [".ts", ".tsx"],
+  "questions": [
+    {
+      "id": "t3code-001",
+      "queries": {
+        "identifier": "WorkspaceSearchIndex",
+        "searchPhrase": "workspace file path and content search index",
+        "naturalQuestion": "Where does the server build and query the workspace search index?",
+        "agentTask": "Find the service that indexes workspace paths and file contents for search."
+      },
+      "category": "search",
+      "difficulty": "easy",
+      "groundTruth": [
+        {
+          "file": "apps/server/src/workspace/WorkspaceSearchIndex.ts",
+          "symbol": "WorkspaceSearchIndex"
+        }
+      ]
+    },
+    {
+      "id": "t3code-002",
+      "queries": {
+        "identifier": "WorkspaceFileSystem",
+        "searchPhrase": "safe workspace file read write path escape",
+        "naturalQuestion": "Which service handles workspace file operations and rejects paths outside the workspace?",
+        "agentTask": "Find the workspace filesystem boundary that validates paths before reading or writing files."
+      },
+      "category": "filesystem",
+      "difficulty": "medium",
+      "groundTruth": [
+        {
+          "file": "apps/server/src/workspace/WorkspaceFileSystem.ts",
+          "symbol": "WorkspaceFileSystem"
+        }
+      ]
+    },
+    {
+      "id": "t3code-003",
+      "queries": {
+        "identifier": "VcsProvisioningService",
+        "searchPhrase": "provision version control driver project",
+        "naturalQuestion": "Where is version-control support provisioned for a project?",
+        "agentTask": "Find the service that prepares a VCS driver for a project workspace."
+      },
+      "category": "version-control",
+      "difficulty": "medium",
+      "groundTruth": [
+        {
+          "file": "apps/server/src/vcs/VcsProvisioningService.ts",
+          "symbol": "VcsProvisioningService"
+        }
+      ]
+    },
+    {
+      "id": "t3code-004",
+      "queries": {
+        "identifier": "VcsStatusBroadcaster",
+        "searchPhrase": "broadcast git status remote refresh changes",
+        "naturalQuestion": "How does the server publish changing repository status to connected clients?",
+        "agentTask": "Find the service that watches VCS state and broadcasts status updates."
+      },
+      "category": "events",
+      "difficulty": "hard",
+      "groundTruth": [
+        {
+          "file": "apps/server/src/vcs/VcsStatusBroadcaster.ts",
+          "symbol": "VcsStatusBroadcaster"
+        }
+      ]
+    },
+    {
+      "id": "t3code-005",
+      "queries": {
+        "identifier": "buildCommitMessagePrompt",
+        "searchPhrase": "generate commit message prompt from repository changes",
+        "naturalQuestion": "Where is the prompt for generating a commit message assembled?",
+        "agentTask": "Find the function that builds the commit-message generation prompt."
+      },
+      "category": "text-generation",
+      "difficulty": "easy",
+      "groundTruth": [
+        {
+          "file": "apps/server/src/textGeneration/TextGenerationPrompts.ts",
+          "symbol": "buildCommitMessagePrompt"
+        }
+      ]
+    },
+    {
+      "id": "t3code-006",
+      "queries": {
+        "identifier": "makeOpenCodeTextGeneration",
+        "searchPhrase": "OpenCode text generation session prompt response",
+        "naturalQuestion": "Which adapter asks OpenCode to generate repository text?",
+        "agentTask": "Find the OpenCode-backed text-generation implementation."
+      },
+      "category": "provider-adapter",
+      "difficulty": "medium",
+      "groundTruth": [
+        {
+          "file": "apps/server/src/textGeneration/OpenCodeTextGeneration.ts",
+          "symbol": "makeOpenCodeTextGeneration"
+        }
+      ]
+    },
+    {
+      "id": "t3code-007",
+      "queries": {
+        "identifier": "useThreadSearch",
+        "searchPhrase": "search agent threads query hook",
+        "naturalQuestion": "Which client hook searches existing agent threads?",
+        "agentTask": "Find the web-state query hook for thread search."
+      },
+      "category": "state-query",
+      "difficulty": "easy",
+      "groundTruth": [
+        {
+          "file": "apps/web/src/state/queries.ts",
+          "symbol": "useThreadSearch"
+        }
+      ]
+    },
+    {
+      "id": "t3code-008",
+      "queries": {
+        "identifier": "useProjectContentSearch",
+        "searchPhrase": "project source content search client query",
+        "naturalQuestion": "Where does the web client request content search within a project?",
+        "agentTask": "Find the state hook that runs project-content searches."
+      },
+      "category": "state-query",
+      "difficulty": "medium",
+      "groundTruth": [
+        {
+          "file": "apps/web/src/state/queries.ts",
+          "symbol": "useProjectContentSearch"
+        }
+      ]
+    },
+    {
+      "id": "t3code-009",
+      "queries": {
+        "identifier": "readThreadDetail",
+        "searchPhrase": "read scoped thread detail from entity state",
+        "naturalQuestion": "How can non-React code read the current details for a scoped thread?",
+        "agentTask": "Find the imperative state accessor for thread details."
+      },
+      "category": "state-management",
+      "difficulty": "medium",
+      "groundTruth": [
+        {
+          "file": "apps/web/src/state/entities.ts",
+          "symbol": "readThreadDetail"
+        }
+      ]
+    },
+    {
+      "id": "t3code-010",
+      "queries": {
+        "identifier": "authEnvironment",
+        "searchPhrase": "authentication environment atoms connection runtime",
+        "naturalQuestion": "Where are authentication RPC atoms connected to the web runtime?",
+        "agentTask": "Find the web-state binding for the authentication environment."
+      },
+      "category": "authentication",
+      "difficulty": "hard",
+      "groundTruth": [
+        {
+          "file": "apps/web/src/state/auth.ts",
+          "symbol": "authEnvironment"
+        }
+      ]
+    },
+    {
+      "id": "t3code-011",
+      "queries": {
+        "identifier": "planWebviewCrashRecovery",
+        "searchPhrase": "webview crash retry backoff recovery plan",
+        "naturalQuestion": "How does the browser preview decide whether and when to recover after a webview crash?",
+        "agentTask": "Find the function that plans browser webview crash recovery attempts."
+      },
+      "category": "resilience",
+      "difficulty": "medium",
+      "groundTruth": [
+        {
+          "file": "apps/web/src/browser/webviewCrashRecovery.ts",
+          "symbol": "planWebviewCrashRecovery"
+        }
+      ]
+    },
+    {
+      "id": "t3code-012",
+      "queries": {
+        "identifier": "buildConnectAuthorizeRequestUrl",
+        "searchPhrase": "connect OAuth authorization request URL",
+        "naturalQuestion": "Where is the hosted authorization URL for connecting a local client created?",
+        "agentTask": "Find the shared function that builds a Connect authorization request URL."
+      },
+      "category": "authentication",
+      "difficulty": "medium",
+      "groundTruth": [
+        {
+          "file": "packages/shared/src/connectAuth.ts",
+          "symbol": "buildConnectAuthorizeRequestUrl"
+        }
+      ]
+    },
+    {
+      "id": "t3code-013",
+      "queries": {
+        "identifier": "resolveAutoFeatureBranchName",
+        "searchPhrase": "derive automatic git feature branch name",
+        "naturalQuestion": "Which function turns a proposed branch label into the automatic feature branch name?",
+        "agentTask": "Find the shared branch-name resolver used for automatic worktree branches."
+      },
+      "category": "version-control",
+      "difficulty": "easy",
+      "groundTruth": [
+        {
+          "file": "packages/shared/src/git.ts",
+          "symbol": "resolveAutoFeatureBranchName"
+        }
+      ]
+    },
+    {
+      "id": "t3code-014",
+      "queries": {
+        "identifier": "verifyDpopProof",
+        "searchPhrase": "verify DPoP proof request token binding",
+        "naturalQuestion": "Where does the application verify a DPoP proof against an HTTP request and access token?",
+        "agentTask": "Find the shared DPoP proof verification function."
+      },
+      "category": "security",
+      "difficulty": "hard",
+      "groundTruth": [
+        {
+          "file": "packages/shared/src/dpop.ts",
+          "symbol": "verifyDpopProof"
+        }
+      ]
+    },
+    {
+      "id": "t3code-015",
+      "queries": {
+        "identifier": "resolveBackgroundActivitySettings",
+        "searchPhrase": "background agent activity preset settings override",
+        "naturalQuestion": "How are background activity presets and custom overrides combined?",
+        "agentTask": "Find the function that resolves effective background activity settings."
+      },
+      "category": "configuration",
+      "difficulty": "hard",
+      "groundTruth": [
+        {
+          "file": "packages/shared/src/backgroundActivitySettings.ts",
+          "symbol": "resolveBackgroundActivitySettings"
+        }
+      ]
+    }
+  ]
+}

@@ -26,8 +26,6 @@ import {
 import { getDefaultWorkerCount, resolveWorkerCount } from "./execution/candidate-evaluation-pool.js"
 import { resolveSearchKnobs } from "./run-config.js"
 
-export { resolveRouterSearchStrategy } from "./run-config.js"
-
 const CONTEXT_BUDGETS = [2_048, 4_096, 8_192, 16_384] as const
 
 const profileConfig = (profile: BenchmarkProfile): BenchmarkSearchConfig => {
@@ -36,7 +34,6 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkSearchConfig => {
       return {
         groupedFolds: 5,
         repositoryHoldouts: false,
-        legacyDiagnostics: false,
         fusionMethods: ["dbsf"],
         routerFusionMethods: ["dbsf"],
       }
@@ -44,7 +41,6 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkSearchConfig => {
       return {
         groupedFolds: 3,
         repositoryHoldouts: false,
-        legacyDiagnostics: false,
         fusionMethods: ["dbsf"],
         routerFusionMethods: ["dbsf"],
       }
@@ -52,7 +48,6 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkSearchConfig => {
       return {
         groupedFolds: 5,
         repositoryHoldouts: true,
-        legacyDiagnostics: false,
         fusionMethods: ["dbsf"],
         routerFusionMethods: ["dbsf"],
       }
@@ -60,7 +55,6 @@ const profileConfig = (profile: BenchmarkProfile): BenchmarkSearchConfig => {
       return {
         groupedFolds: 5,
         repositoryHoldouts: true,
-        legacyDiagnostics: false,
         fusionMethods: FUSION_METHODS,
         routerFusionMethods: FUSION_METHODS,
       }
@@ -118,7 +112,9 @@ const selectOptimizationProfile = (): Effect.Effect<OptimizationProfile, Error> 
     : Effect.succeed(selected)
 }
 
-const writeArtifact = (artifact: BenchmarkArtifact): Effect.Effect<string, Error> =>
+const writeArtifact = (
+  artifact: BenchmarkArtifact,
+): Effect.Effect<{ readonly artifact: BenchmarkArtifact; readonly outputPath: string }, Error> =>
   Effect.gen(function* () {
     const outputDirectory = path.resolve("benchmarks/results")
     yield* Effect.tryPromise({
@@ -128,15 +124,30 @@ const writeArtifact = (artifact: BenchmarkArtifact): Effect.Effect<string, Error
     const stamp = artifact.generatedAt.replaceAll(":", "-")
     const outputPath = path.join(outputDirectory, `retrieval-${stamp}.json`)
     const reportPath = path.join(outputDirectory, `retrieval-${stamp}.md`)
+    const serializationStartedAt = performance.now()
+    JSON.stringify(artifact, null, 2)
+    const artifactWithSerializationTiming: BenchmarkArtifact = {
+      ...artifact,
+      timings: {
+        ...artifact.timings,
+        artifactSerializationDurationMs: performance.now() - serializationStartedAt,
+      },
+    }
     yield* Effect.tryPromise({
-      try: () => writeFile(outputPath, `${JSON.stringify(artifact, null, 2)}\n`, "utf8"),
+      try: () =>
+        writeFile(
+          outputPath,
+          `${JSON.stringify(artifactWithSerializationTiming, null, 2)}\n`,
+          "utf8",
+        ),
       catch: (cause) => new Error(`Could not write benchmark artifact ${outputPath}`, { cause }),
     })
     yield* Effect.tryPromise({
-      try: () => writeFile(reportPath, renderMarkdownReport(artifact), "utf8"),
+      try: () =>
+        writeFile(reportPath, renderMarkdownReport(artifactWithSerializationTiming), "utf8"),
       catch: (cause) => new Error(`Could not write benchmark report ${reportPath}`, { cause }),
     })
-    return outputPath
+    return { artifact: artifactWithSerializationTiming, outputPath }
   })
 
 /** Run all selected repositories, embedding models, channel variants, and context budgets. */
@@ -159,11 +170,8 @@ export const runRetrievalBenchmark = (
       catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
     })
 
-    const routerSearchStrategy = searchKnobs.routerSearchStrategy
     const scoutSequence = searchKnobs.scoutSequence
     const seedHypotheses = searchKnobs.seedHypotheses
-    const beamSchedule = searchKnobs.beamSchedule
-    const coordinatePasses = searchKnobs.coordinatePasses
     const globalScouts = searchKnobs.globalScouts
     const localCloudPoints = searchKnobs.localCloudPoints
     const localCloudRadiusLevels = searchKnobs.localCloudRadiusLevels
@@ -179,7 +187,6 @@ export const runRetrievalBenchmark = (
       embeddingRuns,
       sparseEmbeddingRuns,
       measurements,
-      sampleGroups,
       samplesByModel,
       retrievalDurationMs,
     } = collected
@@ -189,18 +196,14 @@ export const runRetrievalBenchmark = (
     )
     const search = yield* runBenchmarkSearch(
       config,
-      sampleGroups,
       samplesByModel,
       groupedStrategy,
       optimizationProfile,
       serialSearch,
       {
         ...searchOptions,
-        routerSearchStrategy,
         scoutSequence,
         seedHypotheses,
-        beamSchedule,
-        coordinatePasses,
         globalScouts,
         localCloudPoints,
         localCloudRadiusLevels,
@@ -218,12 +221,10 @@ export const runRetrievalBenchmark = (
     )
 
     const artifact: BenchmarkArtifact = {
-      schemaVersion: 31,
+      schemaVersion: 32,
       benchmarkProfile: profile,
       scoutSequence,
       seedHypotheses,
-      beamSchedule,
-      coordinatePasses,
       globalScouts,
       localCloudPoints,
       localCloudRadiusLevels,
@@ -241,17 +242,17 @@ export const runRetrievalBenchmark = (
         },
       },
       generatedAt: new Date().toISOString(),
-      searchStrategy: routerSearchStrategyFor(scoutSequence, routerSearchStrategy),
+      searchStrategy: routerSearchStrategyFor(scoutSequence),
       timings: {
         totalDurationMs: performance.now() - benchmarkStartedAt,
         corpusPreparationDurationMs,
         embeddingDurationMs,
         retrievalDurationMs,
-        weightSearchDurationMs: search.weightSearchDurationMs,
         fusionSearchDurationMs: search.fusionSearchDurationMs,
         evidenceRouterSearchDurationMs: search.evidenceRouterSearchDurationMs,
         candidateQueueStartupDurationMs: search.candidateQueueStartupDurationMs,
         candidateQueueShutdownDurationMs: search.candidateQueueShutdownDurationMs,
+        artifactSerializationDurationMs: 0,
       },
       chunkConfig: {
         chunkTokens,
@@ -272,8 +273,6 @@ export const runRetrievalBenchmark = (
       embeddingRuns,
       sparseEmbeddingRuns,
       measurements,
-      weightSearch: search.weightSearch,
-      recommendedWeights: search.recommendedWeights,
       productionRouterSearch: search.productionRouterSearch,
       fusionSearch: search.fusionSearch,
       recommendedFusionWeights: search.recommendedFusionWeights,
@@ -281,6 +280,5 @@ export const runRetrievalBenchmark = (
       recommendedEvidenceRouters: search.recommendedEvidenceRouters,
       promotionEvidence: search.promotionEvidence,
     }
-    const outputPath = yield* writeArtifact(artifact)
-    return { artifact, outputPath }
+    return yield* writeArtifact(artifact)
   })

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "runs": [
+    {
+      "benchmarkProfile": "develop",
+      "optimizationProfiles": [
+        "search-priority",
+        "balanced",
+        "code-navigation",
+        "basic-exploration",
+        "natural-language"
+      ],
+      "models": [
+        "Xenova/all-MiniLM-L6-v2",
+        "Xenova/bge-small-en-v1.5",
+        "jinaai/jina-embeddings-v2-base-code"
+      ],
+      "repositories": ["alacritty", "beets", "effect-v4", "fastapi", "fd", "t3code"],
+      "fusions": ["dbsf"],
+      "objectives": ["direct", "direct-recall-first", "reranker-top20", "reranker-top50"],
+      "validations": [{ "strategy": "grouped-3-fold", "folds": ["1", "2", "3"] }]
+    },
+    {
+      "benchmarkProfile": "full",
+      "optimizationProfiles": [
+        "search-priority",
+        "balanced",
+        "code-navigation",
+        "basic-exploration",
+        "natural-language"
+      ],
+      "models": [
+        "Xenova/all-MiniLM-L6-v2",
+        "Xenova/bge-small-en-v1.5",
+        "jinaai/jina-embeddings-v2-base-code"
+      ],
+      "repositories": ["alacritty", "beets", "effect-v4", "fastapi", "fd", "t3code"],
+      "fusions": ["rrf", "relative-score", "dbsf"],
+      "objectives": ["direct", "direct-recall-first", "reranker-top20", "reranker-top50"],
+      "validations": [
+        { "strategy": "grouped-5-fold", "folds": ["1", "2", "3", "4", "5"] },
+        {
+          "strategy": "leave-one-repository-out",
+          "folds": ["alacritty", "beets", "effect-v4", "fastapi", "fd", "t3code"]
+        }
+      ]
+    }
+  ]
+}

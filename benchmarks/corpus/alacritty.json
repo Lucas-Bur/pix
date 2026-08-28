@@ -1,0 +1,193 @@
+{
+  "schemaVersion": 2,
+  "id": "alacritty",
+  "repository": "https://github.com/alacritty/alacritty.git",
+  "revision": "94e7c8874e526b1e67b349d9ba30ddf81669119e",
+  "language": "rust",
+  "size": "medium",
+  "includeRoots": ["alacritty/src/", "alacritty_terminal/src/"],
+  "excludePaths": ["alacritty_terminal/src/grid/tests.rs"],
+  "extensions": [".rs"],
+  "questions": [
+    {
+      "id": "alacritty-001",
+      "queries": {
+        "identifier": "alacritty",
+        "searchPhrase": "terminal application startup configuration event loop",
+        "naturalQuestion": "Where does Alacritty initialize the terminal application and start its event loop?",
+        "agentTask": "Find the main application startup function after command-line parsing."
+      },
+      "category": "startup",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "alacritty/src/main.rs", "symbol": "alacritty" }]
+    },
+    {
+      "id": "alacritty-002",
+      "queries": {
+        "identifier": "WindowContext",
+        "searchPhrase": "per-window terminal display event state",
+        "naturalQuestion": "Which type owns the terminal, display, and event state for one window?",
+        "agentTask": "Find the per-window context that coordinates terminal UI state."
+      },
+      "category": "window-management",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "alacritty/src/window_context.rs", "symbol": "WindowContext" }]
+    },
+    {
+      "id": "alacritty-003",
+      "queries": {
+        "identifier": "Display",
+        "searchPhrase": "render terminal window OpenGL display",
+        "naturalQuestion": "Where is the terminal window's rendering state managed?",
+        "agentTask": "Find the display type that owns the window and renderer."
+      },
+      "category": "rendering",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "alacritty/src/display/mod.rs", "symbol": "Display" }]
+    },
+    {
+      "id": "alacritty-004",
+      "queries": {
+        "identifier": "RenderableContent",
+        "searchPhrase": "convert terminal state into renderable cells cursor",
+        "naturalQuestion": "How does the display collect visible terminal cells and cursor state for rendering?",
+        "agentTask": "Find the iterator that prepares terminal content for the renderer."
+      },
+      "category": "rendering",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "alacritty/src/display/content.rs", "symbol": "RenderableContent" }]
+    },
+    {
+      "id": "alacritty-005",
+      "queries": {
+        "identifier": "VisualBell",
+        "searchPhrase": "visual bell animation intensity timing",
+        "naturalQuestion": "Where is the visual bell animation state and intensity calculated?",
+        "agentTask": "Find the component that controls the visual bell animation."
+      },
+      "category": "animation",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "alacritty/src/display/bell.rs", "symbol": "VisualBell" }]
+    },
+    {
+      "id": "alacritty-006",
+      "queries": {
+        "identifier": "build_sequence",
+        "searchPhrase": "keyboard event terminal escape sequence modifiers mode",
+        "naturalQuestion": "Which function translates a keyboard event into bytes for the terminal?",
+        "agentTask": "Find the keyboard encoder that builds terminal escape sequences."
+      },
+      "category": "input",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "alacritty/src/input/keyboard.rs", "symbol": "build_sequence" }]
+    },
+    {
+      "id": "alacritty-007",
+      "queries": {
+        "identifier": "Clipboard",
+        "searchPhrase": "terminal clipboard selection load store",
+        "naturalQuestion": "Where does Alacritty read and write clipboard or selection contents?",
+        "agentTask": "Find the clipboard abstraction used by terminal actions."
+      },
+      "category": "clipboard",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "alacritty/src/clipboard.rs", "symbol": "Clipboard" }]
+    },
+    {
+      "id": "alacritty-008",
+      "queries": {
+        "identifier": "Scheduler",
+        "searchPhrase": "schedule timer events repeat deadlines",
+        "naturalQuestion": "How are delayed and repeating terminal events scheduled?",
+        "agentTask": "Find the timer scheduler that emits events at configured deadlines."
+      },
+      "category": "events",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "alacritty/src/scheduler.rs", "symbol": "Scheduler" }]
+    },
+    {
+      "id": "alacritty-009",
+      "queries": {
+        "identifier": "UiConfig",
+        "searchPhrase": "combined terminal window UI configuration",
+        "naturalQuestion": "Which type holds the effective UI and terminal configuration?",
+        "agentTask": "Find the root configuration type consumed by the graphical application."
+      },
+      "category": "configuration",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "alacritty/src/config/ui_config.rs", "symbol": "UiConfig" }]
+    },
+    {
+      "id": "alacritty-010",
+      "queries": {
+        "identifier": "EventLoop",
+        "searchPhrase": "PTY read write terminal parser event loop",
+        "naturalQuestion": "Where are PTY reads, terminal parsing, and writes coordinated?",
+        "agentTask": "Find the terminal event loop that connects the PTY to terminal state."
+      },
+      "category": "process-io",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "alacritty_terminal/src/event_loop.rs", "symbol": "EventLoop" }]
+    },
+    {
+      "id": "alacritty-011",
+      "queries": {
+        "identifier": "Term",
+        "searchPhrase": "terminal emulator grid modes cursor state",
+        "naturalQuestion": "Which type owns the terminal emulator's grid, modes, and cursor state?",
+        "agentTask": "Find the central terminal state machine."
+      },
+      "category": "terminal-state",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "alacritty_terminal/src/term/mod.rs", "symbol": "Term" }]
+    },
+    {
+      "id": "alacritty-012",
+      "queries": {
+        "identifier": "RegexSearch",
+        "searchPhrase": "incremental regex search terminal grid",
+        "naturalQuestion": "Where is regular-expression search over terminal contents implemented?",
+        "agentTask": "Find the terminal regex search engine."
+      },
+      "category": "search",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "alacritty_terminal/src/term/search.rs", "symbol": "RegexSearch" }]
+    },
+    {
+      "id": "alacritty-013",
+      "queries": {
+        "identifier": "Selection",
+        "searchPhrase": "terminal text selection anchors range lines",
+        "naturalQuestion": "How does the terminal track and convert a text selection into a range?",
+        "agentTask": "Find the terminal selection model used for selected text."
+      },
+      "category": "selection",
+      "difficulty": "hard",
+      "groundTruth": [{ "file": "alacritty_terminal/src/selection.rs", "symbol": "Selection" }]
+    },
+    {
+      "id": "alacritty-014",
+      "queries": {
+        "identifier": "ViModeCursor",
+        "searchPhrase": "vi mode cursor motion terminal navigation",
+        "naturalQuestion": "Where is the cursor position for vi-mode navigation represented?",
+        "agentTask": "Find the vi-mode cursor that applies terminal motions."
+      },
+      "category": "navigation",
+      "difficulty": "medium",
+      "groundTruth": [{ "file": "alacritty_terminal/src/vi_mode.rs", "symbol": "ViModeCursor" }]
+    },
+    {
+      "id": "alacritty-015",
+      "queries": {
+        "identifier": "setup_env",
+        "searchPhrase": "configure TERM COLORTERM terminal environment",
+        "naturalQuestion": "Where are environment variables prepared before the shell starts?",
+        "agentTask": "Find the function that configures the child terminal environment."
+      },
+      "category": "process-environment",
+      "difficulty": "easy",
+      "groundTruth": [{ "file": "alacritty_terminal/src/tty/mod.rs", "symbol": "setup_env" }]
+    }
+  ]
+}

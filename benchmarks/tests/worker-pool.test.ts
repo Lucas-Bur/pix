@@ -9,7 +9,6 @@ import { ROUTER_OBJECTIVES } from "../retrieval/evaluation/types.js"
 import {
   fitRecommendedEvidenceRouter,
   fitRecommendedFusionWeights,
-  fitRecommendedWeights,
   optimizeEvidenceRouter,
   optimizeFusionWeights,
   summarize,
@@ -124,13 +123,11 @@ describe("benchmark candidate evaluation pool", () => {
           {
             workerCount: 0,
             evaluationQueue: candidateQueue,
-            routerSearchStrategy: "successive-halving",
           },
         ),
         fitRecommendedEvidenceRouter("fixture", "dbsf", [searchSample], SEARCH_PRIORITY_PROFILE, {
           workerCount: 0,
           evaluationQueue: candidateQueue,
-          routerSearchStrategy: "successive-halving",
         }),
       ])
       const serialHoldout = await optimizeEvidenceRouter(
@@ -141,14 +138,14 @@ describe("benchmark candidate evaluation pool", () => {
         [searchSample],
         [searchSample],
         SEARCH_PRIORITY_PROFILE,
-        { workerCount: 0, routerSearchStrategy: "successive-halving" },
+        { workerCount: 0 },
       )
       const serialFitAll = await fitRecommendedEvidenceRouter(
         "fixture",
         "dbsf",
         [searchSample],
         SEARCH_PRIORITY_PROFILE,
-        { workerCount: 0, routerSearchStrategy: "successive-halving" },
+        { workerCount: 0 },
       )
 
       expect(parallelHoldout.map(withoutSearchTimings)).toEqual(
@@ -174,7 +171,6 @@ describe("benchmark candidate evaluation pool", () => {
         {
           workerCount: 0,
           evaluationQueue: candidateQueue,
-          routerSearchStrategy: "successive-halving",
         },
       )
       const serial = await fitRecommendedEvidenceRouter(
@@ -182,14 +178,13 @@ describe("benchmark candidate evaluation pool", () => {
         "dbsf",
         halvingSamples,
         SEARCH_PRIORITY_PROFILE,
-        { workerCount: 0, routerSearchStrategy: "successive-halving" },
+        { workerCount: 0 },
       )
       expect(parallel.map(withoutSearchTimings)).toEqual(serial.map(withoutSearchTimings))
       const result = parallel[0]
       if (result === undefined) throw new Error("Missing halving router result")
       expect(result.searchDiagnostics.proxyEvaluations).toBeGreaterThan(0)
       expect(result.searchDiagnostics.proxyPromotions).toBeGreaterThan(0)
-      expect(result.searchDiagnostics.timings.randomSearchMs).toBe(0)
     } finally {
       await candidateQueue.close()
     }
@@ -302,19 +297,6 @@ describe("benchmark candidate evaluation pool", () => {
     expect(evaluateCandidatesSerial(snapshot, [{ weights }])[0]).toEqual(
       summarize(paritySamples, weights, "dbsf", SEARCH_PRIORITY_PROFILE),
     )
-  })
-
-  it("keeps the explicit parallel search result equal to the serial search", async () => {
-    const serial = await fitRecommendedWeights("fixture", "identifier", [searchSample])
-    const parallel = await fitRecommendedWeights(
-      "fixture",
-      "identifier",
-      [searchSample],
-      undefined,
-      { workerCount: 2, batchSize: 16 },
-    )
-
-    expect(parallel).toEqual(serial)
   })
 
   it("keeps static fusion fitting serial and parallel paths equivalent", async () => {

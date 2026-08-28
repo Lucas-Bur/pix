@@ -211,20 +211,9 @@ const renderPromotionEvidence = (artifact: BenchmarkArtifact): readonly string[]
 
 /** Render the report header with run metadata and the recorded search configuration. */
 const renderOverview = (artifact: BenchmarkArtifact): readonly string[] => {
-  const refinement =
-    artifact.searchStrategy.kind === "halving-funnel"
-      ? [
-          `Funnel refinement: keep ${artifact.searchStrategy.spreadSurvivors} proxy-scored spread survivors, expand ${artifact.localCloudPoints} Sobol points per survivor within +/- ${artifact.localCloudRadiusLevels} level(s), then fully evaluate ${artifact.searchStrategy.finalists} finalists plus base seeds once.`,
-        ]
-      : [
-          `Beam refinement: beam width ${artifact.searchStrategy.beamWidth}, ${artifact.searchStrategy.coordinatePasses} alternating coordinate passes.`,
-          ...(artifact.localCloudPoints > 0
-            ? [
-                `Local refinement: ${artifact.localCloudPoints} deterministic Sobol cloud points per elite within +/- ${artifact.localCloudRadiusLevels} level(s) around the final beam.`,
-              ]
-            : []),
-          `Cheap pre-scoring: candidates first score on a deterministic ${artifact.searchStrategy.proxySampleFraction * 100}% proxy sample with a minimum of ${artifact.searchStrategy.proxyMinimumSamples}; the ${artifact.searchStrategy.kind === "successive-halving" ? "keep" : "promotion"} factor is ${artifact.searchStrategy.kind === "successive-halving" ? artifact.searchStrategy.halvingKeepFactor : artifact.searchStrategy.proxyPromotionFactor}x.`,
-        ]
+  const refinement = [
+    `Funnel refinement: keep ${artifact.searchStrategy.spreadSurvivors} proxy-scored spread survivors, expand ${artifact.localCloudPoints} Sobol points per survivor within +/- ${artifact.localCloudRadiusLevels} level(s), then fully evaluate ${artifact.searchStrategy.finalists} finalists plus base seeds once.`,
+  ]
   return [
     "# Retrieval Quality Benchmark",
     "",
@@ -265,20 +254,18 @@ const renderComputeSections = (artifact: BenchmarkArtifact): readonly string[] =
       "Corpus preparation",
       "Embedding",
       "Retrieval",
-      "Weight search",
       "Fusion search",
       "Router search",
       "Candidate queue startup",
       "Candidate queue shutdown",
     ],
-    Array.from({ length: 9 }, () => "---:"),
+    Array.from({ length: 8 }, () => "---:"),
     [
       [
         duration(artifact.timings.totalDurationMs),
         duration(artifact.timings.corpusPreparationDurationMs),
         duration(artifact.timings.embeddingDurationMs),
         duration(artifact.timings.retrievalDurationMs),
-        duration(artifact.timings.weightSearchDurationMs),
         duration(artifact.timings.fusionSearchDurationMs),
         duration(artifact.timings.evidenceRouterSearchDurationMs),
         duration(artifact.timings.candidateQueueStartupDurationMs),
@@ -464,63 +451,6 @@ const renderRouterSections = (artifact: BenchmarkArtifact): readonly string[] =>
     ),
   )
 
-  lines.push(
-    "",
-    "## Cross-Validated Weights",
-    "",
-    "Each row selects weights without its validation fold. Validation quality and Shapley contributions use only the excluded fold.",
-    "",
-    ...renderTable(
-      [
-        "Model",
-        "Query form",
-        "Strategy",
-        "Fold",
-        "Weights I/C/B/D/S",
-        "Dev R@20",
-        "Validation R@5",
-        "Validation R@10",
-        "Validation R@20",
-        "Validation Ctx@4k",
-        "Shapley I/C/B/D/S",
-      ],
-      ["---", "---", "---", "---", "---", "---:", "---:", "---:", "---:", "---:", "---"],
-      artifact.weightSearch.map((result) => [
-        result.model,
-        result.queryKind,
-        result.strategy,
-        result.fold,
-        formatWeights(result.weights),
-        percent(result.development.recallAt20),
-        percent(result.validation.recallAt5),
-        percent(result.validation.recallAt10),
-        percent(result.validation.recallAt20),
-        percent(result.validation.contextRecallAt4096),
-        CHANNELS.map((channel) => percent(result.shapleyRecallAt20[channel])).join("/"),
-      ]),
-    ),
-  )
-
-  lines.push(
-    "",
-    "## Recommended Weights",
-    "",
-    "These deployment candidates are fitted on all available samples only after cross-validation.",
-    "",
-    ...renderTable(
-      ["Model", "Query form", "Samples", "Weights I/C/B/D/S", "Fit R@5", "Fit R@20"],
-      ["---", "---", "---:", "---", "---:", "---:"],
-      artifact.recommendedWeights.map((result) => [
-        result.model,
-        result.queryKind,
-        String(result.samples),
-        formatWeights(result.weights),
-        percent(result.fitQuality.recallAt5),
-        percent(result.fitQuality.recallAt20),
-      ]),
-    ),
-  )
-
   const fusionGroups = new Map<string, FusionSearchResult[]>()
   for (const result of artifact.fusionSearch) {
     const key = `${result.model}\0${result.fusion}\0${result.strategy}`
@@ -702,7 +632,6 @@ const renderRouterSections = (artifact: BenchmarkArtifact): readonly string[] =>
           ? "eligible"
           : "no-eligible-candidate",
       ),
-      rows[0]?.searchBaseline.algorithm ?? "unknown",
       percent(weightedAverage(rows, (row) => row.productionValidation.recallAt5)),
       percent(weightedAverage(rows, (row) => row.validation.recallAt5)),
       percent(weightedAverage(rows, (row) => row.productionValidation.recallAt10)),
@@ -713,8 +642,6 @@ const renderRouterSections = (artifact: BenchmarkArtifact): readonly string[] =>
       percent(weightedAverage(rows, (row) => row.validation.recallAt50)),
       percent(weightedAverage(rows, (row) => row.productionValidation.contextRecallAt4096)),
       percent(weightedAverage(rows, (row) => row.validation.contextRecallAt4096)),
-      percent(weightedAverage(rows, (row) => row.searchBaseline.validation.recallAt20)),
-      percent(weightedAverage(rows, (row) => row.searchBaseline.validation.contextRecallAt4096)),
     ]
   })
   lines.push(
@@ -730,7 +657,6 @@ const renderRouterSections = (artifact: BenchmarkArtifact): readonly string[] =>
         "Objective",
         "Strategy",
         "Promotion",
-        "Search baseline",
         "Production R@5",
         "Dynamic R@5",
         "Production R@10",
@@ -741,8 +667,6 @@ const renderRouterSections = (artifact: BenchmarkArtifact): readonly string[] =>
         "Dynamic R@50",
         "Production Ctx@4k",
         "Dynamic Ctx@4k",
-        "Random R@20",
-        "Random Ctx@4k",
       ],
       [
         "---",

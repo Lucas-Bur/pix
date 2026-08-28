@@ -28,7 +28,6 @@ import { compareObjectiveQuality } from "../retrieval/evaluation/router-search/o
 import { ROUTER_OBJECTIVES, type QualitySummary } from "../retrieval/evaluation/types.js"
 import {
   optimizeEvidenceRouter,
-  optimizeWeights,
   selectEligibleCandidate,
   selectObjectiveArchiveCandidates,
 } from "../retrieval/evaluation/weight-search.js"
@@ -533,39 +532,6 @@ describe("retrieval benchmark fixture", () => {
     expect(ranked).toEqual([{ chunkIndex: 0, score: 0.5 }])
   })
 
-  it("learns weights on development and attributes holdout value with Shapley", async () => {
-    const sample = {
-      repository: "fixture",
-      intentId: "fixture-001",
-      queryKind: "identifier" as const,
-      groupedFold: 0,
-      query: "loadProjectConfiguration",
-      rankings: {
-        identity: [{ chunkIndex: 0, score: 1 }],
-        camelcase: [{ chunkIndex: 1, score: 1 }],
-        bm25: [{ chunkIndex: 2, score: 1 }],
-        dense: [{ chunkIndex: 3, score: 1 }],
-        sparse: [],
-      },
-      targets: [new Set([0])],
-      chunks,
-    }
-    const result = await optimizeWeights(
-      "fixture",
-      "identifier",
-      "grouped-5-fold",
-      "1",
-      [sample],
-      [sample],
-    )
-    expect(result.weights.identity).toBeGreaterThan(0)
-    expect(result.weights.camelcase).toBe(0)
-    expect(result.weights.bm25).toBe(0)
-    expect(result.weights.dense).toBe(0)
-    expect(result.validation.recallAt20).toBe(1)
-    expect(result.shapleyRecallAt20.identity).toBe(1)
-  })
-
   it("compares NDCG-first direct selection with the matched Recall-first ablation", () => {
     const quality = (ndcgAt5: number, recallAt5: number): QualitySummary => ({
       ndcgAt5,
@@ -643,10 +609,6 @@ describe("retrieval benchmark fixture", () => {
     expect(Object.keys(result.searchDiagnostics.parameterLevels)).toHaveLength(40)
     expect(result.searchDiagnostics.proxyFullAgreement).toBeGreaterThanOrEqual(0)
     expect(result.searchDiagnostics.proxyFullAgreement).toBeLessThanOrEqual(1)
-    expect(result.searchBaseline.algorithm).toBe("random-scout")
-    expect(result.searchBaseline.seed).toBe(1)
-    expect(result.searchBaseline.candidates).toBeGreaterThan(0)
-    expect(result.searchBaseline.validation.recallAt20).toBeGreaterThanOrEqual(0)
     expect(
       result.holdoutBreakdown.map(({ dimension, name }) => `${dimension}:${name}`).sort(),
     ).toEqual([
@@ -717,7 +679,6 @@ describe("retrieval benchmark fixture", () => {
         undefined,
         {
           workerCount: 0,
-          routerSearchStrategy: "halving-funnel",
           globalScouts: 16,
           seedHypotheses: true,
           localCloudPoints: 2,
@@ -731,7 +692,6 @@ describe("retrieval benchmark fixture", () => {
     )
     expect(result.searchDiagnostics.fullEvaluations).toBeLessThan(384)
     expect(result.searchDiagnostics.localCloudCandidates).toBeGreaterThan(0)
-    expect(result.searchBaseline.algorithm).toBe("not-run")
   })
 
   it("does not treat a guardrail-failing fallback as promotable", () => {
