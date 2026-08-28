@@ -134,17 +134,17 @@ deferred until the promotion bar is met. The real multiplicative-vs-log-linear c
 
 Every search knob has a recorded status so work stops re-litigating settled ones:
 
-| Knob                                        | Status                                                                            | Evidence             |
-| ------------------------------------------- | --------------------------------------------------------------------------------- | -------------------- |
-| Router model (multiplicative vs log-linear) | Settled: keep multiplicative; switch at the next mandatory promoted-config re-fit | ADR 0021             |
-| Router search strategy                      | Settled and deleted: only `halving-funnel` remains (beam control removed)         | BASELINE (#189)      |
-| Finalist budget                             | Settled: 256 (384 measured identical, +65 s)                                      | BASELINE (#189)      |
-| Local Sobol cloud (points/radius)           | Settled: 16 points, radius 2 (32/r3 added no quality)                             | BASELINE (#189)      |
-| Scout sequence (sobol/halton/random)        | Settled: all inside noise; sobol default                                          | BASELINE (schema 29) |
-| Wide-vs-deep passes                         | Settled: 1 wide pass matches 2 narrow passes at 45% fewer evals                   | BASELINE (schema 29) |
-| Corpus-size factor                          | Deferred with promotion bar; sweep stays as standing measurement                  | ADR 0022             |
-| Fitting methods, selection rules            | Diagnostics only, recorded per comparison run                                     | ADR 0021             |
-| Chunking (chunkTokens)                      | Open: sweep via `vp run bench:retrieval:chunking`                                 | —                    |
+| Knob                                        | Status                                                                                                                                                      | Evidence                    |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| Router model (multiplicative vs log-linear) | Settled: keep multiplicative; switch at the next mandatory promoted-config re-fit                                                                           | ADR 0021                    |
+| Router search strategy                      | Settled and deleted: only `halving-funnel` remains (beam control removed)                                                                                   | BASELINE (#189)             |
+| Finalist budget                             | Settled: 256 (384 measured identical, +65 s)                                                                                                                | BASELINE (#189)             |
+| Local Sobol cloud (points/radius)           | Settled: 16 points, radius 2 (32/r3 added no quality)                                                                                                       | BASELINE (#189)             |
+| Scout sequence (sobol/halton/random)        | Settled: all inside noise; sobol default                                                                                                                    | BASELINE (schema 29)        |
+| Wide-vs-deep passes                         | Settled: 1 wide pass matches 2 narrow passes at 45% fewer evals                                                                                             | BASELINE (schema 29)        |
+| Corpus-size factor                          | Deferred with promotion bar; sweep stays as standing measurement                                                                                            | ADR 0022                    |
+| Fitting methods, selection rules            | Diagnostics only, recorded per comparison run                                                                                                               | ADR 0021                    |
+| Chunking (chunkTokens)                      | Settled for flat chunking: 512 default; 384/256 degrade NDCG@20 monotonically (0.66/0.64/0.53 on t3code). Revisit only together with parent-chunk retrieval | `retrieval-chunking-*.json` |
 
 `bench:retrieval` aliases `bench:retrieval:validate`. Every profile measures the same physical
 rankings and retrieval variants; profiles only control matrix size, holdout coverage, and expensive
