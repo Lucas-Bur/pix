@@ -19,7 +19,7 @@ shared extension registry for parser dispatch.
   tokenizers with special tokens included and tokenizer truncation disabled.
 - Attach immediately preceding comment nodes to the following AST chunk so doc comments contribute
   to its embedding; comments inside declarations are already part of `node.text`.
-- Support TypeScript, JavaScript, TSX, JSX, Python, and Rust.
+- Support TypeScript, JavaScript, TSX, JSX, Python, Rust, Java, and Kotlin.
 - Recursively split an oversized AST unit through child AST nodes, then source lines, then safe
   whitespace/punctuation boundaries. An unsplittable leaf is skipped and reported rather than
   aborting the index refresh.

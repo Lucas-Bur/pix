@@ -14,6 +14,7 @@ const BINDING_CONTAINER_NODE_TYPES = new Set([
   "tuple_pattern",
   "list_splat_pattern",
   "dictionary_splat_pattern",
+  "multi_variable_declaration",
 ])
 
 /**
@@ -63,6 +64,10 @@ export const extractIdentifiers = (
         const left = node.childForFieldName("left")
         return left === null ? [] : collectBoundNames(left)
       }
+      case "variable_declaration": {
+        const first = node.namedChild(0)
+        return first === null ? [] : collectBoundNames(first)
+      }
       default:
         return []
     }
@@ -70,8 +75,11 @@ export const extractIdentifiers = (
 
   /**
    * Extract the bound names for a matched node. Most declarations use `name`; TypeScript variable
-   * declarators may destructure through `name`, Python assignments bind through `left`, and the
-   * Python grammar exposes a type alias name as its first named child.
+   * declarators may destructure through `name`, Python assignments bind through `left`, the Python
+   * grammar exposes a type alias name as its first named child, and Kotlin's `property_declaration`
+   * / `enum_entry` carry no `name` field at all -- the bound name sits in their first named child
+   * (`variable_declaration`, possibly a `multi_variable_declaration` destructuring pattern, or a
+   * plain `identifier`).
    */
   const extractNames = (node: Parser.SyntaxNode): readonly string[] => {
     if (node.type === "assignment") {
@@ -81,6 +89,10 @@ export const extractIdentifiers = (
     if (node.type === "type_alias_statement") {
       const aliasNode = node.namedChild(0)
       return aliasNode === null ? [] : [aliasNode.text]
+    }
+    if (node.type === "property_declaration" || node.type === "enum_entry") {
+      const first = node.namedChild(0)
+      return first === null ? [] : collectBoundNames(first)
     }
     const nameNode = node.childForFieldName("name")
     if (nameNode === null) return []

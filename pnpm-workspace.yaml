@@ -9,12 +9,14 @@ peerDependencyRules:
 
 allowBuilds:
   "@parcel/watcher": true
+  "@tree-sitter-grammars/tree-sitter-kotlin": true
   fallow: true
   msgpackr-extract: true
   onnxruntime-node: true
   protobufjs: true
   sharp: true
   tree-sitter: true
+  tree-sitter-java: true
   tree-sitter-javascript: true
   tree-sitter-python: true
   tree-sitter-rust: true

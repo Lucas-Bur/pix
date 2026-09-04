@@ -46,6 +46,16 @@ describe("buildExtensionRegistry", () => {
     expect(registry[".go"]?.mapKind).toBeUndefined()
   })
 
+  it("provides parsers for Java and Kotlin", () => {
+    const registry = buildExtensionRegistry([])
+    expect(registry[".java"]?.parser).not.toBeNull()
+    expect(registry[".java"]?.mapKind).toBeDefined()
+    expect(registry[".kt"]?.parser).not.toBeNull()
+    expect(registry[".kt"]?.mapKind).toBeDefined()
+    expect(registry[".kts"]?.parser).not.toBeNull()
+    expect(registry[".kts"]?.mapKind).toBeDefined()
+  })
+
   it("overrides skip extensions to a fail-fast processor and null parser", () => {
     const registry = buildExtensionRegistry([".md", ".ts"])
     // The override replaces the entry -- skip processor + null parser

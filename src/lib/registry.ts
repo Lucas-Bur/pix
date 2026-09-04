@@ -1,10 +1,14 @@
+import Kotlin from "@tree-sitter-grammars/tree-sitter-kotlin"
 import Parser from "tree-sitter"
+import Java from "tree-sitter-java"
 import Python from "tree-sitter-python"
 import Rust from "tree-sitter-rust"
 import TypeScript from "tree-sitter-typescript"
 
 import type { IdentifierKind } from "../domain/identifier.js"
 import { identityProcessor, skipProcessor, type FileProcessor } from "./config/processors.js"
+import { javaMapKind } from "./parsing/java.js"
+import { kotlinMapKind } from "./parsing/kotlin.js"
 import { pythonMapKind } from "./parsing/python.js"
 import { rustMapKind } from "./parsing/rust.js"
 import { typescriptMapKind } from "./parsing/typescript.js"
@@ -41,13 +45,19 @@ const PYTHON_PARSER = createParser(Python)
 /** Tree-sitter parser pre-configured with the Rust grammar. */
 const RUST_PARSER = createParser(Rust)
 
+/** Tree-sitter parser pre-configured with the Java grammar. */
+const JAVA_PARSER = createParser(Java)
+
+/** Tree-sitter parser pre-configured with the Kotlin grammar. */
+const KOTLIN_PARSER = createParser(Kotlin)
+
 /**
  * Default mapping of file extension -> behavior. Used as the base for `buildExtensionRegistry` and
  * as the single place to add a new language (one entry per file extension, one parser per
  * language).
  *
- * TypeScript, Python, and Rust extensions have pre-configured parsers. Other code extensions carry
- * null until a tree-sitter grammar is installed and wired in.
+ * TypeScript, Python, Rust, Java, and Kotlin extensions have pre-configured parsers. Other code
+ * extensions carry null until a tree-sitter grammar is installed and wired in.
  */
 const DEFAULT_EXTENSION_REGISTRY: Record<string, ExtensionEntry> = {
   // TypeScript-flavored. tree-sitter-typescript exposes two separate grammars:
@@ -58,9 +68,11 @@ const DEFAULT_EXTENSION_REGISTRY: Record<string, ExtensionEntry> = {
   ".jsx": { processor: identityProcessor, parser: TSX_PARSER, mapKind: typescriptMapKind },
   ".py": { processor: identityProcessor, parser: PYTHON_PARSER, mapKind: pythonMapKind },
   ".rs": { processor: identityProcessor, parser: RUST_PARSER, mapKind: rustMapKind },
+  ".java": { processor: identityProcessor, parser: JAVA_PARSER, mapKind: javaMapKind },
+  ".kt": { processor: identityProcessor, parser: KOTLIN_PARSER, mapKind: kotlinMapKind },
+  ".kts": { processor: identityProcessor, parser: KOTLIN_PARSER, mapKind: kotlinMapKind },
   // Other code -- parser: null until a tree-sitter package is added
   ".go": { processor: identityProcessor, parser: null },
-  ".java": { processor: identityProcessor, parser: null },
   ".c": { processor: identityProcessor, parser: null },
   ".cpp": { processor: identityProcessor, parser: null },
   ".h": { processor: identityProcessor, parser: null },
