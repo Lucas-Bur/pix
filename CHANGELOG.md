@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.28.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.27.0...pix-v0.28.0) (2026-09-04)
+
+
+### Features
+
+* **bench:** add fidelity funnel router search ([1b474e4](https://github.com/Lucas-Bur/pix/commit/1b474e40f29319317c58a5beb40b2749c9133ff7))
+* **bench:** corner hypothesis seeds and decaying beam schedule ([fe495ca](https://github.com/Lucas-Bur/pix/commit/fe495ca872729609eb37708132be293a0b1ad73c))
+* **bench:** PIX_BENCH_COORDINATE_PASSES knob for wide-shallow search ([7adc7e0](https://github.com/Lucas-Bur/pix/commit/7adc7e0549231dde35cfee6ebc3b8b751885a175))
+* **bench:** PIX_BENCH_GLOBAL_SCOUTS knob and pure-sampling mode ([6d3da2b](https://github.com/Lucas-Bur/pix/commit/6d3da2ba87ddbf467831fbdef8b6689be5676add))
+* **bench:** selectable scout sequence with Sobol and progress logging ([bbad198](https://github.com/Lucas-Bur/pix/commit/bbad1982c051cc5ab67b0cf2006e8b05c7c680d6))
+* **parsing:** add Java and Kotlin tree-sitter support ([b85426c](https://github.com/Lucas-Bur/pix/commit/b85426c542730202afcb68163931df862c246105))
+
+
+### Bug Fixes
+
+* **bench:** address CodeRabbit review findings ([ceb543f](https://github.com/Lucas-Bur/pix/commit/ceb543fbf99eb354a660921487025ca6a9142c17))
+
 ## [0.27.0](https://github.com/Lucas-Bur/pix/compare/pix-v0.26.0...pix-v0.27.0) (2026-08-24)
 
 
